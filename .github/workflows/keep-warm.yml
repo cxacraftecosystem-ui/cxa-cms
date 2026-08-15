@@ -77,21 +77,31 @@ jobs:
             exit 1
           fi
 
-          # Three attempts with a widening pause. The FIRST failure against a suspended compute is
-          # the expected case, not the exceptional one: Neon accepts the connection only once the
-          # instance is up, so a single-shot ping reports a red build for the very condition it was
-          # written to fix.
+          # ⚠ `pgbouncer`, `connection_limit` and `pool_timeout` ARE PRISMA'S, NOT libpq's. They are
+          # read by the Prisma client and are not real connection parameters, so handing this URL to
+          # psql verbatim fails instantly with `invalid URI query parameter` — which looks exactly
+          # like a dead database and is nothing of the kind. Strip them; keep sslmode and
+          # channel_binding, which libpq does understand and Neon does require.
+          PG_URL=$(printf '%s' "${DATABASE_URL}" \
+            | sed -E 's/([?&])(pgbouncer|connection_limit|pool_timeout)=[^&]*//g; s/\?&/?/; s/[?&]$//')
+
+          # Three attempts with a widening pause. A FIRST failure against a suspended compute is the
+          # expected case, not the exceptional one: Neon accepts the connection only once the instance
+          # is up, so a single-shot ping reports a red build for the very condition it exists to fix.
+          # stderr is kept for the last attempt — swallowing it is how a malformed URL masquerades as
+          # an outage for a week.
           for attempt in 1 2 3; do
-            if psql "${DATABASE_URL}" --quiet --no-align --tuples-only \
-                 --command "select 1" >/dev/null 2>&1; then
+            if err=$(psql "${PG_URL}" --quiet --no-align --tuples-only \
+                       --command "select 1" 2>&1 >/dev/null); then
               echo "awake (attempt ${attempt})"
               exit 0
             fi
-            echo "attempt ${attempt} failed; the compute is probably still starting"
+            echo "attempt ${attempt} failed"
             sleep $((attempt * 5))
           done
 
           echo "::error::The database did not answer after three attempts."
+          echo "Last error from psql: ${err}"
           echo "A real outage, a rotated credential, or an exhausted compute-hour quota — see (b) above."
           exit 1
 
