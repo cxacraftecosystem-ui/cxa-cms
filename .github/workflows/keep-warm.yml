@@ -1,0 +1,96 @@
+# Keeps the Neon compute awake, so a visitor never pays for a cold database.
+#
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# WHAT THIS IS FIGHTING
+#
+# Neon scales its compute to zero after a few minutes with no connections. The next query then pays
+# the wake-up — typically a few hundred milliseconds, but it lands on whoever happens to arrive
+# first, which on a low-traffic institutional site is usually the one person you wanted to impress.
+# A `select 1` on a schedule keeps the compute resident so that never happens.
+#
+# ⚠ TWO THINGS THIS CANNOT DO, AND BOTH ARE WORTH KNOWING BEFORE TRUSTING IT.
+#
+#  1. **GitHub's scheduler is best-effort, not a cron daemon.** Five minutes is the shortest interval
+#     it accepts, but scheduled workflows are queued at the lowest priority and routinely fire late —
+#     ten, twenty, occasionally sixty minutes late when the hosted runners are busy. So this REDUCES
+#     cold starts; it does not abolish them. Anything that genuinely must never sleep belongs on a
+#     paid Neon plan, where suspension is configurable, rather than on a scheduler that is free
+#     because it makes no promises.
+#  2. **It cannot keep a free plan warm all month.** Neon's free allowance is measured in COMPUTE
+#     HOURS, and a compute that never sleeps burns about 730 of them in a 30-day month — far past
+#     what the free plan includes. Run this around the clock on the free plan and the quota, not the
+#     idle timer, is what takes the database away, roughly a week in. Two honest ways out:
+#       • Move to a paid plan and keep the schedule below.
+#       • Stay free and warm it only when readers are actually awake — see WAKING HOURS ONLY.
+#
+# ⚠ GITHUB DISABLES SCHEDULED WORKFLOWS IN A REPOSITORY WITH NO ACTIVITY FOR 60 DAYS, and it does it
+# quietly. A repository that has been quiet over a holiday comes back with its schedule switched off
+# and a database that sleeps again. `workflow_dispatch` below is how you turn it back on without a
+# commit; the notification email is the only warning you get.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+name: Keep the database warm
+
+on:
+  schedule:
+    # Every five minutes, the floor GitHub allows. Neon's idle timer is around five minutes too, so
+    # this is the loosest schedule that can win the race at all — and given the drift documented
+    # above it will still lose it sometimes.
+    #
+    # WAKING HOURS ONLY — swap the line below for this to cut compute by roughly two thirds, which is
+    # what makes the free plan survive a whole month. 00:30–16:30 UTC is 06:00–22:00 IST:
+    #   - cron: "*/5 0-16 * * *"
+    - cron: "*/5 * * * *"
+
+  # So you can wake it by hand — after a 60-day disable, or while watching a deploy.
+  workflow_dispatch:
+
+# A late run and an on-time run must not stack. `cancel-in-progress` drops the older one, because a
+# ping that has been waiting in the queue has already failed at the only job it had.
+concurrency:
+  group: keep-warm
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    # Generous next to a query that takes milliseconds, but a COLD compute is exactly what this is
+    # here to wake, and the first connection to a suspended Neon can sit for several seconds.
+    timeout-minutes: 5
+
+    steps:
+      - name: Wake the compute
+        env:
+          # The POOLED url — the same one the application uses, so this exercises the path that
+          # actually matters. Add it with:
+          #   gh secret set DATABASE_URL --repo cxacraftecosystem-ui/cxa-cms
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::DATABASE_URL is not set. Add it as a repository secret."
+            exit 1
+          fi
+
+          # Three attempts with a widening pause. The FIRST failure against a suspended compute is
+          # the expected case, not the exceptional one: Neon accepts the connection only once the
+          # instance is up, so a single-shot ping reports a red build for the very condition it was
+          # written to fix.
+          for attempt in 1 2 3; do
+            if psql "${DATABASE_URL}" --quiet --no-align --tuples-only \
+                 --command "select 1" >/dev/null 2>&1; then
+              echo "awake (attempt ${attempt})"
+              exit 0
+            fi
+            echo "attempt ${attempt} failed; the compute is probably still starting"
+            sleep $((attempt * 5))
+          done
+
+          echo "::error::The database did not answer after three attempts."
+          echo "Check the Neon dashboard: this is a real outage, a rotated credential, or an exhausted"
+          echo "compute-hour quota — see the note at the head of this file."
+          exit 1

@@ -40,3 +40,6 @@ next-env.d.ts
 # never served — what ships is the encoded JPEG in public/craft/sheets/ and the generated manifest.
 # Too large for history, and reproducible from the source document at any time.
 /.craft-source
+
+.vercel
+.env*
