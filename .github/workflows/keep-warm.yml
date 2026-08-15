@@ -1,61 +1,62 @@
-# Keeps the Neon compute awake, so a visitor never pays for a cold database.
+# The site's heartbeat: keeps the Neon compute awake, and runs the publish cron that the Vercel
+# Hobby plan will not.
 #
 # ══════════════════════════════════════════════════════════════════════════════════════════════
-# WHAT THIS IS FIGHTING
+# TWO JOBS THAT HAPPEN TO SHARE A SCHEDULE, AND NEITHER IS OPTIONAL.
 #
-# Neon scales its compute to zero after a few minutes with no connections. The next query then pays
-# the wake-up — typically a few hundred milliseconds, but it lands on whoever happens to arrive
-# first, which on a low-traffic institutional site is usually the one person you wanted to impress.
-# A `select 1` on a schedule keeps the compute resident so that never happens.
+#  1. **Waking the database.** Neon scales its compute to zero after a few idle minutes. The next
+#     query pays the wake-up — a few hundred milliseconds, landing on whoever arrives first, which on
+#     a low-traffic institutional site is usually the one person you wanted to impress.
+#  2. **Advancing scheduled content.** `vercel.json` used to run `/api/cron/publish` every ten
+#     minutes. ⚠ THE HOBBY PLAN REFUSES ANY CRON THAT FIRES MORE THAN ONCE A DAY — the deploy is
+#     rejected outright with `Hobby accounts are limited to daily cron jobs` — so a page an editor
+#     scheduled for 10:00 would not appear until the following night. That cron now lives here.
+#     `/api/cron/purge` stays in `vercel.json`, because daily is all it ever wanted.
 #
-# ⚠ TWO THINGS THIS CANNOT DO, AND BOTH ARE WORTH KNOWING BEFORE TRUSTING IT.
+# ⚠ THREE THINGS THIS CANNOT DO.
 #
-#  1. **GitHub's scheduler is best-effort, not a cron daemon.** Five minutes is the shortest interval
-#     it accepts, but scheduled workflows are queued at the lowest priority and routinely fire late —
-#     ten, twenty, occasionally sixty minutes late when the hosted runners are busy. So this REDUCES
-#     cold starts; it does not abolish them. Anything that genuinely must never sleep belongs on a
-#     paid Neon plan, where suspension is configurable, rather than on a scheduler that is free
-#     because it makes no promises.
-#  2. **It cannot keep a free plan warm all month.** Neon's free allowance is measured in COMPUTE
-#     HOURS, and a compute that never sleeps burns about 730 of them in a 30-day month — far past
-#     what the free plan includes. Run this around the clock on the free plan and the quota, not the
-#     idle timer, is what takes the database away, roughly a week in. Two honest ways out:
-#       • Move to a paid plan and keep the schedule below.
-#       • Stay free and warm it only when readers are actually awake — see WAKING HOURS ONLY.
-#
-# ⚠ GITHUB DISABLES SCHEDULED WORKFLOWS IN A REPOSITORY WITH NO ACTIVITY FOR 60 DAYS, and it does it
-# quietly. A repository that has been quiet over a holiday comes back with its schedule switched off
-# and a database that sleeps again. `workflow_dispatch` below is how you turn it back on without a
-# commit; the notification email is the only warning you get.
+#  a. **GitHub's scheduler is best-effort, not a cron daemon.** Five minutes is the shortest interval
+#     it accepts, but scheduled workflows queue at the lowest priority and routinely fire late — ten,
+#     twenty, occasionally sixty minutes. So scheduled publishing is accurate to roughly a quarter of
+#     an hour, not to the minute, and cold starts are reduced rather than abolished. Anything needing
+#     better belongs on the Pro plan, where Vercel runs the cron itself.
+#  b. **It cannot keep a FREE Neon plan warm all month.** The free allowance is measured in COMPUTE
+#     HOURS and a compute that never sleeps burns about 730 of them in a 30-day month — far past what
+#     the plan includes. Run this around the clock on the free plan and the quota, not the idle timer,
+#     is what takes the database away, roughly a week in. Either move to a paid Neon plan, or warm it
+#     only when readers are awake — see WAKING HOURS ONLY below.
+#  c. **GitHub disables scheduled workflows in a repository with no activity for 60 days**, quietly.
+#     A repository that went quiet over a holiday comes back with its schedule off, a database that
+#     sleeps and scheduled posts that never appear. `workflow_dispatch` is how you restart it without
+#     a commit; the notification email is the only warning you get.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
-name: Keep the database warm
+name: Heartbeat
 
 on:
   schedule:
-    # Every five minutes, the floor GitHub allows. Neon's idle timer is around five minutes too, so
-    # this is the loosest schedule that can win the race at all — and given the drift documented
-    # above it will still lose it sometimes.
+    # Every five minutes, the floor GitHub allows. Neon's idle timer is about five minutes too, so
+    # this is the loosest schedule that can win the race at all — and per (a) it will still lose
+    # sometimes.
     #
-    # WAKING HOURS ONLY — swap the line below for this to cut compute by roughly two thirds, which is
-    # what makes the free plan survive a whole month. 00:30–16:30 UTC is 06:00–22:00 IST:
+    # WAKING HOURS ONLY — swap for this to cut compute by roughly two thirds, which is what makes a
+    # free Neon plan survive a whole month. 00:30–16:30 UTC is 06:00–22:00 IST:
     #   - cron: "*/5 0-16 * * *"
     - cron: "*/5 * * * *"
 
-  # So you can wake it by hand — after a 60-day disable, or while watching a deploy.
   workflow_dispatch:
 
-# A late run and an on-time run must not stack. `cancel-in-progress` drops the older one, because a
-# ping that has been waiting in the queue has already failed at the only job it had.
+# A late run and an on-time run must not stack. `cancel-in-progress` drops the older one: a ping that
+# has been sitting in the queue has already failed at the only job it had.
 concurrency:
-  group: keep-warm
+  group: heartbeat
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  ping:
+  beat:
     runs-on: ubuntu-latest
     # Generous next to a query that takes milliseconds, but a COLD compute is exactly what this is
     # here to wake, and the first connection to a suspended Neon can sit for several seconds.
@@ -65,7 +66,7 @@ jobs:
       - name: Wake the compute
         env:
           # The POOLED url — the same one the application uses, so this exercises the path that
-          # actually matters. Add it with:
+          # actually matters. Set with:
           #   gh secret set DATABASE_URL --repo cxacraftecosystem-ui/cxa-cms
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -91,6 +92,36 @@ jobs:
           done
 
           echo "::error::The database did not answer after three attempts."
-          echo "Check the Neon dashboard: this is a real outage, a rotated credential, or an exhausted"
-          echo "compute-hour quota — see the note at the head of this file."
+          echo "A real outage, a rotated credential, or an exhausted compute-hour quota — see (b) above."
           exit 1
+
+      - name: Publish anything that came due
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${SITE_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "::warning::SITE_URL or CRON_SECRET is unset — skipping the publish cron."
+            echo "Scheduled pages and posts will NOT go live until both secrets exist."
+            exit 0
+          fi
+
+          # `lib/cron.ts` compares this bearer in constant time and fails closed when the secret is
+          # unset on the server, so a wrong value is a 401 rather than a silent no-op.
+          code=$(curl -sS -o /tmp/cron.out -w '%{http_code}' --max-time 60 \
+                   -H "Authorization: Bearer ${CRON_SECRET}" \
+                   "${SITE_URL%/}/api/cron/publish")
+
+          echo "HTTP ${code}"
+          head -c 2000 /tmp/cron.out || true
+          echo
+
+          # The endpoint reports what it transitioned; a 2xx with zero transitions is the normal
+          # answer and must not be treated as a problem.
+          case "${code}" in
+            2*) exit 0 ;;
+            401|403) echo "::error::The cron endpoint rejected the bearer. CRON_SECRET here and on Vercel disagree."; exit 1 ;;
+            *)  echo "::error::The publish cron answered ${code}."; exit 1 ;;
+          esac
