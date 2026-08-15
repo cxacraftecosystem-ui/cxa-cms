@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Centre of Excellence">
+  <!--
+    The institutional mark: a focal point.
+
+    An observatory reticle rather than a monogram — a centre ring, a solid core, and four radiating
+    ticks that stop short of the edge. It reads at 16px in a browser tab, which a lettermark of three
+    initials does not, and it survives being punched out of a solid tile for the app icon.
+
+    Brand purple-700 (oklch(0.47 0.198 305)) as a hex fallback for surfaces that cannot resolve
+    oklch, with the single gold tick as the only warm accent — the one deliberate asymmetry, so the
+    mark has an orientation and cannot be mistaken for a loading spinner.
+  -->
+  <rect width="64" height="64" rx="14" fill="#5B21B6"/>
+  <circle cx="32" cy="32" r="15" fill="none" stroke="#FAF9F5" stroke-width="3" opacity="0.92"/>
+  <circle cx="32" cy="32" r="5.5" fill="#FAF9F5"/>
+  <g stroke="#FAF9F5" stroke-width="3" stroke-linecap="round" opacity="0.92">
+    <line x1="32" y1="7" x2="32" y2="13"/>
+    <line x1="32" y1="51" x2="32" y2="57"/>
+    <line x1="7" y1="32" x2="13" y2="32"/>
+  </g>
+  <line x1="51" y1="32" x2="57" y2="32" stroke="#E8B23A" stroke-width="3" stroke-linecap="round"/>
+</svg>

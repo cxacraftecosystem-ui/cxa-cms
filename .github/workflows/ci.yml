@@ -1,0 +1,124 @@
+# Continuous integration.
+#
+# The four verification layers, in the order that fails fastest and cheapest. The point of the ordering
+# is that a broken type or a missing route is reported in under two minutes without ever building or
+# starting the application, while the two runtime checks — which need a database, a build and a running
+# server — only pay for themselves once the cheap ones are green.
+#
+# ⚠ THE RUNTIME CHECKS ARE NOT OPTIONAL EXTRAS. `smoke` exists because typecheck, lint and route-check
+# were ALL GREEN while twenty-odd studio routes were unreachable: nothing but a real request against a
+# real server catches that. `leak-check` exists because a draft leaking to the public site is an
+# omission across ninety-odd queries, which review misses structurally. If either is ever made
+# `continue-on-error`, the suite stops being able to tell you the thing it was built to tell you.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # One run per branch. A push that supersedes another wastes a database container to say the same thing.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cxa_ci
+        ports:
+          - 5432:5432
+        # Without the health check the first migration races the server's own startup and fails with a
+        # connection error that looks like a configuration problem.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # 127.0.0.1, never "localhost": on a host where localhost resolves to ::1 first, Postgres is
+      # listening on IPv4 only and the connection is refused with no useful message.
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cxa_ci?schema=public
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cxa_ci?schema=public
+      # A throwaway key of real length. `lib/auth/config.ts` refuses to start on anything short,
+      # placeholder-like, or built from too few distinct characters — so this must be genuine entropy
+      # even in CI.
+      JWT_SECRET: ci-only-4f8a2b9d1e7c3a6058f4b2d9e1c7a3506f8b2d4e9c1a7350
+      JWT_ALGORITHM: HS256
+      CRON_SECRET: ci-only-cron-secret-3f9a2b8d1e7c
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_SITE_NAME: Centre of Excellence
+      SEED_ADMIN_EMAIL: ci-admin@example.invalid
+      SEED_ADMIN_PASSWORD: ci-only-administrator-passphrase
+      # Object storage is deliberately UNSET. The app must run without it and report that uploads are
+      # disabled (lib/env.ts `configurationWarnings`), and CI is the right place to prove that holds.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      # ── Static: fails in ~2 minutes, needs no database and no build ────────
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Route coverage
+        run: npm run route-check
+
+      # ── Runtime: needs the database, the build and a server ────────────────
+      - name: Migrate
+        run: npx prisma migrate deploy
+
+      - name: Seed
+        run: npm run seed
+
+      - name: Build
+        run: npm run build
+
+      - name: Start
+        # Backgrounded, with the log kept so a failure below can be explained. `--wait-for` style
+        # polling rather than a fixed sleep: a fixed sleep is either too short on a cold runner or
+        # wasted time on a warm one.
+        run: |
+          npx next start -p 3000 > /tmp/next.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:3000/; then
+              echo "up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "the server did not start:"; cat /tmp/next.log; exit 1
+
+      - name: Smoke test
+        run: npm run smoke -- http://127.0.0.1:3000
+
+      - name: Draft-leak check
+        run: npm run leak-check -- http://127.0.0.1:3000
+
+      - name: Server log
+        # On failure the server's own output is usually the only place the reason is written.
+        if: failure()
+        run: tail -200 /tmp/next.log || true

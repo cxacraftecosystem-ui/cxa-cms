@@ -1,0 +1,48 @@
+# What must NOT be sent to the Docker daemon as build context.
+#
+# Two reasons, and the second is the one that bites. The obvious one is size: `node_modules` and `.next`
+# together are most of a gigabyte, and every one of those bytes is copied to the daemon on every build
+# before a single instruction runs.
+#
+# The one that matters more: `node_modules` built on a Windows or macOS host contains native binaries for
+# THAT platform. `sharp` and Prisma's query engine both ship compiled artefacts, and a host copy leaking
+# into a Linux image produces "invalid ELF header" at run time — a failure that looks like a corrupt
+# install rather than a mismatched platform. The image installs its own, inside Linux, for Linux.
+#
+# `.env` is excluded because a secret baked into an image layer is a secret in every registry that image
+# reaches, and layers are not deleted by a later `rm`. Runtime configuration arrives through the
+# environment; only `NEXT_PUBLIC_*` values are build args, and those are public by definition.
+
+node_modules
+.next
+out
+build
+
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.vscode
+.idea
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+next-env.d.ts
+
+.vercel
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation that no build step reads. `scripts/` IS kept: the migrator stage runs the seed from it,
+# and the verification scripts are useful to run against the stack.
+#
+# ⚠ `public/` is NOT excluded, even though it is nearly empty. The runtime stage COPIES it, and a `COPY`
+# of a path that does not exist fails the build with "/app/public: not found" — which is exactly how this
+# was discovered. See public/.gitkeep.
+docs
+README.md

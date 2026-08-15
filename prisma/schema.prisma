@@ -1,0 +1,1842 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// CxA Centre of Excellence — data model
+//
+// The shape is a HYBRID, not a table-per-page CMS:
+//
+//   • `Page` owns routing, SEO and publication state.
+//   • `PageSection` owns ORDERED, TYPED content blocks whose payload is JSON, so a new homepage
+//     section or a new layout is a new `SectionType` value and a renderer — never a migration.
+//   • Everything a researcher actually curates (people, projects, publications, news, events,
+//     crafts, media) is a first-class relational table, because those are queried, filtered,
+//     sorted and cited. Burying them in JSON would make "publications by year, by author" a
+//     full-table scan over a document blob.
+//
+// Two conventions run through the whole file:
+//
+//   1. SOFT DELETE. Content models carry `deletedAt`; nothing user-facing is ever hard-deleted by
+//      the CMS. The recycle bin is `deletedAt IS NOT NULL`, and a purge job is the only writer of
+//      a real DELETE. Every read path MUST filter on it — use `livePublishableWhere()` or
+//      `liveStatusWhere()` from lib/content.ts, which exist so no call site hand-rolls that filter
+//      and forgets it once. They are two functions and not one on purpose: referencing a column a
+//      model does not have (publishAt/unpublishAt) is a Prisma runtime error, not a type error.
+//   2. AUDITED MUTATION. Every write goes through lib/audit.ts, which writes the row AND an
+//      `AuditLog` entry inside ONE transaction. A log that can be written without the change (or
+//      the reverse) is a log nobody can trust during an incident.
+//
+// Decimal note (field-repo-frontend §1.9): Prisma `Decimal` arrives over JSON as a STRING. Nothing
+// in this schema uses Decimal for exactly that reason — money and coordinates are Float/Int, and
+// where precision matters the value is stored as a string with its unit alongside.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Identity, access and the audit trail
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Six tiers, strictly ordered, mirroring the Field Repository ladder in backend/app/core/deps.py.
+/// The numeric ranks live in lib/permissions.ts as the single source of comparison; adding a tier
+/// means adding it there too, and NOWHERE else — a second hand-rolled rank test that disagrees with
+/// the first is how a "professor may edit anyone below" rule silently stops matching.
+enum Role {
+  VIEWER // 10 — read the CMS, change nothing
+  AUTHOR // 20 — draft own content, cannot publish
+  MEDIA_MANAGER // 30 — the media library and files, plus AUTHOR
+  RESEARCHER // 40 — research, projects, publications; publish own
+  EDITOR // 50 — publish anything, edit anyone's content
+  ADMINISTRATOR // 60 — users, settings, navigation, restore, purge
+  /// 70 — who may enter the studio AT ALL, plus the provenance console.
+  ///
+  /// Deliberately ABOVE administrator rather than beside it. An administrator manages the site; a master
+  /// admin manages who is allowed near it. Keeping the two apart means the day-to-day administrator
+  /// account — the one actually used, and therefore the one most likely to be compromised — cannot widen
+  /// the circle of people who can sign in.
+  MASTER_ADMIN
+}
+
+/// How somebody proved who they are. Recorded on the allow-list and on every sign-in event.
+enum AuthProvider {
+  PASSWORD
+  GOOGLE
+  MICROSOFT
+  YAHOO
+}
+
+enum ContentStatus {
+  DRAFT
+  IN_REVIEW
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  name         String
+  passwordHash String?
+  role         Role    @default(VIEWER)
+  avatarId     String?
+  title        String?
+  isActive     Boolean @default(true)
+
+  /// Per-user grants that WIDEN a role, never narrow it. lib/permissions.ts ORs them into the rank
+  /// test; a grant is therefore additive and a demotion always takes effect immediately.
+  canPublish     Boolean @default(false)
+  canManageMedia Boolean @default(false)
+
+  /// TOTP. `twoFactorSecret` is encrypted at rest by lib/auth/totp.ts — a plaintext shared secret in
+  /// the database means a database read is a full account takeover, which is the one thing 2FA is
+  /// bought to prevent.
+  twoFactorEnabled       Boolean  @default(false)
+  twoFactorSecret        String?
+  /// Single-use recovery codes, stored as bcrypt hashes. Never rendered again after issue.
+  twoFactorRecoveryCodes String[] @default([])
+
+  lastLoginAt  DateTime?
+  failedLogins Int       @default(0)
+  /// Set by the throttle in lib/auth/session.ts. Compared server-side only.
+  lockedUntil  DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  avatar              MediaAsset?         @relation("UserAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
+  sessions            Session[]
+  auditLogs           AuditLog[]
+  revisions           Revision[]
+  locks               ContentLock[]
+  authoredPosts       Post[]              @relation("PostAuthor")
+  uploadedMedia       MediaAsset[]        @relation("MediaUploader")
+  uploadedFiles       FileAsset[]         @relation("FileUploader")
+  assignedInquiries   ContactSubmission[] @relation("InquiryAssignee")
+  oauthAccounts       OAuthAccount[]
+  accessGrantsAdded   StudioAccess[]      @relation("AccessAddedBy")
+  accessGrantsRevoked StudioAccess[]      @relation("AccessRevokedBy")
+  announcements       Announcement[]      @relation("AnnouncementAuthor")
+
+  @@index([role])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+/// The studio allow-list: the set of email addresses permitted to sign in at all.
+///
+/// ══════════════════════════════════════════════════════════════════════════════════════════════
+/// IT IS AN AUTHORISATION GATE, NOT A CONVENIENCE. Every sign-in path — password, Google, Microsoft,
+/// Yahoo — consults it BEFORE a session is issued and before an account is created. Without it, adding
+/// "Continue with Google" would mean anybody on earth with a Google account could open the CMS, because
+/// an OAuth provider answers "who is this?" and never "should they be here?".
+///
+/// A row is a STANDING GRANT rather than a one-time invitation, which is why it survives being used:
+/// revoking access is deleting or revoking the row, and it takes effect on the next sign-in. A used
+/// invitation that vanished would leave no record of who let somebody in.
+///
+/// `grantedRole` is the role the account is created with on FIRST sign-in. It does not follow later
+/// changes — an administrator may promote or demote the user afterwards, and re-reading this row would
+/// silently undo that on their next visit.
+/// ══════════════════════════════════════════════════════════════════════════════════════════════
+model StudioAccess {
+  id    String @id @default(cuid())
+  /// Stored lower-cased. The unique index is what makes "already on the list" a constraint rather than
+  /// a check somebody can forget.
+  email String @unique
+
+  /// A name to show before the person has ever signed in, so the list reads as people rather than addresses.
+  name        String?
+  grantedRole Role    @default(AUTHOR)
+  /// Why this person has access. Free text, shown in the console — an access list with no reasons is one
+  /// nobody dares prune.
+  note        String?
+
+  /// Which sign-in methods this address may use. Empty means "any configured method".
+  allowedProviders AuthProvider[] @default([])
+
+  addedById   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  /// Set rather than deleted, so the trail of who was once allowed in survives.
+  revokedAt   DateTime?
+  revokedById String?
+
+  /// Stamped by the sign-in path. Answers "is this grant still used?", which is the question that makes
+  /// an access list prunable.
+  lastSignInAt DateTime?
+  lastProvider AuthProvider?
+  signInCount  Int           @default(0)
+
+  addedBy   User? @relation("AccessAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+  revokedBy User? @relation("AccessRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([revokedAt])
+  @@map("studio_access")
+}
+
+/// A linked external identity.
+///
+/// Separate from `User` because one person may sign in with a password AND with Google, and because the
+/// provider's own identifier — not the email — is the stable key. An email can be reassigned inside an
+/// organisation; `sub` cannot.
+model OAuthAccount {
+  id                String       @id @default(cuid())
+  provider          AuthProvider
+  /// The provider's `sub` claim. Stable for the life of the account, unlike the email.
+  providerAccountId String
+  userId            String
+  /// The address the provider asserted at link time, for display and for audit. NEVER used to find the
+  /// account — see `providerAccountId`.
+  email             String
+  createdAt         DateTime     @default(now())
+  lastUsedAt        DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+/// A refresh-token family. The token itself is NEVER stored — only a SHA-256 hash — so a database
+/// leak cannot be replayed as a login. Rotation replaces the row and sets `rotatedTo`; a reuse of a
+/// rotated token means the family is compromised and lib/auth/session.ts revokes the whole chain.
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String    @unique
+  familyId         String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  rotatedTo        String?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+  PUBLISH
+  UNPUBLISH
+  ARCHIVE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  PERMISSION_CHANGE
+  UPLOAD
+  PURGE
+  ROLLBACK
+}
+
+/// Who, when, what, old value, new value. `before`/`after` hold the FULL serialised entity rather
+/// than a diff: a diff computed at write time is only as good as the differ that produced it, and a
+/// rollback needs the whole prior state anyway.
+model AuditLog {
+  id          String      @id @default(cuid())
+  actorId     String?
+  actorEmail  String? // denormalised so a deleted user does not erase the trail
+  action      AuditAction
+  entityType  String
+  entityId    String?
+  entityLabel String?
+  before      Json?
+  after       Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// Unlimited revisions for every versioned entity. Polymorphic on (entityType, entityId) rather than
+/// one revision table per model — a per-model table would mean a migration for every new content
+/// type, which is precisely what the section model exists to avoid.
+model Revision {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  version    Int
+  data       Json
+  summary    String?
+  authorId   String?
+  createdAt  DateTime @default(now())
+
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([entityType, entityId, version])
+  @@index([entityType, entityId, createdAt])
+  @@map("revisions")
+}
+
+/// "Someone else is editing this." Advisory, with a HARD EXPIRY: a lock that outlives the tab that
+/// took it would strand content forever, and an editor who force-takes a lock is recorded rather
+/// than blocked. `expiresAt` is refreshed by a heartbeat while the editor is open.
+model ContentLock {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  userId     String
+  acquiredAt DateTime @default(now())
+  expiresAt  DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId])
+  @@index([expiresAt])
+  @@map("content_locks")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Pages and the typed section model
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Every renderable block type. Adding one is: a value here, a Zod schema in lib/sections/schema.ts,
+/// a renderer in components/sections/, and an editor form in components/studio/sections/. No
+/// migration, because the payload is `PageSection.data`.
+enum SectionType {
+  HERO
+  RICH_TEXT
+  STATS
+  FEATURE_GRID
+  RESEARCH_SHOWCASE
+  PROJECT_SHOWCASE
+  PEOPLE_SHOWCASE
+  PUBLICATION_LIST
+  NEWS_SHOWCASE
+  EVENT_SHOWCASE
+  GALLERY
+  MEDIA_SPLIT
+  TIMELINE
+  PARTNER_LOGOS
+  QUOTE
+  CTA
+  FAQ
+  CONTACT_FORM
+  MAP
+  EMBED
+  DOWNLOADS
+  CRAFT_EXPLORER
+  SPACER
+  /// ── Appended, and appended DELIBERATELY AT THE END ───────────────────────
+  /// A Postgres enum value added after the last one is a plain `ALTER TYPE … ADD VALUE`; inserting it
+  /// next to the block it reads like a cousin of would need `… BEFORE 'SPACER'`, which is the same
+  /// migration with one more way to get it wrong. Reading order is what `SECTION_REGISTRY`'s groups
+  /// are for — nothing on screen is ordered by this enum.
+  ///
+  /// The three below exist so an editor can build an application page — the steps, the form and the
+  /// resources — without a developer.
+  ACTION_STEPS
+  FORM_EMBED
+  LINK_GRID
+  /// ── The narrative blocks ─────────────────────────────────────────────────
+  /// Appended at the end for the same reason as the three above.
+  ///
+  /// These four are the ones that let a page TELL something rather than list it, and they are the
+  /// only blocks whose motion is scroll-scrubbed rather than an entrance (components/motion/gsap).
+  /// Every one of them is a complete, readable section with JavaScript switched off and under
+  /// reduced motion — the scrubbing is an enhancement of a layout that already works, never the
+  /// thing that makes the layout make sense. See components/motion/gsap/runtime.ts for why that
+  /// line is drawn where it is.
+  STORY_SCROLL
+  PARALLAX_BANNER
+  HORIZONTAL_RAIL
+  PROCESS_STEPS
+  /// The platform, in three instruments — knowledge bases, field repositories and knowledge-based
+  /// systems — as three fixed, designed vignettes, each dominated by its own scroll-scrubbed
+  /// drawing. Appended at the end for the same ALTER TYPE reason as everything above it.
+  PLATFORM_PILLARS
+  /// The outline of India (the official depiction — see components/map/indiaGeometry.ts) with a
+  /// pin per craft region, counted from the published archive. Appended at the end, as ever.
+  INDIA_MAP
+}
+
+model Page {
+  id       String  @id @default(cuid())
+  /// Full path WITHOUT a leading slash: "" is the homepage, "about", "research/roadmap".
+  /// Uniqueness is on the path, so two pages can never claim one URL.
+  slug     String  @unique
+  title    String
+  /// Optional shorter label for navigation and breadcrumbs.
+  navLabel String?
+
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+  /// Scheduled publishing. A cron (app/api/cron/publish) flips SCHEDULED → PUBLISHED at publishAt
+  /// and PUBLISHED → ARCHIVED at unpublishAt. Both are checked at READ time too, so a stalled cron
+  /// cannot leave an expired page live.
+  publishAt   DateTime?
+  unpublishAt DateTime?
+
+  // SEO
+  seoTitle       String?
+  seoDescription String?
+  seoImageId     String?
+  seoNoIndex     Boolean @default(false)
+  canonicalUrl   String?
+
+  /// Locks a page against deletion in the CMS. Set on structural pages (home, about, contact) whose
+  /// route is referenced by the code; deleting one would 404 a link the site itself renders.
+  isSystem  Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  seoImage MediaAsset?   @relation("PageSeoImage", fields: [seoImageId], references: [id], onDelete: SetNull)
+  sections PageSection[]
+
+  @@index([status, publishedAt])
+  @@index([deletedAt])
+  @@map("pages")
+}
+
+model PageSection {
+  id        String      @id @default(cuid())
+  pageId    String
+  type      SectionType
+  /// Dense 0-based ordering maintained by the builder. Reordering rewrites the affected range in one
+  /// transaction rather than issuing N independent updates, so a failed drag cannot leave two
+  /// sections claiming one position.
+  position  Int
+  /// Editor-facing name. Never rendered — it exists so a builder row says "Hero — Autumn campaign"
+  /// instead of "HERO".
+  label     String?
+  /// The block's payload. Validated against the Zod schema for `type` on every write; a block whose
+  /// payload does not parse is rendered as an editor-only error card, never as a blank gap.
+  data      Json        @default("{}")
+  isVisible Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, position])
+  @@index([pageId])
+  @@map("page_sections")
+}
+
+/// A page ARRANGEMENT an administrator can create, rename and edit — the editable half of
+/// lib/page-templates.ts.
+///
+/// ═══════════════════════════════════════════════════════════════════════════
+/// ⚠ A TEMPLATE ROW HOLDS BLOCK TYPES, NEVER BLOCK PAYLOADS, AND THAT IS THE WHOLE DESIGN.
+///
+/// `blocks` is an ordered list of `{ type, label, purpose, overrides }` — never a copy of a page's
+/// content. Every payload is still built at the moment of use by `defaultSectionData()` and then
+/// validated by `parseSectionData()`, exactly as it was when the six built-in arrangements were the
+/// only ones there were. Two properties follow, and both are why this table is shaped like this
+/// rather than storing a page to clone:
+///
+///   • A template CANNOT GO STALE. When a block's schema gains a field or changes a default, every
+///     template — including one an administrator wrote eighteen months ago — follows on its next
+///     use. A table of stored payloads would keep handing out last release's shape forever.
+///   • Every payload is VALID BY CONSTRUCTION, so a template can never produce the editor-only
+///     error card that an unparseable `PageSection.data` renders as.
+///
+/// `overrides` is the narrow exception, and it is merged over the seed and RE-PARSED — so an
+/// override naming a field that no longer exists is stripped by `z.object()` rather than failing.
+/// A template can lose a nicety across a schema change; it can never produce an invalid page.
+///
+/// SHADOWING A BUILT-IN: `key` matching one of the ids in `PAGE_TEMPLATES` makes this row REPLACE
+/// that arrangement everywhere it is offered. That is how "edit an existing template" works without
+/// a migration per edit, and `isHidden` is how one is retired without deleting the code that
+/// describes it. A row with a key matching no built-in is simply a new template.
+/// ═══════════════════════════════════════════════════════════════════════════
+model PageTemplate {
+  id String @id @default(cuid())
+
+  /// Stable and URL-safe: it travels in a form field and is matched against the built-in list on the
+  /// way back. Unique across custom rows AND shadowed built-ins, because two arrangements answering
+  /// to one key would make the second unreachable.
+  key String @unique
+
+  /// A noun phrase, as an administrator would name the thing they are about to make.
+  name String
+  /// Two sentences: what this arrangement is for, and when to reach for it instead of a blank page.
+  description String
+  /// Pre-filled into the title field, so the form is never a blank box with no hint of what goes in it.
+  suggestedTitle String
+  /// A `lucide-react` export name, as a string. A name lucide no longer exports resolves to a plain
+  /// square on screen rather than throwing — lucide has renamed whole families before.
+  icon String
+
+  /// The ordered block specs. See the warning above: TYPES AND LABELS, NEVER PAYLOADS.
+  blocks Json @default("[]")
+
+  /// Retire an arrangement without deleting it. A hidden row that shadows a built-in also hides the
+  /// built-in, which is the only way to withdraw one of those.
+  isHidden  Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  /// Soft delete, like every other content table — so a template deleted by accident is in the
+  /// recycle bin rather than gone, and `key` can be reclaimed only after a purge.
+  deletedAt DateTime?
+
+  @@index([deletedAt])
+  @@index([isHidden, sortOrder])
+  @@map("page_templates")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Media, files and the derivative pipeline
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  MODEL_3D
+  PANORAMA
+}
+
+model MediaFolder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  path      String   @unique // materialised "/events/2026/convocation" — one query for a subtree
+  createdAt DateTime @default(now())
+
+  parent   MediaFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children MediaFolder[] @relation("FolderTree")
+  assets   MediaAsset[]
+
+  @@index([parentId])
+  @@map("media_folders")
+}
+
+model MediaAsset {
+  id          String    @id @default(cuid())
+  kind        MediaKind
+  /// Storage key of the ORIGINAL upload. Originals are retained forever: a derivative pipeline that
+  /// has thrown the source away can never be re-run with better settings.
+  objectKey   String    @unique
+  fileName    String
+  mimeType    String
+  byteSize    Int
+  width       Int?
+  height      Int?
+  /// Seconds, for video/audio.
+  duration    Float?
+  /// SHA-256 of the bytes. The duplicate detector compares THIS, never the filename — "IMG_0421.jpg"
+  /// collides constantly and identical bytes almost never do.
+  checksum    String?
+  /// Tiny base64 LQIP used as next/image `blurDataURL`. Generated once at upload.
+  blurDataUrl String?
+
+  altText   String?
+  caption   String?
+  credit    String?
+  copyright String?
+  tags      String[] @default([])
+
+  folderId   String?
+  uploaderId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  /// Soft delete with a recovery window. lib/storage/purge.ts is the only thing that removes bytes,
+  /// and only for rows soft-deleted longer than MEDIA_PURGE_AFTER_DAYS.
+  deletedAt DateTime?
+
+  folder      MediaFolder?          @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploader    User?                 @relation("MediaUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
+  variants    MediaVariant[]
+  collections MediaCollectionItem[]
+
+  // Back-relations. Every one is `onDelete: SetNull` at the referring side: removing a photograph
+  // must never cascade into deleting the article that used it.
+  userAvatars        User[]         @relation("UserAvatar")
+  pageSeoImages      Page[]         @relation("PageSeoImage")
+  personPhotos       Person[]       @relation("PersonPhoto")
+  projectCovers      Project[]      @relation("ProjectCover")
+  projectGallery     ProjectMedia[]
+  postCovers         Post[]         @relation("PostCover")
+  eventCovers        CoeEvent[]     @relation("EventCover")
+  eventGallery       EventMedia[]
+  partnerLogos       Partner[]      @relation("PartnerLogo")
+  craftImages        CraftMedia[]
+  craftCovers        Craft[]        @relation("CraftCover")
+  albumCovers        GalleryAlbum[] @relation("AlbumCover")
+  albumItems         GalleryItem[]
+  researchAreaCovers ResearchArea[] @relation("ResearchAreaCover")
+
+  @@index([kind])
+  @@index([folderId])
+  @@index([checksum])
+  @@index([deletedAt])
+  @@map("media_assets")
+}
+
+/// A generated derivative. Rows are created by lib/storage/derivatives.ts; the ORIGINAL is never a
+/// variant row, so "delete every variant and regenerate" is always safe.
+model MediaVariant {
+  id        String   @id @default(cuid())
+  assetId   String
+  /// "thumb" | "sm" | "md" | "lg" | "xl" | "og"
+  label     String
+  format    String // "webp" | "avif" | "jpeg"
+  objectKey String   @unique
+  width     Int
+  height    Int
+  byteSize  Int
+  createdAt DateTime @default(now())
+
+  asset MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, label, format])
+  @@index([assetId])
+  @@map("media_variants")
+}
+
+model MediaCollection {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  items MediaCollectionItem[]
+
+  @@map("media_collections")
+}
+
+model MediaCollectionItem {
+  collectionId String
+  assetId      String
+  position     Int
+
+  collection MediaCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  asset      MediaAsset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, assetId])
+  @@index([collectionId, position])
+  @@map("media_collection_items")
+}
+
+/// Documents, datasets, slide decks, ZIPs — anything downloaded rather than rendered.
+/// Versioned: replacing a dataset issues a new `FileVersion` and leaves the old bytes reachable, so
+/// a citation of "v2 of the Bagru corpus" does not silently start resolving to v3.
+model FileAsset {
+  id            String    @id @default(cuid())
+  title         String
+  slug          String    @unique
+  description   String?
+  category      String?
+  /// Nobody outside the CMS may download it until this is true.
+  isPublic      Boolean   @default(false)
+  /// Optional link expiry for embargoed material. Enforced server-side at the download route, not by
+  /// hiding the button — a hidden button is not an access control.
+  expiresAt     DateTime?
+  downloadCount Int       @default(0)
+  uploaderId    String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  uploader User?         @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
+  versions FileVersion[]
+  projects ProjectFile[]
+
+  @@index([deletedAt])
+  @@map("file_assets")
+}
+
+model FileVersion {
+  id        String   @id @default(cuid())
+  fileId    String
+  version   Int
+  objectKey String   @unique
+  fileName  String
+  mimeType  String
+  byteSize  Int
+  checksum  String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  file FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, version])
+  @@map("file_versions")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// People
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum PersonKind {
+  FACULTY
+  SCIENTIST
+  RESEARCH_ASSISTANT
+  STUDENT
+  STAFF
+  VISITOR
+  ALUMNUS
+}
+
+model Person {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  kind        PersonKind
+  designation String?
+  department  String?
+  bio         String?
+  /// Structured rich-text document (Tiptap JSON). Rendered by components/RichText.tsx, never with
+  /// dangerouslySetInnerHTML.
+  bioRich     Json?
+
+  email         String?
+  phone         String?
+  website       String?
+  linkedin      String?
+  googleScholar String?
+  orcid         String?
+  github        String?
+
+  researchInterests String[] @default([])
+
+  photoId   String?
+  /// Manual ordering inside a `kind` group. Ties break on `name` so the order is total and stable —
+  /// an unstable sort renders a different list on every request and looks like data changing.
+  sortOrder Int     @default(0)
+  isVisible Boolean @default(true)
+
+  /// An alumnus keeps their years; a current member leaves `endedOn` null.
+  startedOn DateTime?
+  endedOn   DateTime?
+
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  photo        MediaAsset?         @relation("PersonPhoto", fields: [photoId], references: [id], onDelete: SetNull)
+  projects     ProjectMember[]
+  publications PublicationAuthor[]
+  events       EventSpeaker[]
+
+  @@index([kind, sortOrder])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("people")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Research, projects and publications
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ResearchArea {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  title       String
+  summary     String?
+  body        Json?
+  /// Lucide icon name. Validated against the exported icon set at write time so a typo surfaces in
+  /// the editor rather than as a blank square in production.
+  icon        String?
+  /// Literal OKLCH/hex accent for the interactive research graph ONLY. The rest of the site has one
+  /// action colour (§1.1); this is a data-encoding channel in a visualisation, not a second accent.
+  accentColor String?
+  coverId     String?
+  sortOrder   Int     @default(0)
+
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  cover        MediaAsset?   @relation("ResearchAreaCover", fields: [coverId], references: [id], onDelete: SetNull)
+  projects     Project[]
+  publications Publication[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("research_areas")
+}
+
+enum ProjectStatus {
+  PROPOSED
+  ACTIVE
+  COMPLETED
+  ON_HOLD
+}
+
+model Project {
+  id      String        @id @default(cuid())
+  slug    String        @unique
+  title   String
+  tagline String?
+  summary String?
+  body    Json?
+  state   ProjectStatus @default(ACTIVE)
+
+  researchAreaId String?
+
+  fundingBody     String?
+  /// Stored as a string WITH its currency beside it. A numeric column would have to pick a currency
+  /// and every grant that is not in it becomes wrong by exactly the exchange rate on an unknown day.
+  fundingAmount   String?
+  fundingCurrency String? @default("INR")
+
+  startedOn DateTime?
+  endedOn   DateTime?
+  /// 0–100. Clamped on write; a progress bar that can read 140% is worse than no bar.
+  progress  Int       @default(0)
+
+  coverId String?
+
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+  isFeatured  Boolean       @default(false)
+  sortOrder   Int           @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  researchArea ResearchArea?      @relation(fields: [researchAreaId], references: [id], onDelete: SetNull)
+  cover        MediaAsset?        @relation("ProjectCover", fields: [coverId], references: [id], onDelete: SetNull)
+  members      ProjectMember[]
+  milestones   ProjectMilestone[]
+  media        ProjectMedia[]
+  files        ProjectFile[]
+  publications Publication[]      @relation("ProjectPublications")
+  partners     ProjectPartner[]
+  faqs         ProjectFaq[]
+
+  @@index([state, status])
+  @@index([researchAreaId])
+  @@index([deletedAt])
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String
+  personId  String
+  role      String?
+  position  Int     @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  person  Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, personId])
+  @@index([projectId, position])
+  @@map("project_members")
+}
+
+model ProjectMilestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  title       String
+  detail      String?
+  dueOn       DateTime?
+  completedOn DateTime?
+  position    Int       @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, position])
+  @@map("project_milestones")
+}
+
+model ProjectMedia {
+  projectId String
+  assetId   String
+  position  Int     @default(0)
+  caption   String?
+
+  project Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset   MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, assetId])
+  @@index([projectId, position])
+  @@map("project_media")
+}
+
+model ProjectFile {
+  projectId String
+  fileId    String
+  position  Int    @default(0)
+
+  project Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  file    FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, fileId])
+  @@map("project_files")
+}
+
+model ProjectPartner {
+  projectId String
+  partnerId String
+  position  Int    @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, partnerId])
+  @@map("project_partners")
+}
+
+model ProjectFaq {
+  id        String @id @default(cuid())
+  projectId String
+  question  String
+  answer    String
+  position  Int    @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, position])
+  @@map("project_faqs")
+}
+
+enum PublicationKind {
+  JOURNAL_ARTICLE
+  CONFERENCE_PAPER
+  BOOK
+  BOOK_CHAPTER
+  PATENT
+  DATASET
+  SOFTWARE
+  PREPRINT
+  THESIS
+  REPORT
+}
+
+model Publication {
+  id       String          @id @default(cuid())
+  slug     String          @unique
+  kind     PublicationKind
+  title    String
+  abstract String?
+
+  /// The authoritative author line, IN ORDER, exactly as printed. `PublicationAuthor` links the
+  /// subset who are Centre people; this string is what a citation renders. Deriving the line from
+  /// the links alone would drop every external co-author and silently misattribute the work.
+  authorLine String
+
+  venue     String? // journal or conference name
+  publisher String?
+  volume    String?
+  issue     String?
+  pages     String?
+  year      Int
+  month     Int?
+
+  doi          String?
+  isbn         String?
+  issn         String?
+  patentNumber String?
+  arxivId      String?
+  url          String?
+  /// Verbatim BibTeX. Stored rather than generated so a record imported from a publisher keeps its
+  /// canonical key; lib/citation.ts generates one only when this is empty.
+  bibtex       String?
+
+  pdfFileId String?
+  keywords  String[] @default([])
+
+  researchAreaId String?
+
+  isFeatured  Boolean       @default(false)
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  researchArea ResearchArea?       @relation(fields: [researchAreaId], references: [id], onDelete: SetNull)
+  authors      PublicationAuthor[]
+  projects     Project[]           @relation("ProjectPublications")
+
+  @@index([year, kind])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("publications")
+}
+
+model PublicationAuthor {
+  publicationId String
+  personId      String
+  position      Int    @default(0)
+
+  publication Publication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  person      Person      @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([publicationId, personId])
+  @@index([publicationId, position])
+  @@map("publication_authors")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Newsroom
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Category {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  sortOrder   Int     @default(0)
+
+  posts Post[]
+
+  @@map("categories")
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  slug String @unique
+  name String
+
+  posts  PostTag[]
+  events EventTag[]
+
+  @@map("tags")
+}
+
+model Post {
+  id       String  @id @default(cuid())
+  slug     String  @unique
+  title    String
+  subtitle String?
+  excerpt  String?
+  /// Tiptap JSON. See lib/richtext.ts — the same document renders in the CMS preview and on the site
+  /// from ONE renderer, so "it looked different after publishing" cannot happen.
+  body     Json?
+  /// Optional MDX source for long-form pieces that need components. Mutually exclusive with `body`;
+  /// the editor picks one mode per post and says which.
+  mdx      String?
+
+  coverId    String?
+  authorId   String?
+  categoryId String?
+
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+  publishAt   DateTime?
+  unpublishAt DateTime?
+  isFeatured  Boolean       @default(false)
+
+  seoTitle       String?
+  seoDescription String?
+  seoNoIndex     Boolean @default(false)
+
+  readingMinutes Int?
+  viewCount      Int  @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  cover    MediaAsset? @relation("PostCover", fields: [coverId], references: [id], onDelete: SetNull)
+  author   User?       @relation("PostAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  category Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tags     PostTag[]
+
+  /// Explicit editorial "read next" picks. Self-relation, so a post can name related posts without a
+  /// tag-similarity heuristic guessing on its behalf.
+  relatedTo   Post[] @relation("RelatedPosts")
+  relatedFrom Post[] @relation("RelatedPosts")
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@index([deletedAt])
+  @@map("posts")
+}
+
+model PostTag {
+  postId String
+  tagId  String
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@map("post_tags")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Events
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum EventMode {
+  IN_PERSON
+  ONLINE
+  HYBRID
+}
+
+/// Named `CoeEvent` because `Event` is a DOM global; a Prisma model of that name produces a client
+/// type that shadows it and turns every `addEventListener` handler parameter into the wrong type.
+model CoeEvent {
+  id       String  @id @default(cuid())
+  slug     String  @unique
+  title    String
+  subtitle String?
+  summary  String?
+  body     Json?
+
+  mode      EventMode @default(IN_PERSON)
+  venue     String?
+  address   String?
+  latitude  Float?
+  longitude Float?
+  onlineUrl String?
+
+  /// Both stored as absolute UTC instants. The site renders them in the Centre's timezone, which is
+  /// a SETTING, not the viewer's locale — "the seminar is at 4pm" must mean one time for everyone.
+  startsAt DateTime
+  endsAt   DateTime?
+
+  registrationUrl      String?
+  registrationOpensAt  DateTime?
+  registrationClosesAt DateTime?
+  capacity             Int?
+  isRegistrationOpen   Boolean   @default(false)
+
+  coverId String?
+
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+  isFeatured  Boolean       @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  cover         MediaAsset?         @relation("EventCover", fields: [coverId], references: [id], onDelete: SetNull)
+  agenda        EventAgendaItem[]
+  speakers      EventSpeaker[]
+  media         EventMedia[]
+  tags          EventTag[]
+  registrations EventRegistration[]
+
+  @@index([startsAt])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("events")
+}
+
+model EventAgendaItem {
+  id       String    @id @default(cuid())
+  eventId  String
+  title    String
+  detail   String?
+  speaker  String?
+  startsAt DateTime?
+  endsAt   DateTime?
+  position Int       @default(0)
+
+  event CoeEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, position])
+  @@map("event_agenda_items")
+}
+
+model EventSpeaker {
+  eventId  String
+  personId String
+  role     String?
+  position Int     @default(0)
+
+  event  CoeEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  person Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, personId])
+  @@map("event_speakers")
+}
+
+model EventMedia {
+  eventId  String
+  assetId  String
+  position Int     @default(0)
+  caption  String?
+
+  event CoeEvent   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  asset MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, assetId])
+  @@index([eventId, position])
+  @@map("event_media")
+}
+
+model EventTag {
+  eventId String
+  tagId   String
+
+  event CoeEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tag   Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, tagId])
+  @@map("event_tags")
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONFIRMED
+  WAITLISTED
+  CANCELLED
+  ATTENDED
+}
+
+model EventRegistration {
+  id                  String             @id @default(cuid())
+  eventId             String
+  name                String
+  email               String
+  organisation        String?
+  phone               String?
+  notes               String?
+  state               RegistrationStatus @default(PENDING)
+  /// Issued only once `state` is ATTENDED. The code is the public handle in the verification URL, so
+  /// it is random rather than sequential — a sequential code lets anyone enumerate every attendee.
+  certificateCode     String?            @unique
+  certificateIssuedAt DateTime?
+  createdAt           DateTime           @default(now())
+
+  event CoeEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, email])
+  @@index([eventId, state])
+  @@map("event_registrations")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Craft Explorer
+// ═══════════════════════════════════════════════════════════════════════════
+
+model CraftRegion {
+  id        String  @id @default(cuid())
+  slug      String  @unique
+  name      String
+  /// NATION | STATE | DISTRICT | CLUSTER — the same ladder the Field Repository map uses, so a place
+  /// means the same thing in both products.
+  level     String
+  parentId  String?
+  latitude  Float?
+  longitude Float?
+
+  parent   CraftRegion?  @relation("RegionTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children CraftRegion[] @relation("RegionTree")
+  crafts   Craft[]
+
+  @@index([parentId])
+  @@map("craft_regions")
+}
+
+model CraftSchool {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+
+  crafts Craft[]
+
+  @@map("craft_schools")
+}
+
+model Craft {
+  id            String  @id @default(cuid())
+  slug          String  @unique
+  name          String
+  /// The local-language name, in its own script. Rendered with `lang` set so a screen reader does not
+  /// read Devanagari with an English voice.
+  localName     String?
+  localNameLang String?
+  summary       String?
+  body          Json?
+
+  regionId String?
+  schoolId String?
+
+  /// Approximate origin, as a year. Negative means BCE. Nullable because "sometime in the medieval
+  /// period" is a real answer and a made-up year is worse than an empty timeline entry.
+  originYear Int?
+  originNote String?
+
+  materials  String[] @default([])
+  techniques String[] @default([])
+
+  latitude  Float?
+  longitude Float?
+
+  coverId        String?
+  /// glTF/GLB storage key for the 3D artefact viewer. Absent for most crafts; the viewer is only
+  /// rendered when it is present, never as an empty canvas.
+  modelObjectKey String?
+
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+  isFeatured  Boolean       @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  region CraftRegion? @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  school CraftSchool? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  cover  MediaAsset?  @relation("CraftCover", fields: [coverId], references: [id], onDelete: SetNull)
+  media  CraftMedia[]
+
+  @@index([regionId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("crafts")
+}
+
+model CraftMedia {
+  craftId          String
+  assetId          String
+  position         Int     @default(0)
+  caption          String?
+  /// "before" | "after" | null — drives the restoration comparison slider. A pair is only rendered
+  /// when BOTH halves exist; a lone "after" is shown as an ordinary gallery image.
+  restorationPhase String?
+
+  craft Craft      @relation(fields: [craftId], references: [id], onDelete: Cascade)
+  asset MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([craftId, assetId])
+  @@index([craftId, position])
+  @@map("craft_media")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Gallery
+// ═══════════════════════════════════════════════════════════════════════════
+
+model GalleryAlbum {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  description String?
+  category    String?
+  location    String?
+  credit      String?
+  happenedOn  DateTime?
+  coverId     String?
+  sortOrder   Int       @default(0)
+
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  cover MediaAsset?   @relation("AlbumCover", fields: [coverId], references: [id], onDelete: SetNull)
+  items GalleryItem[]
+  tags  String[]      @default([])
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("gallery_albums")
+}
+
+model GalleryItem {
+  id           String  @id @default(cuid())
+  albumId      String
+  assetId      String
+  position     Int     @default(0)
+  caption      String?
+  /// "image" | "video" | "panorama" | "tour" — how this item is PRESENTED, which is not always what
+  /// the asset is (a still frame can introduce a virtual tour).
+  presentation String  @default("image")
+  /// For virtual tours: the entry scene id inside the tour payload.
+  tourEntry    String?
+
+  album GalleryAlbum @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  asset MediaAsset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([albumId, assetId])
+  @@index([albumId, position])
+  @@map("gallery_items")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Partners, navigation, settings, inquiries, analytics, search
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Partner {
+  id        String  @id @default(cuid())
+  slug      String  @unique
+  name      String
+  url       String?
+  /// "ACADEMIC" | "INDUSTRY" | "GOVERNMENT" | "NGO" | "FUNDER"
+  category  String?
+  logoId    String?
+  sortOrder Int     @default(0)
+  isVisible Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  logo     MediaAsset?      @relation("PartnerLogo", fields: [logoId], references: [id], onDelete: SetNull)
+  projects ProjectPartner[]
+
+  @@index([deletedAt])
+  @@map("partners")
+}
+
+/// Navigation is DATA, not code. `location` separates the header, the footer columns and the utility
+/// bar so one editor screen drives every menu on the site.
+model NavigationItem {
+  id         String  @id @default(cuid())
+  location   String // "header" | "footer" | "utility"
+  label      String
+  href       String
+  parentId   String?
+  position   Int     @default(0)
+  isExternal Boolean @default(false)
+  isVisible  Boolean @default(true)
+
+  parent   NavigationItem?  @relation("NavTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children NavigationItem[] @relation("NavTree")
+
+  @@index([location, position])
+  @@map("navigation_items")
+}
+
+/// How loudly a banner speaks. An ENUM rather than free text for the reason `SubmissionStatus` is one:
+/// a mistyped tone in a string column falls through to whatever the renderer's default branch is, and
+/// nothing tells anybody it happened.
+///
+/// The four map onto the `BadgeTone` pairings in components/ui/Badge.tsx, which is the ONLY place these
+/// colours are decided — INFO → `info`, SUCCESS → `success`, WARNING → `warn`, URGENT → `error`. Every one
+/// of those pairs a fill with a glyph and a word, because colour never carries meaning alone (contract
+/// §11), and components/site/AnnouncementBar.tsx draws the band from that same table. Gold is not among
+/// them: gold is marketing-only, and a banner is information.
+///
+/// ⚠ THESE FOUR STRINGS ARE RESTATED in app/api/studio/announcements/route.ts, in its `[id]` sibling and in
+/// app/studio/announcements/AnnouncementManager.tsx, because a Zod enum cannot be derived from a Prisma
+/// enum without pulling the Prisma client into a browser bundle. Adding a value here means adding it in all
+/// three, and the band's `Record<AnnouncementTone, …>` is what makes forgetting the band a compile error.
+enum AnnouncementTone {
+  INFO
+  SUCCESS
+  WARNING
+  URGENT
+}
+
+/// A site-wide notice: "Applications for the 2026 residency close on 30 September", "The Centre is
+/// closed for Diwali".
+///
+/// ══════════════════════════════════════════════════════════════════════════════════════════════
+/// A MODEL RATHER THAN A SECTION, BECAUSE IT IS NOT ON A PAGE. A `PageSection` belongs to one `Page`;
+/// this appears in the site chrome above every page at once, so an editor sets it in one place and
+/// takes it down in one place. Putting it in a section would mean adding the same block to nine pages
+/// and remembering all nine when the deadline passes.
+///
+/// ⚠ VISIBILITY IS RESOLVED AT READ TIME, from `startsAt`/`endsAt`, exactly as lib/content.ts resolves
+/// publication state for pages — and for the same reason. There is no cron here at all: a banner that
+/// outlived its deadline because a scheduled job did not run is worse than no banner, because it is
+/// the Centre stating something untrue on every page of its own site. `lib/content.ts` holds
+/// `activeAnnouncementWhere(now)` and `isAnnouncementActive(row, now)` beside the page filters; every
+/// read path uses one of them, so the three conditions are never spelled out twice.
+///
+/// The three conditions are ANDed and each is a separate fact:
+///   • `isActive` is the editor's switch — off means "not now", whatever the dates say;
+///   • `startsAt` is "not yet" (null = already);
+///   • `endsAt` is "no longer" (null = indefinitely).
+/// ══════════════════════════════════════════════════════════════════════════════════════════════
+///
+/// `isActive` AND `deletedAt` ARE NOT THE SAME SWITCH, which is why both are here. Turning a banner off is
+/// "not now" and keeps it in the list to be turned back on; deleting it is "this was a mistake", and the
+/// soft-delete convention at the top of this file applies unchanged — the studio's announcements screen
+/// shows removed rows and restores them, and a restore brings the row back SWITCHED OFF so nothing
+/// reappears on the site by pressing one button.
+///
+/// ⚠ `dismissible` MEANS A READER MAY CLOSE IT, and a dismissal is remembered on their own device,
+/// keyed by this row's `id` — see components/site/AnnouncementBar.tsx. One consequence is worth knowing
+/// before editing a live banner: correcting the text of an announcement somebody has already dismissed
+/// does NOT bring it back for them, because the id has not changed. Where the correction matters —
+/// a date that moved, a venue that changed — the honest move is a NEW announcement rather than an edit.
+/// A non-dismissible banner renders no close button at all, rather than a dead one (contract §1.8).
+model Announcement {
+  id String @id @default(cuid())
+
+  /// One or two sentences, as plain text. Deliberately not rich text: a banner is one line of chrome
+  /// above every page on the site, and formatting inside it fights the header for attention.
+  message   String
+  /// Where the banner leads, if anywhere. Same shapes the section schemas accept — "/apply", an
+  /// absolute URL, a "mailto:".
+  href      String?
+  /// The words on that link. A banner with an `href` and no label has nothing to click.
+  linkLabel String?
+
+  tone AnnouncementTone @default(INFO)
+
+  /// The window, both ends optional. See the read-time warning above.
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  /// The editor's switch, independent of the dates.
+  isActive    Boolean @default(true)
+  /// May a reader close it? Off for something they must not be able to hide from themselves — a
+  /// closure notice, a safety instruction.
+  dismissible Boolean @default(true)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+
+  createdBy User? @relation("AnnouncementAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// The public read is "not deleted, active, in window, newest first" — one index covering the switch and
+  /// both ends of the window, and one for the recycle-bin split.
+  @@index([isActive, startsAt, endsAt])
+  @@index([deletedAt])
+  @@map("announcements")
+}
+
+/// One row per settings GROUP ("branding", "contact", "social", "seo", "homepage", "features"), each
+/// holding a JSON document validated by a Zod schema in lib/settings/schema.ts. A key/value table
+/// with one row per field makes "read all branding settings" six round trips and gives the type
+/// system nothing to check.
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("settings")
+}
+
+enum SubmissionStatus {
+  NEW
+  IN_PROGRESS
+  REPLIED
+  ARCHIVED
+  SPAM
+}
+
+model ContactSubmission {
+  id           String           @id @default(cuid())
+  name         String
+  email        String
+  organisation String?
+  phone        String?
+  subject      String?
+  message      String
+  /// Which form on the site produced this: "general" | "admissions" | "collaboration" | "media".
+  formKey      String           @default("general")
+  state        SubmissionStatus @default(NEW)
+  assigneeId   String?
+  internalNote String?
+  repliedAt    DateTime?
+
+  /// Anti-spam evidence, kept so a false positive can be explained rather than merely reversed.
+  spamScore  Float?
+  spamReason String?
+  ipAddress  String?
+  userAgent  String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  assignee User? @relation("InquiryAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([state, createdAt])
+  @@index([deletedAt])
+  @@map("contact_submissions")
+}
+
+/// First-party analytics. Deliberately COARSE: a day bucket, a path, a country. No cookie, no
+/// visitor id, no cross-site identifier — the numbers the Centre actually reports on are page views
+/// and downloads, and collecting more than that to answer them is a liability with no upside.
+model PageViewDaily {
+  id      String   @id @default(cuid())
+  day     DateTime @db.Date
+  path    String
+  country String?
+  views   Int      @default(0)
+  uniques Int      @default(0)
+
+  @@unique([day, path, country])
+  @@index([day])
+  @@map("page_views_daily")
+}
+
+model DownloadEvent {
+  id         String   @id @default(cuid())
+  entityType String // "file" | "publication" | "dataset"
+  entityId   String
+  day        DateTime @db.Date
+  country    String?
+  count      Int      @default(0)
+
+  @@unique([entityType, entityId, day, country])
+  @@index([day])
+  @@map("download_events")
+}
+
+model SearchQueryLog {
+  id    String   @id @default(cuid())
+  day   DateTime @db.Date
+  query String
+  hits  Int      @default(0)
+  count Int      @default(1)
+
+  @@unique([day, query])
+  @@index([day])
+  @@map("search_query_logs")
+}
+
+/// The global search index. One denormalised row per publishable entity, rebuilt on write by
+/// lib/search/index.ts. `body` is plain text — the searchable prose with markup stripped — so a
+/// query never matches a JSON key name from a Tiptap document.
+model SearchDocument {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String
+  title       String
+  summary     String?
+  body        String   @default("")
+  url         String
+  keywords    String[] @default([])
+  /// Denormalised so results can be filtered without joining six tables, and so an unpublished row
+  /// can be excluded by the index itself rather than by every caller remembering to.
+  isPublished Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([entityType, entityId])
+  @@index([isPublished])
+  @@index([entityType])
+  @@map("search_documents")
+}
+
+/// Editor-managed redirects, so moving a page never has to break an existing citation.
+model Redirect {
+  id          String   @id @default(cuid())
+  source      String   @unique
+  destination String
+  permanent   Boolean  @default(true)
+  hits        Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@map("redirects")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The newsletter
+//
+// Two tables and three enums, and the shape is decided by four facts about this feature that are
+// worth stating before any column is read:
+//
+//   1. SUBSCRIBING IS A DOUBLE OPT-IN. A POST creates a PENDING row; only a confirmation link that
+//      was actually clicked promotes it to CONFIRMED. So "the row exists" and "this person asked to
+//      hear from us" are two different statements, and only `status` carries the second one. Every
+//      read that means "who would a mailing go to" must therefore filter on
+//      `status = CONFIRMED`, never on the presence of a row.
+//
+//   2. UNSUBSCRIBING IS NOT DELETING, AND THAT IS THE WHOLE POINT OF KEEPING THE ROW. An
+//      UNSUBSCRIBED row is a SUPPRESSION RECORD: it is the evidence that this address asked to be
+//      left alone, and deleting it would mean the next import or the next sign-up form has no way
+//      to know. `deletedAt` is a different act entirely — an erasure request, where the person has
+//      asked to be forgotten rather than merely left alone — and it is rarer, deliberate, and the
+//      only one that loses the suppression.
+//
+//   3. THE CONSENT RECORD IS EVIDENCE AND IS THEREFORE COPIED, NOT REFERENCED. `consentText` holds
+//      the sentence the person actually read, in full, at the moment they agreed to it. It is NOT a
+//      pointer at whatever the current wording happens to be: editing the wording next year must not
+//      silently rewrite what everybody who signed up this year is recorded as having agreed to.
+//      `consentVersion` is kept alongside it so a whole cohort can be found, and lib/newsletter/
+//      consent.ts is the register that maps a version back to its text.
+//
+//   4. DELIVERY IS A SEAM, NOT A FEATURE OF THIS SCHEMA. No provider is configured in this
+//      deployment, so `NewsletterDelivery` is an OUTBOX: one row per message this application
+//      decided to send, whether or not anything sent it. A PENDING subscriber with a RECORDED
+//      confirmation row is a person waiting for an email nobody has sent yet — which is a fact the
+//      studio can show and act on, and is exactly what would otherwise be invisible.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Where a subscription stands. Deliberately three values and not a boolean pair: "asked but has not
+/// confirmed" and "confirmed" are different rights, and "unsubscribed" is a third thing again — an
+/// instruction that must survive, not an absence.
+enum SubscriberStatus {
+  /// Signed up, not yet confirmed. NEVER mailed anything except the confirmation itself.
+  PENDING
+  /// Clicked the confirmation link. The only status a mailing may go to.
+  CONFIRMED
+  /// Asked to stop. The row is KEPT as the record of that instruction — see fact 2 above.
+  UNSUBSCRIBED
+}
+
+/// Which message the outbox row is about. A message a person receives is never a free-text string
+/// here, because every kind has different rules about when it may be sent at all.
+enum NewsletterMailKind {
+  /// The double opt-in link. The only thing a PENDING subscriber is ever sent.
+  CONFIRMATION
+  /// "You are already subscribed" — the answer to a repeat sign-up for a CONFIRMED address. It exists
+  /// so the PUBLIC response can stay identical for every address (the route never says whether an
+  /// address is known) while the person themselves still finds out what happened.
+  ALREADY_SUBSCRIBED
+  /// Sent once, after a confirmation succeeds.
+  WELCOME
+  /// Confirms an unsubscribe took effect, so nobody has to wonder whether the link worked.
+  UNSUBSCRIBE_RECEIPT
+}
+
+/// What happened to an outbox row.
+enum NewsletterMailState {
+  /// Written down, nothing sent. The DEFAULT, and the honest state of every row in a deployment with
+  /// no mail provider registered. See the header of lib/newsletter/delivery.ts.
+  RECORDED
+  /// A registered provider accepted it.
+  SENT
+  /// A registered provider refused or threw. `error` says what it said.
+  FAILED
+}
+
+/// One address that asked to hear from the Centre.
+model NewsletterSubscriber {
+  id String @id @default(cuid())
+
+  /// The address AS THE PERSON TYPED IT, preserved for display and for the envelope. The local part
+  /// of an address is case-sensitive by RFC 5321 even though effectively every provider treats it
+  /// otherwise, so the capitals somebody chose are kept rather than thrown away.
+  email    String
+  /// The normalised form, and the ONE thing uniqueness is decided on — trimmed, Unicode-NFC, then
+  /// lower-cased whole. `lib/newsletter/address.ts` is the only implementation and its header sets
+  /// out precisely what is and is not folded (dots and `+tags` are NOT, deliberately).
+  ///
+  /// ⚠ Every lookup, every token and every suppression check keys on THIS column. Querying `email`
+  /// would make `Reader@example.org` and `reader@example.org` two different people.
+  emailKey String @unique
+
+  status SubscriberStatus @default(PENDING)
+
+  /// ── Double opt-in ───────────────────────────────────────────────────────────────────────────
+  /// A random nonce that the emailed confirmation link's signature covers. It is NOT the credential
+  /// on its own — the link carries a signed envelope (lib/newsletter/tokens.ts) and this is the half
+  /// that makes the link SINGLE USE: confirming clears it, and re-issuing a link replaces it, so an
+  /// old link in an old mailbox stops working the moment a newer one is sent.
+  confirmationToken     String?
+  /// When that link stops being accepted. Enforced in the signed envelope AND against this column, so
+  /// neither a forged expiry nor a stale row can extend it.
+  confirmationExpiresAt DateTime?
+  /// When a confirmation message was last handed to the delivery seam. The cooldown that stops this
+  /// form being used to post one message a second at somebody else's inbox is measured from here.
+  confirmationSentAt    DateTime?
+
+  confirmedAt    DateTime?
+  unsubscribedAt DateTime?
+
+  /// ── Where they signed up ────────────────────────────────────────────────────────────────────
+  /// A short key naming the surface that produced this row — "newsletter-page", "footer". Chosen from
+  /// `NEWSLETTER_SOURCES` in lib/newsletter/address.ts rather than free text, so the studio's filter
+  /// is a closed list and one typo cannot create a second, near-identical source.
+  source     String  @default("newsletter-page")
+  /// The exact path the form was on, when the surface knows it. Free text, because a form in the
+  /// footer appears on every page and "which page were they reading" is the useful half of provenance.
+  sourcePath String?
+
+  /// ── The consent record ──────────────────────────────────────────────────────────────────────
+  /// The sentence they agreed to, VERBATIM. Copied, never referenced — see fact 3 in the header.
+  consentText    String
+  /// Which wording that was, so a cohort can be found without string-matching prose.
+  consentVersion String
+  /// When they agreed. Distinct from `createdAt`: an UNSUBSCRIBED address that signs up again keeps
+  /// its row and gets a NEW consent stamp, and `createdAt` would still be the first time.
+  consentAt      DateTime
+
+  /// Evidence of the act, for a consent challenge. Same fields the contact form keeps, and kept for
+  /// the same reason: "prove they asked" is unanswerable without them.
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  /// The erasure request. ⚠ NOT the unsubscribe — see fact 2. Every read path filters on it.
+  ///
+  /// ⚠ THIS MODEL IS NOT IN THE RECYCLE BIN's registry (app/api/studio/recycle-bin/route.ts), so a
+  /// soft-deleted subscriber is not restorable from that screen. The studio's subscribers screen
+  /// states the count of removed records rather than letting them vanish silently; adding the model
+  /// to the registry is a two-line change and is written up in this session's handover.
+  deletedAt DateTime?
+
+  deliveries NewsletterDelivery[]
+
+  /// The studio list is "not deleted, optionally one status, newest first"; the second index is the
+  /// recycle-bin split, matching every other soft-deleted model here.
+  @@index([status, createdAt])
+  @@index([deletedAt])
+  @@index([source])
+  @@map("newsletter_subscribers")
+}
+
+/// THE OUTBOX. One row per message this application decided to send.
+///
+/// ⚠ IT DELIBERATELY DOES NOT STORE THE LINK. A confirmation URL is a credential, and a table that
+/// holds one turns every database read, every backup and every export into a way to confirm somebody
+/// else's subscription. It does not need to: the token is DERIVED (lib/newsletter/tokens.ts), so a
+/// replay of this outbox rebuilds the link from `emailKey` and `kind` at the moment it is finally
+/// sent — which also gives the recipient a fresh expiry instead of one that lapsed while the row sat
+/// here waiting for a provider.
+model NewsletterDelivery {
+  id String @id @default(cuid())
+
+  /// Null once the subscriber row has been erased. The message still happened, so the record stays.
+  subscriberId String?
+  /// Denormalised, so a delivery row remains readable after an erasure and so the outbox can be
+  /// searched without a join.
+  emailKey     String
+
+  kind  NewsletterMailKind
+  state NewsletterMailState @default(RECORDED)
+
+  /// The subject line as composed. Held so the studio's outbox reads as messages rather than as ids.
+  subject String
+  /// Which provider handled it — null for every RECORDED row, by definition.
+  provider String?
+  /// What a provider said when it refused. Null unless `state` is FAILED.
+  error    String?
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  subscriber NewsletterSubscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+
+  /// "What is still waiting to be sent, oldest first" is the query the studio banner runs.
+  @@index([state, createdAt])
+  @@index([emailKey])
+  @@index([subscriberId])
+  @@map("newsletter_deliveries")
+}

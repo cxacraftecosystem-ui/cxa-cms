@@ -1,0 +1,42 @@
+node_modules
+.next
+out
+build
+.DS_Store
+*.pem
+
+.env
+.env*.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+/prisma/dev.db
+/prisma/migrations/dev
+/public/uploads
+
+# Working artefacts from a review pass. `.audit/` holds the finding briefs an agent was handed,
+# `.shots/` holds screenshots taken by scripts/dev/shoot.mjs, and the two `.audit-*.json` files are
+# the raw machine-readable record. All of them are reproducible and none belongs in history.
+/.audit
+/.audit-*.json
+/.shots
+/.ccx-wake.log
+/.build-state.md
+
+# Two stray capture artefacts at the repo root. `.shots$a.png` is a shell-quoting accident — the
+# `$a` was meant to expand and the file belongs under `/.shots`, which is already ignored — and
+# `image.png` is a 2.3 MB screenshot nothing references. Neither is source.
+/image.png
+/.shots$a.png
+
+# The craft contact sheets as they arrived: 43 PNGs at 2048×1143, ~217 MB, extracted from the
+# Centre's "Craft thumbnail" document. They are the INPUT to scripts/build-craft-sheets.ts and are
+# never served — what ships is the encoded JPEG in public/craft/sheets/ and the generated manifest.
+# Too large for history, and reproducible from the source document at any time.
+/.craft-source

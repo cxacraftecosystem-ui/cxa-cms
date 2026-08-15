@@ -1,0 +1,133 @@
+/*
+ * ════════════════════════════════════════════════════════════════════════════
+ * The three keyframes the craft tapestry needs, and nothing else.
+ *
+ * WHY THIS FILE EXISTS AT ALL. Everything else in `components/craft/` is
+ * expressed as Tailwind utilities, but `@keyframes` cannot be. These three
+ * cannot be borrowed from tailwind.config.ts either: the kolam draw needs
+ * `stroke-dashoffset`, and both the pigment and the jaali light need per-element
+ * amplitudes fed in as custom properties, which a shared animation utility has
+ * no way to carry.
+ *
+ * IT NEEDS NO CHANGE TO app/globals.css. Each component that uses a class from
+ * here imports this file itself — Next allows a global stylesheet to be imported
+ * from any component in the app graph, and duplicate imports are de-duplicated.
+ * So `KolamLattice`, `PigmentDrift` and `JaaliScreen` each carry their own
+ * `import`, and any one of them works when used on its own.
+ *
+ * ⚠ NO `@layer` AND NO `@apply` HERE. postcss.config.js loads only `tailwindcss`
+ * and `autoprefixer`, and Tailwind processes each stylesheet on its own: an
+ * `@layer components` block in a file with no `@tailwind` directive above it is a
+ * build error, not a no-op. Plain rules and plain at-rules only.
+ *
+ * ⚠ THE CURVES ARE WRITTEN OUT IN FULL, DELIBERATELY. The literal keyword
+ * `ease-out` inside handwritten CSS is the CSS specification's curve, NOT the
+ * brand expo curve that the Tailwind `ease-out` CLASS resolves to. The two are
+ * spelled identically and are different curves (contract §4), so anything that
+ * has to match the rest of the site says `cubic-bezier(0.16, 1, 0.3, 1)` out
+ * loud.
+ *
+ * REDUCED MOTION IS HANDLED TWICE, ON PURPOSE.
+ *   1. In JS: each component branches on `useReducedMotionPreference()` and
+ *      simply does not add the `--draw` / `--drift` / `--shimmer` class, so
+ *      nothing moves and the resting state — which is composed to be the design,
+ *      not a stopped animation — is what shows.
+ *   2. In CSS: the global rules in globals.css collapse every animation to
+ *      0.01ms. That is what covers the instant between the server's markup and
+ *      hydration, and it is why every animation here is `forwards`-filled or
+ *      lands somewhere presentable: a collapsed animation JUMPS TO ITS END, so
+ *      the end has to be a state worth looking at.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+/*
+ * The kolam being drawn.
+ *
+ * Driven by `pathLength="1000"` on the <path>, which normalises every dash
+ * length to a thousandth of the figure regardless of how big the figure actually
+ * is. That is the whole reason no JavaScript measures the path: `getTotalLength()`
+ * would have to run after layout, on the client only, which is a flash on a
+ * prerendered page and a wrong number inside a `<pattern>`.
+ *
+ * Seven seconds and ONE iteration. A kolam is drawn once at dawn; a looping
+ * version would be a decoration that never settles, and it would keep a
+ * compositor awake for the whole visit.
+ */
+@keyframes cxa-kolam-draw {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.cxa-kolam-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cxa-kolam-line--draw {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: cxa-kolam-draw 7s cubic-bezier(0.16, 1, 0.3, 1) 0.35s forwards;
+}
+
+/*
+ * Suspended pigment, settling.
+ *
+ * `translate3d` only, so the work stays on the compositor. The amplitudes and the
+ * timing arrive as custom properties set inline per grain, which is what lets
+ * fourteen elements share one keyframe rule without fourteen classes Tailwind
+ * would have purged anyway.
+ *
+ * The curve is a sine ease-in-out and the pairing with `alternate` is the point:
+ * the grain slows to a stop at both ends of its travel and reverses, which reads
+ * as something heavy held in liquid. A linear drift reads as something being
+ * blown, and `infinite` on a linear curve reads as a conveyor belt.
+ */
+@keyframes cxa-pigment-settle {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(var(--cxa-drift-x, 0px), var(--cxa-drift-y, 0px), 0);
+  }
+}
+
+.cxa-pigment-grain--drift {
+  animation: cxa-pigment-settle var(--cxa-drift-duration, 80s)
+    cubic-bezier(0.37, 0, 0.63, 1) var(--cxa-drift-delay, 0s) infinite alternate;
+}
+
+/*
+ * Daylight travelling across the jaali.
+ *
+ * The element this lands on is an oversized <rect> inside the masked group, so
+ * translating it moves the lit patch across the piercings — the sun crossing a
+ * courtyard, which is the one thing a pierced screen does all day.
+ *
+ * The offsets are in absolute units rather than percentages: on an SVG element a
+ * percentage in `translate3d` resolves against a reference box whose definition
+ * has moved between specifications and still differs between engines, whereas a
+ * `px` length on an SVG element is one user unit everywhere. `.cxa-jaali-light`
+ * on its own parks the light slightly right and below centre, which is the
+ * composed resting position — it is not the start of the animation.
+ */
+@keyframes cxa-jaali-shimmer {
+  from {
+    transform: translate3d(-34px, -18px, 0);
+  }
+  to {
+    transform: translate3d(38px, 26px, 0);
+  }
+}
+
+.cxa-jaali-light {
+  transform: translate3d(4px, 6px, 0);
+}
+
+.cxa-jaali-light--shimmer {
+  animation: cxa-jaali-shimmer 46s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}

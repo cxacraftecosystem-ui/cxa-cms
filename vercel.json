@@ -1,0 +1,31 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "prisma generate && prisma migrate deploy && next build",
+  "crons": [
+    {
+      "path": "/api/cron/publish",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/purge",
+      "schedule": "17 3 * * *"
+    }
+  ],
+  "functions": {
+    "app/api/studio/media/complete/route.ts": {
+      "memory": 3009,
+      "maxDuration": 300
+    },
+    "app/api/studio/media/[id]/replace/route.ts": {
+      "memory": 3009,
+      "maxDuration": 300
+    },
+    "app/api/studio/files/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/studio/files/[id]/versions/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

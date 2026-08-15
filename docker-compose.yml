@@ -1,0 +1,218 @@
+# ═══════════════════════════════════════════════════════════════════════════════════════════════
+# CxA Centre of Excellence — the whole stack, locally.
+#
+#     docker compose up -d --build      bring it all up (rebuilds BOTH images — see the warning below)
+#     docker compose logs -f app        watch the server
+#     docker compose down               stop, keep the data
+#     docker compose down -v            stop and DELETE the data
+#
+# Four long-running services and two one-shot ones:
+#
+#   postgres     the database
+#   minio        S3-compatible object storage, so uploads genuinely work rather than being disabled
+#   minio-init   creates the bucket and its read policy, then exits
+#   migrate      applies migrations and seeds, then exits — `app` waits for it to succeed
+#   app          the Next server (standalone build)
+#
+# ⚠ AFTER A SCHEMA CHANGE, REBUILD BOTH IMAGES. `app` and `migrate` are separate images built from
+# separate stages, and each carries its OWN generated Prisma client. `docker compose build app` leaves
+# the migrator holding the previous one, and since the migrator is what applies migrations and seeds, the
+# stack then fails at start-up with "Value 'MASTER_ADMIN' not found in enum 'Role'" — which reads like a
+# database problem and is really a stale image. Always `docker compose build` with no service argument,
+# or `up -d --build`. The two share the deps and builder stages, so the second one is nearly free.
+#
+# ⚠ THE TWO ADDRESSES FOR MINIO ARE NOT A MISTAKE. The server talks to it as `http://minio:9000` over the
+# compose network; the BROWSER is given `http://localhost:9000`, because it sits outside that network and
+# cannot resolve a service name. A single address cannot serve both, and using the internal one in a
+# public URL produces image tags that fail to load with no error anywhere in the logs.
+# ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+name: cxa-portal
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cxa-postgres-compose
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cxa
+    ports:
+      # Published on 55432, not 5432, so it cannot collide with a Postgres already running on the host —
+      # and so `npm run smoke` / `npm run leak-check` can be pointed at this database FROM the host.
+      - "55432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Without this, `migrate` races the server's own start-up and fails with a connection error that
+      # reads like a misconfiguration.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cxa"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: cxa-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # the S3 API, and the public read address the browser uses
+      - "9001:9001"   # the web console, for looking at what was uploaded
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: cxa-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./docker:/policy:ro
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/cxa-media &&
+      mc anonymous set-json /policy/minio-public-read.json local/cxa-media &&
+      echo 'bucket cxa-media ready, anonymous GetObject only'
+      "
+    restart: "no"
+    # This is what makes NEXT_PUBLIC_CDN_URL work: unauthenticated GET on objects, which is what a CDN
+    # origin is. No LIST and no write, so the bucket cannot be enumerated and nothing can be uploaded
+    # without a signature.
+    #
+    # ⚠ IT IS `set-json` WITH AN EXPLICIT POLICY, NOT `anonymous set download`, AND THE DIFFERENCE IS
+    # NOT COSMETIC. This block used to run `set download` while claiming — in this very comment — that
+    # the bucket "cannot be enumerated". Measured against the running container:
+    # `GET /cxa-media?list-type=2` returned `<ListBucketResult>` with `KeyCount 26`, so MinIO's
+    # `download` preset grants `s3:ListBucket` as well as `s3:GetObject` and every object key in the
+    # bucket was readable by anybody who asked. docker/minio-public-read.json grants `s3:GetObject`
+    # and nothing else. Re-verified after the change: GET an object 200, LIST 403 AccessDenied,
+    # anonymous PUT 403.
+    #
+    # ⚠ A REAL S3 BUCKET NEEDS THE SAME CARE. The equivalent mistake there is a bucket policy with
+    # `s3:ListBucket` on `arn:aws:s3:::bucket` — it publishes the key of every unpublished draft's
+    # cover, which the draft-leak check cannot see because the leak is in the STORE, not the site.
+    #
+    # CORS needs no configuration here — MinIO allows any origin and exposes `ETag` by default, which is
+    # the header a browser multipart upload cannot proceed without (docs/OPERATIONS.md §1). A real S3
+    # bucket must be told; MinIO already agrees.
+
+  migrate:
+    build:
+      context: .
+      target: migrator
+    image: cxa-portal-migrate:local
+    container_name: cxa-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cxa?schema=public
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cxa?schema=public
+      # The seed creates NO account without both of these, and refuses a password under 12 characters.
+      # Change them before doing anything that matters; they are development credentials.
+      SEED_ADMIN_EMAIL: admin@cxa.local
+      SEED_ADMIN_PASSWORD: docker-development-administrator
+      SEED_ADMIN_NAME: Centre Administrator
+      # Extra addresses pre-loaded onto the studio access list, comma separated. Everyone here can sign
+      # in as soon as a provider is configured; the first of them is made a master administrator.
+      SEED_MASTER_ADMIN_EMAILS: ${SEED_MASTER_ADMIN_EMAILS:-}
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runtime
+      args:
+        # See the Dockerfile: these are INLINED AT BUILD TIME. Changing one needs `--build` to take
+        # effect; a restart will not do it.
+        NEXT_PUBLIC_SITE_URL: http://localhost:3000
+        NEXT_PUBLIC_SITE_NAME: Centre of Excellence
+        NEXT_PUBLIC_CDN_URL: http://localhost:9000/cxa-media
+        S3_PUBLIC_BASE_URL: http://localhost:9000/cxa-media
+    image: cxa-portal:local
+    container_name: cxa-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        # The app must not start against an unmigrated schema: every query would fail with a message
+        # about a missing table, which reads as a broken build rather than a missing migration.
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cxa?schema=public
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cxa?schema=public
+
+      # ⚠ A DEVELOPMENT SECRET, COMMITTED ON PURPOSE so the stack starts with no setup — and therefore
+      # one that must never reach anything real. `lib/auth/config.ts` refuses to start on a short,
+      # placeholder or low-entropy value, so this is genuine entropy rather than a token string.
+      # Generate a real one with `openssl rand -base64 48`.
+      JWT_SECRET: docker-dev-only-9f3a7c2e8b1d4506af93c7e2b8d1450639a7c2e8b1d45063
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_TTL_MINUTES: "30"
+      REFRESH_TOKEN_TTL_DAYS: "30"
+
+      CRON_SECRET: docker-dev-only-cron-4a8f2c9e1b7d3506
+
+      # ── Sign in with Google / Microsoft / Yahoo ────────────────────────────
+      # Read from YOUR shell (or a .env beside this file), never committed. A provider with no client
+      # id is simply not offered on the sign-in page, so leaving these empty is a supported state and
+      # the password form stands alone.
+      #
+      # ⚠ Register the callback as http://localhost:3000/api/auth/oauth/<provider>/callback — it must
+      # match exactly, including the port. Yahoo refuses http:// entirely and needs an HTTPS tunnel.
+      # docs/SIGN-IN.md has the full setup for each.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
+      YAHOO_CLIENT_ID: ${YAHOO_CLIENT_ID:-}
+      YAHOO_CLIENT_SECRET: ${YAHOO_CLIENT_SECRET:-}
+
+      # The SERVER's view of storage: the compose network name. The browser's view is the build arg above.
+      S3_BUCKET: cxa-media
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      S3_ENDPOINT: http://minio:9000
+      # ⚠ THE BROWSER-FACING ORIGIN, and it must differ from S3_ENDPOINT here.
+      # A presigned URL is followed by the BROWSER, which cannot resolve `minio`. The host is part of
+      # the SigV4 signature, so it cannot be rewritten after signing — `signer()` in
+      # lib/storage/client.ts builds a second client on this origin so the signature matches the
+      # request the browser actually makes. Without it every upload fails at the PUT with a connection
+      # error against a hostname that does not exist outside the compose network.
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      # MinIO addresses buckets by path, not by subdomain. Left false, the SDK builds
+      # `http://cxa-media.minio:9000`, which does not resolve — and the failure surfaces as a DNS error
+      # during an upload rather than as a configuration problem.
+      S3_FORCE_PATH_STYLE: "true"
+      S3_PUBLIC_BASE_URL: http://localhost:9000/cxa-media
+      MEDIA_PURGE_AFTER_DAYS: "30"
+
+      # Repeated at run time as well as at build time. The build inlines them for the browser; the SERVER
+      # reads them too — `lib/env.ts siteUrl()` throws in production without one, and canonical URLs,
+      # Open Graph tags and sitemap.xml would otherwise be published pointing at localhost.
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_SITE_NAME: Centre of Excellence
+      NEXT_PUBLIC_CDN_URL: http://localhost:9000/cxa-media
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  minio-data:

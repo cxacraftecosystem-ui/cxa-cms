@@ -1,0 +1,1911 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * ════════════════════════════════════════════════════════════════════════════
+ * CxA — Centre of Excellence
+ *
+ * Semantic neutrals live here as bare "R G B" triplets so tailwind.config.ts can consume them as
+ * `rgb(var(--token) / <alpha-value>)` and EVERY opacity modifier keeps working. Flipping a theme is
+ * therefore a matter of re-pointing these eleven numbers — no page ever hardcodes a neutral.
+ *
+ * The purple and gold ramps stay literal in the Tailwind config: brand colour does not invert.
+ *
+ * ⚠ postcss.config.js loads only `tailwindcss` + `autoprefixer` — THERE IS NO NESTING PLUGIN. Plain
+ * at-rules and `@layer` blocks compile; arbitrary CSS nesting does NOT.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Page canvas, cards and the tinted panel ladder (surface-50 → 300 = legacy field-50 → 300). */
+  --bg-0: 247 246 251; /* #f7f6fb */
+  --card: 255 255 255;
+  --surface-50: 250 249 253; /* #faf9fd */
+  --surface-100: 243 241 250; /* #f3f1fa */
+  --surface-200: 233 230 245; /* #e9e6f5 */
+  --surface-300: 220 215 238; /* #dcd7ee */
+  --line-200: 228 226 239; /* #e4e2ef */
+
+  /* Type ladder: headings → body → muted → placeholder. */
+  --ink-900: 30 27 46; /* #1e1b2e */
+  --ink-700: 58 54 81; /* #3a3651 */
+  --ink-500: 97 93 122; /* #615d7a */
+  --ink-300: 167 163 188; /* #a7a3bc */
+
+  /* Derived aliases — they follow the triplets into whichever theme is active. */
+  --background: rgb(var(--bg-0));
+  --foreground: rgb(var(--ink-900));
+
+  /* Raw brand values for handwritten CSS (a Tailwind class cannot be used inside @keyframes). */
+  --purple-500: oklch(0.648 0.19 305);
+  --purple-600: oklch(0.56 0.205 305);
+  --purple-700: oklch(0.47 0.198 305);
+  --purple-900: oklch(0.34 0.15 305);
+  --purple-950: oklch(0.255 0.108 305);
+  --gold-300: oklch(0.85 0.11 86);
+  --gold-500: oklch(0.7 0.145 80);
+
+  /* Gradients — exactly three recipes. Anything else is a fourth thing to keep in step. */
+  --grad-brand: linear-gradient(135deg, oklch(0.47 0.198 305) 0%, oklch(0.34 0.15 305) 100%);
+  --grad-mesh:
+    radial-gradient(40rem 40rem at 12% 18%, oklch(0.648 0.19 305 / 0.16), transparent 60%),
+    radial-gradient(34rem 34rem at 88% 12%, rgba(245, 158, 11, 0.1), transparent 60%),
+    radial-gradient(46rem 46rem at 70% 90%, oklch(0.56 0.205 305 / 0.12), transparent 65%);
+  --grad-gold: linear-gradient(
+    115deg,
+    oklch(0.9 0.08 88) 0%,
+    oklch(0.7 0.145 80) 42%,
+    oklch(0.85 0.11 86) 58%,
+    oklch(0.6 0.13 75) 100%
+  );
+
+  /*
+   * The nav clearance contract, in ONE place.
+   *
+   * The Field Repository declared a `--header-clearance` with zero consumers (skill §3.3), so the
+   * number lived in a `pt-24` in one file and a `scroll-mt-28` in another and drifted. Here the
+   * variable is REAL: the site header reads it, `.page-top` pays it, and every anchor target uses
+   * `scroll-margin-top: var(--nav-clearance)`. Move the header and everything follows.
+   */
+  --nav-clearance: 6rem;
+  --nav-clearance-compact: 4.5rem;
+
+  /* The reading measure for long-form prose. One number, so an article and an MDX page agree. */
+  --measure: 68ch;
+}
+
+/*
+ * Dark theme. The neutrals stay purple-tinted (never pure grey) so the brand cast survives the
+ * inversion, and the ink ladder mirrors the light one: 900 = headings, 300 = placeholders.
+ * `data-theme` is stamped onto <html> BEFORE FIRST PAINT by the boot script in app/layout.tsx.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-0: 17 15 25; /* #110f19 */
+  --card: 26 23 37; /* #1a1725 */
+  --surface-50: 32 28 45; /* #201c2d */
+  --surface-100: 38 33 53; /* #262135 */
+  --surface-200: 46 40 64; /* #2e2840 */
+  --surface-300: 58 51 80; /* #3a3350 */
+  --line-200: 52 46 71; /* #342e47 */
+  --ink-900: 242 240 249; /* #f2f0f9 */
+  --ink-700: 208 203 223; /* #d0cbdf */
+  --ink-500: 158 152 178; /* #9e98b2 */
+  --ink-300: 110 104 132; /* #6e6884 */
+
+  /* The mesh backdrop needs more punch to read against a dark canvas. */
+  --grad-mesh:
+    radial-gradient(40rem 40rem at 12% 18%, oklch(0.648 0.19 305 / 0.24), transparent 60%),
+    radial-gradient(34rem 34rem at 88% 12%, rgba(245, 158, 11, 0.08), transparent 60%),
+    radial-gradient(46rem 46rem at 70% 90%, oklch(0.56 0.205 305 / 0.2), transparent 65%);
+}
+
+/*
+ * High contrast. Re-points the LOW-CONTRAST END of each ladder (borders, muted and placeholder text)
+ * rather than patching individual components — every page inherits it for free.
+ *
+ * ⚠ `[data-high-contrast]` TIES `[data-theme="dark"]` on specificity, which is why the explicit
+ * dark+contrast block below exists. Add a token to one contrast block and you MUST add it to the
+ * other, or dark mode silently keeps the low-contrast value.
+ */
+:root[data-high-contrast="true"] {
+  --line-200: 124 118 152;
+  --surface-300: 124 118 152;
+  --ink-500: 58 54 81; /* muted text → body strength */
+  --ink-300: 97 93 122; /* placeholders → muted strength */
+}
+
+:root[data-theme="dark"][data-high-contrast="true"] {
+  --line-200: 150 143 180;
+  --surface-300: 150 143 180;
+  --ink-700: 236 233 246;
+  --ink-500: 214 209 229;
+  --ink-300: 176 170 196;
+}
+
+/* Larger text. Everything is sized in rem, so scaling the root scales the whole interface. */
+:root[data-larger-text="true"] {
+  font-size: 112.5%; /* 16px → 18px */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+html {
+  /*
+   * Native smooth scrolling for in-page anchors. Lenis takes over on the public site and disables
+   * this to avoid two smoothing systems fighting; the reduced-motion rules below neutralise BOTH.
+   *
+   * ⚠ THIS IS THE ONE DECLARATION IN THE FILE THAT LIVES ONLY ON THE ROOT ELEMENT. `scroll-behavior`
+   * is not inherited and the document scroller reads it from `<html>` alone, so a rule that reaches
+   * every element INSIDE the root still leaves it standing. Both reduced-motion blocks below must
+   * therefore match `<html>` itself — see the note above them.
+   */
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  /* Plus Jakarta Sans is the site's ONE voice by the owner's decision — headings always were, and
+     the interface and body copy now match, with Inter kept loaded as the metric-adjacent fallback
+     (both faces ship without a true italic, so nothing is lost in the swap). `font-sans` in
+     tailwind.config.ts carries the identical stack; these two must move together. */
+  font-family: var(--font-jakarta), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/*
+ * Every anchor target clears the fixed header by the SAME number the header is tall. Declared once
+ * here rather than as a `scroll-mt-28` repeated on every heading, which is how the two drift apart.
+ */
+:target,
+[id][data-anchor] {
+  scroll-margin-top: var(--nav-clearance);
+}
+
+/* Visible keyboard focus. Inputs keep their own ring; see `.field-input`. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--purple-700);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* High contrast also thickens the ring — the outline is the only cue a keyboard user gets. */
+:root[data-high-contrast="true"] a:focus-visible,
+:root[data-high-contrast="true"] button:focus-visible,
+:root[data-high-contrast="true"] [role="button"]:focus-visible,
+:root[data-high-contrast="true"] [tabindex]:focus-visible,
+:root[data-high-contrast="true"] summary:focus-visible,
+:root[data-high-contrast="true"] :is(input, select, textarea):focus-visible {
+  outline-width: 3px;
+  outline-offset: 3px;
+}
+
+/*
+ * Reduced motion — TWO SOURCES, UNIONED, NEVER SUBTRACTED.
+ *
+ * A media query cannot be OR-ed with a selector, so the same declarations are written twice: once
+ * behind the operating system's preference, once behind the `data-reduced-motion` attribute that
+ * lib/preferences.ts stamps on `<html>` for the in-app toggle. There is deliberately NO
+ * `[data-reduced-motion="false"]` rule: the in-app toggle can only ever ADD reduction, and a "false"
+ * rule would let it override the operating system's preference.
+ *
+ * ⚠ THE TWO BODIES ARE IDENTICAL AND THE TWO SELECTORS ARE NOT — that asymmetry is the trap, and it
+ * is why the attribute block lists `:root[data-reduced-motion="true"]` on its own line as well as its
+ * descendants. `*` inside the media query matches `<html>`; a descendant selector never can. Miss
+ * that and the toggle appears to work — every transition and animation on the page is flattened —
+ * while `scroll-behavior: smooth` survives on the root, so a Table of Contents entry, a footnote
+ * link or the skip link still animates a scroll of several thousand pixels: the single motion most
+ * likely to be what the reader pressed the switch to stop, and the one the OS preference gets right.
+ * Any declaration added to one block must be added to the other, in both of its selector forms.
+ *
+ * `transition-delay` is zeroed ALONGSIDE the duration, and that line is load-bearing: a
+ * zero-duration transition that still honours its delay is a staggered POP, not "no motion". Every
+ * stagger in this codebase is expressed as a `transition-delay` (which this reaches) rather than a
+ * JS timer (which it cannot).
+ *
+ * ⚠ CSS CANNOT REACH FRAMER-MOTION, which writes inline styles. Every framer animation must branch
+ * in JS via `useReducedMotionPreference()`. See components/motion/useReducedMotionPreference.ts.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-reduced-motion="true"],
+:root[data-reduced-motion="true"] *,
+:root[data-reduced-motion="true"] *::before,
+:root[data-reduced-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+/* Themed scrollbars — bg-0 track, line-200 thumb, purple on hover. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--bg-0));
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--line-200));
+  border-radius: 9999px;
+  border: 2px solid rgb(var(--bg-0));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(0.828 0.1 305); /* purple-300 */
+}
+
+/*
+ * Firefox fallback ONLY. Guarded, because setting `scrollbar-color` unguarded in Chromium disables
+ * the styled `::-webkit-scrollbar` rules above and you get the platform default back.
+ */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line-200)) rgb(var(--bg-0));
+  }
+}
+
+/*
+ * Background scroll lock, worn by <html> while a sheet or lightbox is open.
+ *
+ * On the ROOT ELEMENT and not only <body>, because iOS Safari quietly ignores `overflow: hidden` on
+ * the body and keeps panning the page under the open overlay. The gutter variable is measured and
+ * set in the instant before this class lands: freezing the document takes the scrollbar with it, and
+ * without paying that width back as padding every centred thing on the page jumps sideways.
+ */
+html.scroll-locked,
+html.scroll-locked body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.scroll-locked body {
+  padding-right: var(--scroll-gutter, 0px);
+}
+
+/* Clean number inputs — no native spinner arrows; values change by typing. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@layer components {
+  /* ── Form and action recipes (identical to the Field Repository's, §11.1) ───────────────── */
+
+  .field-input {
+    @apply w-full rounded-md border border-line-200 bg-card px-3.5 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-purple-600 focus:ring-4 focus:ring-purple-600/15;
+  }
+
+  .field-label {
+    @apply text-xs font-medium uppercase tracking-wide text-ink-500;
+  }
+
+  .field-button {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-purple-800 hover:shadow-cta disabled:cursor-not-allowed disabled:bg-line-200 disabled:text-ink-500 disabled:shadow-none;
+  }
+
+  .field-button-secondary {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-line-200 bg-card px-4 py-2 text-sm font-medium text-ink-900 transition hover:border-purple-300 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .field-button-ghost {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-ink-700 transition hover:bg-surface-100 hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .field-danger {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-error-200 bg-card px-3 py-2 text-sm font-medium text-error-600 transition hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .panel {
+    @apply rounded-lg border border-line-200 bg-card shadow-sm;
+  }
+
+  .display-title {
+    @apply font-display font-bold tracking-tight text-ink-900;
+  }
+
+  .surface-dark {
+    @apply rounded-lg bg-purple-950 text-white;
+  }
+
+  .section-band {
+    @apply rounded-lg bg-surface-50;
+  }
+
+  .eyebrow {
+    @apply text-[0.8125rem] font-semibold uppercase tracking-[0.14em] text-purple-700;
+  }
+
+  .file-trigger {
+    @apply inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-purple-300 bg-card px-4 py-2 text-sm font-medium text-purple-700 transition hover:border-purple-400 hover:bg-purple-50;
+  }
+
+  /* ── Institutional page frame ───────────────────────────────────────────────────────────── */
+
+  /*
+   * The one place the header clearance is paid. A page NEVER adds its own top padding for the
+   * header — that is how the Field Repository ended up with three numbers meaning one thing.
+   */
+  .page-top {
+    padding-top: var(--nav-clearance);
+  }
+
+  /*
+   * A FULL-BLEED HERO TAKES THE CLEARANCE ONTO ITSELF, so its artwork reaches the top of the
+   * viewport and the floating header sits ON it rather than in a band of page canvas above it.
+   *
+   * `.page-top` above pays the clearance as padding on `<main>`, which is right for type — prose
+   * must never slide under the header. But a hero that paints edge to edge wants the opposite: the
+   * 6rem of `--bg-0` above it reads as an empty strip separating the navigation from the page.
+   *
+   * So the number does not change hands, it changes ELEMENT. `<main>` stops paying, and the hero
+   * pays the identical amount inwards via `--bleed-top`, which every affected measurement on the
+   * hero reads (its top padding AND its min-height — see HeroSection.tsx). Content therefore lands
+   * on exactly the pixel it did before; only the backdrop moves. Still one number, still
+   * `--nav-clearance` (contract §7).
+   *
+   * ⚠ `:first-child` IS THE ENTIRE GUARD, and it is why this is safe to state once for the site.
+   * `AnnouncementBar` is `<main>`'s first child whenever an announcement is live, so on those days
+   * the hero is second, `--bleed-top` stays `0px`, and the clearance is paid the ordinary way — a
+   * bleeding hero must not pull an announcement bar up under the header. The default in the `var()`
+   * fallbacks is what makes the un-bled case cost nothing: no rule matches, so nothing is added.
+   */
+  /* The default, so the hero's own `calc()`s resolve to their pre-bleed values wherever no rule
+     below matches. Declared rather than left to a `var()` fallback because the fallback would have
+     to be repeated at all three call sites, which is the drift this contract exists to stop. */
+  [data-bleed-top] {
+    --bleed-top: 0px;
+  }
+
+  main.page-top:has(> [data-bleed-top]:first-child) {
+    padding-top: 0;
+  }
+
+  main.page-top > [data-bleed-top]:first-child {
+    --bleed-top: var(--nav-clearance);
+  }
+
+  /* The standard content column. Wide enough for a two-up grid, never wider than the eye tracks. */
+  .shell {
+    @apply mx-auto w-full max-w-[84rem] px-5 sm:px-8;
+  }
+
+  .shell-narrow {
+    @apply mx-auto w-full max-w-[52rem] px-5 sm:px-8;
+  }
+
+  /* Long-form prose measure. `--measure` is one number so an article and an MDX page agree. */
+  .prose-measure {
+    max-width: var(--measure);
+  }
+
+  /*
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE PROSE RECIPE — how a passage of text is actually set
+   *
+   * `lib/typography/typeset.ts` owns the vocabulary and the class names; this owns the rules, because
+   * they are things no utility can say: custom properties, element selectors, `::first-letter`, and a
+   * specificity that has to outrank what `components/RichText.tsx` writes.
+   *
+   * HOW IT BEATS RichText WITHOUT `!important`. RichText puts a literal utility on every node it draws
+   * — `mt-5` on a paragraph, `mt-12 text-2xl sm:text-3xl` on a heading — because there is no
+   * typography plugin here and the ink ladder is the only way prose inverts in the dark theme. A
+   * utility is one class: specificity (0,1,0). Every rule below is a class plus an element:
+   * (0,1,1). So the recipe wins on specificity, in any layer, whatever the source order.
+   *
+   * ⚠ EVERY SPACE IS WRITTEN AS `* + <element>`, NEVER AS A BARE MARGIN ON THE ELEMENT, and that is not
+   * a style preference. A bare `.prose-typeset p { margin-top }` reaches every paragraph in the
+   * document INCLUDING the ones RichText deliberately gives no margin — the label row inside a callout,
+   * the first paragraph of a cell — and would open a gap at the top of each of those boxes. The sibling
+   * combinator says the actual rule: space goes BETWEEN two things, so a block with nothing before it
+   * has nothing to be spaced from. It also means the recipe no longer depends on RichText's own
+   * `first:mt-0` to undo it, though that utility is (0,2,0) and would still win if it did.
+   *
+   * ⚠ WHAT THIS RECIPE DELIBERATELY DOES NOT TOUCH.
+   *
+   *   • **Heading FONT SIZES.** RichText sizes a heading by the LEVEL the editor chose, and clamps
+   *     level 1 and level 2 to the same `<h2>` tag (its own header explains why). A CSS rule on `h2`
+   *     therefore cannot tell those two levels apart, so any size written here would flatten an H1
+   *     into an H2 on every page on the site. The two `max()` guards below are the only exception and
+   *     they exist solely to stop a large reading size overtaking a heading — see them.
+   *   • **Figures, tables, code blocks and callouts.** Their spacing is block furniture at a fixed
+   *     rhythm and it is already right. The controls an editor was given are about TEXT.
+   *   • **Colour, in any form.** Every rung comes from the ink/line/surface ladders and inverts; a
+   *     literal neutral here would be the one part of a passage that did not (contract §1.2).
+   *
+   * ⚠ ORDER MATTERS TWICE IN THIS BLOCK, and both are easy to undo by tidying:
+   *   1. Every `.ts-*` class re-points a custom property that `.prose-typeset` also sets, at the SAME
+   *      specificity (0,1,0) and on the SAME element. Source order is therefore the only thing that
+   *      makes an override win, so the `.ts-*` classes MUST stay below the recipe.
+   *   2. `:is(h2, h3, h4) + *` and `p`/`ul`/`ol` margins are both (0,1,1). The heading rule comes
+   *      last on purpose, so the block after a heading loses its own top margin.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  .prose-typeset {
+    /* The defaults every `ts-*` class below re-points. They are the house style's own defaults, so a
+       document rendered with no classes at all is still set properly rather than unset. */
+    --prose-size: clamp(1rem, 0.975rem + 0.13vw, 1.0625rem);
+    --prose-leading: 1.7;
+    --prose-gap: 1.2em;
+    --prose-item-gap: 0.4em;
+
+    /* `--measure` rather than a `max-width`: the reading width stays ONE number for the whole site
+       (contract §7) and `.prose-measure`, which every caller also wears, is what reads it. */
+    --measure: 68ch;
+
+    /*
+     * ⚠ NO `font-family` HERE, AND THAT IS THE DESIGN. The reading face is a real Tailwind utility —
+     * `font-lora`, `font-crimson` — taken straight off `lib/typography/fonts.ts`, and the heading face
+     * is that file's class again through an arbitrary variant. Both land in the utilities layer, which
+     * is emitted AFTER this one, so a family declared here would be overridden anyway; declaring one
+     * would only add a second place a face could come from.
+     */
+
+    /*
+     * `pretty` is set on the container so it reaches paragraphs, list items, captions and callouts
+     * alike; headings take `balance` below. It is the single highest-value declaration in this file:
+     * it is what stops a paragraph ending on a two-letter widow. Browsers that do not know the value
+     * ignore it and wrap as they always did — there is no fallback to write.
+     */
+    text-wrap: pretty;
+
+    /*
+     * An opening quotation mark or bracket hangs into the margin instead of pushing the first line in
+     * by a character. Only WebKit honours it today; everywhere else this line does nothing at all,
+     * which is why it is safe to state plainly rather than hide behind `@supports`.
+     */
+    hanging-punctuation: first last;
+
+    /* A DOI, an archive permalink or a long transliterated compound must break rather than push the
+       measure open and give the whole page a sideways scrollbar. */
+    overflow-wrap: break-word;
+
+    font-kerning: normal;
+    font-variant-ligatures: common-ligatures contextual;
+  }
+
+  /*
+   * Body text. Size and leading are set on the ELEMENTS and not on the container, because RichText's
+   * root `<div>` carries `text-base leading-7` — a container-level `line-height` would be overridden
+   * by that class for every descendant, while a custom property passes straight through it.
+   */
+  .prose-typeset :is(p, li) {
+    font-size: var(--prose-size);
+    line-height: var(--prose-leading);
+    /*
+     * ⚠ 3 AND 3 ARE THE PRINT BLOCK'S NUMBERS, COPIED ON PURPOSE. These rules are (0,1,1) and the
+     * `p, li { orphans: 3 }` at the foot of this file is (0,0,1) — so anything different here would
+     * beat the paper edition and quietly undo it. They do nothing on a continuous screen; they are
+     * what a printed or multi-column rendering reads.
+     */
+    orphans: 3;
+    widows: 3;
+  }
+
+  .prose-typeset * + p,
+  .prose-typeset * + :is(ul, ol) {
+    margin-top: var(--prose-gap);
+  }
+
+  .prose-typeset * + li {
+    margin-top: var(--prose-item-gap);
+  }
+
+  .prose-typeset * + hr {
+    margin-top: calc(var(--prose-gap) * 2.2);
+  }
+
+  .prose-typeset * + blockquote {
+    margin-top: calc(var(--prose-gap) * 1.5);
+  }
+
+  /*
+   * A quotation is set slightly larger and tighter than the text around it, and the size is applied to
+   * the blockquote while its paragraphs are told to inherit. Re-pointing `--prose-size` on the
+   * blockquote would look neater and is illegal: a custom property whose value reads itself on the
+   * same element is a cycle, and the declaration is thrown away.
+   */
+  .prose-typeset blockquote {
+    font-size: calc(var(--prose-size) * 1.12);
+  }
+
+  .prose-typeset blockquote :is(p, li) {
+    font-size: inherit;
+    line-height: 1.55;
+  }
+
+  /* Numbers in a table are a column to be compared, so they get equal widths and lining figures. In
+     running prose they stay proportional, where they belong. */
+  .prose-typeset :is(th, td) {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  /*
+   * ── THE TWO ISLANDS THE READING SIZE MUST NOT FLOOD ─────────────────────────────────────────
+   *
+   * A table cell and the footnote list are set SMALL by RichText, on the cell and on the `<section>`
+   * respectively — and both hold ordinary `<p>` and `<li>` elements, which the rules above would drag
+   * back up to reading size. A footnote printed as large as the essay is not a footnote, and a table
+   * whose cells are 17px is a table that no longer fits its column.
+   *
+   * `inherit` rather than a restated size: whatever RichText decides those two contexts are, this
+   * follows it. The footnote hook is the `aria-label` the renderer gives the section — an attribute it
+   * sets for screen readers and therefore will not quietly drop, unlike a utility class.
+   */
+  .prose-typeset :is(th, td) :is(p, li),
+  .prose-typeset [aria-label="Footnotes"] :is(p, li) {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .prose-typeset [aria-label="Footnotes"] :is(ul, ol) {
+    margin-top: 0;
+  }
+
+  /*
+   * ── THE HEADING RHYTHM — the fix this whole recipe was written for ──────────────────────────
+   *
+   * Before it, a heading sat 48px below the previous paragraph and 20px above its own first sentence,
+   * and 20px is also the gap between two ordinary paragraphs. A heading no closer to the text it
+   * introduces than to the text it follows does not read as a title; it reads as a line of bold type
+   * adrift between two blocks.
+   *
+   * `1.6em` is measured against the heading's OWN size, which reproduces RichText's `mt-12` / `mt-10`
+   * / `mt-8` almost exactly at every level — so the space ABOVE a heading is unchanged and now scales
+   * with the size an editor chose. What changes is below it: the heading owns that gap, and the block
+   * that follows gives up its own margin entirely.
+   */
+  .prose-typeset :is(h2, h3, h4) {
+    margin-bottom: 0.5em;
+    text-wrap: balance;
+  }
+
+  .prose-typeset * + :is(h2, h3, h4) {
+    margin-top: 1.6em;
+  }
+
+  .prose-typeset h2 {
+    line-height: 1.15;
+  }
+
+  .prose-typeset h3 {
+    line-height: 1.25;
+  }
+
+  /*
+   * ⚠ THE ONE SIZE THIS FILE RESTATES, AND WHY. `1.125rem` is RichText's `text-lg` for a level-4
+   * heading — the only heading size small enough that a large reading size could overtake it, which
+   * would leave a "heading" set smaller than the paragraph under it. `max()` makes the guard inert at
+   * every size except the two largest. If RichText's level-4 size changes, this number must follow it.
+   */
+  .prose-typeset h4 {
+    line-height: 1.35;
+    font-size: max(1.125rem, calc(var(--prose-size) * 1.06));
+  }
+
+  /*
+   * The same guard for a level-3 heading, and ONLY below `sm`.
+   *
+   * ⚠ It is inside a media query for a reason that is invisible otherwise: RichText sizes a level-3
+   * heading `text-xl sm:text-2xl`, and a `sm:` variant carries no extra specificity — a media query
+   * never adds any. An unguarded rule here would therefore beat `sm:text-2xl` at EVERY width and
+   * silently delete the heading's responsive step. Below `sm` there is no variant to lose.
+   */
+  @media (max-width: 39.9375rem) {
+    .prose-typeset h3 {
+      font-size: max(1.25rem, calc(var(--prose-size) * 1.14));
+    }
+  }
+
+  /* The block after a heading belongs to it. Last of the (0,1,1) margin rules, so it wins the tie. */
+  .prose-typeset :is(h2, h3, h4) + * {
+    margin-top: 0;
+  }
+
+  /* Except another heading, which needs a real pause without the full break of a new section. */
+  .prose-typeset :is(h2, h3, h4) + :is(h2, h3, h4) {
+    margin-top: 0.8em;
+  }
+
+  /* ── The measure ────────────────────────────────────────────────────────────────────────────── */
+
+  .ts-measure-intimate {
+    --measure: 54ch;
+  }
+
+  .ts-measure-standard {
+    --measure: 68ch;
+  }
+
+  .ts-measure-generous {
+    --measure: 78ch;
+  }
+
+  .ts-measure-wide {
+    --measure: 88ch;
+  }
+
+  /* `none` is a legal `max-width`, so `.prose-measure` stops constraining rather than being removed —
+     which keeps ONE class on the element whatever the measure is. */
+  .ts-measure-full {
+    --measure: none;
+  }
+
+  /* ── The size scale ─────────────────────────────────────────────────────────────────────────────
+   *
+   * Fluid rather than stepped: a `clamp()` grows the text a little as the window does, so a passage is
+   * 16px on a phone and 17px on a desktop without a breakpoint to jump at. The `vw` term is small on
+   * purpose — text that visibly resizes as a window is dragged reads as a bug.
+   */
+  .ts-size-small {
+    --prose-size: clamp(0.9375rem, 0.92rem + 0.1vw, 1rem);
+  }
+
+  .ts-size-standard {
+    --prose-size: clamp(1rem, 0.975rem + 0.13vw, 1.0625rem);
+  }
+
+  .ts-size-large {
+    --prose-size: clamp(1.0625rem, 1.02rem + 0.22vw, 1.1875rem);
+  }
+
+  .ts-size-feature {
+    --prose-size: clamp(1.125rem, 1.04rem + 0.42vw, 1.3125rem);
+  }
+
+  /* ── Leading ────────────────────────────────────────────────────────────────────────────────── */
+
+  .ts-lead-tight {
+    --prose-leading: 1.4;
+  }
+
+  .ts-lead-snug {
+    --prose-leading: 1.55;
+  }
+
+  .ts-lead-comfortable {
+    --prose-leading: 1.7;
+  }
+
+  .ts-lead-relaxed {
+    --prose-leading: 1.85;
+  }
+
+  .ts-lead-loose {
+    --prose-leading: 2;
+  }
+
+  /* ── Paragraph spacing ──────────────────────────────────────────────────────────────────────────
+   *
+   * In `em`, so the rhythm follows the size of the text it separates: a gap fixed in `rem` looks tight
+   * under Feature-sized text and cavernous under Small.
+   */
+  .ts-gap-tight {
+    --prose-gap: 0.8em;
+    --prose-item-gap: 0.3em;
+  }
+
+  .ts-gap-standard {
+    --prose-gap: 1.2em;
+    --prose-item-gap: 0.4em;
+  }
+
+  .ts-gap-open {
+    --prose-gap: 1.75em;
+    --prose-item-gap: 0.55em;
+  }
+
+  /*
+   * ── Indented paragraphs — the book setting ──────────────────────────────────────────────────
+   *
+   * `p + p` is the whole rule and it is exact: only a paragraph whose immediate predecessor is also a
+   * paragraph is indented, so the passage's first paragraph, and the first after a heading, a list, a
+   * quotation or a figure, all start flush — which is how indented prose has always been set. The gap
+   * goes at the same time; an indent AND a blank line say the same thing twice.
+   */
+  .ts-para-indented p + p {
+    margin-top: 0;
+    text-indent: 1.5em;
+  }
+
+  /* ── How headings break ─────────────────────────────────────────────────────────────────────── */
+
+  .ts-heading-pretty :is(h2, h3, h4) {
+    text-wrap: pretty;
+  }
+
+  .ts-heading-plain :is(h2, h3, h4) {
+    text-wrap: wrap;
+  }
+
+  /*
+   * ── Hyphenation ─────────────────────────────────────────────────────────────────────────────
+   *
+   * ⚠ IT DOES NOTHING WITHOUT A `lang` ATTRIBUTE. Hyphenation is dictionary work, so a browser will
+   * not guess a language; `<html lang>` in app/layout.tsx is what makes this line have an effect.
+   * `hyphenate-limit-chars` keeps it civilised — no word under six letters is broken, and never with
+   * fewer than three letters on either side of the break.
+   */
+  .ts-hyphens-on :is(p, li) {
+    -webkit-hyphens: auto;
+    hyphens: auto;
+    hyphenate-limit-chars: 6 3 3;
+  }
+
+  .ts-justify-on :is(p, li) {
+    text-align: justify;
+    text-justify: inter-word;
+  }
+
+  /*
+   * ── The drop cap ────────────────────────────────────────────────────────────────────────────
+   *
+   * ⚠ THE SELECTOR'S SHAPE IS THE WHOLE CARE IN THIS RULE. `> * >` means "the first paragraph inside
+   * the ONE wrapper `components/RichText.tsx` renders" — the first paragraph of the document, whether
+   * or not a heading precedes it, and nothing deeper. A plainer `p:first-of-type` would also set a
+   * three-line capital in the first paragraph of every callout, every quotation and every list item.
+   * If RichText ever stops rendering exactly one root element, the drop cap stops appearing; it will
+   * not appear in the wrong place.
+   *
+   * `float` rather than `initial-letter`, which is the property actually designed for this and is
+   * WebKit-only: a float behaves the same everywhere, and a treatment that aligned correctly in one
+   * browser and approximately in the rest is harder to judge than one that is the same in all of them.
+   *
+   * The colour comes from the ink ladder, so the capital inverts with the rest of the passage — and it
+   * is deliberately NOT purple: purple-700 is the action colour, and a decorative letter wearing it
+   * teaches a reader that purple is not always something to press (contract §1.1).
+   */
+  .ts-dropcap > * > p:first-of-type::first-letter {
+    float: left;
+    font-size: 3.1em;
+    line-height: 0.82;
+    font-weight: 600;
+    padding-right: 0.07em;
+    margin-top: 0.04em;
+    color: rgb(var(--ink-900));
+  }
+
+  /*
+   * ── Pull quotes, optically aligned ──────────────────────────────────────────────────────────
+   *
+   * RichText gives a quotation a left rule and 1.25rem of padding, so its words start a quarter of an
+   * inch inside the text around it and the passage develops a dent. Pulling the whole quotation left
+   * by rather more than its own padding puts the QUOTED WORDS back on the text's edge and leaves the
+   * rule hanging in the margin, which is how a quotation is set in print.
+   *
+   * ⚠ FROM 40rem UP ONLY. The negative margin spends about 25px of whatever sits to the left of the
+   * text; below `sm` the shell has only 20px of padding there, so the rule would touch the edge of the
+   * screen. Under that width the quotation stays indented, which is the honest fallback.
+   */
+  @media (min-width: 40rem) {
+    .ts-quote-hanging blockquote {
+      margin-left: -1.45em;
+      padding-left: 1.25em;
+    }
+  }
+
+  /*
+   * "THIS ROW, JUST NOW" — the answer to a selection made somewhere else on the page.
+   *
+   * TWO SIGNALS, DELIBERATELY, and only one of them is motion. The ring is a plain static outline:
+   * it is what a reader sees who looked away during the pulse, and — the point — it is the ONLY half
+   * that survives `prefers-reduced-motion`, where the global rule above collapses every animation to
+   * 0.01ms. A "which one" signal that exists only as movement is a signal those readers never get.
+   *
+   * `outline` rather than `box-shadow` or a border: these rows already carry a conditional selected
+   * border and a focus-visible ring, and an outline stacks with both without changing the box.
+   *
+   * Driven by a `data-flash` ATTRIBUTE, not a class, so React can flip it without touching the
+   * className a dozen conditional styles are already composing.
+   */
+  .flash-row[data-flash="true"] {
+    outline: 2px solid var(--purple-700);
+    outline-offset: 2px;
+    animation: fr-row-flash 700ms ease-out 1;
+  }
+
+  /*
+   * The navigation sheet (phones and tablets).
+   *
+   * The PANEL is the scroller: a bounded height, its own overflow, and `overscroll-behavior:
+   * contain` so reaching the last item does not hand the gesture to the page underneath.
+   *
+   * ⚠ THE DOUBLED `max-height` IS PROGRESSIVE ENHANCEMENT, NOT A DUPLICATE. With `vh` alone the
+   * closing items sit below the fold while the phone's address bar shows — which is exactly when a
+   * thumb reaches for the menu. Browsers that know `dvh` take the second declaration.
+   */
+  .nav-sheet {
+    --nav-sheet-top: 5rem;
+    margin-top: var(--nav-sheet-top);
+    max-height: calc(100vh - var(--nav-sheet-top) - 1rem);
+    max-height: calc(100dvh - var(--nav-sheet-top) - 1rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 1.5rem;
+    /* The home indicator sits over the foot of the sheet; the last item has to clear it. */
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* A phone in landscape leaves barely 350px of height — give the list back the chrome it can spare. */
+  @media (max-height: 560px) {
+    .nav-sheet {
+      --nav-sheet-top: 4.25rem;
+      padding: 1rem;
+      padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    }
+  }
+
+  /*
+   * Both of these are `position: fixed`, so their containing block is the viewport rather than
+   * <body> and the padding the scroll lock puts on the body cannot reach them. They re-pay the
+   * vanished scrollbar themselves, otherwise the header and the sheet drift right as a menu opens.
+   */
+  .nav-frame {
+    padding-left: 0.75rem;
+    padding-right: calc(0.75rem + var(--scroll-gutter, 0px));
+  }
+
+  .overlay-frame {
+    padding-right: var(--scroll-gutter, 0px);
+  }
+
+  /*
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * A skeleton placeholder — AND THE ONLY SWEEP VOCABULARY IN THIS PRODUCT
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * The sweep is the motion half; `background-color` is the static half, so under reduced motion the
+   * block is still visibly a placeholder rather than an empty area of page (§1.5).
+   *
+   * ⚠ IT USED TO ANIMATE `background-position`, WHICH NO ENGINE COMPOSITES. A 200%-wide gradient slid
+   * across the element by `background-position`, `infinite`, on the MAIN THREAD. One placeholder is
+   * nothing; a loading table renders twenty of them (`components/studio/DataTable.tsx` draws
+   * `skeletonRows` bars, `MediaGrid` draws twelve tiles times three bars), and twenty permanent
+   * repaint loops at 60fps land on exactly the screens whose main thread is already blocked on the
+   * fetch these bars are standing in for. The animation was competing with the work it was reporting.
+   *
+   * THE REPLACEMENT IS A TRANSLATED CHILD INSIDE AN OVERFLOW-HIDDEN FRAME, which is the only shape
+   * that expresses "a highlight travels across this box" using nothing but `transform`. The element
+   * becomes the frame (`relative` + `overflow: hidden`) and its `::after` is the travelling highlight.
+   * A pseudo-element rather than a real child because `.skeleton` is worn by ~20 empty `<div>`s across
+   * the studio that this file cannot reach — every one of them is `<div className="skeleton …" />`
+   * with no children, so a `::after` is the only child that can be added from here at all.
+   *
+   * ⚠ THE RESTING TRANSFORM IS `-100%` AND IT IS LOAD-BEARING, not a tidy starting value. A CSS
+   * animation with no `forwards` fill returns the element to its BASE style when it stops, and the
+   * reduced-motion rules at the top of this file stop it after 0.01ms with one iteration. With no base
+   * transform the highlight would come to rest at `translate(0)` — parked in the middle of the frame,
+   * permanently, for every reader who asked for less motion. On `.skeleton` that would be a bright
+   * band across every placeholder; on `ProgressBar`'s indeterminate track it would be worse than
+   * cosmetic, because a purple band sitting halfway along a progress bar reads as "50% done" on a bar
+   * whose entire meaning is that the total is unknown. Parked off the left, the static tint underneath
+   * is all that remains, which is exactly what §1.4 asks for.
+   *
+   * ⚠ ONE KEYFRAME, ONE NAME, ONE DEFINITION. `@keyframes sweep` is at the foot of this file, outside
+   * every `@layer`, so it cannot be purged; tailwind.config.ts declares `animation.sweep` (the
+   * `animate-sweep` utility ProgressBar writes) and deliberately declares NO keyframe of that name.
+   * The long note there says why, and reversing it is how twenty skeletons stop animating in silence.
+   * The only other travelling-light animation in the repository is `cxa-jaali-shimmer` in
+   * app/craft-tapestry.css, which is NOT this vocabulary and must not be merged into it: it is a
+   * 46-second architectural conceit moving daylight across a pierced screen, in absolute SVG user
+   * units, and it is already transform-only.
+   */
+  .skeleton {
+    @apply relative overflow-hidden rounded-md bg-surface-200;
+  }
+
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* See the ⚠ above: this is where the highlight RESTS, not merely where it starts. */
+    transform: translate3d(-100%, 0, 0);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(var(--surface-300) / 0.7) 50%,
+      transparent 100%
+    );
+    animation: sweep 1.8s ease-in-out infinite;
+  }
+
+  /*
+   * A SHUT DISCLOSURE PANEL — `components/ui/Accordion.tsx`.
+   *
+   * The panel is always in the document (its header says why: a closed section that is not in the
+   * document cannot be printed, and this site's disclosures are FAQ answers, which is the thing
+   * people print). `display: none` is what shuts it, and it is what makes a closed panel unreachable
+   * by both keyboard and screen reader — the two properties the previous unmount was buying.
+   *
+   * ⚠ IT IS DECLARED HERE RATHER THAN LEFT TO `[hidden]` IN THE USER-AGENT STYLESHEET, and the
+   * difference is not pedantry. A UA declaration is beaten by ANY author declaration for the same
+   * property regardless of specificity — so a single `flex`, `block` or `grid` utility landing on that
+   * element, from a className prop or a redesign, would defeat the browser's rule and leave every
+   * closed panel open with no error to notice. This rule is (0,2,0) and a utility is (0,1,0), so it
+   * cannot be beaten by one. The attribute is still what says the panel is shut; this only makes the
+   * consequence of saying so non-negotiable.
+   *
+   * The paper edition overrides exactly this pair — see group 12 of the print block below.
+   */
+  [data-accordion-panel][hidden] {
+    display: none;
+  }
+}
+
+/*
+ * ONE PULSE, NOT A LOOP. A repeating highlight reads as an error state and pulls the eye away from
+ * whatever the reader chose to look at next. The purple is the product's single action colour, at
+ * the low alpha that reads as a wash over a white or purple-50 row rather than as a second fill.
+ *
+ * ⚠ THIS IS THE ONE ANIMATION IN THE PRODUCT THAT MOVES A PAINT PROPERTY, AND IT IS A DELIBERATE
+ * TRADE RATHER THAN AN OVERSIGHT. `background-color` is not composited, so each of the ~42 frames
+ * repaints the row. The transform/opacity version needs an absolutely-positioned overlay child, and
+ * the busiest caller — `components/studio/DataTable.tsx` — puts `.flash-row` on a `<tr>`, where an
+ * absolutely-positioned pseudo-element does not lay out as a dependable full-row overlay across
+ * engines (a table row establishes no reliable containing block, and the alternative of positioning
+ * every `<td>` changes the table's own layout). It is bounded in every direction that matters: ONE
+ * row, ONE iteration, 700ms, and only in answer to something the reader just did. Recorded here so
+ * the next audit does not re-find it as an unexamined violation of §8.
+ */
+@keyframes fr-row-flash {
+  0% {
+    background-color: oklch(0.47 0.198 305 / 0.22);
+  }
+  60% {
+    background-color: oklch(0.47 0.198 305 / 0.1);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/*
+ * THE SWEEP — one keyframe, one definition, two callers.
+ *
+ * `.skeleton::after` above and the `animate-sweep` utility that `components/ui/ProgressBar.tsx`
+ * writes both resolve to THIS block, and nothing else in the repository may add a second one. It
+ * lives outside every `@layer` on purpose: content in `@layer components` / `@layer utilities` is
+ * subject to Tailwind's content scan, and a keyframe that can be purged is a keyframe that can
+ * disappear because an unrelated component stopped writing a class string.
+ *
+ * The child is the same size as its frame, so `-100%` parks it entirely off the left edge and `100%`
+ * entirely off the right — the highlight crosses the frame exactly once per cycle. `translate3d`
+ * rather than `translateX` so the layer is promoted for the duration of the animation and handed
+ * back afterwards, which is what "set while animating, cleared after" means when the library doing
+ * it is the browser.
+ *
+ * ⚠ The `from` value must stay identical to the resting `transform` on the elements that use it, or
+ * a reduced-motion reader gets a highlight frozen wherever the base style happens to put it. Both
+ * are stated at `.skeleton::after` and in ProgressBar's markup; changing one means changing three.
+ *
+ * ⚠ AND THE TIMING — `1.8s ease-in-out infinite` — IS WRITTEN IN TWO PLACES ON PURPOSE, WHICH IS THE
+ * LESSER OF TWO EVILS RATHER THAN AN OVERSIGHT. `.skeleton::after` declares it directly, and
+ * `animation.sweep` in tailwind.config.ts declares it for the `animate-sweep` utility ProgressBar
+ * writes. The two must agree, or a loading table and the upload bar beside it sweep at different rates
+ * on the same screen. The one-definition alternative — `.skeleton::after { @apply animate-sweep; }` —
+ * was considered and rejected: it would make every skeleton in the CMS depend on a key in the Tailwind
+ * config, where today `.skeleton` depends on nothing outside this file, and that is precisely the
+ * coupling the long note above `animation.sweep` in that config exists to prevent. A figure repeated
+ * in two files, with a ⚠ in both, is cheaper than twenty placeholders that stop animating because
+ * somebody tidied a config.
+ */
+@keyframes sweep {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+@layer utilities {
+  .grad-brand {
+    background-image: var(--grad-brand);
+  }
+
+  .grad-mesh {
+    background-image: var(--grad-mesh);
+  }
+
+  /* Gold gradient text — hero headline spans and institutional marketing copy ONLY. */
+  .text-gold-gradient {
+    background-image: var(--grad-gold);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .text-gradient-violet {
+    background-image: var(--grad-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /*
+   * Frosted glass.
+   *
+   * ⚠ Requires a TRANSLUCENT backdrop from the caller — the filter refracts what is behind it, and
+   * an opaque fill underneath paints over the result. Glass must never be NESTED: an ancestor with
+   * its own `backdrop-filter` or `opacity < 1` becomes the backdrop root and the child refracts its
+   * parent instead of the page.
+   */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+  }
+
+  .glass-dark {
+    background: rgba(30, 27, 46, 0.5);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .ambient-light {
+    background-image: var(--grad-mesh);
+  }
+
+  /*
+   * Film-grain noise.
+   *
+   * An inline SVG `feTurbulence` as a data URI: no network request, no image asset to keep in step,
+   * and it scales to any element. Very low alpha — grain that is visible as grain reads as a
+   * rendering fault; grain you cannot see is what stops a large flat gradient from banding.
+   */
+  .noise::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /*
+   * Edge fades for horizontal scrollers (logo rows, tag rails, the news ticker).
+   *
+   * `mask-image` rather than an overlaid gradient, because an overlay has to know the background
+   * colour behind it and would be wrong in the other theme.
+   */
+  .mask-edges-x {
+    -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+    mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+  }
+
+  /*
+   * Balanced headline wrapping. Progressive: browsers without `text-wrap: balance` simply wrap
+   * normally, which is the pre-existing behaviour and not a regression.
+   */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+/*
+ * ════════════════════════════════════════════════════════════════════════════
+ * PRINT — the paper edition of this site
+ *
+ * Researchers print things: a publication list to mark up, a craft record to carry into a workshop,
+ * a call for applications to pin to a board. Before this block they got the floating navigation pill
+ * stamped across the first page, a dark-theme cartridge burn, and — worst of all — a mostly BLANK
+ * sheet, because every section below the fold enters through `components/motion/Reveal`, which ships
+ * `opacity: 0` in the markup and waits for an IntersectionObserver that a print never fires.
+ *
+ * FOUR PRINCIPLES, in the order they matter:
+ *
+ *   1. REVEAL THE REVEALED (groups 6 and 12). Nothing else in here matters if the page is empty. Two
+ *      mechanisms hide content until somebody acts: `Reveal`'s `opacity: 0`, waiting for a scroll that
+ *      a print never performs, and a shut disclosure panel, waiting for a press. Both are undone.
+ *   2. Colour is re-pointed at the TOKENS, not patched onto components (group 2). Flipping the
+ *      paper edition to a light ground is the same one-place edit that flipping a theme is.
+ *   3. Chrome that cannot be operated on paper is removed (groups 4 and 13) — but a sentence that
+ *      STATES a truncation is never chrome, and neither is a control whose LABEL is the content.
+ *      `ResultSummary` prints; the "Load more" button that cannot be pressed does not; an accordion
+ *      trigger prints, because the thing inside it is the question. That division is deliberate:
+ *      contract §1.6 survives the transfer to paper.
+ *   4. Nothing is silently cut (groups 7, 8 and 12). A horizontal rail that clips on screen is a
+ *      gesture away from its remainder; on paper the remainder does not exist, so it is unclipped
+ *      rather than cropped. A closed disclosure is the same fault with a press instead of a swipe.
+ *
+ * ⚠ ONE ASSUMPTION UNDERPINS THE WHOLE BLOCK: browsers do not print background fills unless the
+ * reader ticks "Background graphics". So the dark bands (`bg-purple-950`, `.surface-dark`, the
+ * footer) would otherwise print as WHITE-ON-WHITE — invisible text, not a dark rectangle. That is
+ * why the neutralisation below forces both halves at once: backgrounds off AND ink dark. The sheet
+ * then looks identical whether or not that checkbox is ticked, which is the only way to make a
+ * printed page predictable.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+@media print {
+  /* ── 1. The page box ────────────────────────────────────────────────────────────────────────
+   * A generous, symmetrical margin: printed research gets annotated in the margin, and a duplex
+   * print has no "inside" edge to favour. `@page` sits inside `@media print` deliberately — it is
+   * the one at-rule that belongs with the rules it is paginating, and keeping the paper edition in
+   * a single block is what stops half of it being deleted by someone who did not know about the
+   * other half.
+   */
+  @page {
+    margin: 16mm;
+  }
+
+  /*
+   * ── 2. A light ground and dark ink, REGARDLESS of the reader's theme ────────────────────────
+   *
+   * Re-pointed at the ROOT, exactly as `[data-theme="dark"]` and `[data-high-contrast]` do it.
+   * Every component keeps reading the same eleven triplets it always read; only the numbers behind
+   * them change. Patching colours onto components instead would be a second theming mechanism that
+   * has to be kept in step with the first for ever.
+   *
+   * ⚠ THE SELECTOR LIST IS NOT DECORATION. `:root` alone is specificity (0,0,1) and would LOSE to
+   * `:root[data-theme="dark"]` (0,1,1) and to `:root[data-theme="dark"][data-high-contrast="true"]`
+   * (0,2,1) no matter how late it appears in the file — the cascade weighs specificity before
+   * source order. The last selector here ties the heaviest of those and comes later, so it wins.
+   * The boot script always stamps `data-theme`, so the bare `:root` is only the belt to that
+   * braces; both are kept.
+   *
+   * `color-scheme: light` is load-bearing and easy to miss: left at `dark` the UA paints form
+   * controls, scrollbars and `<input>` interiors dark, and a printed registration form comes out
+   * with black boxes where the answers should go.
+   */
+  :root,
+  :root[data-theme],
+  :root[data-high-contrast],
+  :root[data-theme][data-high-contrast] {
+    color-scheme: light;
+
+    /* Paper is the canvas. Every surface rung collapses onto it: a tinted panel costs toner and
+       separates nothing that a rule and whitespace do not separate better in print. */
+    --bg-0: 255 255 255;
+    --card: 255 255 255;
+    --surface-50: 255 255 255;
+    --surface-100: 255 255 255;
+    --surface-200: 255 255 255;
+    --surface-300: 255 255 255;
+
+    /* The one token that must get DARKER rather than lighter. Borders are the only structure left
+       once the fills are gone, and #e4e2ef lands on paper as nothing at all. */
+    --line-200: 122 122 122;
+
+    /* The ink ladder flattens towards black. The muted rungs keep a little separation for captions
+       and metadata, but nothing here is light enough to disappear on a tired laser printer — a
+       grey that reads beautifully on a backlit screen is the grey that prints as a smudge. */
+    --ink-900: 0 0 0;
+    --ink-700: 0 0 0;
+    --ink-500: 51 51 51;
+    --ink-300: 85 85 85;
+
+    /* The header is hidden below, so the clearance it is owed is nothing. `.page-top` reads this
+       variable and would otherwise open 6rem of blank paper above the first line of every page. */
+    --nav-clearance: 0rem;
+    --nav-clearance-compact: 0rem;
+
+    /*
+     * The width of a scrollbar that a sheet of paper does not have. The scroll lock measures the real
+     * scrollbar and hands it back as padding on `<body>` (:299) and on every fixed overlay that cannot
+     * inherit the body's padding (`.nav-frame` :854, `.overlay-frame` :858, `Dialog.tsx:336`,
+     * `MediaLightbox.tsx:303`, `ToastProvider.tsx:119` — contract §6). Left at its measured value, a
+     * page printed with a sheet or the lightbox open carries ~15px ≈ 4mm of stray gutter down the
+     * right-hand edge ONLY, against the symmetrical margin group 1 has just decided.
+     *
+     * Zeroing the variable fixes all six consumers at once, which is the same argument as the palette
+     * above: one place decides, and every consumer already reads `var(--scroll-gutter, 0px)` rather
+     * than a hard-coded width.
+     *
+     * ⚠⚠ AND `!important` IS THE ENTIRE REASON THIS DECLARATION WORKS AT ALL — WITHOUT IT THE LINE IS
+     * INERT IN BOTH STATES, WHICH IS WHAT IT WAS. `lockScroll()` (components/ui/useScrollLock.ts:61)
+     * writes the measured width with `root.style.setProperty("--scroll-gutter", …)`: a STYLE-ATTRIBUTE
+     * declaration, on `<html>` — the very element `:root` matches. A style attribute outranks every
+     * normal author rule regardless of selector weight or source order, so the plain
+     * `--scroll-gutter: 0px` lost to it in the one state that matters. And in the other state (nothing
+     * locked) the property is not set at all, so every consumer was already taking its `0px` fallback
+     * and the declaration changed nothing there either. An important author declaration DOES beat a
+     * normal style-attribute one, which is the whole cascade step this rule now stands on.
+     *
+     * ⚠ It follows that a per-consumer print rule (`html.scroll-locked body { padding-right: 0 }` and
+     * friends) is NOT needed and must not be added back: that is a downstream filter, one rule per
+     * consumer, and the fourth consumer somebody adds will not get one. See the note in group 4 where
+     * such a rule briefly lived.
+     */
+    --scroll-gutter: 0px !important;
+  }
+
+  /*
+   * ── 3. Neutralising the screen's depth ─────────────────────────────────────────────────────
+   *
+   * Shadows, blurs, glass and gradient meshes are all ways of separating surfaces in a lit medium.
+   * On paper they are either invisible or a stain, so they go — and with them every literal
+   * light-on-dark brand surface, which is the half the token block above cannot reach: `.surface-dark`,
+   * the hero bands and the footer are `bg-purple-950` + `text-white` as LITERAL brand classes,
+   * because brand colour does not invert (contract §1.2).
+   *
+   * ⚠ FORCING `color` ON `*` IS SAFE HERE FOR ONE SPECIFIC REASON, and it is a contract clause:
+   * colour never carries meaning alone on this site (contract §11 — every status has an icon and a
+   * word). Flattening the palette therefore removes decoration, never information. On a codebase
+   * where a bare colour swatch meant something, this rule would be data loss.
+   *
+   * The colour still comes from `--ink-900` rather than a literal `#000`, so group 2 stays the one
+   * place the paper palette is decided.
+   *
+   * `background` is the SHORTHAND on purpose: it clears `background-image` (the mesh, the noise
+   * data-URI, `next/image`'s blur placeholder) in the same declaration as the fill.
+   */
+  *,
+  *::before,
+  *::after {
+    background: transparent !important;
+    color: rgb(var(--ink-900)) !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    /* A transition or animation caught mid-flight would otherwise be printed mid-flight. */
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /*
+   * The two gradient-text utilities set `color: transparent` and paint the glyphs with a clipped
+   * background. The rule above has just taken that background away, so without this they would
+   * print as nothing at all — the headline of the page, missing. The forced `color` above restores
+   * the glyphs; `background-clip` and `-webkit-text-fill-color` are reset as well because the
+   * prefixed pair is not reliably cleared by the standard shorthand.
+   */
+  .text-gold-gradient,
+  .text-gradient-violet {
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+
+  /* The one highlight that carries meaning: a search term inside prose. It loses its amber wash
+     with everything else, so the emphasis is re-stated as an underline that survives monochrome. */
+  mark {
+    text-decoration: underline;
+    font-weight: 600;
+  }
+
+  /*
+   * ── 4. Chrome that means nothing on paper ──────────────────────────────────────────────────
+   *
+   * Every selector here names ONE thing, and names it by a stable class or attribute rather than by
+   * position or by a Tailwind utility that a redesign will move. Where the hook is a house class
+   * (`.nav-frame`, `.nav-sheet-overlay`) it is one already declared in this file.
+   *
+   * ⚠ `button[type="button"]` IS THE PRECISE SPELLING OF "TRIGGERS JAVASCRIPT" IN THIS CODEBASE,
+   * not a guess: `components/ui/Button.tsx` defaults `type` to `"button"` and every control that
+   * submits a form passes `type="submit"` explicitly. So a printed contact form keeps its submit
+   * button (which is at least a truthful record of what the form does) while dismiss buttons, sheet
+   * toggles, lightbox openers and filter chips go. It also means a "Load more" control disappears —
+   * which is safe ONLY because the sentence that owns the cap is `ResultSummary`, prose rather than
+   * a control, and prints with the list (contract §1.6).
+   *
+   * ⚠⚠ AND IT HAD ONE EXCEPTION IT DID NOT KNOW ABOUT, WHICH DELETED THE QUESTIONS FROM EVERY PRINTED
+   * FAQ. `components/ui/Accordion.tsx` puts the disclosure's TITLE inside its trigger — the trigger is
+   * a `button[type="button"]` wrapped in an `<h3>`, and the question is the button's own label. So the
+   * rule above was not removing a control from the sheet; it was removing the heading. A printed FAQ
+   * page came out as a run of answers with nothing saying what any of them answered. That is the exact
+   * inverse of the failure group 7 recorded (only the OPEN section printed): between them, a printed
+   * page of disclosures had no questions and one answer.
+   *
+   * `:not([data-accordion-trigger])` is the whole fix, and it is stated as an exclusion on the rule
+   * itself rather than as a later rule putting the button back, so there is one place that decides
+   * whether a control prints. The attribute is set by `Accordion.tsx`, which carries the other half of
+   * this note. ⚠ THE PRINCIPLE GENERALISES AND IS WORTH RE-CHECKING: this selector is a claim that no
+   * `button[type="button"]` anywhere on the site carries content rather than an affordance. That claim
+   * was false once already.
+   */
+  a[href="#main-content"], /* the skip link — a tab-order affordance, meaningless on paper */
+  a[href="#studio-main"], /* the studio's own skip link, same reasoning */
+  .nav-frame, /* the floating header pill; fixed, so it would otherwise stamp page one */
+  .nav-sheet-overlay, /* the mobile navigation sheet and its scrim */
+  [data-announcement], /* the announcement band: a dismissible, time-boxed notice */
+  button[type="button"]:not([data-accordion-trigger]), /* see above */
+  button[aria-haspopup="dialog"] + [role="dialog"] {
+    /* the accessibility menu's panel — a sibling of its own trigger, which is the only stable
+       relationship the component offers; hiding it by id is impossible, the id is generated */
+    display: none !important;
+  }
+
+  /*
+   * ⚠⚠ THE TWO OVERLAYS THE LIST ABOVE COULD NOT REACH, BECAUSE THEY ARE PORTALLED TO <body> ⚠⚠
+   *
+   * `components/ui/Dialog.tsx:181` and `components/site/MediaLightbox.tsx:121` both `createPortal`
+   * their root to `<body>`, outside the tree that rendered them, and both roots are `fixed inset-0`.
+   * A fixed element paints ONCE, over the first sheet, and whatever it overlaps is printed underneath
+   * it — the identical mechanism group 13 works out at length for the studio sidebar. Neither had a
+   * rule of any kind, and the gap was easy to miss because the only dialog selector in this block was
+   * the ADJACENT-SIBLING one immediately above, which cannot match either of them: a portalled root
+   * is not a sibling of its trigger, it is a child of `<body>`.
+   *
+   * ⚠ AND GROUP 3 MAKES THE FAILURE WORSE RATHER THAN SAFER. `background: transparent !important` on
+   * `*` has already deleted the lightbox's `bg-purple-950/92` scrim, so the overlay does not even
+   * cover what it sits on. Open a plate on /craft-explorer/<slug> and press Ctrl+P: the photograph
+   * (capped at 11cm by group 9) and its caption bar print SUPERIMPOSED on the article's own text,
+   * both layers legible, and the sheet is unreadable. The scrim was the only thing that would have
+   * made it merely wrong instead of illegible.
+   *
+   * THE HOOKS, AND WHY THESE TWO RATHER THAN A UTILITY. `data-dialog` is already load-bearing in
+   * three other places — `Popover` reads it to discover it is inside a modal (Popover.tsx:170),
+   * `ConfirmProvider` counts it (:95), `StudioShell` queries it to decide who owns Escape (:241) — so
+   * it is the most stable attribute in the overlay stack and cannot be removed by a redesign without
+   * breaking those first. The lightbox has no data attribute, so it is caught by `aria-modal="true"`,
+   * which it sets because it genuinely is modal.
+   *
+   * That second selector also matches three elements that are already hidden: the `Dialog`'s inner
+   * panel (Dialog.tsx:360, inside the root this rule has just hidden), the nav sheet (NavSheet:223,
+   * inside `.nav-sheet-overlay` above) and the studio slide-over (StudioShell:393, `data-studio-chrome`
+   * in group 13). Hiding them a second time costs nothing and is the point: the rule closes the CLASS
+   * "a modal overlay is on screen when Ctrl+P is pressed" rather than the two instances of it that
+   * exist today.
+   * ⚠ It deliberately does NOT reach the accessibility menu. `AccessibilityMenu.tsx:213` refuses
+   * `aria-modal` on purpose — the page behind it stays operable — and carries a comment saying so, so
+   * that panel keeps its own selector above and this rule stays a statement about modality only.
+   *
+   * HIDE RATHER THAN RELEASE, AND THE ALTERNATIVE WAS WEIGHED. `position: static` would drop the
+   * overlay into flow and print it as a sheet of its own. Nothing is gained by that: a dialog is
+   * transient state (a confirm, a link editor, a media picker) and the lightbox's photograph is the
+   * plate the reader clicked, which is ALREADY on the paper — every `MediaLightboxProvider` on this
+   * site wraps a grid that was rendered on the server and stays in the document (GallerySection.tsx:342,
+   * craft-explorer/[slug]:570, events/[slug]:646, gallery/[slug]:317, projects/[slug]:727). Printing a
+   * second copy of it on top of the prose it belongs to is the defect, not the feature.
+   *
+   * ⚠ AND THE ONE CASE THAT WOULD OVERTURN THIS DECISION DOES NOT EXIST HERE: nothing in this product
+   * calls `window.print()` (grep over app/, components/, lib/, scripts/ → no hits), so a print is
+   * always the reader's own Ctrl+P and is NEVER initiated from inside an overlay. If a "Print this
+   * record" control is ever added to a dialog, this rule is the first thing that has to change — it
+   * would be hiding the very thing the button was pressed to print.
+   */
+  [data-dialog],
+  [aria-modal="true"] {
+    display: none !important;
+  }
+
+  /*
+   * The site footer, and ONLY the site footer.
+   *
+   * ⚠ `footer.noise` RATHER THAN BARE `footer`, and the reason is still live: `<footer>` is also the
+   * action row of the studio's media detail panel (`MediaDetailPanel.tsx:856`), which prints as part
+   * of a media record and must keep it. `.noise` is the film-grain utility that only the site footer
+   * wears, so it is the one hook that separates the two.
+   *
+   * ⚠ The media lightbox's caption bar (`MediaLightbox.tsx:422`) used to be the SECOND half of that
+   * argument — the credit line under a printed photograph. It is not any more: the rule above hides
+   * the whole lightbox on paper, so its `<footer>` never reaches this selector by either route. The
+   * half is recorded rather than deleted because a reader who checks the producers, finds only one
+   * left and drops `.noise` on that basis would still silently delete the studio panel's action row.
+   *
+   * The footer's own contents — a duplicate of the navigation, social icons and a copyright line —
+   * are a way back into a site the reader has already left.
+   */
+  footer.noise {
+    display: none !important;
+  }
+
+  /*
+   * The reading-progress spine (`components/motion/ScrollProgress`).
+   *
+   * It has no class of its own — position and height come from the caller — so the hook is its
+   * TRACK, whose three utility classes are literal inside ScrollProgress.tsx and not caller-supplied.
+   * Hiding the track takes the fill and the travelling node with it and leaves a zero-width wrapper.
+   * A progress indicator on paper is a claim about a scroll position that no longer exists.
+   */
+  [aria-hidden="true"] > .relative.h-full.w-px.bg-line-200 {
+    display: none !important;
+  }
+
+  /*
+   * `components/site/StudioDoorway` NEEDS NO RULE AND THAT IS NOT AN OVERSIGHT — it returns `null`.
+   * The doorway into the CMS is a `keydown` listener on `window` plus a seven-click counter on the
+   * footer wordmark (which the rule above removes with the footer). There is nothing on the page to
+   * hide, and a selector invented for it would be a rule nobody could ever verify.
+   */
+
+  /*
+   * Sticky in-page chrome (the studio top bar, a table of contents, a table head, an editor's aside)
+   * is in flow, so it only needs releasing rather than removing: left sticky, engines either repeat
+   * it on every sheet or freeze it over the content beneath.
+   *
+   * ⚠ THE BARE `.sticky` ON ITS OWN WAS NOT ENOUGH, AND THE MISS WAS INVISIBLE FOR THE SAME REASON
+   * GROUP 13's SIDEBAR BUG WAS. Thirteen panes on this site are sticky only from a breakpoint up —
+   * `lg:sticky` and `xl:sticky` — and Tailwind compiles those to `.lg\:sticky` / `.xl\:sticky` INSIDE
+   * `@media (min-width: 1024px)` / `(min-width: 1280px)`, which a bare class selector cannot reach.
+   * A print resolves `min-width` against the PAGE BOX rather than the window, and group 13 already
+   * works the arithmetic out: A4 landscape with the margins set to none is 297mm ≈ 1122px, over `lg`.
+   * So on precisely the sheet somebody printing a wide studio table chooses, every one of those panes
+   * stayed sticky — and five of them also cap their height in viewport units and scroll, which is the
+   * silent truncation group 7 below now closes.
+   *
+   * `[class*=":sticky"]` matches the class ATTRIBUTE, which holds the unescaped `lg:sticky`, so one
+   * selector covers every variant that exists and every variant anybody adds later. It is deliberately
+   * the colon form rather than `[class*="sticky"]`: the latter would also match a future component
+   * class that merely has the word in its name, and there is no reason to reach that far.
+   *
+   * Known callers, so the next reader can check the claim rather than trust it:
+   * app/studio/{events/[id]/EventEditor,news/[id]/ArticleEditor}.tsx,
+   * components/studio/builder/PageBuilder.tsx, components/site/CraftMap.tsx,
+   * components/sections/StoryScrollSection.tsx, app/(site)/craft-explorer/[slug]/page.tsx,
+   * and six `xl:sticky` studio detail panes.
+   */
+  .sticky,
+  [class*=":sticky"] {
+    position: static !important;
+  }
+
+  /*
+   * THE BACKGROUND SCROLL LOCK IS RELEASED FOR PAPER.
+   *
+   * `html.scroll-locked` sets `overflow: hidden` on the ROOT ELEMENT (see the rule near the top of
+   * this file — it is on `<html>` and not only `<body>` because iOS Safari ignores it on the body).
+   * It is worn for as long as a nav sheet or the media lightbox is open, which is to say: for exactly
+   * as long as somebody might press Ctrl+P with one open. Root overflow participates in pagination in
+   * engines that honour it, so the whole document can come out as a single clipped sheet — the largest
+   * possible version of "nothing stops quietly", from a class that has nothing to do with printing.
+   *
+   * Nothing is lost by releasing it: there is no scrolling on paper.
+   */
+  html.scroll-locked,
+  html.scroll-locked body {
+    overflow: visible !important;
+  }
+
+  /*
+   * ⚠ AND THE GUTTER THAT LOCK PAID BACK NEEDS NO RULE HERE, WHICH IS A DECISION AND NOT AN OVERSIGHT
+   * — the same shape of note as `StudioDoorway` above, and worth as much, because a rule DID live here
+   * and was wrong.
+   *
+   * The lock is two declarations, not one: the `overflow` above, and `padding-right:
+   * var(--scroll-gutter)` on the body (:299), which exists so freezing the document does not jump every
+   * centred thing sideways as the scrollbar disappears. Releasing only the first left ~15px of measured
+   * SCROLLBAR width as a right-hand margin on every sheet printed with an overlay open — roughly 4mm
+   * of paper, off one edge only, on a page whose margins group 1 has already decided. Group 3's `*`
+   * reset cannot reach it: that rule resets colour, shadow, filter, transition and animation, and
+   * never touches box metrics.
+   *
+   * ⚠ IT IS FIXED VARIABLE-SIDE, IN GROUP 2, and it has to be. `html.scroll-locked body {
+   * padding-right: 0 !important }` stood here first and did work — for `<body>`. It did nothing for the
+   * five OTHER consumers of the same variable, because a fixed overlay cannot inherit the body's
+   * padding and pays the gutter itself: `.nav-frame` (:854), `.overlay-frame` (:858),
+   * `Dialog.tsx:336`, `MediaLightbox.tsx:303`, `ToastProvider.tsx:119`. Two of those five are hidden
+   * on paper by rules above and a third by group 13, but `Dialog` and the lightbox were still
+   * computing a 15px right padding on a printed sheet, and the next consumer somebody adds would have
+   * got no rule at all and no error anywhere. One `!important` on `--scroll-gutter` in group 2 reaches
+   * all six, because every one of them reads the variable rather than a literal width. The
+   * per-consumer rule was a downstream filter for a defect with one root; it is gone, and group 2
+   * carries the cascade reasoning (`lockScroll()` writes a style attribute, which is why the
+   * `!important` is load-bearing).
+   */
+
+  /*
+   * ── 5. Where a link actually goes ──────────────────────────────────────────────────────────
+   *
+   * A printed citation is worth nothing without its destination, so an absolute URL is spelled out
+   * after the link text. `word-break` because a DOI or an archive permalink is longer than a column
+   * and would otherwise push the whole page sideways.
+   */
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    word-break: break-all;
+  }
+
+  /*
+   * ⚠ AND WHERE IT IS NOISE. An in-page anchor prints as "(#methodology)", which tells the reader
+   * nothing they cannot see, and a navigation list prints as forty URLs nobody asked for. The
+   * `content: none` here beats the rule above by source order at equal specificity — `cn()` is not
+   * the only place in this product where later-wins is the mechanism.
+   */
+  a[href^="#"]::after,
+  nav a[href^="http"]::after,
+  [role="navigation"] a[href^="http"]::after {
+    content: none;
+  }
+
+  /*
+   * ── 6. ⚠⚠ REVEAL THE REVEALED — the rule this whole block exists for ⚠⚠ ────────────────────
+   *
+   * `components/motion/Reveal` renders `opacity: 0` INTO THE SERVER MARKUP as an inline style and
+   * clears it from a `whileInView` observer. Printing does not scroll, so on a long page the
+   * observer has fired for the first screenful and nothing else: the sheet is structurally complete
+   * and visually blank from the fold down. Every heading, every publication row, every craft record.
+   *
+   * `!important` is REQUIRED and for exactly the reason `Reveal`'s own `<noscript>` rescue documents:
+   * the zero is an INLINE style, which no normal declaration can outrank. Nothing is being overridden
+   * by force that anybody wanted — a print has no viewport to enter and no animation to interrupt.
+   *
+   * Keyed on `data-reveal`, the attribute `Reveal` stamps on itself and `HeroSection` stamps by hand
+   * on the four elements its variants drive; `data-hero-word` and `data-hero-thread` are the hero
+   * headline's equivalents, hidden by a Tailwind class and an inline dash offset respectively until
+   * GSAP runs. Those three attributes are the complete set of "invisible until JavaScript says
+   * otherwise" on this site, and each is a deliberate, documented hook rather than a class name that
+   * a restyle would take away.
+   *
+   * ⚠ DO NOT GENERALISE THIS TO `.opacity-0`. That class is also worn by things that are SUPPOSED to
+   * stay invisible: the anchor-link icon RichText reveals on hover, the map's hover label, a
+   * checkbox's unticked tick, and the lightbox's two off-screen neighbours. Forcing them all visible
+   * prints tooltips over photographs and ticks in empty boxes.
+   */
+  [data-reveal],
+  [data-hero-word] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  [data-hero-thread] {
+    stroke-dashoffset: 0 !important;
+  }
+
+  /*
+   * ── 7. Nothing stops quietly ───────────────────────────────────────────────────────────────
+   *
+   * A horizontal rail is honest on screen: the reader can see it continues and swipe. On paper the
+   * off-screen half is simply gone, with nothing to say so — the exact failure contract §1.6 is
+   * about, arriving through CSS instead of through a query. So the rails are unclipped and allowed
+   * to wrap onto as many lines as they need, which prints all of the cards instead of the first two
+   * and a half.
+   *
+   * `.overflow-hidden` is unclipped for the same reason and one more: the partner-logo marquee is a
+   * clipped track, not a scroller, so on paper it would print exactly one screenful of a row that
+   * has no screen. Unclipping it is safe because nothing on this site uses `overflow-hidden` to keep
+   * something permanently out of sight — a closed `ui/Accordion` panel is `display: none` rather than
+   * clipped, and the lightbox's off-screen neighbours are `opacity-0` as well as clipped.
+   *
+   * ⚠ THIS PARAGRAPH USED TO RECORD A LIMIT THAT IS NOW CLOSED, and the old text is worth keeping in
+   * view because the limit was real: *"a closed accordion section is not in the document, so no
+   * stylesheet can print it. A page whose body is a set of disclosures prints as its open one; making
+   * the paper edition print all of them is a change in `ui/Accordion`, not here."* That change was
+   * made. `Accordion` now hides a shut panel instead of unmounting it, which keeps it unreachable by
+   * keyboard and by screen reader while leaving it somewhere a stylesheet can reach — and group 12
+   * below is the stylesheet half. The unclipping here is what then lets a revealed panel print at its
+   * full height instead of at the height its last animation left it.
+   *
+   * `.mask-edges-x` has to go with them: it is a `mask-image` that fades the first and last 6% to
+   * transparent, and a mask does not know it is being printed. Left in place it would erase the very
+   * cards the unclipping just recovered.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠⚠ THE TWO CLASS SELECTORS THAT USED TO BE HERE COVERED TWO UTILITIES OUT OF FIVE, AND THE THREE
+   * THEY MISSED ARE THE ONES THAT LOSE CONTENT.
+   *
+   * They were `.overflow-x-auto, .overflow-hidden`. What the site actually writes is `overflow-hidden`
+   * (47), `overflow-x-auto` (28), `overflow-y-auto` (9), `lg:overflow-y-auto` (4) and `overflow-auto`
+   * (2) — so a **vertical** scroller was never unclipped, and neither was any breakpoint-prefixed one
+   * (Tailwind compiles `lg:overflow-y-auto` to `.lg\:overflow-y-auto` inside a media query, which a
+   * bare class selector cannot reach; see the sticky note in group 4 for why that query MATCHES on a
+   * wide sheet). A vertical scroller is the shape that hides things on paper, because paper is tall.
+   *
+   * ⚠ AND A SCROLLER ONLY HIDES ANYTHING IF SOMETHING CAPS ITS HEIGHT, WHICH IS THE OTHER HALF. The
+   * whole population of `max-h-*` on this site is thirteen instances and every one of the eleven that
+   * are not on an image is a scroll container's cap — five of them viewport-relative
+   * (`max-h-[calc(100vh-6rem)]` and friends), which on paper resolves against the PAGE BOX and means
+   * nothing at all. Together the pair silently removed:
+   *   • `app/studio/analytics/page.tsx:320` — a list capped at `max-h-64` with the rest scrolled away;
+   *   • `app/studio/provenance/ProvenanceConsole.tsx:1215` and
+   *     `components/studio/builder/SectionEditorPanel.tsx:277` — a `<pre>` of stored JSON, cut at
+   *     16rem, on the two screens whose whole purpose is showing a record's stored payload (and group
+   *     8 lists `pre` in its `break-inside: avoid` set, so it is expected to print WHOLE);
+   *   • the studio's editor asides and `components/site/CraftMap.tsx`'s region list, which are the
+   *     `lg:sticky lg:max-h-[…vh] lg:overflow-y-auto` panes named in group 4.
+   * That is contract §1.6 — a list that quietly stops is indistinguishable from a place with no
+   * records — arriving through CSS instead of through a query, which is why no route or data check
+   * could ever have seen it.
+   *
+   * ⚠ `max-height` IS SET ON THE OVERFLOW RULE AS WELL AS ON ITS OWN, AND THAT IS NOT BELT-AND-BRACES.
+   * `components/site/TableOfContents.tsx:159` writes its cap as an INLINE
+   * `maxHeight: calc(100vh - var(--nav-clearance) - 3rem)` (its comment explains why: `calc()` needs
+   * spaces that an arbitrary Tailwind value has to smuggle through as underscores). No class selector
+   * can see an inline style, and an author `!important` is the only thing in the cascade that outranks
+   * one — so the release has to ride a selector that matches that element, and its `overflow-y-auto` is
+   * the only hook it offers.
+   *
+   * ⚠⚠ AND THE `:not(img):not(svg):not(video):not(canvas)` IS LOAD-BEARING — WITHOUT IT THIS RULE
+   * DEFEATS GROUP 9 AND PRINTS ONE PHOTOGRAPH PER SHEET. Two elements on this site put `max-h-full` on
+   * an image: `components/site/MediaLightbox.tsx:376` and `app/studio/media/MediaLibrary.tsx:791`.
+   * `[class*="max-h-"]` is specificity (0,1,0) and group 9's `img { max-height: 11cm !important }` is
+   * (0,0,1), and BOTH are `!important`, so the attribute selector would win on specificity and the
+   * 11cm cap — the rule that stops the archive printing as a flick-book — would silently stop applying
+   * to exactly the two images most likely to be full-bleed. The exclusion cannot match those elements
+   * at all, so group 9 keeps them.
+   *
+   * `line-clamp-*` goes with the pair for the same reason and there are only three of them: a clamp is
+   * a `-webkit-line-clamp` on an `overflow: hidden` flex box, and a paragraph cut at two lines with an
+   * ellipsis is a paragraph the reader cannot finish and cannot widen.
+   *
+   * ⚠ WHAT IS DELIBERATELY *NOT* RELEASED: `truncate`. It is 101 call sites across 95 files, mostly
+   * studio table cells, and releasing it means `white-space: normal` on all of them — a printed table
+   * whose rows grow to fit their longest cell. That is very probably the right paper edition (a
+   * truncated email address in a printed inquiries table is useless), but it is a layout change on a
+   * hundred surfaces and it must be LOOKED AT before it lands, not reasoned about. The rule to add,
+   * when somebody can capture it, is
+   * `.truncate { overflow: visible !important; white-space: normal !important; text-overflow: clip !important }`.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  [class*="overflow-"] {
+    overflow: visible !important;
+  }
+
+  [class*="overflow-"]:not(img):not(svg):not(video):not(canvas),
+  [class*="max-h-"]:not(img):not(svg):not(video):not(canvas) {
+    max-height: none !important;
+  }
+
+  /* Tailwind's clamp is four declarations — `overflow: hidden`, `display: -webkit-box`,
+     `-webkit-box-orient: vertical` and the line count. Standing the count down alone does nothing
+     while the box is still a `-webkit-box`, so the display goes back to `block` and the clip with it. */
+  [class*="line-clamp-"] {
+    -webkit-line-clamp: unset !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  /*
+   * A rail that has been unclipped still has to be told it may take more than one line. Left as a
+   * single-line flex row it would simply run off the right edge of the sheet instead of being cropped
+   * at it, which trades an honest crop for a dishonest one.
+   */
+  .flex.overflow-x-auto {
+    flex-wrap: wrap !important;
+  }
+
+  .mask-edges-x {
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+  }
+
+  /*
+   * ── 8. Pagination — what may be split, and what may not ────────────────────────────────────
+   *
+   * A caption on the sheet after its photograph is a caption attached to the wrong picture, and a
+   * heading alone at the foot of a page is a promise the reader has to turn over to collect. Both
+   * are stated twice: the modern `break-*` properties, and their `page-break-*` predecessors, which
+   * are what older Safari and some print pipelines still honour. The pair is not a duplicate.
+   */
+  figure,
+  figcaption,
+  blockquote,
+  pre,
+  tr,
+  li {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    break-after: avoid-page;
+    page-break-after: avoid;
+    /* A heading also needs its own two or three lines of company below it, which `break-after`
+       alone does not guarantee on a heading that itself wraps. */
+    orphans: 3;
+    widows: 3;
+  }
+
+  p,
+  li {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /*
+   * ── 9. Photographs ─────────────────────────────────────────────────────────────────────────
+   *
+   * Two failures at once without this. A hero image sized in viewport units resolves `vh` against
+   * the PAGE box, so one photograph takes one whole sheet and the archive prints as a flick-book.
+   * And a `next/image` in `fill` mode is `object-fit: cover`, which crops whatever does not fit the
+   * box it was given — on screen that box was chosen for the viewport, on paper it was not.
+   *
+   * `max-height` in `cm` rather than a percentage: the constraint is the sheet, and the sheet is
+   * measured in physical units. ~11cm leaves room for a caption and several lines of text beneath
+   * the largest picture on an A4 page.
+   *
+   * ⚠ `height` IS DELIBERATELY NOT FORCED TO `auto`. A `next/image` with `fill` is absolutely
+   * positioned at `height: 100%` of a parent that supplies the aspect ratio; setting `auto` on it
+   * collapses the image to nothing. `max-height` bounds it without taking its sizing away.
+   */
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100% !important;
+    max-height: 11cm !important;
+    object-fit: contain !important;
+  }
+
+  /* An image is worth a page break to keep whole, but never worth a page of its own. */
+  img {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /*
+   * 10. NOTHING ON PAPER IS MEASURED IN VIEWPORT HEIGHTS.
+   *
+   * ⚠ THIS WAS FOUND BY ACTUALLY LOOKING AT A PRINT RENDER, and it is the difference between a
+   * usable printout and a wasted first sheet. The hero is `min-h-[88vh]` and the story chapters are
+   * `lg:min-h-[60vh]`; a printer resolves `vh` against the page box, so the hero alone claimed most
+   * of sheet one and pushed the heading — the thing somebody printed the page FOR — below the fold
+   * of a piece of paper that has no fold.
+   *
+   * The attribute-substring match is deliberately blunt: on paper there is no case in which a
+   * viewport-relative MINIMUM height is what the author meant. It cannot touch a fixed height, an
+   * aspect ratio or an explicit `h-` utility, so a figure keeps its shape.
+   */
+  [class*="min-h-["],
+  [class*="min-h-screen"] {
+    min-height: 0 !important;
+  }
+
+  /*
+   * 11. THE HERO'S DECORATION DOES NOT PRINT.
+   *
+   * The opening band is built out of absolutely-positioned `aria-hidden` layers — the jaali lattice,
+   * the pigment drift, the noise wash, the particle canvas. Group 3 removes their BACKGROUNDS, but
+   * these draw with real elements and SVG, so they survived and printed as a grey pattern strip
+   * across the top of the sheet with the headline nowhere near it.
+   *
+   * Keyed on `data-hero` (stamped by `components/sections/HeroSection.tsx`) rather than on a class,
+   * so restyling the hero cannot silently put the pattern back. Everything hidden here is already
+   * `aria-hidden`, which is to say it carries no information for anybody — on screen it is
+   * atmosphere, and atmosphere does not survive a laser printer in any case.
+   */
+  [data-hero] [aria-hidden="true"] {
+    display: none !important;
+  }
+
+  /*
+   * And the hero's own ground goes with them: `bg-purple-950` is removed by group 3, but the band
+   * keeps its padding, so without this the sheet opens with several centimetres of nothing.
+   */
+  [data-hero] {
+    padding-top: 0 !important;
+    padding-bottom: 1rem !important;
+  }
+
+  /*
+   * ── 12. ⚠⚠ EVERY DISCLOSURE PRINTS OPEN — THE OTHER HALF OF THE ACCORDION CHANGE ⚠⚠ ────────
+   *
+   * `components/ui/Accordion.tsx` keeps a shut panel in the document and closes it with the `hidden`
+   * attribute, precisely so this rule can exist. Group 7 above records what it used to say, and why
+   * the limit was real: a closed section that had been UNMOUNTED was beyond any stylesheet's reach, so
+   * a printed page of questions and answers came out holding one answer.
+   *
+   * `display: block` rather than `revert` or `initial`: the shut state is declared by this file (see
+   * `[data-accordion-panel][hidden]` in the components layer, and the note there on why it may not be
+   * left to the user-agent stylesheet), and `revert` on an author-origin declaration reverts to the UA
+   * value — which for a `<div>` carrying `[hidden]` is `display: none` again. So the value is stated.
+   *
+   * ⚠ NOTHING ELSE HAS TO BE UNDONE FOR THIS TO WORK, and it is worth saying which existing groups are
+   * carrying it, because it looks under-specified for a panel whose height is animated:
+   *   • group 3 forces `animation: none` on everything, so `animate-accordion-down` — whose `to` value
+   *     is a measured pixel height — never applies, and the panel keeps its natural `height: auto`.
+   *   • group 7 unclips `.overflow-hidden`, which this wrapper wears, so nothing is cropped even if a
+   *     stale `--accordion-content-height` were somehow in play.
+   *   • group 4 no longer deletes the trigger, so the QUESTION prints above its answer. That was a
+   *     separate and larger bug in the same feature — see the ⚠⚠ in group 4.
+   * The three together mean a printed FAQ is the whole document, in order, with no motion state in it.
+   *
+   * ⚠ AND IT IS DELIBERATELY NOT KEYED ON `aria-expanded`. The trigger says whether the reader opened
+   * the section; the panel says whether it is displayed. Only the second is what has to be undone, and
+   * keying on the first would make the paper edition depend on the two never disagreeing — which they
+   * do for the length of every closing animation, since `aria-expanded` is already `false` while the
+   * panel is still on screen playing `animate-accordion-up`.
+   */
+  [data-accordion-panel][hidden] {
+    display: block !important;
+  }
+
+  /*
+   * The chevron goes, though, because it is the one part of the trigger that IS an affordance. It
+   * points down beside a section that is printed open, which on paper is a statement about a state
+   * nobody can change. It is `aria-hidden` in the component, so nothing is lost by removing it —
+   * and it is named through the trigger rather than as a bare `svg`, which would reach every icon in
+   * the product.
+   */
+  [data-accordion-trigger] svg {
+    display: none !important;
+  }
+
+  /*
+   * ── 13. THE STUDIO'S FRAME IS NOT PART OF A PRINTED STUDIO SCREEN ──────────────────────────
+   *
+   * An administrator prints from the CMS — a table of pending inquiries to work through away from the
+   * screen, a publication record to check against a PDF. `components/studio/StudioShell.tsx` had no
+   * print hook at all, and the failure it produced is a good example of why "it looked fine when I
+   * tried it" is not a print test.
+   *
+   * ⚠ THE SIDEBAR IS `position: fixed`, SO IT STAMPS PAGE ONE AND NOTHING ELSE — a fixed element paints
+   * once, over the first sheet, and the content it overlaps is printed underneath it. It is also
+   * `hidden lg:flex`, which is what makes the bug INTERMITTENT and therefore easy to ship: a print
+   * lays out against the PAGE box, not the window, and `lg` is 1024px = 270.9mm of content. At the
+   * 16mm margins group 1 asks for, A4 portrait gives 178mm and A4 landscape 265mm — both under, so
+   * the sidebar stays `display: none` and the sheet looks correct. It appears the moment the page box
+   * is wider than about 303mm: A3 landscape, Tabloid landscape, or — the realistic one — A4 LANDSCAPE
+   * WITH MARGINS SET TO NONE OR MINIMUM IN THE PRINT DIALOG, which overrides `@page` and lifts A4
+   * landscape to 297mm ≈ 1122px. Landscape with tight margins is exactly what somebody printing a wide
+   * studio data table chooses. So the fault is invisible on the default sheet and certain on the sheet
+   * this content asks for.
+   *
+   * The same `lg` threshold governs the content column's `lg:pl-64` (or `lg:pl-[4.5rem]` collapsed),
+   * so on those same wide sheets 16rem of the paper's width was being spent on a gutter for a sidebar
+   * that is no longer there. Both are keyed on data attributes rather than on the utilities, because
+   * the utilities are exactly what a redesign moves and the sidebar's own width is already stated in
+   * two literal class strings that the shell's comments explain must stay literal (contract §5).
+   *
+   * `[data-studio-chrome]` covers three elements and all three are frame rather than content: the
+   * pinned sidebar, and the slide-over sheet and its scrim, which are only in the document at all if
+   * the reader pressed Ctrl+P with the menu open — a fixed panel and a full-viewport scrim, both of
+   * which would otherwise print over the screen they were opened from.
+   *
+   * ⚠ THE TOP BAR DELIBERATELY STAYS. Its buttons are already gone (group 4 — the hamburger, the
+   * jump-to trigger, the accessibility menu and the account menu are all `type="button"`), and what
+   * remains is the derived breadcrumb: "Studio / Publications / This record". On paper that is the
+   * only thing on the sheet that says which screen it came from, which is worth more than the 16mm of
+   * height it costs. It is `.sticky`, which group 4 has already stood down to `static`, so it prints
+   * once in flow at the top rather than repeating or freezing over the content.
+   */
+  [data-studio-chrome] {
+    display: none !important;
+  }
+
+  [data-studio-frame] {
+    padding-left: 0 !important;
+  }
+}

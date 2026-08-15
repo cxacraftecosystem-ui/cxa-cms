@@ -1,0 +1,69 @@
+/*
+ * The cinematic story's ambient layer — the breath of the night canvas.
+ *
+ * Composited transforms only (translate/rotate/scale), so the whole atmosphere costs the GPU a
+ * few layers and the main thread nothing. Both reduced-motion gates are already global: the
+ * blocks in globals.css collapse every animation below to its first frame, and every keyframe
+ * here BEGINS at its resting pose for exactly that reason — a collapsed orb is a still orb where
+ * the design put it, not a stranger mid-swing.
+ *
+ * `[data-cine-ambient="off"]` is the offscreen pause, flipped by CinematicScrollStage from an
+ * IntersectionObserver — the ChartMate hero's own trick, restated here: an ambient layer eight
+ * viewports behind the reader is pure heat. It pauses rather than resets, so scrolling back picks
+ * the breath up where it left off.
+ */
+
+@keyframes cxa-cine-breathe {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(2%, -3%, 0) scale(1.07);
+  }
+}
+
+@keyframes cxa-cine-breathe-counter {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(-2.5%, 2%, 0) scale(1);
+  }
+}
+
+@keyframes cxa-cine-sway {
+  from {
+    transform: rotate(-5deg) translateY(0);
+  }
+  to {
+    transform: rotate(4deg) translateY(-6px);
+  }
+}
+
+.cxa-cine-orb {
+  animation: cxa-cine-breathe 22s ease-in-out infinite alternate;
+}
+
+.cxa-cine-orb--counter {
+  animation: cxa-cine-breathe-counter 27s ease-in-out infinite alternate;
+}
+
+.cxa-cine-buti {
+  animation: cxa-cine-sway 16s ease-in-out infinite alternate;
+}
+
+[data-cine-ambient="off"] .cxa-cine-orb,
+[data-cine-ambient="off"] .cxa-cine-orb--counter,
+[data-cine-ambient="off"] .cxa-cine-buti {
+  animation-play-state: paused;
+}
+
+/*
+ * The jaali's light. The lattice SVG is a mask of voids over this soft radial wash, so the
+ * pattern reads as light coming THROUGH a pierced screen (its geometry file insists on exactly
+ * this use). The fade keeps the texture from painting a hard rectangle onto the night.
+ */
+.cxa-cine-jaali {
+  -webkit-mask-image: radial-gradient(65% 65% at 50% 45%, black 30%, transparent 78%);
+  mask-image: radial-gradient(65% 65% at 50% 45%, black 30%, transparent 78%);
+}

@@ -1,0 +1,37 @@
+/*
+ * The PLATFORM_PILLARS block's one CSS animation: the breath of the gold "query" node in the
+ * knowledge-based-systems drawing.
+ *
+ * Composited transform only, and the keyframe BEGINS at its resting pose on purpose: the global
+ * reduced-motion blocks in globals.css collapse every animation to its first frame, so a collapsed
+ * breath is a still node exactly where the design put it — never a stranger mid-swing. The pulse is
+ * paired with a static state (the always-drawn ring around the node) so the signal survives being
+ * stilled (contract §1.4).
+ *
+ * `[data-pillars-ambient="off"]` is the offscreen pause, flipped by PillarsStage from a
+ * ScrollTrigger — the cinematic story's own economy (app/cinematic-story.css): a breath running
+ * eight viewports behind the reader is pure heat. It pauses rather than resets, so scrolling back
+ * picks it up where it left off.
+ *
+ * `transform-box: fill-box` because the class sits on an SVG group: without it the scale's origin
+ * is the viewBox corner and the "breath" is a lurch across the drawing.
+ */
+
+@keyframes cxa-pillars-pulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.06);
+  }
+}
+
+.cxa-pillars-query {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cxa-pillars-pulse 4s ease-in-out infinite alternate;
+}
+
+[data-pillars-ambient="off"] .cxa-pillars-query {
+  animation-play-state: paused;
+}

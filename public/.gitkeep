@@ -1,0 +1,9 @@
+This directory exists so `public/` is present in a fresh checkout.
+
+Next serves anything here at the site root. It is deliberately almost empty: the favicon, the Apple
+touch icon, the web manifest and the default social card are all produced by the FILE CONVENTIONS in
+`app/` (icon.svg, apple-icon.tsx, manifest.ts, opengraph-image.tsx), which keeps them in step with the
+institution's configured name instead of going stale as committed binaries.
+
+⚠ Do not delete the directory. `Dockerfile` copies it into the runtime image, and a `COPY` of a path
+that does not exist fails the build with "not found" — which is how this file came to be written.
