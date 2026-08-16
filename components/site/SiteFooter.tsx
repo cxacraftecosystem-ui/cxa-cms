@@ -156,13 +156,13 @@ export function SiteFooter({ branding, contact, social, footer, items }: SiteFoo
       outer element carries no text, so the themed token under unconditionally-white type is never
       in play (theme-check's rule).
 
-      ⚠ `z-10` IS ALSO THE FLUID CURSOR'S STACKING CONTRACT, not decoration — see the header of
-      `components/site/SplashCursor.tsx`. That canvas is `fixed … z-0` and is the LAST child of the
-      site wrapper, so without an index here the footer loses to DOM order and the trail paints over
-      the whole band. This element was already `relative`, which is what makes an index take effect;
-      `<main>` carries the matching class in app/(site)/layout.tsx.
+      ⚠ `z-[45]` IS ALSO THE FLUID CURSOR'S STACKING CONTRACT, not decoration — see the header of
+      `components/site/SplashCursor.tsx`. That canvas is `fixed … z-40`, and this band is a large
+      opaque surface the trail would otherwise smear straight across. An ARBITRARY value, because tailwind.config.ts keeps `zIndex` stock (…40, 50) and 45 is not a class. It is the same rung `.bg-card`
+      takes in globals.css, for the same reason and against the same canvas — above the trail, below
+      the z-50 header.
     */
-    <footer className="relative z-10 bg-bg-0">
+    <footer className="relative z-[45] bg-bg-0">
       {/* `text-white` lives HERE, beside the literal purple-950 it depends on — putting it on the
           themed outer element above is exactly the inverting-scrim defect theme-check exists to
           catch (it did). */}

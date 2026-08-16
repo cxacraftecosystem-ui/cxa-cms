@@ -245,9 +245,23 @@ export function AiOrb({ className }: { className?: string }) {
         {showShader ? <Orb className="absolute inset-0" enableVoiceControl={listening} onVoiceDetected={setSpeaking} /> : null}
       </div>
 
-      {/* The invitation. Never rendered under reduced motion — there is no moving orb to drive,
-          and a control whose only effect is invisible is a broken control. */}
-      {!reduce ? (
+      {/*
+        The invitation.
+
+        ⚠ THIS USED TO BE GATED ON `!reduce`, AND THAT IS WHY THE MICROPHONE WAS "NOT FUNCTIONAL AT
+        ALL". The reasoning was sound when it was written — under reduced motion the shader never
+        mounts, so the button's only effect would have been an orb that does not turn, and a control
+        with no visible effect is a broken control. But it meant a reader with reduced motion on, at
+        the operating system OR through this site's own toggle, got no button at all: nothing to
+        press, no permission prompt, no way in. That is not a degraded feature, it is a missing one,
+        and it is invisible to anyone testing without the preference set.
+
+        It no longer holds either way. Pressing this now produces three things that have nothing to
+        do with motion — the browser's permission prompt, the state line below, and the transcript —
+        so the control has a visible effect under reduction too. REDUCED MOTION IS NOT REDUCED SOUND;
+        it is a request about things that move, and the orb's stillness already honours it.
+      */}
+      {
         <button
           type="button"
           aria-pressed={listening}
@@ -266,7 +280,7 @@ export function AiOrb({ className }: { className?: string }) {
             </>
           )}
         </button>
-      ) : null}
+      }
 
       {/* One quiet line of state. `aria-live` deliberately absent — "speaking/quiet" flips with
           every sentence and a screen reader narrating that is noise (the §8 readout rule). */}

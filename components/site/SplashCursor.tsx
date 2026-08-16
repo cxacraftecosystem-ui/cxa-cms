@@ -48,16 +48,18 @@
  *   `z-40` (the scrim rung) — visible, and WRONG: the trail washed over the top of every card,
  *      photograph and panel on the page. A cursor ornament that paints over the content is not
  *      atmosphere, it is a smear across the thing the reader is trying to look at.
- *   `z-0` — the canvas sits above the wrapper's own background and BELOW the content, which is
- *      given `relative z-10` in the layout. Cards have opaque grounds, so the trail slides under
- *      them and shows only in the space between — which is what was asked for and what it should
- *      always have been.
+ *   `z-0` — INVISIBLE AGAIN, and for a reason worth recording. "Under the content" sounds right
+ *      until you notice that this site's sections carry full-width opaque grounds of their own.
+ *      There is no gap between the page background and the cards for a trail to show through: put
+ *      the canvas below the content and it is below EVERYTHING, all the time.
+ *   `z-40` with THE CARDS RAISED TO 45 — the arrangement that actually works, and the one in force.
+ *      The trail washes over each section's ground, and every card rises above it, so it passes
+ *      BEHIND the cards exactly as asked while staying visible in the space around them.
  *
- * ⚠ z-0 ONLY WORKS BECAUSE THE CONTENT IS RAISED TO MEET IT. `z-0` is not "behind"; it is the same
- * rung as any un-indexed positioned element, and paint order would then fall back to DOM order —
- * putting this canvas, which comes last, back on top. `app/(site)/layout.tsx` carries the other
- * half of this contract on `<main>` and the footer. Move one without the other and the trail either
- * vanishes under the page ground or climbs back over the cards.
+ * ⚠ THE OTHER HALF OF THIS LIVES IN `app/globals.css`, ON `.bg-card`. It is one contract in two
+ * files: this rung, and the rung the cards sit on. It also means NO ANCESTOR OF A CARD MAY CREATE A
+ * STACKING CONTEXT — an `<main>` carrying its own `z-index` would trap every card inside it and put
+ * this canvas back on top of all of them, which is precisely the bug that produced the smear.
  *
  * ⚠ 2. `pointer-events-none` IS LOAD-BEARING, and is the reference's own. A full-screen fixed canvas
  * that captured the pointer would swallow every click on the site.
@@ -1322,7 +1324,7 @@ function InternalSplashCursor({
   ]);
 
   return (
-    <div className="pointer-events-none fixed left-0 top-0 z-0">
+    <div className="pointer-events-none fixed left-0 top-0 z-40">
       <canvas ref={canvasRef} id="fluid" className="w-screen h-screen" />
     </div>
   );

@@ -347,6 +347,54 @@ input[type="number"] {
     @apply rounded-lg border border-line-200 bg-card shadow-sm;
   }
 
+  /*
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * EVERY CARD SURFACE: A SOFT UNDERGLOW, AND THE RUNG THAT PUTS IT OVER THE FLUID CURSOR.
+   *
+   * `bg-card` is the site's card ground — 92 files reach for it — and it is the only honest hook for
+   * "every card, everywhere". The named classes (`.panel`, `.glass-card`) are used a handful of times
+   * between them and would have missed almost everything.
+   *
+   * ⚠ THE `z-index` IS HALF OF A CONTRACT WITH `components/site/SplashCursor.tsx`, WHICH IS `z-40`.
+   * The trail has to wash over each section's ground but pass BEHIND the cards, and there is no way
+   * to slot a `fixed` canvas between two elements that share a stacking context — so the cards are
+   * raised over it instead. 45 sits above the canvas and below the z-50 header.
+   *
+   * ⚠ AND NO ANCESTOR OF A CARD MAY CARRY A z-index. An index on `<main>` would make it a stacking
+   * context, and these 45s would then be measured against their siblings inside it rather than
+   * against the canvas — putting the trail back on top of every card. That exact mistake was made
+   * and reverted; the note on `<main>` in app/(site)/layout.tsx records it.
+   *
+   * ⚠ THIS IS IN THE COMPONENTS LAYER ON PURPOSE, so both declarations are DEFAULTS. Tailwind's
+   * utilities layer is emitted after this one, so any element that says `absolute`, `fixed`, `z-0`
+   * or `z-50` in its own class list still wins — which is what keeps the rule safe across 92 files
+   * rather than a blanket override of positioning nobody asked for.
+   *
+   * The glow is cast DOWNWARD and tinted with the brand purple rather than being a neutral grey drop
+   * shadow: it reads as the card being lit from above and floating a little off the page, which is
+   * the same light the mesh and the hero already imply. Kept low-alpha because it lands on 92 files
+   * at once — an underglow strong enough to notice on one card is a haze across a whole grid.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  .bg-card {
+    position: relative;
+    z-index: 45;
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.04),
+      0 12px 28px -12px oklch(0.47 0.198 305 / 0.22),
+      0 2px 10px -4px oklch(0.47 0.198 305 / 0.14);
+  }
+
+  /* The dark theme needs a deeper, wider glow: the same alphas over a near-black ground are
+     invisible, and a card that floats in the light theme and sits flat in the dark one reads as two
+     different components. */
+  :root[data-theme="dark"] .bg-card {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.5),
+      0 14px 34px -12px oklch(0.56 0.205 305 / 0.4),
+      0 2px 12px -4px oklch(0.56 0.205 305 / 0.26);
+  }
+
   .display-title {
     @apply font-display font-bold tracking-tight text-ink-900;
   }
