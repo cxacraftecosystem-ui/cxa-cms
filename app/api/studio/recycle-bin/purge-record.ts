@@ -70,14 +70,7 @@ import { metaFor, type BinType } from "./kinds";
 /** How many referring records are named in a refusal before it stops listing them. */
 const NAMED_REFERENCES = 6;
 
-/**
- * How many objects a derivative sweep will enumerate before it gives up.
- *
- * A single asset's derivative prefix holds one object per size per format — a dozen or so. Anything past
- * this is not a ladder of derivatives, it is a prefix collision, and deleting what is under it would be
- * destroying somebody else's objects.
- */
-const MAX_SWEPT_OBJECTS = 200;
+// The sweep's own cap now lives with the sweep, in lib/storage/client.ts — see `listObjectKeys`.
 
 export type PurgeCode =
   | "unknown_type"
