@@ -1,9 +1,9 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import type { AuthProvider, Prisma, Role } from "@prisma/client";
-import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
+import type { AccessKind, AuthProvider, Prisma, Role } from "@prisma/client";
+import { assertSameOrigin, badRequest, conflict, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
-import { normaliseEmail } from "@/lib/auth/access";
+import { parseAccessSubject } from "@/lib/auth/access";
 import { requireCapability } from "@/lib/auth/current-user";
 import { configuredProviders } from "@/lib/auth/oauth";
 import { prisma } from "@/lib/db";
@@ -32,10 +32,16 @@ import {
  *    from lib/permissions.ts and is not re-derived here; app/studio/access/page.tsx calls the same one
  *    to decide whether to render the screen at all (contract §1.7).
  *
- * 2. THE ADDRESS IS NORMALISED WITH `normaliseEmail()` BEFORE EVERY READ AND EVERY WRITE. The column
+ * 2. THE SUBJECT IS NORMALISED WITH `parseAccessSubject()` BEFORE EVERY READ AND EVERY WRITE. The column
  *    carries a unique index on the lower-cased form, so "Ada@Example.org" and "ada@example.org" are one
  *    entry rather than two — and two entries on one address would be a coin toss over which one the
  *    sign-in path found, which is to say a coin toss over what role somebody gets.
+ *
+ *    ⚠ AND ONE BOX ACCEPTS TWO THINGS. A leading "@" means a DOMAIN — "@iitkgp.ac.in" admits everybody
+ *    there, present and future — and anything else is one address. That parser is the ONLY writer of the
+ *    widest grant in the product, which is why it lives beside `resolveAccess` in lib/auth/access.ts
+ *    rather than here: the rules that decide what may be STORED and the rules that decide what a stored
+ *    row MATCHES have to be the same rules, and two files apart is how they stop being.
  *
  * 3. A DUPLICATE IS A 409 THAT NAMES THE ENTRY ALREADY HOLDING THE ADDRESS, including whether it has
  *    been revoked. "That address is already on the list" leaves a master admin looking for an entry the
@@ -154,6 +160,8 @@ function tidyProviders(values: readonly AuthProvider[]): AuthProvider[] {
 const grantSelect = {
   id: true,
   email: true,
+  /** EMAIL or DOMAIN. The screen cannot show which rows are the wide ones without being told. */
+  kind: true,
   name: true,
   grantedRole: true,
   note: true,
@@ -185,6 +193,12 @@ interface AccountFacts {
  *
  * Two queries for the whole page rather than two per row: twenty-five entries would otherwise be fifty
  * round trips for a number in a table cell.
+ *
+ * ADDRESSES ONLY — the caller filters domain rows out before calling. A domain key ("@iitkgp.ac.in")
+ * cannot equal anybody's `User.email`, so including one would be a value in an `IN` list that is
+ * guaranteed to match nothing. "How many people from that domain are signed in?" is a real question and
+ * a different one; it is answered where it is acted on, by the sign-out path in
+ * app/api/studio/access/[id]/route.ts, which matches on the suffix rather than on equality.
  */
 async function accountFactsFor(emails: readonly string[]): Promise<Map<string, AccountFacts>> {
   const facts = new Map<string, AccountFacts>();
@@ -220,10 +234,19 @@ async function accountFactsFor(emails: readonly string[]): Promise<Map<string, A
   return facts;
 }
 
+/**
+ * ⚠ ON A DOMAIN ROW THE THREE ACCOUNT FACTS ARE ALWAYS "no account", AND THAT IS NOT A FINDING. A domain
+ * is not a person and has no `User` row; the screen must read `kind` before it says anything about an
+ * account, or every domain grant reads as "added, never signed in, no account" — which on an address
+ * means "probably a typo" and here would mean nothing at all.
+ */
 function toRow(row: GrantRow, account: AccountFacts | undefined) {
   return {
     ...row,
-    /** Whether anybody has ever actually signed in against this entry — the prunability question. */
+    /**
+     * Whether anybody has ever actually signed in against this entry — the prunability question. On a
+     * DOMAIN row it means "has anybody at this domain ever come through", which is the same question.
+     */
     used: row.lastSignInAt !== null,
     hasAccount: account !== undefined,
     accountIsActive: account?.isActive ?? false,
@@ -232,7 +255,12 @@ function toRow(row: GrantRow, account: AccountFacts | undefined) {
 }
 
 const ListQuery = z.object({
-  /** Matched against the address AND the name: a reader looking for a colleague types their name. */
+  /**
+   * Matched against the address AND the name: a reader looking for a colleague types their name. It
+   * finds domain grants too without a second clause, because a domain is stored in the same column —
+   * "iitkgp" turns up both ada@iitkgp.ac.in and the "@iitkgp.ac.in" grant, which is what somebody
+   * checking "how is this person getting in?" needs to see together.
+   */
   q: z.string().trim().max(200, "That search is too long. Try fewer words.").default(""),
   /**
    * `unused` means "still allowed in, and has never signed in" — the set worth pruning. A revoked entry
@@ -303,7 +331,9 @@ export const GET = route(async (request: NextRequest) => {
     prisma.studioAccess.count({ where: { revokedAt: null, grantedRole: "MASTER_ADMIN" } })
   ]);
 
-  const facts = await accountFactsFor(rows.map((row) => row.email));
+  const facts = await accountFactsFor(
+    rows.filter((row) => row.kind === "EMAIL").map((row) => row.email)
+  );
 
   return ok({
     items: rows.map((row) => toRow(row, facts.get(row.email))),
@@ -320,13 +350,48 @@ export const GET = route(async (request: NextRequest) => {
 // Adding somebody
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The address branch of the one box, kept as Zod's own `.email()`.
+ *
+ * ⚠ NOT RE-IMPLEMENTED ALONGSIDE THE DOMAIN RULES. `parseAccessSubject()` owns the domain half because
+ * the sign-in path has to agree with it; addresses are left to the validator every other route in this
+ * codebase uses, because a second hand-rolled address test would differ from it in exactly the corner
+ * that lets a typo onto the list.
+ */
+const ADDRESS = z.string().email();
+
+const ADDRESS_REFUSAL =
+  "That does not look like an email address. Check for a missing @ or a typo in the domain. To let " +
+  "everybody at an organisation in, write the domain on its own with a leading “@”, as in " +
+  "“@iitkgp.ac.in”.";
+
 const CreateBody = z.object({
+  /**
+   * ONE ADDRESS, OR ONE DOMAIN WITH A LEADING "@". The field keeps the name `email` because it is the
+   * column, the audit label and the identity of the row whichever kind it holds — see
+   * `StudioAccess.email` in schema.prisma for why one column carries both.
+   *
+   * The refusals come from `parseAccessSubject()` so that the sentence a master admin reads is written
+   * beside the rule that produced it, and so the write side cannot accept a shape the sign-in side will
+   * not match. ⚠ `.superRefine` rather than `.refine`: it is what lets the reason be the parser's own
+   * sentence ("“@” on its own would let anybody at any domain sign in…") instead of one generic message
+   * for six different mistakes.
+   */
   email: z
     .string()
     .trim()
-    .min(1, "An email address is needed — it is the only thing the sign-in path can match on.")
+    .min(1, "An address or a domain is needed — it is the only thing the sign-in path can match on.")
     .max(254, "That address is too long to be a real one.")
-    .email("That does not look like an email address. Check for a missing @ or a typo in the domain."),
+    .superRefine((raw, ctx) => {
+      const subject = parseAccessSubject(raw);
+      if (!subject.ok) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: subject.message });
+        return;
+      }
+      if (subject.kind === "EMAIL" && !ADDRESS.safeParse(subject.value).success) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: ADDRESS_REFUSAL });
+      }
+    }),
   name: z.string().trim().max(200, "Keep the name to 200 characters or fewer.").optional(),
   role: z.enum(ROLE_VALUES, {
     errorMap: () => ({ message: "Choose what this person will be able to do." })
@@ -351,14 +416,28 @@ export const POST = route(async (request: NextRequest) => {
 
   const body = await parseStudioJson(request, CreateBody);
 
-  // ⚠ NORMALISED BEFORE THE DUPLICATE CHECK AND BEFORE THE WRITE. Checking one form and storing another
-  // is how a list ends up with two entries for one person.
-  const email = normaliseEmail(body.email);
+  /**
+   * ⚠ NORMALISED BEFORE THE DUPLICATE CHECK AND BEFORE THE WRITE. Checking one form and storing another
+   * is how a list ends up with two entries for one person.
+   *
+   * ⚠ AND PARSED AGAIN HERE RATHER THAN TRUSTED FROM THE SCHEMA. The `superRefine` above has already
+   * refused everything this can refuse, so the failure branch is unreachable today — it is kept because
+   * this call is what decides `kind`, and a schema edited later that stops validating must not be able to
+   * write a DOMAIN row nobody checked. The parser is pure, so the second call costs nothing.
+   */
+  const subject = parseAccessSubject(body.email);
+  if (!subject.ok) throw badRequest(subject.message);
+
+  const email = subject.value;
+  const kind: AccessKind = subject.kind;
   const allowedProviders = tidyProviders(body.allowedProviders);
 
+  // One unique index over both kinds, so this single lookup catches "that address is already listed" and
+  // "that domain is already listed" alike — a domain key carries its "@" and can never collide with an
+  // address. See `StudioAccess.email`.
   const existing = await prisma.studioAccess.findUnique({
     where: { email },
-    select: { id: true, name: true, grantedRole: true, revokedAt: true, createdAt: true }
+    select: { id: true, kind: true, name: true, grantedRole: true, revokedAt: true, createdAt: true }
   });
   if (existing) throw conflict(describeDuplicate(email, existing));
 
@@ -371,19 +450,26 @@ export const POST = route(async (request: NextRequest) => {
       {
         action: "PERMISSION_CHANGE",
         entityType: "StudioAccess",
-        // The address, because that is what the entry IS. A cuid in the audit log names nothing.
+        // The address — or the "@domain" — because that is what the entry IS, and the leading "@" makes
+        // the two impossible to confuse in the log. A cuid in the audit log names nothing.
         entityLabel: email,
         /**
          * NO REVISION. An access entry is not versioned content, and a revision of one would be a second
          * copy of the audit entry. The audit trail holds the before and the after.
          */
         revise: false,
-        summary: `${email} was added to the studio access list`
+        // ⚠ THE WIDEST ENTRY ON THE LIST SAYS SO IN THE LOG. An incident reader scanning
+        // PERMISSION_CHANGE lines must be able to see "everybody at …" without opening the row.
+        summary:
+          kind === "DOMAIN"
+            ? `everybody at ${email} was added to the studio access list`
+            : `${email} was added to the studio access list`
       },
       async (tx) =>
         tx.studioAccess.create({
           data: {
             email,
+            kind,
             name: body.name && body.name.length > 0 ? body.name : null,
             /**
              * ⚠ ANY ROLE, `MASTER_ADMIN` INCLUDED — see rule 5 in the header. This is the list, not the
@@ -411,18 +497,35 @@ export const POST = route(async (request: NextRequest) => {
     throw thrown;
   }
 
-  const facts = await accountFactsFor([email]);
+  // An empty list for a domain: there is no `User` row to find, and asking for one would be a query
+  // guaranteed to match nothing. `accountFactsFor` answers with an empty map, so `facts.get` is undefined
+  // and `toRow` reports the "no account" values — which is the truth about a domain.
+  const facts = await accountFactsFor(kind === "EMAIL" ? [email] : []);
   const methodNote = unusableMethodNote(allowedProviders);
+  const role = ROLE_LABELS[body.role].toLowerCase();
 
   return ok({
     grant: toRow(created, facts.get(email)),
     message: [
-      `${email} can now sign in as ${ROLE_LABELS[body.role].toLowerCase()}.`,
+      kind === "DOMAIN"
+        ? `Everybody with an address at ${email} can now sign in as ${role}, including people who join later — an account is created the first time each of them signs in.`
+        : `${email} can now sign in as ${role}.`,
       allowedProviders.length === 0
         ? "Any sign-in method this installation has set up will work."
-        : `Only ${andList(allowedProviders.map((provider) => PROVIDER_LABELS[provider]))} will work for this address.`,
+        : `Only ${andList(allowedProviders.map((provider) => PROVIDER_LABELS[provider]))} will work for ${kind === "DOMAIN" ? "addresses at this domain" : "this address"}.`,
+      /**
+       * ⚠ SAID AT THE MOMENT THE WIDEST GRANT IN THE PRODUCT IS CREATED, not left in documentation. The
+       * second half is the part nobody guesses: an individual entry BEATS the domain, in both directions,
+       * because lib/auth/access.ts consults the exact address first and its answer is final. That is how a
+       * single person is kept out of — or given more than — a domain everybody else comes through.
+       */
+      kind === "DOMAIN"
+        ? "Nobody reviews these people one by one, so this entry is only as trustworthy as the organisation that hands out those addresses. To keep one person out, or to give one person a different level of access, add their address on its own — an entry naming somebody always wins over the domain."
+        : null,
       body.role === "MASTER_ADMIN"
-        ? "If they have never signed in before, their account is created as an administrator and a master administrator promotes it afterwards, so there is always a person behind that step."
+        ? kind === "DOMAIN"
+          ? "Master administrator on a whole domain is the widest entry this list can hold: every account created from it arrives as an administrator — the cap that stops a first sign-in appearing already able to widen this list — and each one would then be a candidate for promotion. Naming the individual addresses is almost always what was meant."
+          : "If they have never signed in before, their account is created as an administrator and a master administrator promotes it afterwards, so there is always a person behind that step."
         : null,
       methodNote
     ]
@@ -432,19 +535,32 @@ export const POST = route(async (request: NextRequest) => {
 });
 
 /**
- * The 409 for an address that is already listed, NAMING the entry that holds it.
+ * The 409 for an address — or a domain — that is already listed, NAMING the entry that holds it.
  *
  * The revoked branch is the one that matters: that entry is hidden by the default filter, so a master
  * admin looking for it would not find it, and the action they want — restore rather than re-add — is not
  * one they can guess from "already on the list".
+ *
+ * The domain wording is separate rather than clever, because "there can only ever be one entry per
+ * person" is a sentence that reads as nonsense about "@iitkgp.ac.in" and would make a master admin
+ * wonder whether they had typed somebody's address by mistake.
  */
 function describeDuplicate(
   email: string,
-  existing: { name: string | null; grantedRole: Role; revokedAt: Date | null }
+  existing: { kind: AccessKind; name: string | null; grantedRole: Role; revokedAt: Date | null }
 ): string {
-  const who = existing.name && existing.name.length > 0 ? `${existing.name} (${email})` : `“${email}”`;
+  const named = existing.name && existing.name.length > 0;
   const role = ROLE_LABELS[existing.grantedRole].toLowerCase();
 
+  if (existing.kind === "DOMAIN") {
+    const what = named ? `${existing.name} (${email})` : `“${email}”`;
+    if (existing.revokedAt) {
+      return `Everybody at ${what} was already on the access list as ${role}, and that entry has been revoked. Restore it instead of adding a second one — a domain can be listed only once, and restoring keeps the record of who first opened it.`;
+    }
+    return `Everybody at ${what} is already on the access list as ${role}, and can sign in now. Change that entry rather than adding a second one. To treat one person there differently, add their address on its own — an entry naming somebody wins over the domain.`;
+  }
+
+  const who = named ? `${existing.name} (${email})` : `“${email}”`;
   if (existing.revokedAt) {
     return `${who} is already on the access list as ${role}, and that entry has been revoked. Restore it instead of adding a second one — the list is keyed on the address, so there can only ever be one entry per person, and restoring keeps the record of who first let them in.`;
   }

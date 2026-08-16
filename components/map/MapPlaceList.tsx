@@ -11,6 +11,10 @@
  * Hover and focus are REPORTED UPWARD rather than owned: the parent holds one hovered key and
  * feeds it to both halves, so pointing at a pin highlights the row and focusing a row lights the
  * pin — one state, two views (the source app's contract, kept).
+ *
+ * That one state is also what stops the map's hover card being a mouse-only feature: `onFocus` here
+ * is the same signal as `onPointerEnter` on a pin, so tabbing down this list opens the card over the
+ * map beside it, place by place, with no pointer anywhere near the picture.
  */
 
 import Link from "next/link";
@@ -60,6 +64,21 @@ export function MapPlaceList({
               <span className="shrink-0 text-xs tabular-nums text-ink-500">
                 {point.total === 1 ? "1 craft" : `${point.total} crafts`}
               </span>
+              {/*
+                The one craft the map's hover card shows a picture of, said in words.
+
+                ⚠ IT IS THE ONLY PLACE THAT CRAFT IS ANNOUNCED. The card itself is `aria-hidden`
+                decoration — it appears when this very row takes focus, and a row that named a craft
+                while a card announced the same craft would say it twice in one breath. Here it is
+                part of the link's accessible name ("3, Kachchh, 12 crafts, including Ajrakh"), which
+                is the sentence a screen-reader user is already listening to.
+
+                `sr-only` is `position: absolute`, so it is not a flex item and opens no gap in the
+                row above it.
+              */}
+              {point.craft ? (
+                <span className="sr-only">, including {point.craft.name}</span>
+              ) : null}
             </Link>
           </li>
         );

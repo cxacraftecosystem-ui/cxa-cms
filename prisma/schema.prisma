@@ -129,7 +129,21 @@ model User {
   @@map("users")
 }
 
-/// The studio allow-list: the set of email addresses permitted to sign in at all.
+/// Is one `StudioAccess` row one PERSON, or everybody at an organisation?
+///
+/// EMAIL is one address and nothing else. DOMAIN is "anybody whose address ends in this domain" — the
+/// grant an institution actually wants when every colleague is at @iitkgp.ac.in and adding them one at a
+/// time means the list is out of date the week somebody joins.
+///
+/// ⚠ THE DEFAULT IS EMAIL, AND IT HAS TO BE. Every row written before this column existed is one address;
+/// a default of DOMAIN would have turned each of them, in one migration and with no audit entry, into a
+/// standing grant for everybody at that person's mail provider — @gmail.com included.
+enum AccessKind {
+  EMAIL
+  DOMAIN
+}
+
+/// The studio allow-list: the addresses — and the whole domains — permitted to sign in at all.
 ///
 /// ══════════════════════════════════════════════════════════════════════════════════════════════
 /// IT IS AN AUTHORISATION GATE, NOT A CONVENIENCE. Every sign-in path — password, Google, Microsoft,
@@ -144,21 +158,51 @@ model User {
 /// `grantedRole` is the role the account is created with on FIRST sign-in. It does not follow later
 /// changes — an administrator may promote or demote the user afterwards, and re-reading this row would
 /// silently undo that on their next visit.
+///
+/// ⚠ A DOMAIN GRANT IS THE WIDEST THING ANYBODY CAN WRITE IN THIS PRODUCT. "@iitkgp.ac.in" admits every
+/// present and future holder of an address there, at `grantedRole`, without a master admin ever seeing
+/// their name. That is the point of it — and it is why lib/auth/access.ts consults domain grants only
+/// AFTER an exact address has failed to match, and why one typed at a public mail provider would open
+/// the CMS to the world. The screen says so where the box is.
 /// ══════════════════════════════════════════════════════════════════════════════════════════════
 model StudioAccess {
-  id    String @id @default(cuid())
-  /// Stored lower-cased. The unique index is what makes "already on the list" a constraint rather than
-  /// a check somebody can forget.
-  email String @unique
+  id    String     @id @default(cuid())
+  /// The identity of the row, stored lower-cased, whichever kind it is: an ADDRESS ("ada@example.org")
+  /// when `kind` is EMAIL, or a DOMAIN CARRYING ITS LEADING "@" ("@iitkgp.ac.in") when it is DOMAIN.
+  ///
+  /// ══════════════════════════════════════════════════════════════════════════════════════════════
+  /// ONE COLUMN FOR BOTH, AND NOT A SECOND NULLABLE `domain` COLUMN. The alternative was considered and
+  /// is worse in three specific ways:
+  ///
+  ///  • UNIQUENESS. Postgres does not compare NULLs, so `email` and `domain` as two nullable unique
+  ///    columns cannot express "this row is listed exactly once" — a domain could be added twice as
+  ///    (NULL, '@x.ac.in') and the index would permit both, which is a coin toss over which grant the
+  ///    sign-in path finds and therefore over what role somebody gets. Here the one index already does it.
+  ///  • EVERY READER. `entityLabel` in the audit log, the duplicate 409, the sign-out lookup, the
+  ///    console's row label and `resolveAccess` itself all read one identity string today. A second
+  ///    column makes every one of them a two-branch expression, and the branch somebody forgets is the
+  ///    one that logs an empty label against the widest grant on the list.
+  ///  • COLLISION. The "@" is stored, not stripped, so a domain key can never equal an address key: a
+  ///    real address always has a local part in front of its "@". The two namespaces share an index
+  ///    without being able to shadow one another.
+  ///
+  /// `kind` is therefore the ANSWER, not a duplicate of it — and lib/auth/access.ts requires it to agree
+  /// with the shape before honouring a domain match, so a hand-edited row fails closed rather than open.
+  /// ══════════════════════════════════════════════════════════════════════════════════════════════
+  email String     @unique
+  kind  AccessKind @default(EMAIL)
 
-  /// A name to show before the person has ever signed in, so the list reads as people rather than addresses.
+  /// A name to show before the person has ever signed in, so the list reads as people rather than
+  /// addresses. On a DOMAIN row it is the organisation ("IIT Kharagpur"), never a person.
   name        String?
   grantedRole Role    @default(AUTHOR)
   /// Why this person has access. Free text, shown in the console — an access list with no reasons is one
   /// nobody dares prune.
   note        String?
 
-  /// Which sign-in methods this address may use. Empty means "any configured method".
+  /// Which sign-in methods this address — or everybody at this domain — may use. Empty means "any
+  /// configured method". Narrowing a DOMAIN row to GOOGLE is how "our staff sign in with their
+  /// institutional Google accounts, and a password is not a second door" is expressed.
   allowedProviders AuthProvider[] @default([])
 
   addedById   String?
@@ -178,6 +222,10 @@ model StudioAccess {
   revokedBy User? @relation("AccessRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
 
   @@index([revokedAt])
+  /// ⚠ NO INDEX ON `kind`, DELIBERATELY. Every lookup that matters — the exact address and the domain
+  /// key alike — goes through the unique index on `email`, because a domain is stored as a key ("@x.ac.in")
+  /// and not derived at query time. A two-value enum on a table with tens of rows is the textbook case
+  /// where the planner picks a sequential scan anyway, so the index would be write cost for nothing.
   @@map("studio_access")
 }
 

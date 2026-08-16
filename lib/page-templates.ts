@@ -43,14 +43,14 @@ import { defaultSectionData, parseSectionData } from "@/lib/sections/schema";
  * arrangement the builder itself refuses to extend is worse than no template.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
- * THE NINE BELOW ARE THE BUILT-INS. AN ADMINISTRATOR MAY ADD, EDIT AND RETIRE TEMPLATES OF THEIR OWN,
- * and those live in the `PageTemplate` table. `mergePageTemplates()` at the foot of this file is where
- * the two lists become one, and its rules are short:
+ * THE ARRANGEMENTS BELOW ARE THE BUILT-INS. AN ADMINISTRATOR MAY ADD, EDIT AND RETIRE TEMPLATES OF THEIR
+ * OWN, and those live in the `PageTemplate` table. `mergePageTemplates()` at the foot of this file is
+ * where the two lists become one, and its rules are short:
  *
  *   • a row whose `key` equals a built-in's `id` **replaces** that built-in, in its place in the list;
  *   • a row with any other key is an additional template, after the built-ins;
  *   • `isHidden` retires either — a hidden row shadowing a built-in is the only way to withdraw one of
- *     the nine, since a file cannot be deleted from a database.
+ *     the arrangements below, since a file cannot be deleted from a database.
  *
  * ⚠ THE DATABASE ROW FOLLOWS THE SAME RULE AS THIS FILE: TYPES AND LABELS, NEVER PAYLOADS. A stored
  * `blocks` value is read by `readStoredBlocks()` below, which keeps only `type`, `label`, `purpose` and
@@ -110,13 +110,21 @@ export interface TemplateSection {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Nine arrangements, in the order an institution is most likely to need them.
+ * The arrangements, in the order an institution is most likely to need them.
  *
- * Each one is a composition somebody would otherwise have to work out from a palette of thirty blocks:
- * what goes at the top, what the reader needs before they act, and where the invitation belongs.
+ * Each one is a composition somebody would otherwise have to work out from a palette of thirty-two
+ * blocks: what goes at the top, what the reader needs before they act, and where the invitation belongs.
  *
  * The order is an editorial claim, not the order they were written: the pages a Centre needs first, then
- * the three that are about people, then the two that are mostly words.
+ * the occasions it holds and invites people to, then the three that are about people, then the two that
+ * are mostly words.
+ *
+ * ⚠ `icon` IS NOT ANY LUCIDE NAME. The templates screens draw it through `templateIcon()` in
+ * components/studio/templates/templateIcons.ts, which is a CLOSED map — explicit rather than a dynamic
+ * lookup, so that a screen rendering one card does not pull fifteen hundred icons into its bundle. A name
+ * outside that map is not an error: it resolves to `LayoutTemplate`, silently, on every card. So an icon
+ * added here needs an entry there as well, or the template arrives wearing the generic mark and nothing
+ * anywhere says why.
  */
 export const PAGE_TEMPLATES: readonly PageTemplate[] = [
   {
@@ -179,11 +187,16 @@ export const PAGE_TEMPLATES: readonly PageTemplate[] = [
     id: "call-for-applications",
     name: "Call for applications",
     description:
-      "An open call with a deadline: the offer, what to do, the form itself and the paperwork. Use it for a grant round, a residency call, admissions or a tender.",
+      "An open call with a deadline: the offer, what to do, the form itself and the paperwork. Use it for a grant round, a residency call, admissions or a tender. Where the Centre is inviting contributions to something it is making, rather than choosing who receives something, “Call for participation” is that page.",
     suggestedTitle: "Call for applications",
-    // ⚠ Every `icon` in this file is a name lucide still exports at the version in package.json. lucide has
-    // renamed whole families before (the registry's `HelpCircle` is now `CircleHelp`), so a name that has
-    // gone is resolved to a plain square by the screen rather than throwing.
+    /*
+     * ⚠ Every `icon` in this file is a name lucide still exports at the version in package.json AND an
+     * entry in the closed map in components/studio/templates/templateIcons.ts — see the note on
+     * `PAGE_TEMPLATES` above for why the second half is the one that bites. lucide has renamed whole
+     * families before (the registry's `HelpCircle` is now `CircleHelp`), and a name that has gone is
+     * resolved by the screen rather than throwing: `templateIcon()` answers `LayoutTemplate`, which is
+     * the generic template mark and not the plain square `blockIcon()` falls back to.
+     */
     icon: "FileCheck",
     blocks: [
       {
@@ -226,6 +239,100 @@ export const PAGE_TEMPLATES: readonly PageTemplate[] = [
         purpose:
           "A named way to reach somebody. An open call with no contact turns every uncertainty into a withdrawn application.",
         overrides: { tone: "quiet" }
+      }
+    ]
+  },
+
+  {
+    id: "call-for-participation",
+    name: "Call for participation",
+    description:
+      "An invitation to contribute to something the Centre is making: papers for a conference, works for a show, practitioners for a field survey. What is invited, what makes a strong proposal, the dates, and how to send it. Where the reader would instead be applying to receive something — a grant, a place, a residency — “Call for applications” is that page.",
+    suggestedTitle: "Call for participation",
+    icon: "Megaphone",
+    blocks: [
+      {
+        type: "HERO",
+        label: "Hero — what is invited, and by when",
+        purpose:
+          "What is being invited and the closing date. The date belongs in the headline: it decides whether a reader starts writing today or files the page and forgets it."
+      },
+      {
+        type: "RICH_TEXT",
+        label: "About this call",
+        purpose:
+          "What is being made, who is making it, and where a contribution ends up — a proceedings, a wall, a report. Somebody deciding whether to spend a fortnight on a proposal decides on this paragraph.",
+        overrides: { heading: "About this call", width: "narrow" }
+      },
+      {
+        type: "FEATURE_GRID",
+        label: "What is invited",
+        purpose:
+          "The strands, themes or kinds of contribution, a card each. Naming them narrowly brings fewer submissions and more usable ones, which is the arithmetic that decides how long the reading takes.",
+        overrides: { heading: "What is invited", columns: 3 }
+      },
+      {
+        type: "RICH_TEXT",
+        /*
+         * ⚠ PROSE, NOT A SECOND FEATURE GRID, AND THE TWO BLOCKS ARE NOT INTERCHANGEABLE. What is
+         * invited is a list of nouns and reads as cards. Criteria are qualified sentences — "fieldwork
+         * carried out in the last five years, or older work with the practitioner's consent" — and a
+         * card body is capped at 280 characters, so putting them there forces every condition to be cut
+         * down to a fragment. A criterion a reader has to guess the rest of is a criterion an assessor
+         * spends the reading period explaining by email.
+         */
+        label: "What we are looking for",
+        purpose:
+          "The criteria, in sentences: who may submit, what state the work has to be in, what will not be considered. Say the exclusions out loud — they save more time than the inclusions do.",
+        overrides: { heading: "What we are looking for", width: "narrow" }
+      },
+      {
+        type: "TIMELINE",
+        label: "Key dates",
+        purpose:
+          "Closing date, notification, and the occasion itself. The date field is free text, so “Late March” is allowed where a day has not been fixed — which is more honest than inventing one and correcting it later.",
+        overrides: { heading: "Key dates", orientation: "vertical" }
+      },
+      {
+        type: "ACTION_STEPS",
+        label: "How to submit",
+        purpose:
+          "What to send, in what format, and where to send it, in the order it has to be done. Each step carries its own closing date, and one that has passed is stated as passed whatever else is set.",
+        overrides: { heading: "How to submit", numbered: true }
+      },
+      {
+        type: "DOWNLOADS",
+        label: "The brief and the templates",
+        purpose:
+          "The call document, the proposal template, last year's brief — from the file store, each with its size beside it so nobody starts a 40 MB download on a phone by accident.",
+        overrides: { heading: "The brief and the templates" }
+      },
+      {
+        type: "FAQ",
+        label: "Questions about the call",
+        purpose:
+          "Whether co-authored work counts, whether a proposal may be withdrawn, what happens to material that is not selected. Use the words the people asking would use.",
+        overrides: { heading: "Questions about this call" }
+      },
+      {
+        type: "CONTACT_FORM",
+        /*
+         * ⚠ THE CONTACT FORM, NOT THE EMBEDDED ONE — and that is the sharpest difference between this
+         * template and "Call for applications" beside it. An application is a form somebody fills in, so
+         * that page frames the Google or Microsoft form itself. A CONTRIBUTION is usually a file that
+         * travels to whichever address the steps above name, and there is nothing to frame; what this
+         * page needs instead is a way to ask a question BEFORE spending a fortnight writing something
+         * that turns out to be ineligible.
+         *
+         * ⚠ `formKey` DECIDES WHICH INBOX AND WHO IS NOTIFIED. It mirrors `ContactSubmission.formKey`
+         * and is a closed list for that reason: "collaboration" is where a proposal enquiry belongs, and
+         * leaving it on "general" files it behind every enquiry the site receives, in a box read on a
+         * different schedule from the one this call runs on.
+         */
+        label: "Ask before you submit",
+        purpose:
+          "Questions the answers above did not settle, going to the collaboration inbox. Say in the body roughly how long a reply takes, and whether questions are answered after the closing date.",
+        overrides: { heading: "Ask before you submit", formKey: "collaboration" }
       }
     ]
   },
@@ -305,6 +412,187 @@ export const PAGE_TEMPLATES: readonly PageTemplate[] = [
   },
 
   {
+    id: "event",
+    name: "Event or conference",
+    description:
+      "One occasion, with its dates, its programme, the people speaking at it and how to register. Use it for a conference, a symposium, a public lecture or a study day — anything a reader has to be in a particular place on a particular day for.",
+    suggestedTitle: "Event name",
+    icon: "CalendarDays",
+    blocks: [
+      {
+        type: "HERO",
+        label: "Hero — the event, its dates and where",
+        purpose:
+          "The name of the event, the dates and the city. A reader deciding whether to come needs all three before anything else, and a hero is the only place on the page they are guaranteed to look."
+      },
+      {
+        type: "RICH_TEXT",
+        label: "About the event",
+        purpose:
+          "What it is about, who it is for, and what it costs. Two or three paragraphs — the programme below answers everything else, and a reader who wants detail is already scrolling towards it.",
+        overrides: { heading: "About this event", width: "narrow" }
+      },
+      {
+        type: "TIMELINE",
+        /*
+         * ⚠ A TIMELINE RATHER THAN AN EVENTS BLOCK, AND THE DIFFERENCE IS WHICH RECORDS EACH DRAWS ON.
+         * EVENT_SHOWCASE lists `Event` rows from the calendar; a conference is ONE of those rows, and its
+         * sessions are not occasions anybody would want appearing in the site-wide calendar or in the
+         * "what is on" block on the homepage. So the programme is content this page owns.
+         *
+         * The timeline is the right shape for it because its `year` field is deliberately free text —
+         * the schema allows "1947", "c. 1780" and a period name for the same reason — so "09:30", "Day
+         * two" and "Friday afternoon" all parse and all read correctly.
+         */
+        label: "The programme",
+        purpose:
+          "Session by session. The date field is free text, so “09:30”, “Day two” and “Friday afternoon” are all allowed — write it as it would read on a printed programme.",
+        overrides: { heading: "Programme", orientation: "vertical" }
+      },
+      {
+        type: "PEOPLE_SHOWCASE",
+        /*
+         * ⚠ THE SEEDED LINK IS CLEARED, and it is the one override here that is not cosmetic. A people
+         * block arrives reading "Meet the team → /people": under a list of visiting speakers that sends
+         * the reader to the Centre's own staff directory, which is neither where they were going nor a
+         * list most of these people are on. Cleared rather than repointed — a speaker list has nowhere
+         * else to go — and `ctaLabel` alone would not do it, because the renderer draws the link only
+         * when it has BOTH the words and the address.
+         *
+         * `kind` is deliberately not set. There is no speaker among the person kinds (faculty,
+         * scientist, research assistant, student, staff, visitor, alumnus), so any filter here would be
+         * a claim about the wrong column.
+         */
+        label: "Who is speaking",
+        purpose:
+          "Set the block to Chosen by hand and pick them. Left on Latest it shows whoever was added to People most recently, which is a list nobody meant to publish under this heading.",
+        overrides: {
+          heading: "Who is speaking",
+          limit: 12,
+          layout: "grid",
+          showRole: true,
+          ctaLabel: "",
+          ctaHref: ""
+        }
+      },
+      {
+        type: "ACTION_STEPS",
+        label: "How to register",
+        purpose:
+          "Registration, the fee and the deadline, in the order they have to be done. Each step carries its own closing date, and a date that has passed says so on the page whatever else is set.",
+        overrides: { heading: "How to register", numbered: true }
+      },
+      {
+        type: "MAP",
+        label: "The venue",
+        purpose:
+          "A pin with the postal address beside it. Somebody who has printed this page, or lost their connection at the station, still needs the address to be words.",
+        overrides: { heading: "The venue" }
+      },
+      {
+        type: "FAQ",
+        label: "Questions people ask before coming",
+        purpose:
+          "Travel, accommodation, whether the sessions are recorded, whether lunch is included. These arrive by email before every event, and answering them here is the cheapest work on this page.",
+        overrides: { heading: "Before you come" }
+      },
+      {
+        type: "PARTNER_LOGOS",
+        label: "Hosts and supporters",
+        purpose:
+          "Who is holding the event and who paid for it, drawn in one tone so a wall of brand colours does not shout over the invitation below it.",
+        overrides: { heading: "Organised with" }
+      },
+      {
+        type: "CTA",
+        label: "Register, or ask",
+        purpose:
+          "One invitation at the foot of the page, and somewhere to write for anything the questions above did not settle.",
+        overrides: { tone: "brand" }
+      }
+    ]
+  },
+
+  {
+    id: "workshop",
+    name: "Workshop",
+    description:
+      "A few days of hands-on teaching: what it is, who it is for, what to bring and how to get a place. Use it for a masterclass, a training week, a summer school or a short course. “Programme or course” is the longer version of the same page, for something that runs for a term.",
+    suggestedTitle: "Workshop title",
+    icon: "Presentation",
+    blocks: [
+      {
+        type: "HERO",
+        label: "Hero — the workshop, its dates and how many places",
+        purpose:
+          "The name, the dates and the number of places. Twelve places is a different decision from two hundred seats, and a reader who learns the number after applying has been wasted."
+      },
+      {
+        type: "RICH_TEXT",
+        label: "What this workshop is",
+        purpose:
+          "What is taught and how the days are spent. Say what somebody leaves with — a finished piece, a technique, a certificate — because that is what every enquiry is really asking.",
+        overrides: { heading: "What this workshop is", width: "narrow" }
+      },
+      {
+        type: "FEATURE_GRID",
+        label: "Who it is for",
+        /*
+         * Two columns rather than the default three: this grid holds two or three kinds of person, and a
+         * three-column grid with two cards in it leaves a gap that reads as a card that failed to load.
+         */
+        purpose:
+          "The people this is meant for: beginners, practising weavers, teachers, design students. Somebody who cannot find themselves here either writes to ask, or quietly does not apply.",
+        overrides: { heading: "Who it is for", columns: 2 }
+      },
+      {
+        type: "ACTION_STEPS",
+        /*
+         * ⚠ NUMBERING OFF, AND THE SCHEMA ITSELF NAMES THIS CASE: `numbered` says to turn it off "for a
+         * checklist where the order does not matter — 'what to bring' rather than 'how to apply'". The
+         * flag is not decoration; it also tells a screen reader whether the list is a sequence, so a
+         * numbered kit list states an order that does not exist and invites somebody to worry about it.
+         */
+        label: "What to bring",
+        purpose:
+          "Materials, tools, clothing, anything to read beforehand. Unnumbered on purpose: a kit list is not a sequence, and numbers on one imply an order nobody has to follow.",
+        overrides: { heading: "What to bring", numbered: false }
+      },
+      {
+        type: "ACTION_STEPS",
+        label: "How to apply",
+        purpose:
+          "Each step with its own closing date and button, in the order an applicant has to do them. Two step lists on one page is the ordinary case: this one is a sequence, the one above is not.",
+        overrides: { heading: "How to apply", numbered: true }
+      },
+      {
+        type: "PEOPLE_SHOWCASE",
+        label: "Who leads it",
+        // The seeded "Meet the team → /people" link is cleared for the reason set out on the event
+        // template above: under the one or two people running a workshop it points at the staff
+        // directory, which is a different list and a different question.
+        purpose:
+          "The one or two people running it, chosen by hand. Left on Latest this shows the newest profiles in People, who are unlikely to be them.",
+        overrides: { heading: "Who leads it", limit: 4, showRole: true, ctaLabel: "", ctaHref: "" }
+      },
+      {
+        type: "MAP",
+        label: "Where it is held",
+        purpose:
+          "A pin and the postal address. A workshop is somewhere somebody has to physically arrive with their hands free, so the address matters more here than on almost any other page.",
+        overrides: { heading: "Where it is held" }
+      },
+      {
+        type: "CTA",
+        label: "Apply, or ask",
+        purpose:
+          "Quiet, because the steps above have already asked once. A second loud panel a screen further down stops meaning anything.",
+        overrides: { tone: "quiet" }
+      }
+    ]
+  },
+
+  {
     id: "exhibition",
     name: "Exhibition",
     description:
@@ -355,6 +643,97 @@ export const PAGE_TEMPLATES: readonly PageTemplate[] = [
         type: "CTA",
         label: "Plan a visit",
         purpose: "Opening hours, admission, and how to book a group.",
+        overrides: { tone: "quiet" }
+      }
+    ]
+  },
+
+  {
+    id: "season",
+    name: "Festival or season",
+    description:
+      "Many occasions under one name, over weeks rather than a day: what the season is, what is on, what has already happened, and where it all takes place. Use it for a festival, a lecture series, a season of screenings or an open-studios fortnight. One occasion belongs on “Event or conference” instead.",
+    suggestedTitle: "Season name",
+    icon: "Layers",
+    blocks: [
+      {
+        type: "HERO",
+        label: "Hero — the season and the weeks it runs",
+        purpose:
+          "The name of the season and the dates it spans. No single occasion's title above the fold: this page outlives every event on it, and a headline naming next Tuesday's lecture is wrong by Wednesday."
+      },
+      {
+        type: "RICH_TEXT",
+        label: "About the season",
+        purpose:
+          "What holds these occasions together, who is behind them, and whether any of it has to be booked. Two paragraphs — the events themselves are the page.",
+        overrides: { heading: "About this season", width: "narrow" }
+      },
+      {
+        type: "EVENT_SHOWCASE",
+        label: "What is on",
+        purpose:
+          "Upcoming events from the calendar, soonest first. Nothing is typed here: publish an event in the studio and it appears, and it leaves on its own the day after it happens.",
+        overrides: { heading: "What is on", when: "upcoming", layout: "list", limit: 12 }
+      },
+      {
+        type: "EVENT_SHOWCASE",
+        /*
+         * ⚠ THE SECOND EVENTS BLOCK IS THE SAME LIST ON THE OTHER SIDE OF TODAY, AND IT IS WHAT KEEPS A
+         * SEASON PAGE FROM EMPTYING ITSELF. "Upcoming" is honest but merciless: in the last week of a
+         * festival the block above holds one entry, and on the closing night it holds none — so a page
+         * that was the whole season reads as though the season was cancelled. This block fills at exactly
+         * the rate the other empties, and it is the more useful half by then, because the reader arriving
+         * that late is deciding whether to come to the next one.
+         *
+         * ⚠ THE LINK IS CLEARED because the block above already carries it. Two links reading "See all
+         * events" pointing at the same page is the same destination announced twice, and a screen reader
+         * moving through the links hears no difference between them. `ctaHref` goes too: the renderer
+         * draws the link only when it has both.
+         */
+        label: "What has already happened",
+        purpose:
+          "The same calendar, counting backwards. It fills as the block above empties, so the page still says something on the closing night — and photographs of it belong in the gallery below.",
+        overrides: {
+          heading: "What has already happened",
+          when: "past",
+          layout: "list",
+          limit: 12,
+          ctaLabel: "",
+          ctaHref: ""
+        }
+      },
+      {
+        type: "GALLERY",
+        label: "In pictures",
+        purpose:
+          "Albums from the media library — last year's season, or this one as it goes. Photographs of a full room are what brings somebody to the next occasion.",
+        overrides: { heading: "In pictures", source: "albums", layout: "masonry", limit: 6 }
+      },
+      {
+        type: "PARTNER_LOGOS",
+        label: "Funders and hosts",
+        purpose:
+          "Who paid for the season and whose rooms it happens in, drawn in one tone so a wall of clashing brand colours does not end the page loudly.",
+        overrides: { heading: "With the support of" }
+      },
+      {
+        type: "MAP",
+        label: "Where it happens",
+        /*
+         * ⚠ ONE PIN, AND A SEASON USUALLY HAS SEVERAL VENUES. The map block holds a single latitude and
+         * longitude by design, so this is the main venue or the box office, and each event's own record
+         * carries the room it is in. A page that pinned only the first venue and said nothing would send
+         * a reader to the wrong building, which is worse than a map that names what it is.
+         */
+        purpose:
+          "The main venue, with its postal address beside the pin. Where the season is spread across several places, say so in the heading and leave the rest to each event's own record.",
+        overrides: { heading: "The main venue" }
+      },
+      {
+        type: "CTA",
+        label: "Plan a visit",
+        purpose: "Opening times, tickets, and how to bring a group.",
         overrides: { tone: "quiet" }
       }
     ]
@@ -603,7 +982,7 @@ export function pageTemplate(id: string): PageTemplate | null {
  * The template with this id from a merged list, or null.
  *
  * Separate from `pageTemplate` above rather than replacing it, because the two answer different
- * questions: "is this one of the nine that ship with the software" and "is this one of the templates
+ * questions: "is this one of the arrangements that ship with the software" and "is this one of the templates
  * this installation offers". The create-a-page action needs the second; the merge itself needs the first.
  */
 export function findPageTemplate<T extends PageTemplate>(
@@ -820,7 +1199,7 @@ export interface StoredPageTemplate {
 
 /** Where a template in the merged list came from. Shown on screen, because the three behave differently. */
 export type TemplateOrigin =
-  /** One of the nine in this file, with nothing shadowing it. Editable only by changing this file. */
+  /** One of the built-ins in this file, with nothing shadowing it. Editable only by changing this file. */
   | "built-in"
   /** A row whose key equals a built-in's id. It stands in that built-in's place; deleting it brings the original back. */
   | "replacement"
@@ -1018,7 +1397,7 @@ function resolveBuiltIn(template: PageTemplate, index: number): ResolvedPageTemp
 }
 
 /**
- * The nine built-ins and the `PageTemplate` table, as one list.
+ * The built-ins and the `PageTemplate` table, as one list.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * THE THREE RULES, AND WHY EACH IS THAT WAY.
@@ -1028,7 +1407,7 @@ function resolveBuiltIn(template: PageTemplate, index: number): ResolvedPageTemp
  *     and moving it to the foot of the screen would read as a deletion plus a creation.
  *   • **A row with any other key is an additional template**, after the built-ins, ordered by
  *     `sortOrder` and then by name. `sortOrder` therefore only ever moves the custom ones about; the
- *     nine keep the editorial order this file declares, which is a claim about what an institution
+ *     built-ins keep the editorial order this file declares, which is a claim about what an institution
  *     needs first and not a preference anybody should be able to overwrite by accident.
  *   • **`isHidden` is carried, not filtered.** The manager screen has to list a retired template in
  *     order to bring it back — `visiblePageTemplates()` is what the chooser uses.

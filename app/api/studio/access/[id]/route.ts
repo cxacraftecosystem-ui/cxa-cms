@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` is the tagged template
 // `$queryRaw` needs for the master-admin lock. See `lockMasterAdminGrants`.
-import { Prisma, type AuthProvider, type Role } from "@prisma/client";
+import { Prisma, type AccessKind, type AuthProvider, type Role } from "@prisma/client";
 import { assertSameOrigin, badRequest, conflict, forbidden, ok, route } from "@/lib/api";
 import { mutateWithHistory, type TxClient } from "@/lib/audit";
 import { normaliseEmail } from "@/lib/auth/access";
@@ -40,10 +40,20 @@ import { buildAuditContext, found, parseStudioJson, parseStudioQuery } from "@/l
  * says which happened in words the screen prints verbatim. A control that implies an immediate effect it
  * does not have is worse than one that explains itself.
  *
- * ⚠ THE ADDRESS IS NOT EDITABLE HERE. Changing it would move a standing grant — with its record of who
- * added it and when it was last used — onto a different person, and the audit entry would read as "an
- * entry was changed" rather than "somebody new was let in". Deleting the entry and adding the new
- * address is the honest pair, and it is two audit entries because it is two decisions.
+ * ⚠ THE ADDRESS IS NOT EDITABLE HERE, AND NEITHER IS `kind`. Changing either would move a standing grant
+ * — with its record of who added it and when it was last used — onto a different person, and the audit
+ * entry would read as "an entry was changed" rather than "somebody new was let in". Turning one person's
+ * entry into a whole domain would be the same sleight of hand at the widest possible scale. Deleting the
+ * entry and adding the new one is the honest pair, and it is two audit entries because it is two
+ * decisions.
+ *
+ * ⚠ AN ENTRY MAY BE THE ACTOR'S OWN WITHOUT NAMING THEM. Rule 1 used to be a comparison of two addresses,
+ * which stopped being the whole question the moment a grant could be "@iitkgp.ac.in": a master admin
+ * whose own access comes through that domain, and who revokes it, has locked themselves out just as
+ * surely as if they had deleted a row with their name on it — and there is no way back in through the
+ * site. `coversActor()` therefore asks the question `resolveAccess` asks, and a domain entry is refused
+ * when it is the thing letting the actor in. It is not refused when they have an entry of their own,
+ * because then the domain is not what admits them.
  *
  * Every mutation is audited as `PERMISSION_CHANGE` with the address as the `entityLabel`, through
  * `mutateWithHistory()`, so the row and the entry cannot exist without each other.
@@ -98,6 +108,7 @@ function sameProviders(a: readonly AuthProvider[], b: readonly AuthProvider[]): 
 const grantSelect = {
   id: true,
   email: true,
+  kind: true,
   name: true,
   grantedRole: true,
   note: true,
@@ -114,12 +125,16 @@ const grantSelect = {
 
 type GrantRow = Prisma.StudioAccessGetPayload<{ select: typeof grantSelect }>;
 
-/** The subset the two guards read. Kept narrow so the in-transaction re-read is cheap. */
+/** The subset the guards read. Kept narrow so the in-transaction re-read is cheap. */
 interface GuardState {
   email: string;
+  kind: AccessKind;
   grantedRole: Role;
   revokedAt: Date | null;
 }
+
+/** The columns `GuardState` needs, as a Prisma `select`, so the two re-reads cannot drift from it. */
+const guardSelect = { email: true, kind: true, grantedRole: true, revokedAt: true } as const;
 
 /** What the request is trying to do to this entry, as far as the guards are concerned. */
 interface Intent {
@@ -140,8 +155,54 @@ function leavesMasterAdminSet(row: GuardState, intent: Intent): boolean {
   return intent.nextRole !== undefined && intent.nextRole !== "MASTER_ADMIN";
 }
 
+/**
+ * Both kinds are counted. A DOMAIN entry granting master administrator is a way in for a master admin
+ * exactly as a named one is, so removing it takes something out of the same set. The stronger invariant —
+ * that an installation always has a live master-admin ACCOUNT — is held where accounts are written, by
+ * `countActiveByRole()` in app/api/studio/users/[id]/route.ts; this guard is about the list.
+ */
 async function countMasterAdminGrants(): Promise<number> {
   return prisma.studioAccess.count({ where: { revokedAt: null, grantedRole: "MASTER_ADMIN" } });
+}
+
+/**
+ * Is THIS entry the thing that lets the ACTOR in?
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * IT ASKS THE QUESTION `resolveAccess()` ASKS, AND IT HAS TO. Rule 1 — "you cannot take your own access
+ * away" — was a comparison of two addresses while an entry could only be an address. A domain entry is
+ * somebody's own access without carrying their name anywhere in it, and a master admin who revokes the
+ * domain they themselves arrive through is locked out on their next sign-in with no way back through the
+ * site. The refusal has to cover that, or the rule protects only the people who happen to be named.
+ *
+ * ⚠ AND IT IS NOT A BARE SUFFIX TEST. An actor who has an EMAIL entry of their own is admitted by THAT
+ * entry — lib/auth/access.ts consults the exact address first and its answer is final — so the domain is
+ * not what lets them in and they must be able to revoke it. Refusing there would mean the person best
+ * placed to close a domain that has been left too wide is the one person forbidden from doing it. The
+ * lookup deliberately does not care whether their own entry is revoked: if it is, they are already
+ * refused at sign-in and this entry is not what changes that.
+ *
+ * The suffix match is exact because the stored key carries its "@" — `ada@iitkgp.ac.in`.endsWith(
+ * `@iitkgp.ac.in`) is true and `ada@evil-iitkgp.ac.in` is not, which a bare `iitkgp.ac.in` would have
+ * swallowed. Both sides are normalised, so the comparison cannot fail on capitalisation.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+async function coversActor(
+  client: TxClient,
+  row: Pick<GuardState, "email" | "kind">,
+  actorEmail: string
+): Promise<boolean> {
+  if (row.kind === "EMAIL") return row.email === actorEmail;
+
+  if (!actorEmail.endsWith(row.email)) return false;
+
+  const own = await client.studioAccess.findUnique({
+    where: { email: actorEmail },
+    select: { kind: true }
+  });
+  // No entry of their own — or one that is somehow not an address, which cannot be theirs — means this
+  // domain is what admits them.
+  return own === null || own.kind !== "EMAIL";
 }
 
 /**
@@ -191,6 +252,20 @@ const SELF_REMOVAL =
   "and an account that has just removed its own permission to sign in cannot — there is no way back in " +
   "through the site itself. Ask another master administrator to remove your access.";
 
+/**
+ * The same rule, when the entry is the DOMAIN the actor themselves arrives through.
+ *
+ * A separate sentence because "your own address" is not what happened and would send somebody looking for
+ * a row with their name on it, which does not exist. It also names the way out, which is specific to this
+ * case and is not obvious: add your own address to the list first, and the domain stops being the thing
+ * that admits you (`coversActor`), so you may then close it.
+ */
+const SELF_REMOVAL_BY_DOMAIN =
+  "Your own access comes through this domain, so revoking or deleting it would lock you out on your next " +
+  "sign-in — and there is no way back in through the site itself. Add your own address to the list as its " +
+  "own entry first: an entry naming somebody is what the sign-in path matches on before it looks at the " +
+  "domain, so once yours exists you can close this one.";
+
 /** Which rule stopped it, in words that say what to do next. */
 function lastMasterAdminRefusal(intent: Intent): string {
   const action = intent.deleting === true
@@ -225,11 +300,11 @@ const REVOCATION_GAP =
   "action if they need to be out now.";
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-// Ending the person's sessions
+// Ending the sessions this entry admits
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Sign the holder of this address out of every device, if they have an account at all.
+ * Sign everybody this entry admits out of every device.
  *
  * Run AFTER the entry has been written and outside its transaction. The order is deliberate: if the
  * revocation failed and the write had not happened, somebody would have been signed out of a change that
@@ -238,31 +313,94 @@ const REVOCATION_GAP =
  *
  * An address with no account is not an error — most new entries have none — so the count is 0 and the
  * message says nothing was signed out rather than claiming a device was.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ A DOMAIN ENTRY SIGNS OUT EVERY ACCOUNT AT THAT DOMAIN, AND IT HAS TO. The whole point of the option
+ * is "they need to be out now"; on a domain grant, "they" is everybody it let in. A version that looked
+ * up one `User` by the entry's key would find nothing — no account has "@iitkgp.ac.in" for an address —
+ * report zero and leave every one of those sessions live, which is the worst kind of control: one that
+ * reports success and does nothing, at the moment somebody is trying to close a breach.
+ *
+ * The suffix match is exact because the stored key carries its "@": `endsWith("@iitkgp.ac.in")` cannot
+ * reach `ada@evil-iitkgp.ac.in`, which a bare `iitkgp.ac.in` would have swept in. Prisma's `endsWith` is
+ * case-sensitive and both sides are stored lower-cased.
+ *
+ * ⚠ IT SIGNS OUT PEOPLE THIS ENTRY MAY NOT BE THE ONLY WAY IN FOR. Somebody at the domain who also has an
+ * entry of their own is still admitted at their next sign-in — `resolveAccess` matches the address first
+ * — so for them this is a sign-out rather than a removal. That is the right way round: signing somebody
+ * out costs them a login, and leaving a session live during a domain-wide revocation could cost the
+ * institution the CMS. The response counts what was ended so the sentence on screen is the truth.
+ *
+ * DELETED ACCOUNTS ARE NOT FILTERED OUT. A soft-deleted user with a live session is precisely somebody
+ * who should not be holding one.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
-async function endSessionsFor(email: string): Promise<number> {
-  const account = await prisma.user.findUnique({
-    where: { email: normaliseEmail(email) },
-    select: { id: true }
-  });
-  if (!account) return 0;
+async function endSessionsFor(row: { email: string; kind: AccessKind }): Promise<number> {
+  const key = normaliseEmail(row.email);
 
+  const accounts =
+    row.kind === "DOMAIN"
+      ? await prisma.user.findMany({ where: { email: { endsWith: key } }, select: { id: true } })
+      : await prisma.user.findMany({ where: { email: key }, select: { id: true } });
+
+  if (accounts.length === 0) return 0;
+
+  const ids = accounts.map((account) => account.id);
   const live = await prisma.session.count({
-    where: { userId: account.id, revokedAt: null, expiresAt: { gt: new Date() } }
+    where: { userId: { in: ids }, revokedAt: null, expiresAt: { gt: new Date() } }
   });
-  await revokeAllSessionsForUser(account.id);
+
+  // One at a time, because `revokeAllSessionsForUser` is what also clears whatever else hangs off a
+  // sign-out (lib/auth/session.ts). A hand-rolled `updateMany` here would be a second implementation of
+  // "sign somebody out", and the day the first one gains a step this one would silently skip it. The loop
+  // is bounded by the number of ACCOUNTS at the domain — people who have actually signed in through it,
+  // not everybody it would admit — which is tens in the installation this was written for.
+  for (const id of ids) await revokeAllSessionsForUser(id);
+
   return live;
 }
 
-function describeSignOut(name: string, ended: number): string {
+/**
+ * What the sign-out actually did, in a sentence.
+ *
+ * The domain wording counts DEVICES rather than naming a person, because there is no one person to name
+ * and "signed in as everybody at @iitkgp.ac.in" is not English.
+ */
+function describeSignOut(row: { name: string | null; email: string; kind: AccessKind }, ended: number): string {
+  if (row.kind === "DOMAIN") {
+    if (ended === 0) {
+      return `No device was signed in with an address at ${row.email}. Any that was is now signed out.`;
+    }
+    return `${ended === 1 ? "1 device" : `${ended} devices`} signed in with an address at ${row.email} ${ended === 1 ? "has" : "have"} been signed out.`;
+  }
+
+  const name = label(row);
   if (ended === 0) {
     return `No device appeared to be signed in as ${name}. Any that was is now signed out.`;
   }
   return `${ended === 1 ? "1 device" : `${ended} devices`} signed in as ${name} ${ended === 1 ? "has" : "have"} been signed out.`;
 }
 
-/** What to call the person in a sentence: their name if the entry has one, otherwise the address. */
-function label(row: { name: string | null; email: string }): string {
-  return row.name && row.name.length > 0 ? row.name : row.email;
+/**
+ * What to call the entry in a sentence: its name if it has one, otherwise the key.
+ *
+ * On a DOMAIN entry that reads as "everybody at …", because the sentences it appears in are about who can
+ * and cannot sign in, and "@iitkgp.ac.in can no longer sign in" describes a mailbox rather than the
+ * hundreds of people the entry actually governs.
+ */
+function label(row: { name: string | null; email: string; kind: AccessKind }): string {
+  const named = row.name && row.name.length > 0 ? row.name : row.email;
+  return row.kind === "DOMAIN" ? `everybody at ${named}` : named;
+}
+
+/**
+ * The same idea for the AUDIT LOG, and deliberately not `label()`: the trail names the KEY and never the
+ * display name, because a name can be edited afterwards and an audit line that says "IIT Kharagpur was
+ * revoked" cannot be matched back to a row six months later. The scope still goes in front of it, so the
+ * widest changes on the list read as wide at a glance.
+ */
+function auditSubject(row: { email: string; kind: AccessKind }): string {
+  return row.kind === "DOMAIN" ? `everybody at ${row.email}` : row.email;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -306,8 +444,11 @@ export const PATCH = route(
     );
 
     // The actor's own address, normalised on both sides so the comparison cannot fail on capitalisation.
+    // `coversActor` — not an equality — because a DOMAIN entry can be the actor's own access without
+    // naming them anywhere. See its comment; the answer is used for the early refusal only, and the one
+    // that holds the rule is taken again inside the transaction.
     const actorEmail = normaliseEmail(actor.email);
-    const isOwnEntry = grant.email === actorEmail;
+    const isOwnEntry = await coversActor(prisma, grant, actorEmail);
 
     const changes: Prisma.StudioAccessUpdateInput = {};
     const reasons: string[] = [];
@@ -328,9 +469,13 @@ export const PATCH = route(
        * below says so rather than implying an access change that has not happened.
        */
       reasons.push(
-        grant.lastSignInAt === null
-          ? `If they sign in for the first time, their account will be created as ${ROLE_LABELS[body.role].toLowerCase()}.`
-          : `New accounts made from this entry will be ${ROLE_LABELS[body.role].toLowerCase()}. They have already signed in, so their own account keeps the level of access it has now — change that on the Users screen.`
+        grant.kind === "DOMAIN"
+          ? // Never "their own account": a domain entry has no one holder, and the people already through
+            // it may be dozens. The sentence has to send the reader to the Users screen either way.
+            `Accounts created through this domain from now on will be ${ROLE_LABELS[body.role].toLowerCase()}. Anybody who has already signed in keeps the level of access their account has now — change those on the Users screen.`
+          : grant.lastSignInAt === null
+            ? `If they sign in for the first time, their account will be created as ${ROLE_LABELS[body.role].toLowerCase()}.`
+            : `New accounts made from this entry will be ${ROLE_LABELS[body.role].toLowerCase()}. They have already signed in, so their own account keeps the level of access it has now — change that on the Users screen.`
       );
     }
 
@@ -354,10 +499,11 @@ export const PATCH = route(
       const allowed = tidyProviders(body.allowedProviders);
       if (!sameProviders(allowed, grant.allowedProviders)) {
         changes.allowedProviders = allowed;
+        const subject = grant.kind === "DOMAIN" ? "addresses at this domain" : "this address";
         reasons.push(
           allowed.length === 0
-            ? "Any sign-in method this installation has set up will now work for this address."
-            : `Only ${andList(allowed.map((provider) => PROVIDER_LABELS[provider]))} will now work for this address; every other method is refused.`
+            ? `Any sign-in method this installation has set up will now work for ${subject}.`
+            : `Only ${andList(allowed.map((provider) => PROVIDER_LABELS[provider]))} will now work for ${subject}; every other method is refused.`
         );
       }
     }
@@ -406,7 +552,9 @@ export const PATCH = route(
     // ── The early refusals ──────────────────────────────────────────────────────────────────────
     // Better sentences than the race can be given, and they answer before any row is locked. The
     // refusals that actually hold the invariants are inside the transaction below.
-    if (revoking && isOwnEntry) throw forbidden(SELF_REMOVAL);
+    if (revoking && isOwnEntry) {
+      throw forbidden(grant.kind === "DOMAIN" ? SELF_REMOVAL_BY_DOMAIN : SELF_REMOVAL);
+    }
     if (leavesMasterAdminSet(grant, intent) && (await countMasterAdminGrants()) <= 1) {
       throw conflict(lastMasterAdminRefusal(intent));
     }
@@ -434,11 +582,13 @@ export const PATCH = route(
         // No revision: an access entry is not versioned content. The audit entry holds before and after.
         revise: false,
         before: grant,
+        // "everybody at @iitkgp.ac.in was revoked…" on a domain entry: an incident reader scanning
+        // PERMISSION_CHANGE lines must see the scope of what moved without opening the row.
         summary: revoking
-          ? `${grant.email} was revoked from the studio access list`
+          ? `${auditSubject(grant)} was revoked from the studio access list`
           : restoring
-            ? `${grant.email} was restored to the studio access list`
-            : `${grant.email}'s access list entry was changed`
+            ? `${auditSubject(grant)} was restored to the studio access list`
+            : `the access list entry for ${auditSubject(grant)} was changed`
       },
       async (tx) => {
         /**
@@ -447,14 +597,13 @@ export const PATCH = route(
          * revocations old.
          */
         const current = found(
-          await tx.studioAccess.findUnique({
-            where: { id },
-            select: { email: true, grantedRole: true, revokedAt: true }
-          }),
+          await tx.studioAccess.findUnique({ where: { id }, select: guardSelect }),
           "That access list entry"
         );
 
-        if (revoking && current.email === actorEmail) throw forbidden(SELF_REMOVAL);
+        if (revoking && (await coversActor(tx, current, actorEmail))) {
+          throw forbidden(current.kind === "DOMAIN" ? SELF_REMOVAL_BY_DOMAIN : SELF_REMOVAL);
+        }
         if (revoking && current.revokedAt !== null) {
           throw conflict(
             "Somebody else revoked this entry a moment ago, so nothing has been changed. Reload the list to see who did it and when."
@@ -475,8 +624,8 @@ export const PATCH = route(
 
     let sessionsEnded: number | null = null;
     if (revoking && wantsSignOut) {
-      sessionsEnded = await endSessionsFor(updated.email);
-      reasons.push(describeSignOut(label(updated), sessionsEnded));
+      sessionsEnded = await endSessionsFor(updated);
+      reasons.push(describeSignOut(updated, sessionsEnded));
     } else if (revoking) {
       reasons.push(REVOCATION_GAP);
     } else if (wantsSignOut) {
@@ -529,7 +678,9 @@ export const DELETE = route(
     );
 
     const actorEmail = normaliseEmail(actor.email);
-    if (grant.email === actorEmail) throw forbidden(SELF_REMOVAL);
+    if (await coversActor(prisma, grant, actorEmail)) {
+      throw forbidden(grant.kind === "DOMAIN" ? SELF_REMOVAL_BY_DOMAIN : SELF_REMOVAL);
+    }
 
     const intent: Intent = { deleting: true };
     if (leavesMasterAdminSet(grant, intent) && (await countMasterAdminGrants()) <= 1) {
@@ -544,20 +695,19 @@ export const DELETE = route(
         entityLabel: grant.email,
         revise: false,
         before: grant,
-        summary: `${grant.email} was deleted from the studio access list`
+        summary: `${auditSubject(grant)} was deleted from the studio access list`
       },
       async (tx) => {
         // ⚠ THE REAL GUARDS, for the same reason as in PATCH: a delete and a revocation running together
         // would otherwise each see two master-admin entries and leave none.
         const current = found(
-          await tx.studioAccess.findUnique({
-            where: { id },
-            select: { email: true, grantedRole: true, revokedAt: true }
-          }),
+          await tx.studioAccess.findUnique({ where: { id }, select: guardSelect }),
           "That access list entry"
         );
 
-        if (current.email === actorEmail) throw forbidden(SELF_REMOVAL);
+        if (await coversActor(tx, current, actorEmail)) {
+          throw forbidden(current.kind === "DOMAIN" ? SELF_REMOVAL_BY_DOMAIN : SELF_REMOVAL);
+        }
         if (leavesMasterAdminSet(current, intent) && (await lockMasterAdminGrants(tx)) <= 1) {
           throw conflict(LAST_MASTER_ADMIN_RACE);
         }
@@ -574,7 +724,7 @@ export const DELETE = route(
 
     let sessionsEnded: number | null = null;
     if (query.revokeSessions === "true") {
-      sessionsEnded = await endSessionsFor(grant.email);
+      sessionsEnded = await endSessionsFor(grant);
     }
 
     return ok({
@@ -582,11 +732,17 @@ export const DELETE = route(
       sessionsEnded,
       masterAdminGrants: await countMasterAdminGrants(),
       message: [
-        `${grant.email} has been removed from the access list, and the record of who added them is gone with it.`,
+        grant.kind === "DOMAIN"
+          ? `${grant.email} has been removed from the access list, and the record of who opened it is gone with it. Nobody at that domain can sign in from now on unless their own address is listed.`
+          : `${grant.email} has been removed from the access list, and the record of who added them is gone with it.`,
         grant.lastSignInAt !== null
-          ? "Anything they wrote in the studio keeps their name on it, and their account is untouched — switch it off on the Users screen if they should no longer have one."
-          : "Nobody ever signed in with that address, so no account or content is affected.",
-        sessionsEnded === null ? REVOCATION_GAP : describeSignOut(label(grant), sessionsEnded),
+          ? grant.kind === "DOMAIN"
+            ? "The accounts made through it are untouched — switch one off on the Users screen if it should no longer exist. Anything those people wrote in the studio keeps their names on it."
+            : "Anything they wrote in the studio keeps their name on it, and their account is untouched — switch it off on the Users screen if they should no longer have one."
+          : grant.kind === "DOMAIN"
+            ? "Nobody ever signed in through that domain, so no account or content is affected."
+            : "Nobody ever signed in with that address, so no account or content is affected.",
+        sessionsEnded === null ? REVOCATION_GAP : describeSignOut(grant, sessionsEnded),
         "This deletion is in the audit log with your name on it."
       ].join(" ")
     });

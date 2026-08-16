@@ -61,8 +61,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Info, KeyRound, LogIn, TriangleAlert } from "lucide-react";
 
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { Field } from "@/components/ui/Field";
+import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 /** Which brand mark to draw. The page derives it from the provider name; see `BrandMark`. */
 export type ProviderMark = "google" | "microsoft" | "yahoo";
@@ -401,17 +402,21 @@ export function LoginForm({ next, providers, signInError }: LoginFormProps) {
           />
         </Field>
 
-        <Field label="Password" required>
-          <Input
+        {/*
+          `FieldBlock`, not `Field`: `PasswordInput` puts a reveal button beside the box, and a real
+          `<label>` wrapped around a button forwards stray clicks to the input and folds the button's
+          name into the input's own (Field.tsx's header sets out both traps).
+        */}
+        <FieldBlock label="Password" required>
+          <PasswordInput
             ref={passwordRef}
             name="password"
-            type="password"
             autoComplete="current-password"
             enterKeyHint={twoFactorRequired ? "next" : "go"}
             maxLength={200}
             disabled={pending}
           />
-        </Field>
+        </FieldBlock>
 
         {twoFactorRequired ? (
           <div className="space-y-4 rounded-md border border-purple-200 bg-purple-50 p-4">

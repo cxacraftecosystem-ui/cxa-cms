@@ -51,8 +51,8 @@ import { useRef, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, KeyRound, LogIn, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
-import { Field } from "@/components/ui/Field";
-import { Input } from "@/components/ui/Input";
+import { FieldBlock } from "@/components/ui/Field";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 export interface SetPasswordFormProps {
   /** Already verified by the page: signature, shape, expiry and the single-use fingerprint. */
@@ -335,7 +335,12 @@ export function SetPasswordForm({ token, email }: SetPasswordFormProps) {
         className="sr-only"
       />
 
-      <Field
+      {/*
+        `FieldBlock` on both boxes, not `Field`: `PasswordInput` puts a reveal button beside the input,
+        and a real `<label>` wrapped around a button forwards stray clicks to the input and folds the
+        button's name into the input's own (Field.tsx's header sets out both traps).
+      */}
+      <FieldBlock
         label="New password"
         required
         maxLength={200}
@@ -347,11 +352,11 @@ export function SetPasswordForm({ token, email }: SetPasswordFormProps) {
             </span>
 
             {/*
-              THE LIVE LIST. Inside `help` on purpose: the Field wires its own help into the input's
+              THE LIVE LIST. Inside `help` on purpose: the wrapper wires its own help into the input's
               `aria-describedby`, so a screen-reader user hears these rules as the field's description
               instead of being shown something in the page that they are never told about (HelpText.tsx
-              sets out that trap). Rendered as block `<span>`s and not a `<ul>` because `Field` is a real
-              `<label>`, which takes phrasing content only.
+              sets out that trap). Rendered as block `<span>`s and not a `<ul>` because the wrapper puts
+              `help` inside a `<span>` of its own, which takes phrasing content only.
 
               It is NOT a live region — a list that re-announced itself on every keystroke would talk
               over the typing it is describing. The one moment worth announcing is handled below.
@@ -376,11 +381,13 @@ export function SetPasswordForm({ token, email }: SetPasswordFormProps) {
           </>
         }
       >
-        <Input
+        <PasswordInput
           ref={passwordRef}
           name="password"
-          type="password"
           icon={KeyRound}
+          // Two boxes on this screen, so neither eye may be called just "Show password" — a reader
+          // listing the page's buttons would have no way to tell which of the two each one opens.
+          subject="the new password"
           // "new-password", never "current-password": it is what tells a password manager to offer a
           // generated one and to save it against this account rather than filling in an old value.
           autoComplete="new-password"
@@ -389,25 +396,25 @@ export function SetPasswordForm({ token, email }: SetPasswordFormProps) {
           disabled={pending}
           onChange={(event) => setTyped(event.target.value)}
         />
-      </Field>
+      </FieldBlock>
 
-      <Field
+      <FieldBlock
         label="Type it again"
         required
         help="The same password once more, so a typo cannot lock you out of your own account."
         error={mismatch ? "These two do not match yet." : null}
       >
-        <Input
+        <PasswordInput
           ref={confirmRef}
           name="confirm"
-          type="password"
+          subject="the repeated password"
           autoComplete="new-password"
           enterKeyHint="go"
           maxLength={200}
           disabled={pending}
           onChange={(event) => setAgain(event.target.value)}
         />
-      </Field>
+      </FieldBlock>
 
       {/*
         The server's own list, when it refused. Printed verbatim beneath the banner because it may

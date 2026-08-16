@@ -29,6 +29,14 @@ next-env.d.ts
 /.ccx-wake.log
 /.build-state.md
 
+# Agent tooling that installs itself into the working tree. `.agents/` and `.claude/skills/` are
+# written by the Neon marketplace integration ("Installed 2 agent skills for Neon") and by assistant
+# tooling generally; `skills-lock.json` is their lockfile. None of it is this application, none of it
+# is needed to build or run it, and it reappears on its own whenever the tooling runs.
+/.agents
+/.claude/skills
+/skills-lock.json
+
 # Two stray capture artefacts at the repo root. `.shots$a.png` is a shell-quoting accident — the
 # `$a` was meant to expand and the file belongs under `/.shots`, which is already ignored — and
 # `image.png` is a 2.3 MB screenshot nothing references. Neither is source.

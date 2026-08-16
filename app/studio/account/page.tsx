@@ -29,8 +29,9 @@ import { isProduction, siteName } from "@/lib/env";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/permissions";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { Field } from "@/components/ui/Field";
+import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { Select } from "@/components/ui/Select";
 import { FormSection } from "@/components/studio/FormSection";
@@ -744,9 +745,29 @@ export default async function StudioAccountPage({
             />
           </Field>
 
-          <Field label="Your current password" required help="Asked for because this changes how you sign in.">
-            <Input name="password" type="password" required autoComplete="current-password" />
-          </Field>
+          {/*
+            ⚠ `FieldBlock` WHEREVER `PasswordInput` GOES, on all five boxes below. The reveal button is
+            a sibling of the input, and `Field`'s real `<label>` would wrap it: a stray click on the eye
+            would be re-dispatched to the input and the button's name would be folded into the input's
+            (Field.tsx's header sets out both traps).
+
+            `PasswordInput` is safe to call from this SERVER file because it owns its own reveal state —
+            it needs no function-valued prop, which is the one thing that cannot cross the boundary
+            (Input.tsx documents the 500 that shipped when one tried).
+          */}
+          <FieldBlock
+            label="Your current password"
+            required
+            help="Asked for because this changes how you sign in."
+          >
+            <PasswordInput
+              name="password"
+              required
+              autoComplete="current-password"
+              // Five password boxes on this page, so no eye may be called just "Show password".
+              subject="the password for the address change"
+            />
+          </FieldBlock>
 
           <HelpText tone="warn">
             The new address takes effect at once and no confirmation message is sent, so check the spelling
@@ -767,22 +788,41 @@ export default async function StudioAccountPage({
         }
       >
         <form id="account-password" action={changePassword} className="space-y-5">
-          <Field label="Your current password" required>
-            <Input name="current" type="password" required autoComplete="current-password" />
-          </Field>
+          <FieldBlock label="Your current password" required>
+            <PasswordInput
+              name="current"
+              required
+              autoComplete="current-password"
+              subject="your current password"
+            />
+          </FieldBlock>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field
+            <FieldBlock
               label="Your new password"
               required
               help="At least 12 characters. A short phrase of several words is both stronger and easier to type than a scramble."
             >
-              <Input name="next" type="password" required autoComplete="new-password" />
-            </Field>
+              <PasswordInput
+                name="next"
+                required
+                autoComplete="new-password"
+                subject="your new password"
+              />
+            </FieldBlock>
 
-            <Field label="The new password again" required help="To catch a typo before it locks you out.">
-              <Input name="confirm" type="password" required autoComplete="new-password" />
-            </Field>
+            <FieldBlock
+              label="The new password again"
+              required
+              help="To catch a typo before it locks you out."
+            >
+              <PasswordInput
+                name="confirm"
+                required
+                autoComplete="new-password"
+                subject="the repeated new password"
+              />
+            </FieldBlock>
           </div>
 
           <HelpText tone="warn">
@@ -828,9 +868,18 @@ export default async function StudioAccountPage({
                 device straight away.
               </p>
 
-              <Field label="Your password" required help="Asked for because a session is not proof that it is you.">
-                <Input name="password" type="password" required autoComplete="current-password" />
-              </Field>
+              <FieldBlock
+                label="Your password"
+                required
+                help="Asked for because a session is not proof that it is you."
+              >
+                <PasswordInput
+                  name="password"
+                  required
+                  autoComplete="current-password"
+                  subject="the password for switching off two-step verification"
+                />
+              </FieldBlock>
 
               <Button type="submit" variant="danger" size="sm">
                 Switch off two-step verification

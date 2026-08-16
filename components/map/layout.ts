@@ -22,6 +22,25 @@
  */
 
 import { project, VIEW_BOX } from "@/components/map/projection";
+import type { CraftSheet } from "@/lib/media/craft-sheets";
+
+/**
+ * ONE craft, standing for the work at a pin, with the plate that shows what that work looks like.
+ *
+ * ⚠ THE PLATE IS RESOLVED ON THE SERVER AND TRAVELS WITH THE POINT, which is a deliberate trade and
+ * not an accident of where the code was written. `lib/media/craft-sheets.ts` is forty-three entries
+ * each carrying a base64 blur placeholder; importing it into the client map to look one slug up would
+ * put the whole manifest in the bundle. A resolved sheet is about 300 bytes of RSC payload per pin,
+ * so a twenty-pin map pays six kilobytes and a phone downloads no manifest at all.
+ *
+ * `sheet` is nullable because `craftSheetFor` cannot invent a plate from an empty manifest, and the
+ * hover card is built to show the craft's name with no picture rather than to disappear.
+ */
+export interface MapPointCraft {
+  name: string;
+  sheet: CraftSheet | null;
+}
+
 /**
  * The lean point this port needs. The source app read a richer MapPoint from its own API
  * (precision ladders, capture layers); the landing map draws craft REGIONS, which have exactly
@@ -34,6 +53,13 @@ export interface MapPoint {
   longitude: number;
   /** Folded record count at this coordinate — sizes the pin and is printed inside it. */
   total: number;
+  /**
+   * Optional because the counted map stands on its own: this is the picture the hover card adds, and
+   * a caller that has only regions and counts — which is all `layoutPins` and the SVG ever read —
+   * sets nothing. Absent means the card shows the place and its count with no frame, rather than an
+   * empty frame.
+   */
+  craft?: MapPointCraft;
 }
 
 /**

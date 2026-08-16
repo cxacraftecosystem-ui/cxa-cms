@@ -16,12 +16,28 @@
  * holds. A count whose whole chain is unplaced is not silently dropped either: it is stated in the
  * sr-only sentence under the map (contract §1.6 — the honest absence).
  *
+ * EACH PIN ALSO CARRIES ONE CRAFT AND A PICTURE OF THAT KIND OF WORK, which is what the hover card
+ * over the map shows. The craft is read alongside the count (`take: 1` per region, featured first)
+ * and rolled up on the same chain, so the pin that stands for the most work is never the pin with
+ * nothing to show. The picture is one of the Centre's own contact sheets, matched to the craft's
+ * technique where the record allows and picked by a stable hash of its slug where it does not — see
+ * components/map/craftSheetFor.ts, which also explains why a plate is never captioned as a photograph
+ * OF the named craft.
+ *
+ * ⚠ NOTHING BELOW RENDERS WITHOUT DATA, AND THAT IS ON PURPOSE (see the guard at the end of the
+ * roll-up). To see this section at all, the database needs at least one `CraftRegion` with BOTH
+ * `latitude` and `longitude` set, and at least one PUBLISHED, undeleted `Craft` pointing at that
+ * region or at a descendant of it. `prisma/corpus/crafts.ts` seeds exactly that — placed regions and
+ * published crafts with `materials`/`techniques` filled in, which is also what the plate matcher
+ * reads. A production database with no craft records draws nothing, correctly.
+ *
  * The geometry is the OFFICIAL depiction of India — components/map/indiaGeometry.ts carries the
  * provenance and the warning against substituting any Western dataset. Do not "optimise" it away.
  */
 
 import type { PageSection } from "@prisma/client";
 
+import { craftSheetFor } from "@/components/map/craftSheetFor";
 import { IndiaMapStage } from "@/components/map/IndiaMapStage";
 import type { MapPoint } from "@/components/map/layout";
 import { Reveal } from "@/components/motion/Reveal";
@@ -58,7 +74,26 @@ export async function IndiaMapSection({ data, section }: IndiaMapSectionProps) {
           parentId: true,
           latitude: true,
           longitude: true,
-          _count: { select: { crafts: { where: { status: "PUBLISHED", deletedAt: null } } } }
+          _count: { select: { crafts: { where: { status: "PUBLISHED", deletedAt: null } } } },
+          /*
+           * ONE craft per region, to stand for the work at its pin in the map's hover card.
+           *
+           * ⚠ `take: 1` IS WHAT MAKES THIS AFFORDABLE, and the ordering is what makes it stable. The
+           * alternative — reading every published craft and grouping in JavaScript — pulls the whole
+           * archive into the homepage's render to use one row of it. Featured first, because "the one
+           * an editor chose to feature" is the best answer available to "which craft stands for this
+           * place"; then by name, so the pick never depends on insertion order and the same reader
+           * sees the same craft on every visit.
+           *
+           * ⚠ THE `where` MUST MATCH `_count`'s EXACTLY. If the two ever drift, a region can report a
+           * count with no craft to show for it — a pin whose card is a name and a blank.
+           */
+          crafts: {
+            where: { status: "PUBLISHED", deletedAt: null },
+            orderBy: [{ isFeatured: "desc" }, { name: "asc" }],
+            take: 1,
+            select: { slug: true, name: true, materials: true, techniques: true }
+          }
         }
       }),
     []
@@ -80,6 +115,19 @@ export async function IndiaMapSection({ data, section }: IndiaMapSectionProps) {
   const totals = new Map<Region, number>();
   let unplacedTotal = 0;
 
+  /*
+   * The craft each anchor shows a picture of, and the claim it beat.
+   *
+   * ⚠ AN ANCHOR'S EXEMPLAR IS NOT NECESSARILY ITS OWN CRAFT. Counts climb the `parentId` chain, so a
+   * pin on Gujarat can be standing for crafts recorded against Ajrakhpur and Nirona and nothing at
+   * all against Gujarat itself; the picture has to climb with the count or the pin with the most
+   * work on the map would be the one pin with no picture. The contributor holding the most crafts
+   * wins, ties broken by slug — a total order that does not depend on the order rows came back in, so
+   * the same archive always produces the same forty pictures.
+   */
+  type Claim = { count: number; slug: string; craft: Region["crafts"][number] };
+  const exemplars = new Map<Region, Claim>();
+
   for (const region of regions) {
     const count = region._count.crafts;
     if (count === 0) continue;
@@ -96,21 +144,50 @@ export async function IndiaMapSection({ data, section }: IndiaMapSectionProps) {
       current = current.parentId === null ? undefined : byId.get(current.parentId);
     }
 
-    if (anchor !== null) totals.set(anchor, (totals.get(anchor) ?? 0) + count);
-    else unplacedTotal += count;
+    if (anchor === null) {
+      unplacedTotal += count;
+      continue;
+    }
+
+    totals.set(anchor, (totals.get(anchor) ?? 0) + count);
+
+    // `crafts` is a `take: 1` list, so this is the region's exemplar or nothing —
+    // `noUncheckedIndexedAccess` is right that a first element is not a promise the type can make.
+    const craft = region.crafts[0];
+    if (craft === undefined) continue;
+
+    const held = exemplars.get(anchor);
+    if (
+      held === undefined ||
+      count > held.count ||
+      (count === held.count && region.slug < held.slug)
+    ) {
+      exemplars.set(anchor, { count, slug: region.slug, craft });
+    }
   }
 
   const points: MapPoint[] = [...totals.entries()]
-    .map(([region, total]) => ({
-      key: region.slug,
-      name: region.name,
-      // An anchor is placed by construction — `isPlaced` is the only way into `totals`.
-      latitude: region.latitude as number,
-      longitude: region.longitude as number,
-      total
-    }))
+    .map(([region, total]) => {
+      const exemplar = exemplars.get(region);
+      return {
+        key: region.slug,
+        name: region.name,
+        // An anchor is placed by construction — `isPlaced` is the only way into `totals`.
+        latitude: region.latitude as number,
+        longitude: region.longitude as number,
+        total,
+        /*
+         * The plate is chosen HERE, on the server, and travels with the point. The manifest is
+         * forty-three entries each carrying a base64 blur placeholder; resolving on the client would
+         * put all of it in the bundle to look one slug up. See components/map/layout.ts.
+         */
+        craft: exemplar
+          ? { name: exemplar.craft.name, sheet: craftSheetFor(exemplar.craft) }
+          : undefined
+      };
+    })
     // Largest first, so the list's ordinals lead with the places holding the most work — and the
-    // map's hover label numbers agree, because both read this one order.
+    // map's hover card numbers agree, because both read this one order.
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 
   // No anchors at all — a fresh install before the corpus, or an archive whose regions were entered

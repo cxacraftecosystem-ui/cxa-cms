@@ -67,6 +67,23 @@
  *   carrying a measure where a body should be leaves the page's own `mt-*` spacing paying for a block
  *   that draws nothing. A caller that passes no `fallback` and has no body still gets nothing at all.
  *
+ * ⚠ AND THE LISTEN CONTROL IS A THIRD KIND OF SIBLING, WHICH IS WHY IT IS WORTH A LINE HERE.
+ *   `components/site/ReadAloud.tsx` speaks the article through `window.speechSynthesis`, and it reads
+ *   its text out of the RENDERED DOM rather than from `value` or `mdx` — those are a JSON tree and a
+ *   string of markdown, and a synthesiser handed either would pronounce the syntax. The document box
+ *   is where the two sources have already become the same thing, so it is marked
+ *   `data-read-aloud-source` and the column is marked `data-read-aloud-scope`; the control walks up to
+ *   the column it was rendered into and finds the box inside it, so two articles on one page can never
+ *   read each other's words. The control itself is a SIBLING of the document box for the same two
+ *   reasons the fallback is — it would otherwise be set at the reading size and could take the drop cap
+ *   off the first paragraph.
+ *
+ *   It is rendered ONLY where there is a real body. A record with nothing but a `fallback` has one
+ *   apology paragraph to say, and offering to read it aloud would be a joke at the reader's expense.
+ *   The control is a client component and the only one this file has: it decides for itself whether to
+ *   render anything at all (the API is absent in some browsers, and the piece may be too short to be
+ *   worth listening to), and a page that renders no `ProseArticle` never reaches its chunk.
+ *
  * TWO SOURCES, ONE PER RECORD. The CMS writes either Tiptap JSON (`value`) or MDX (`mdx`), and the
  * editor picks one mode per post and says which (prisma/schema.prisma, `Post.mdx`). When both are
  * present the MDX wins, because a record only acquires MDX by somebody deliberately switching it —
@@ -100,6 +117,7 @@ import Link from "next/link";
 import { ImageOff } from "lucide-react";
 
 import { RichText, leadParagraphClassName } from "@/components/RichText";
+import { ReadAloud } from "@/components/site/ReadAloud";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { isEmptyRichText, parseRichText } from "@/lib/richtext";
 import { getSettingCached } from "@/lib/settings/service";
@@ -321,6 +339,19 @@ const MDX_RHYTHM = cn(
 const STANDFIRST_GAP = "mt-10";
 
 /**
+ * The gap under the listen control.
+ *
+ * ⚠ IT IS PASSED TO `ReadAloud` RATHER THAN PUT ON A WRAPPER HERE, and that is the whole reason it is
+ * a `mb-*` on the controls instead of an `mt-*` on the document box. `ReadAloud` renders an empty,
+ * class-less host element until it has confirmed after mount that the browser can speak and that the
+ * piece is long enough to be worth speaking — so on a browser with no `speechSynthesis`, or above a
+ * short record, this margin is attached to nothing and the prose starts exactly where it always did.
+ * A margin written here, on an element this file always renders, would open 32px above every article
+ * on the site for a feature most of those readers never see.
+ */
+const LISTEN_GAP = "mb-8";
+
+/**
  * The deck, as a real lead paragraph.
  *
  * ⚠ BOTH HALVES ARE REQUIRED AND THE ATTRIBUTE IS THE LOAD-BEARING ONE. The class comes from
@@ -489,8 +520,11 @@ export async function ProseArticle({
     });
 
     return (
-      <div className={column}>
-        <div className={documentClass}>
+      <div className={column} data-read-aloud-scope="">
+        {/* An MDX record only exists because somebody wrote a body, so there is always something to
+            read aloud on this branch. See the header. */}
+        <ReadAloud className={LISTEN_GAP} />
+        <div className={documentClass} data-read-aloud-source="">
           {standfirstParagraph(deck)}
           <div className={cn(MDX_RHYTHM, deck ? STANDFIRST_GAP : undefined)}>{content}</div>
         </div>
@@ -533,9 +567,17 @@ export async function ProseArticle({
   if (!hasDocument && !hasFallback && !children) return null;
 
   return (
-    <div className={column}>
+    <div className={column} data-read-aloud-scope="">
+      {/*
+        ⚠ `hasBody`, NOT `hasDocument`. A record with a deck and no body has one sentence in its
+        document box, and a "read aloud" control over a single sentence is a control that costs more
+        attention than the sentence does. `ReadAloud` applies its own minimum length on top of this,
+        measured from the rendered text — this test is only about whether there is an article here at
+        all. (It is also why the control is not offered beside a `fallback`: see the header.)
+      */}
+      {hasBody ? <ReadAloud className={LISTEN_GAP} /> : null}
       {hasDocument ? (
-        <div className={documentClass}>
+        <div className={documentClass} data-read-aloud-source="">
           {standfirstParagraph(deck)}
           {/*
             ⚠ THE STANDFIRST'S GAP IS PASSED INTO `RichText`, NOT WRAPPED AROUND IT. See `STANDFIRST_GAP`
