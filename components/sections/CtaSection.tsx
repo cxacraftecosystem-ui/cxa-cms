@@ -23,6 +23,7 @@ import { ArrowRight } from "lucide-react";
 import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
+import { PointerGlow } from "@/components/site/PointerGlow";
 import { LinkButton } from "@/components/ui/Button";
 import type { CtaSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
@@ -128,11 +129,19 @@ export function CtaSection({ data, section }: CtaSectionProps) {
       <div className="shell">
         <Reveal>
           {brand ? (
-            // `.noise` is a `::after` pinned to `inset: 0`, so the panel has to be positioned, and
-            // the overflow clip keeps the grain inside the 24px radius.
-            <div className="grad-brand noise relative overflow-hidden rounded-xl px-6 py-14 shadow-cinema sm:px-10 sm:py-16 lg:px-14">
+            /*
+              `.noise` is a `::after` pinned to `inset: 0`, so the panel has to be positioned, and
+              the overflow clip keeps the grain inside the 24px radius.
+
+              `PointerGlow` IS this panel, not a wrapper around it — it takes the panel's classes and
+              renders the element itself, so no extra box enters the layout. It is the only client
+              JavaScript this section ships: `body` is built on the server and handed through as
+              children, so the heading, the copy and both links stay out of the bundle. See its
+              header for why that distinction is worth the indirection.
+            */
+            <PointerGlow className="grad-brand noise overflow-hidden rounded-xl px-6 py-14 shadow-cinema sm:px-10 sm:py-16 lg:px-14">
               <div className="relative">{body}</div>
-            </div>
+            </PointerGlow>
           ) : (
             body
           )}
