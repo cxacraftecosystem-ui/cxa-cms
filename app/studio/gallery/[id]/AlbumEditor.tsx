@@ -78,6 +78,7 @@ import type { ContentStatus } from "@prisma/client";
 import { del, patch, post } from "@/lib/client/fetcher";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { DateField } from "@/components/ui/DateField";
 import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { MediaImage } from "@/components/ui/MediaImage";
@@ -204,7 +205,7 @@ export interface AlbumDraft {
   category: string;
   location: string;
   credit: string;
-  /** `YYYY-MM-DD`, or "" — a `date` input speaks nothing else. */
+  /** `YYYY-MM-DD`, or "" — the shape the `DateField` on this screen reads and writes, and no other. */
   happenedOn: string;
   coverId: string | null;
   sortOrder: number;
@@ -721,9 +722,10 @@ export function AlbumEditor({
 
             <div className="grid gap-5 sm:grid-cols-2">
               {/*
-                `Field` (a real `<label>`) is right for all four of these: every control is a plain
-                `<input>` or a native `<select>`, so there is no button inside for a stray click to be
-                forwarded to (Field.tsx).
+                `Field` (a real `<label>`) is right for the three plain `<input>`s here: there is no
+                button inside any of them for a stray click to be forwarded to, and nothing else with a
+                name to be folded into the box's own (Field.tsx). The date is the exception and brings
+                its own `FieldBlock` — see the note on it below.
               */}
               <Field
                 label="Category"
@@ -739,16 +741,25 @@ export function AlbumEditor({
                 />
               </Field>
 
-              <Field
+              {/*
+                ⚠ `draft.happenedOn` IS STILL THE BARE `YYYY-MM-DD` IT ALWAYS WAS, and the single
+                conversion to an instant is still the one in `toIsoDay` — read that function's note for
+                why an album dated the 1st has to be stored at UTC midnight and not local. `DateField`
+                is string-in/string-out and parses nothing on the way through (its header explains why
+                it refuses to own a zone), so the day the reader sees, the day the grid highlights and
+                the day `toIsoDay` is handed are the same digits throughout.
+
+                It wraps itself in a `FieldBlock` rather than the `Field` beside it, and that is the
+                exception the note above points at: this field contains the button that opens the
+                calendar, and a `<label>` would fold that button into the box's accessible name and
+                forward the click that opened it straight back into the box (Field.tsx).
+              */}
+              <DateField
                 label="Date of the occasion"
                 help="The day the photographs were taken, not the day you are adding them. Albums can be ordered by this."
-              >
-                <Input
-                  type="date"
-                  value={draft.happenedOn}
-                  onChange={(event) => patchDraft({ happenedOn: event.target.value })}
-                />
-              </Field>
+                value={draft.happenedOn}
+                onChange={(happenedOn) => patchDraft({ happenedOn })}
+              />
 
               <Field
                 label="Place"

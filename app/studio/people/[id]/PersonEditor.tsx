@@ -30,6 +30,7 @@ import { ImagePlus, Trash2 } from "lucide-react";
 import { del, patch, post } from "@/lib/client/fetcher";
 import { unique } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { DateField } from "@/components/ui/DateField";
 import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { MediaImage } from "@/components/ui/MediaImage";
@@ -374,28 +375,37 @@ export function PersonEditor({
           />
         </Field>
 
-        <Field
+        {/*
+          ⚠ BOTH DATES STAY `YYYY-MM-DD` STRINGS AND NOTHING HERE PARSES THEM. `DateField` is
+          string-in/string-out and holds no zone of its own (its header says so at length), so the UTC
+          day this screen was handed — `page.tsx` slices it out of `toISOString()`, precisely so a
+          joining date never shifts by one — is the same string that goes back to the server through
+          `toPayload`. The control changed; the convention on either side of it did not.
+
+          It brings its own `FieldBlock` rather than sitting inside the `Field` these used to be, and
+          that is not a preference: the field now contains the button that opens the calendar, and
+          `Field` renders a real `<label>`, which folds every named descendant into the box's
+          accessible name AND re-dispatches a stray click into the box (Field.tsx sets out both).
+
+          `datesOutOfOrder` above is still a STRING comparison of two `YYYY-MM-DD`s, which is why it
+          goes on working untouched: the shape is fixed-width and zero-padded, so lexical order is date
+          order, and `DateField` emits exactly that shape or the empty string — never one of the
+          half-typed values it holds internally while the reader is still typing.
+        */}
+        <DateField
           label="Joined on"
           help="Optional. Only the year is shown on the site."
-        >
-          <Input
-            type="date"
-            value={value.startedOn}
-            onChange={(event) => update({ startedOn: event.target.value })}
-          />
-        </Field>
+          value={value.startedOn}
+          onChange={(startedOn) => update({ startedOn })}
+        />
 
-        <Field
+        <DateField
           label="Left on"
           help="Leave this empty for anybody still at the Centre. An alumnus keeps their years."
           error={datesOutOfOrder ? "The leaving date must be on or after the joining date." : null}
-        >
-          <Input
-            type="date"
-            value={value.endedOn}
-            onChange={(event) => update({ endedOn: event.target.value })}
-          />
-        </Field>
+          value={value.endedOn}
+          onChange={(endedOn) => update({ endedOn })}
+        />
       </FormSection>
 
       <FormSection

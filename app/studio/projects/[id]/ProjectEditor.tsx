@@ -35,6 +35,7 @@ import { del, patch, post } from "@/lib/client/fetcher";
 import { useResource } from "@/lib/client/useResource";
 import { clamp, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { DateField } from "@/components/ui/DateField";
 import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { MediaImage } from "@/components/ui/MediaImage";
@@ -600,25 +601,33 @@ export function ProjectEditor({
         description="The dates are days, not times. Progress is the bar on the project's page."
         columns={2}
       >
-        <Field label="Started on" help="Leave it empty if the start date is not settled.">
-          <Input
-            type="date"
-            value={value.startedOn}
-            onChange={(event) => update({ startedOn: event.target.value })}
-          />
-        </Field>
+        {/*
+          ⚠ THE UTC CONVENTION THIS SCREEN WAS BUILT ON IS UNTOUCHED. Every date on this form is a
+          `YYYY-MM-DD` STRING from the moment `page.tsx` slices it out of `toISOString()` to the moment
+          it is posted back — "DATES CROSS AS `YYYY-MM-DD`, IN UTC" in that file's header is the whole
+          rule, and it holds because `DateField` is string-in/string-out and parses nothing on the way
+          through (its header explains at length why it refuses to own a zone). A picker that handed
+          back a `Date` here would have re-parsed a day as an instant and moved it by one.
 
-        <Field
+          `DateField` brings its own `FieldBlock`, which is why these are no longer `Field`s: the field
+          now contains the button that opens the calendar, and `Field` renders a real `<label>` — which
+          folds every named descendant into the box's accessible name and re-dispatches a stray click
+          back into the box (Field.tsx sets out both traps).
+        */}
+        <DateField
+          label="Started on"
+          help="Leave it empty if the start date is not settled."
+          value={value.startedOn}
+          onChange={(startedOn) => update({ startedOn })}
+        />
+
+        <DateField
           label="Ended on"
           help="Leave it empty while the project is still running."
           error={datesOutOfOrder ? "The end date must be on or after the start date." : null}
-        >
-          <Input
-            type="date"
-            value={value.endedOn}
-            onChange={(event) => update({ endedOn: event.target.value })}
-          />
-        </Field>
+          value={value.endedOn}
+          onChange={(endedOn) => update({ endedOn })}
+        />
 
         <FieldBlock
           label="Progress"
@@ -716,16 +725,25 @@ export function ProjectEditor({
                 />
               </Field>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Due on" help="When it should be finished.">
-                  <Input
-                    type="date"
-                    value={item.dueOn}
-                    onChange={(event) => updateItem({ ...item, dueOn: event.target.value })}
-                  />
-                </Field>
+              {/*
+                The same two `YYYY-MM-DD` strings the milestone has always held — see the note beside
+                "Started on" above for why nothing here parses them, and why the wrapper is
+                `DateField`'s own `FieldBlock` rather than a `Field`.
 
-                <Field
+                ⚠ The comparison below is still LEXICAL, on two fixed-width zero-padded days, which is
+                the only reason it can be written as `<`. It goes on working because `DateField` emits
+                exactly that shape or the empty string and never a half-typed value — the length guards
+                either side already refuse the empty string.
+              */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <DateField
+                  label="Due on"
+                  help="When it should be finished."
+                  value={item.dueOn}
+                  onChange={(dueOn) => updateItem({ ...item, dueOn })}
+                />
+
+                <DateField
                   label="Completed on"
                   help="Fill this in when it is done. Until then leave it empty."
                   error={
@@ -738,13 +756,9 @@ export function ProjectEditor({
                         "Finished before it was due — nothing to fix, this is just what the site will say."
                       : null
                   }
-                >
-                  <Input
-                    type="date"
-                    value={item.completedOn}
-                    onChange={(event) => updateItem({ ...item, completedOn: event.target.value })}
-                  />
-                </Field>
+                  value={item.completedOn}
+                  onChange={(completedOn) => updateItem({ ...item, completedOn })}
+                />
               </div>
 
               <p className="text-xs text-ink-500">Milestone {index + 1} on the project&rsquo;s page.</p>

@@ -58,6 +58,7 @@ import { useDebouncedValue, useResource } from "@/lib/client/useResource";
 import { clamp, cn, formatBytes } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { DateField } from "@/components/ui/DateField";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field } from "@/components/ui/Field";
 import { FileDropzone } from "@/components/ui/FileDropzone";
@@ -401,7 +402,7 @@ function formatWhen(iso: string | null): string {
   })} UTC`;
 }
 
-/** `YYYY-MM-DD` for a `date` input, from an ISO instant. Sliced from the UTC string — the column is a day. */
+/** `YYYY-MM-DD` for the `DateField`, from an ISO instant. Sliced from the UTC string — the column is a day. */
 function toDateInput(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
@@ -1091,16 +1092,30 @@ function FileDetailPanel({
           description="With this off, only people signed in to the studio can get the file. Nobody else can download it even if they know the address."
         />
 
-        <Field
+        {/*
+          ⚠ BOTH ENDS OF THIS DATE ARE UTC AND NEITHER END MOVED. `expiresOn` is still the UTC day
+          `toDateInput` slices out of the stored instant, and `save` still puts it back as
+          `${expiresOn}T23:59:59.000Z` — the pair that makes "available ON the 30th" mean the whole of
+          the 30th. `DateField` is string-in/string-out and parses nothing on the way through (its
+          header explains why it refuses to own a zone), so the digits in the box are the digits that
+          were sliced and the digits that are sent. Anything that turned this into a `Date` would parse
+          a UTC day on the local clock and expire the file a day early west of Greenwich.
+
+          It is the dirty check above that makes this worth stating: `dirty` compares `expiresOn`
+          against `toDateInput(file.expiresAt)` as STRINGS, and `DateField` never calls `onChange` on
+          mount — it only speaks when the reader types or picks — so opening the panel cannot arm the
+          "Unsaved changes" line on a file nobody has touched.
+
+          `DateField` brings its own `FieldBlock` in place of the `Field` this was: the field now holds
+          the button that opens the calendar, and `Field`'s real `<label>` would fold that button into
+          the box's accessible name and forward the opening click back into the box (Field.tsx).
+        */}
+        <DateField
           label="Available until"
           help="Leave this empty to keep the file available indefinitely. A date here is the last day it can be downloaded."
-        >
-          <Input
-            type="date"
-            value={expiresOn}
-            onChange={(event) => setExpiresOn(event.target.value)}
-          />
-        </Field>
+          value={expiresOn}
+          onChange={setExpiresOn}
+        />
 
         {/*
           THE SENTENCE THAT MUST BE ON THIS SCREEN. Nobody may read the two controls above and conclude
