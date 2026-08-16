@@ -2,6 +2,7 @@ import { SmoothScroll } from "@/components/motion/SmoothScroll";
 import { AnnouncementBar } from "@/components/site/AnnouncementBar";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { SiteFooter } from "@/components/site/SiteFooter";
+import { SplashCursorMount } from "@/components/site/SplashCursorMount";
 import { StudioDoorway } from "@/components/site/StudioDoorway";
 import type { NavNode } from "@/lib/navigation";
 import { organizationJsonLd, serializeJsonLd, webSiteJsonLd } from "@/lib/seo";
@@ -228,16 +229,26 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
         />
 
         {/*
-          ⚠ THE FLUID CURSOR TRAIL IS UNMOUNTED, DELIBERATELY, AND THE COMPONENT IS KEPT.
-          On the owner's hardware it flickered on every page. Three passes at the cause —
-          dye dissipation, a random-hue strobe, then a genuinely mis-sampled SHADING display pass
-          fed canvas-sized texel offsets against a 720px dye buffer — each fixed something real and
-          none of them ended it, and headless Chrome renders the sim's dye not at all, so it could
-          not be reproduced here. An ornament that costs the owner a usable page has no claim on
-          it. `components/site/SplashCursor.tsx` and its mount stay in the tree with their gates
-          and their fixes intact; restoring the effect is re-adding this one element, and should
-          not happen until somebody has watched it on real hardware for a full minute.
+          THE FLUID CURSOR TRAIL, MOUNTED AGAIN — and the sim underneath it is a different one.
+
+          The note that stood here recorded that the effect had been unmounted because the previous,
+          bespoke implementation FLICKERED on the owner's hardware: three passes at the cause (dye
+          dissipation, a random-hue strobe, a mis-sampled SHADING display pass feeding canvas-sized
+          texel offsets against a 720px dye buffer) each fixed something real and none of them ended
+          it, and headless Chrome renders the sim's dye not at all so it could never be reproduced
+          here. Removing the element was the right call at the time — an ornament that costs the
+          owner a usable page has no claim on it.
+
+          `components/site/SplashCursor.tsx` is now the reference implementation the owner supplied,
+          ported verbatim, rather than that rewrite — so the display pass that was the last suspect
+          is gone with the code that contained it. See that file's header.
+
+          ⚠ IT IS STILL WORTH WATCHING ON REAL HARDWARE FOR A FULL MINUTE. The reason the flicker
+          could not be chased here has not changed: headless Chrome does not render the dye, so this
+          machine cannot tell you whether it is fixed. If it returns, remove this one element again
+          and say so — that is a cheaper answer than a fourth pass at a shader.
         */}
+        <SplashCursorMount />
       </div>
 
       <StudioDoorway />
