@@ -2039,8 +2039,21 @@ input[type="number"] {
   z-index: 30;
   pointer-events: none;
 
-  /* The thread. A token, so it follows the ink ladder into the dark theme (#a7a3bc → #6e6884). */
-  background-color: rgb(var(--ink-300));
+  /*
+   * The thread, in the Centre's gold.
+   *
+   * ⚠ A LITERAL, NOT A TOKEN, AND THAT IS THE POINT. This was `rgb(var(--ink-300))` so the strip
+   * would follow the ink ladder into the dark theme — correct for something meant to read as a
+   * neutral rule, and wrong for this: an embroidered selvedge is METAL THREAD, and zari does not
+   * become grey because the room got dark. `gold-500` is from the brand ramp, which is literal
+   * oklch and does not invert, exactly as the footer's purple band and the logo's terracotta do
+   * not. The strip is the same colour on both themes, deliberately.
+   *
+   * The alpha does the work the ink token used to: at full strength a gold rule down both edges
+   * competes with the gold the page already spends on eyebrows and accents, and the brief was
+   * "thin, just like a slight margin".
+   */
+  background-color: oklch(0.7 0.145 80 / 0.55);
 
   /*
    * The resting state, and the one every reader's first paint agrees on — server, client, cold load

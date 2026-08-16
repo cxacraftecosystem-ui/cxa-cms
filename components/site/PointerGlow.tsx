@@ -43,8 +43,14 @@ export interface PointerGlowProps {
   /** The panel's own classes. This element IS the panel — it is not an extra wrapper. */
   className?: string;
   /**
-   * The gradient's colour, as an oklch string without its alpha. Defaults to the brand's purple-500.
-   * A caller on a different ground passes its own rather than getting a purple wash on a gold panel.
+   * The gradient's colour, as an oklch string without its closing alpha.
+   *
+   * ⚠ DEFAULTS TO GOLD, NOT TO THE PURPLE THIS WAS PORTED WITH. The source band ran a purple-500
+   * wash over a dark NEUTRAL ground, where it reads immediately. Its first home here is the brand
+   * panel, which is `grad-brand` — already a purple gradient — so purple over purple came out
+   * invisible, and was reported as the effect simply not being there. It was rendering the whole
+   * time; there was just nothing to see. Gold is the site's own accent against that ground and is
+   * the one colour on this panel that cannot disappear into it.
    */
   tint?: string;
 }
@@ -58,7 +64,7 @@ export interface PointerGlowProps {
  */
 const REST = 50;
 
-export function PointerGlow({ children, className, tint = "oklch(0.648 0.19 305" }: PointerGlowProps) {
+export function PointerGlow({ children, className, tint = "oklch(0.7 0.145 80" }: PointerGlowProps) {
   const reduce = useReducedMotionPreference();
 
   const pointerX = useMotionValue(REST);
@@ -70,7 +76,7 @@ export function PointerGlow({ children, className, tint = "oklch(0.648 0.19 305"
   const glow = useTransform([smoothX, smoothY], (latest: number[]) => {
     const x = latest[0] ?? REST;
     const y = latest[1] ?? REST;
-    return `radial-gradient(30rem 26rem at ${x}% ${y}%, ${tint} / 0.42), transparent 64%)`;
+    return `radial-gradient(32rem 28rem at ${x}% ${y}%, ${tint} / 0.34), ${tint} / 0.12) 38%, transparent 66%)`;
   });
 
   return (
@@ -95,7 +101,17 @@ export function PointerGlow({ children, className, tint = "oklch(0.648 0.19 305"
               pointerY.set(REST);
             }
       }
-      className={cn("relative isolate", className)}
+      /*
+       * ⚠ `z-[45]` PUTS THIS PANEL ABOVE THE FLUID CURSOR, which is `fixed … z-40`. It is the same
+       * rung `.bg-card` takes in globals.css and for the same reason — but this panel is
+       * `grad-brand`, not `bg-card`, so it was not covered by that rule and the trail smeared
+       * straight across the invitation. Anything that is a card in the reader's eyes has to be on
+       * this rung, whatever class happens to paint its ground.
+       *
+       * `isolate` is what keeps the glow's `-z-10` inside this element; without it the layer would
+       * be measured against the page and could slide behind the panel entirely.
+       */
+      className={cn("relative isolate z-[45]", className)}
     >
       {/*
         `isolate` on the panel above is what keeps this `-z-10` inside it. Without it the layer
