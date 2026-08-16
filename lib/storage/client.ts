@@ -4,6 +4,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
@@ -286,4 +287,74 @@ export async function deleteObjects(keys: string[]): Promise<{ deleted: number; 
   }
 
   return { deleted, failed };
+}
+
+
+/**
+ * How many objects one prefix may hold before a sweep refuses to guess.
+ *
+ * A single upload's derivative ladder is six widths in two formats — twelve, plus the odd retry. Two
+ * hundred is a wide margin for that and far below anything that could plausibly be one asset. A prefix
+ * holding more than this is not a derivative set; it is a key collision or a mistake, and deleting it
+ * would take somebody else's objects with it.
+ */
+const MAX_SWEPT_OBJECTS = 200;
+
+/**
+ * Every object key actually present under a prefix.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHY THIS EXISTS: THE VARIANT ROWS ARE NOT A COMPLETE RECORD OF THE BYTES.
+ *
+ * `lib/storage/derivatives.ts` states plainly that a derivative run can PARTLY fail, and that the
+ * caller writes down what actually landed. So a derivative can exist in the bucket with no row naming
+ * it — written successfully, recorded unsuccessfully. Delete an asset by its rows alone and every one
+ * of those survives at a publicly readable URL, with the only record that could ever have found it now
+ * gone. Storage that costs money for ever and cannot be enumerated by anybody who did not already know
+ * the key.
+ *
+ * Both purge paths need this and each had grown its own answer to it, which is why it lives here now:
+ * the recycle bin's `purge-record.ts` swept correctly, and `app/api/cron/purge/route.ts` did not sweep
+ * at all — so every unrecorded derivative it has ever passed over is still in the bucket.
+ *
+ * ⚠ A FAILED LISTING IS A FAILED DELETE, NEVER AN EMPTY ONE. If storage cannot be listed the set is
+ * UNKNOWN, and deleting what we happen to know about before dropping the row leaves exactly the orphans
+ * this exists to prevent. It throws; the caller must keep the row.
+ *
+ * ⚠ AND SO IS AN OVER-LARGE PREFIX. Stopping at the cap and returning a partial list would delete some
+ * objects and then release the row, arriving at the orphan case through the very code written to avoid
+ * it. It throws instead, and somebody looks at why one prefix holds hundreds of objects.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export async function listObjectKeys(prefix: string): Promise<string[]> {
+  requireStorage();
+
+  const keys: string[] = [];
+  let token: string | undefined;
+
+  do {
+    const page = await s3().send(
+      new ListObjectsV2Command({
+        Bucket: bucket(),
+        Prefix: prefix,
+        MaxKeys: 1000,
+        ...(token ? { ContinuationToken: token } : {})
+      })
+    );
+
+    for (const object of page.Contents ?? []) {
+      if (object.Key) keys.push(object.Key);
+    }
+
+    // `IsTruncated` without a token would loop for ever; both are required to continue.
+    token = page.IsTruncated && page.NextContinuationToken ? page.NextContinuationToken : undefined;
+
+    if (keys.length > MAX_SWEPT_OBJECTS) {
+      throw new Error(
+        `More than ${MAX_SWEPT_OBJECTS} objects under ${prefix}; refusing to guess which of them belong to this asset.`
+      );
+    }
+  } while (token);
+
+  return keys;
 }

@@ -2,12 +2,10 @@ import "server-only";
 // `ListObjectsV2Command` is the ONE S3 command constructed outside lib/storage/client.ts, and the reason
 // is spelled out at `sweepDerivatives` below. It runs on that module's shared client via its exported
 // `s3()` / `bucket()`, so it still uses one connection pool and one credential resolver.
-import { ListObjectsV2Command } from "@aws-sdk/client-s3";
-
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { removeDocument, type SearchEntityType } from "@/lib/search/index";
-import { bucket, deleteObjects, s3, storageAvailable } from "@/lib/storage/client";
+import { deleteObjects, listObjectKeys, storageAvailable } from "@/lib/storage/client";
 import { variantPrefix } from "@/lib/storage/keys";
 
 import { metaFor, type BinType } from "./kinds";
@@ -667,50 +665,18 @@ async function ownedChildren(type: BinType, id: string): Promise<string[]> {
  * is unknown; deleting what we happen to know about and then removing the row would leave exactly the
  * orphans this exists to prevent. It throws, and the caller keeps the row.
  *
- * (This is the one place that builds an S3 command outside lib/storage/client.ts. `deleteObjects` is
- * there, but no `listObjects` is — and that module is not this task's to change. It runs on that
- * module's shared client through the exported `s3()` and `bucket()`, so it uses the same connection
- * pool and credentials. If a listing helper is ever added there, this should call it instead: the cron
- * purge in app/api/cron/purge/route.ts has the same blind spot and would want the same fix.)
+ * (The listing itself is `listObjectKeys` in lib/storage/client.ts, where it belongs — this file
+ * briefly built its own S3 command because no listing helper existed. The nightly cron purge in
+ * app/api/cron/purge/route.ts had the same blind spot and did not sweep at all; both now call the one
+ * implementation, so neither can drift from the other's idea of what a complete delete is.)
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 async function sweepDerivatives(originalKey: string): Promise<string[]> {
-  const prefix = variantPrefix(originalKey);
-  const keys: string[] = [];
-  let token: string | undefined;
-
-  do {
-    const page = await s3().send(
-      new ListObjectsV2Command({
-        Bucket: bucket(),
-        Prefix: prefix,
-        MaxKeys: 1000,
-        ...(token ? { ContinuationToken: token } : {})
-      })
-    );
-    for (const object of page.Contents ?? []) {
-      if (object.Key) keys.push(object.Key);
-    }
-    // `IsTruncated` without a token would loop for ever; both are required to continue.
-    token = page.IsTruncated && page.NextContinuationToken ? page.NextContinuationToken : undefined;
-
-    /**
-     * ⚠ GIVING UP HALF WAY IS THE ONE THING THIS MUST NOT DO SILENTLY.
-     *
-     * Stopping at the cap and returning what was found so far would delete some of the objects and then
-     * let the row go — leaving the rest orphaned, which is the outcome the whole ordering exists to
-     * prevent, arrived at by the code meant to prevent it. So an over-large prefix THROWS, the caller
-     * keeps the row, and somebody looks at why one asset has hundreds of objects under it.
-     */
-    if (keys.length > MAX_SWEPT_OBJECTS) {
-      throw new Error(
-        `More than ${MAX_SWEPT_OBJECTS} objects under ${prefix}; refusing to guess which of them belong ` +
-          "to this asset."
-      );
-    }
-  } while (token);
-
-  return keys;
+  // The listing now lives in lib/storage/client.ts as `listObjectKeys`, so this and the nightly cron
+  // in app/api/cron/purge/route.ts share ONE implementation. They had grown separate answers to the
+  // same problem and only one of them was right — the cron did not sweep at all. Its throw-rather-
+  // than-truncate behaviour and its cap are documented there.
+  return listObjectKeys(variantPrefix(originalKey));
 }
 
 /**

@@ -2,7 +2,8 @@ import { prisma } from "@/lib/db";
 import { ok, route } from "@/lib/api";
 import { assertCronAuthorised, runCronJob } from "@/lib/cron";
 import { mediaPurgeAfterDays } from "@/lib/env";
-import { deleteObjects, storageAvailable } from "@/lib/storage/client";
+import { deleteObjects, listObjectKeys, storageAvailable } from "@/lib/storage/client";
+import { variantPrefix } from "@/lib/storage/keys";
 import { recordEvent } from "@/lib/audit";
 import { pruneExpiredSessions } from "@/lib/auth/session";
 
@@ -72,7 +73,42 @@ export const GET = route(async (request: Request) => {
     }
 
     for (const asset of expired) {
-      const keys = [asset.objectKey, ...asset.variants.map((variant) => variant.objectKey)];
+      /*
+       * ══════════════════════════════════════════════════════════════════════════════════════════
+       * ⚠ THE ROWS ARE NOT A COMPLETE RECORD OF THE BYTES, AND THIS LOOP USED TO BELIEVE THEY WERE.
+       *
+       * It deleted `objectKey` plus the keys named by the variant ROWS, and nothing else. But
+       * lib/storage/derivatives.ts says a derivative run can PARTLY fail, with the caller writing
+       * down only what landed — so a derivative can exist in the bucket with no row naming it.
+       * Every one of those survived this purge, at a publicly readable URL, with the asset row that
+       * could have found it now deleted. Unenumerable, unreachable by any later cleanup, and billed
+       * for ever. That has been true of every run this cron has ever made.
+       *
+       * The prefix is now swept as well and the two sets unioned. `deleteObjects` treats an
+       * already-absent key as a success, so a key in both lists costs nothing.
+       *
+       * ⚠ A FAILED SWEEP IS A FAILED PURGE, NOT AN EMPTY ONE. If storage cannot be listed the set is
+       * unknown, and deleting what we happen to know about before dropping the row produces exactly
+       * the orphans this exists to prevent. `listObjectKeys` throws; the asset is skipped WITH ITS
+       * ROW INTACT and the next run retries it — the same ordering the rest of this file follows.
+       * ══════════════════════════════════════════════════════════════════════════════════════════
+       */
+      let keys: string[];
+      try {
+        const known = [asset.objectKey, ...asset.variants.map((variant) => variant.objectKey)];
+        const swept = await listObjectKeys(variantPrefix(asset.objectKey));
+        keys = [...new Set([...known, ...swept])];
+      } catch (error) {
+        failed.push({
+          id: asset.id,
+          reason: `Storage could not be listed for this asset, so its derivatives are unknown and the record was kept: ${
+            error instanceof Error ? error.message : "unknown error"
+          }`
+        });
+        skipped += 1;
+        continue;
+      }
+
       const outcome = await deleteObjects(keys);
 
       if (outcome.failed.length > 0) {
