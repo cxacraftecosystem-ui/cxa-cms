@@ -51,7 +51,8 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode
 } from "react";
 import { Check, Crop, RotateCcw, TriangleAlert } from "lucide-react";
 
@@ -183,6 +184,41 @@ export function isUsableCrop(rect: Partial<CropRect> | null | undefined): rect i
   return x >= 0 && y >= 0 && x + width <= 1.0001 && y + height <= 1.0001;
 }
 
+/**
+ * The crop stored on a media row, or null for "nobody has chosen — show the whole picture".
+ *
+ * ⚠ A ROW UPLOADED BEFORE THIS FEATURE EXISTED CARRIES FIVE NULLS, AND FIVE NULLS MEAN THE WHOLE
+ * IMAGE — never a zero-size box. `isUsableCrop` rejects the undefined members, the answer is null, and
+ * every caller reads null as `FULL_CROP`: the dialog opens on the whole picture and the render side
+ * cover-fits it exactly as it did before prisma/migrations/20260816190000_media_asset_crop. That is
+ * the entire back-compatibility story for the migration, and it is why the columns are nullable rather
+ * than defaulted to 0/0/1/1 — a default would be indistinguishable from a decision somebody made.
+ *
+ * ⚠ THE `?? undefined` ON EACH LINE IS LOAD-BEARING, not noise. The columns are `number | null` and
+ * `isUsableCrop` takes a `Partial<CropRect>`, whose members are `number | undefined`; passing the
+ * nulls straight through does not typecheck, and widening the predicate instead would weaken the one
+ * test the studio and the render side share.
+ *
+ * A STRUCTURAL PARAMETER rather than `StudioMediaAsset`, for two reasons: this module must keep its
+ * one-way dependency (components/studio/media/MediaGrid.tsx imports nothing from here, and adding an
+ * import back would close a cycle), and the same five fields arrive on an `UploadedMediaAsset` and on
+ * a detail row. Pure and React-free like `isUsableCrop`, so it moves to `lib/media/crop.ts` with it.
+ */
+export function storedCrop(row: {
+  cropX?: number | null;
+  cropY?: number | null;
+  cropWidth?: number | null;
+  cropHeight?: number | null;
+}): CropRect | null {
+  const rect = {
+    x: row.cropX ?? undefined,
+    y: row.cropY ?? undefined,
+    width: row.cropWidth ?? undefined,
+    height: row.cropHeight ?? undefined
+  };
+  return isUsableCrop(rect) ? rect : null;
+}
+
 /** Is this crop indistinguishable from the whole picture? Then there is nothing worth storing. */
 export function isWholeImage(rect: CropRect): boolean {
   return rect.x < 0.001 && rect.y < 0.001 && rect.width > 0.999 && rect.height > 0.999;
@@ -209,11 +245,12 @@ export function isWholeImage(rect: CropRect): boolean {
  * `cover` has nothing to do and the picture is neither stretched nor re-trimmed. The crop is shown
  * exactly.
  *
- * ⚠ MOVE THIS FUNCTION (AND `isUsableCrop`) TO `lib/media/crop.ts` BEFORE `MediaImage` CALLS IT. They
- * live here for now because this is the file that owns the geometry, but this module carries
- * `"use client"` — and a plain function exported from a client module and imported by a Server
- * Component is not the function, it is a client reference; calling it on the server throws. Both are
- * deliberately pure, dependency-free and untied to React so that the move is a cut and a paste.
+ * ⚠ MOVE THIS FUNCTION (AND `isUsableCrop`, AND `storedCrop`) TO `lib/media/crop.ts` BEFORE
+ * `MediaImage` CALLS IT. They live here for now because this is the file that owns the geometry, but
+ * this module carries `"use client"` — and a plain function exported from a client module and
+ * imported by a Server Component is not the function, it is a client reference; calling it on the
+ * server throws. They are deliberately pure, dependency-free and untied to React so that the move is a
+ * cut and a paste.
  *
  * ⚠ WHEN THE FRAME IS A DIFFERENT SHAPE FROM THE CROP, `cover` RE-TRIMS FROM THE CENTRE OF THE CROP.
  * A 16:9 crop dropped into a square tile loses its own left and right edges. That is a real
@@ -339,6 +376,17 @@ export interface ImageCropperProps {
   /** Where the dialog opens. Omit for the whole picture. */
   initialRect?: CropRect | null;
   initialAspectId?: string;
+  /**
+   * A sentence shown at the top of the dialog, above the shapes — for the consequence THIS caller
+   * knows about and the dialog does not.
+   *
+   * ⚠ IT BELONGS HERE RATHER THAN BESIDE THE BUTTON THAT OPENS THE DIALOG, and the reason is that the
+   * commit happens in here. `MediaPicker` uses it to say that the crop is stored on the FILE, so every
+   * other page already using the picture is reframed by pressing "Use this crop" — a consequence an
+   * editor attaching a photograph to one article has no reason to expect, and one they must read
+   * before they press it rather than discover from somebody else's page afterwards.
+   */
+  note?: ReactNode;
   /** The chosen crop. `null` means "show the whole picture" — the reset button returns that. */
   onApply: (choice: CropChoice | null) => void | Promise<void>;
 }
@@ -350,6 +398,7 @@ export function ImageCropper({
   fileName,
   initialRect,
   initialAspectId,
+  note,
   onApply
 }: ImageCropperProps) {
   const reduceMotion = useReducedMotionPreference();
@@ -369,25 +418,50 @@ export function ImageCropper({
   const normalisedRatio =
     ratio !== null && natural ? ratio * (natural.height / natural.width) : null;
 
+  /**
+   * The seed values, held in a ref and refreshed after every render.
+   *
+   * ⚠ THIS EXISTS SO THAT THE SEED EFFECT BELOW CAN DEPEND ON `open` ALONE. `initialRect` is a fresh
+   * object on nearly every render — each caller derives it with `storedCrop(asset)` — so listing it as
+   * a dependency compares two equal rectangles by IDENTITY, finds them different, and re-runs the
+   * effect. That would throw away the box the reader is dragging, mid-drag, every time the caller
+   * re-rendered for an unrelated reason: an upload progressing behind the upload queue, a debounced
+   * search landing behind the picker. It reads exactly like the crop moving on its own, which is the
+   * hardest kind of fault to report and the easiest to dismiss.
+   *
+   * Written in an effect rather than during render, because a render must have no side effects — and
+   * DECLARED BEFORE the seed effect, because effects run in declaration order within one commit, so
+   * on the render that opens the dialog this one has already stored that render's props by the time
+   * the seed reads them.
+   */
+  const seedRef = useRef({ initialRect, initialAspectId });
+  useEffect(() => {
+    seedRef.current = { initialRect, initialAspectId };
+  });
+
   // Reopening is a fresh start from whatever the caller stored. Carried in an effect rather than a
   // `key` on the caller's side because the caller is a queue that re-renders constantly, and a
   // remount on every render would lose a half-finished drag.
+  //
+  // ⚠ THE SEED IS READ ONCE, AT OPENING. A caller that changed `initialRect` while the dialog stood
+  // open would not see it — which is right, because that is the reader's half-finished work, and no
+  // caller does it: the dialog is modal, and the one asset it is editing cannot be swapped underneath
+  // it without closing first.
   useEffect(() => {
     if (!open) return;
-    setRect(initialRect && isUsableCrop(initialRect) ? initialRect : FULL_CROP);
+    const { initialRect: seedRect, initialAspectId: seedAspectId } = seedRef.current;
+    setRect(seedRect && isUsableCrop(seedRect) ? seedRect : FULL_CROP);
     // An id this build does not know — a preset removed in a later version, or a hand-edited row —
     // falls back to "free" rather than leaving every chip unselected, which would read as a broken
     // control. The stored rectangle is still honoured; only the lock on its shape is lost.
     setAspectId(
-      initialAspectId && CROP_ASPECTS.some((entry) => entry.id === initialAspectId)
-        ? initialAspectId
-        : "free"
+      seedAspectId && CROP_ASPECTS.some((entry) => entry.id === seedAspectId) ? seedAspectId : "free"
     );
     setLoadError(false);
     setBusy(false);
     // `natural` is deliberately NOT cleared: the same picture is usually being reopened, the <img>
     // is already decoded, and clearing would blank the dialog for a frame on every open.
-  }, [open, initialRect, initialAspectId]);
+  }, [open]);
 
   /**
    * Picking a preset re-fits the box to the new shape.
@@ -604,6 +678,23 @@ export function ImageCropper({
         </>
       }
     >
+      {/*
+        The caller's warning, above everything including the load error — a reader who cannot see the
+        picture can still see what pressing the button would have done, and the sentence is as true of
+        a picture that failed to load as of one that did not.
+
+        amber-100 with amber-800 as a PAIR: the status ramps are literal hex and do not invert, and
+        amber-50/amber-200 are stock Tailwind here and will not pair correctly (contract §1). No
+        `role="alert"` — nothing has gone wrong and nothing has changed; it is part of the dialog the
+        reader has just opened, and a live region would interrupt the dialog's own announcement.
+      */}
+      {note ? (
+        <p className="mb-3 flex items-start gap-1.5 rounded-md bg-amber-100 px-3 py-2.5 text-sm leading-relaxed text-amber-800">
+          <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{note}</span>
+        </p>
+      ) : null}
+
       {!src || loadError ? (
         <p
           role="alert"

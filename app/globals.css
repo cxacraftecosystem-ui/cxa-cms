@@ -357,51 +357,6 @@ input[type="number"] {
     @apply rounded-lg border border-line-200 bg-card shadow-sm;
   }
 
-  /*
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   * EVERY CARD SURFACE: A SOFT UNDERGLOW, AND THE RUNG THAT PUTS IT OVER THE FLUID CURSOR.
-   *
-   * `bg-card` is the site's card ground — 92 files reach for it — and it is the only honest hook for
-   * "every card, everywhere". The named classes (`.panel`, `.glass-card`) are used a handful of times
-   * between them and would have missed almost everything.
-   *
-   * ⚠ THE `z-index` IS HALF OF A CONTRACT WITH `components/site/SplashCursor.tsx`, WHICH IS `z-40`.
-   * The trail has to wash over each section's ground but pass BEHIND the cards, and there is no way
-   * to slot a `fixed` canvas between two elements that share a stacking context — so the cards are
-   * raised over it instead. 45 sits above the canvas and below the z-50 header.
-   *
-   * ⚠ AND NO ANCESTOR OF A CARD MAY CARRY A z-index. An index on `<main>` would make it a stacking
-   * context, and these 45s would then be measured against their siblings inside it rather than
-   * against the canvas — putting the trail back on top of every card. That exact mistake was made
-   * and reverted; the note on `<main>` in app/(site)/layout.tsx records it.
-   *
-   * ⚠ THIS IS IN THE COMPONENTS LAYER ON PURPOSE, so both declarations are DEFAULTS. Tailwind's
-   * utilities layer is emitted after this one, so any element that says `absolute`, `fixed`, `z-0`
-   * or `z-50` in its own class list still wins — which is what keeps the rule safe across 92 files
-   * rather than a blanket override of positioning nobody asked for.
-   *
-   * The glow is cast DOWNWARD and tinted with the brand purple rather than being a neutral grey drop
-   * shadow: it reads as the card being lit from above and floating a little off the page, which is
-   * the same light the mesh and the hero already imply. Kept low-alpha because it lands on 92 files
-   * at once — an underglow strong enough to notice on one card is a haze across a whole grid.
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   */
-  /*
-   * ⚠ THE SELECTOR IS DOUBLED, AND THAT IS THE WHOLE REASON THE GLOW WAS INVISIBLE FIRST TIME.
-   * `.bg-card` alone is one class, and so is `.shadow-sm` — which most cards on this site also
-   * carry. Tailwind emits its utilities layer AFTER this components layer, so at equal specificity
-   * the utility won on source order and replaced this `box-shadow` outright. Every card that had a
-   * shadow — which is nearly all of them — got none of this. `.bg-card.bg-card` is specificity
-   * (0,2,0) and beats any single utility class, which is the standard way to say "a component
-   * default that a utility may not silently delete" without reaching for `!important`.
-   *
-   * The position and z-index stay on the SINGLE class deliberately: those genuinely should yield to
-   * an element that declares `absolute` or its own rung, and nothing was overriding them.
-   */
-  .bg-card {
-    position: relative;
-    z-index: 45;
-  }
 
   .bg-card.bg-card {
     box-shadow:
@@ -2321,3 +2276,89 @@ input[type="number"] {
     display: none !important;
   }
 }
+
+
+/*
+ * ⚠ OUTSIDE `@layer components`, AND THAT IS THE ONLY THING THAT ACTUALLY WORKS.
+ *
+ * Two shapes were tried inside the layer and BOTH were still inlined into `.field-input` by
+ * `@apply` — `:where(.bg-card)` and `[class~="bg-card"]` alike. Tailwind v3 collects every
+ * components-layer rule that REFERENCES the class, whatever selector it is written as, so no amount
+ * of selector cleverness hides it while it lives in the layer. Verified each time by compiling and
+ * grepping: `.field-input{position:relative;z-index:45}` came out regardless.
+ *
+ * A rule outside every `@layer` is not registered as a component at all, so `@apply bg-card` cannot
+ * find it and resolves to the background-colour utility alone — which is all `.field-input` ever
+ * wanted from it.
+ */
+/*
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * EVERY CARD SURFACE: A SOFT UNDERGLOW, AND THE RUNG THAT PUTS IT OVER THE FLUID CURSOR.
+ *
+ * `bg-card` is the site's card ground — 92 files reach for it — and it is the only honest hook for
+ * "every card, everywhere". The named classes (`.panel`, `.glass-card`) are used a handful of times
+ * between them and would have missed almost everything.
+ *
+ * ⚠ THE `z-index` IS HALF OF A CONTRACT WITH `components/site/SplashCursor.tsx`, WHICH IS `z-40`.
+ * The trail has to wash over each section's ground but pass BEHIND the cards, and there is no way
+ * to slot a `fixed` canvas between two elements that share a stacking context — so the cards are
+ * raised over it instead. 45 sits above the canvas and below the z-50 header.
+ *
+ * ⚠ AND NO ANCESTOR OF A CARD MAY CARRY A z-index. An index on `<main>` would make it a stacking
+ * context, and these 45s would then be measured against their siblings inside it rather than
+ * against the canvas — putting the trail back on top of every card. That exact mistake was made
+ * and reverted; the note on `<main>` in app/(site)/layout.tsx records it.
+ *
+ * ⚠ THIS IS IN THE COMPONENTS LAYER ON PURPOSE, so both declarations are DEFAULTS. Tailwind's
+ * utilities layer is emitted after this one, so any element that says `absolute`, `fixed`, `z-0`
+ * or `z-50` in its own class list still wins — which is what keeps the rule safe across 92 files
+ * rather than a blanket override of positioning nobody asked for.
+ *
+ * The glow is cast DOWNWARD and tinted with the brand purple rather than being a neutral grey drop
+ * shadow: it reads as the card being lit from above and floating a little off the page, which is
+ * the same light the mesh and the hero already imply. Kept low-alpha because it lands on 92 files
+ * at once — an underglow strong enough to notice on one card is a haze across a whole grid.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+  /*
+ * ⚠ THE SELECTOR IS DOUBLED, AND THAT IS THE WHOLE REASON THE GLOW WAS INVISIBLE FIRST TIME.
+ * `.bg-card` alone is one class, and so is `.shadow-sm` — which most cards on this site also
+ * carry. Tailwind emits its utilities layer AFTER this components layer, so at equal specificity
+ * the utility won on source order and replaced this `box-shadow` outright. Every card that had a
+ * shadow — which is nearly all of them — got none of this. `.bg-card.bg-card` is specificity
+ * (0,2,0) and beats any single utility class, which is the standard way to say "a component
+ * default that a utility may not silently delete" without reaching for `!important`.
+ *
+ * The position and z-index stay on the SINGLE class deliberately: those genuinely should yield to
+ * an element that declares `absolute` or its own rung, and nothing was overriding them.
+ */
+  /*
+ * ⚠ `:where()` IS LOAD-BEARING AND ITS ABSENCE BROKE EVERY FORM CONTROL WITH A BUTTON IN IT.
+ *
+ * Tailwind v3's `@apply` inlines a class defined in `@layer components` as well as the utility of
+ * the same name, and `.field-input` (globals.css, the shared input recipe) does `@apply … bg-card
+ * …`. So the bare `.bg-card` rule below was copied wholesale into `.field-input`, and the compiled
+ * stylesheet came out carrying `.field-input{position:relative;z-index:45}`.
+ *
+ * That turned every text input in the studio into a positioned element at rung 45 with an OPAQUE
+ * background — painting straight over the absolutely-positioned controls that sit inside it at
+ * `z-auto`. DateField's calendar trigger, PasswordInput's eye, and `Input`'s leading icon and
+ * suffix were all rendered, all correct, and all underneath their own field: invisible, and
+ * unclickable, because the click landed on the input and merely focused it. Reported as "it has
+ * removed the calendar from the date fields altogether", which is exactly what it looked like.
+ *
+ * ⚠ AN ATTRIBUTE SELECTOR, AND `:where(.bg-card)` WAS TRIED FIRST AND DOES NOT WORK. Tailwind's
+ * `@apply` resolves by class NAME, not by exact selector, so it finds `:where(.bg-card)` just as
+ * happily and inlines it anyway — verified by compiling: `.field-input` still came out carrying
+ * `z-index:45`. `[class~="bg-card"]` is not a class rule at all, so `@apply bg-card` cannot see it,
+ * while the browser still matches every element whose class list contains the token. That is the
+ * whole trick, and it is why this is not written the obvious way.
+ *
+ * Specificity is (0,1,0) — the same as a single class — so an element declaring `absolute` or its
+ * own rung in its class list still wins on source order, which is what the note below asks for.
+ */
+[class~="bg-card"] {
+  position: relative;
+  z-index: 45;
+}
+

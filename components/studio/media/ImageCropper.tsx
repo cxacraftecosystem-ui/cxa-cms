@@ -46,6 +46,15 @@ import { Crop, FlipHorizontal, FlipVertical, RotateCw, TriangleAlert } from "luc
 
 import { mediaSrc } from "@/lib/media/url";
 import { clamp, cn, formatBytes } from "@/lib/utils";
+/**
+ * ⚠ ONE LIST OF SHAPES FOR BOTH CROPPERS, and it lives with the framing one because that is where it
+ * was read off the `aspect` props the site actually passes (see the long note beside it). The two
+ * dialogs do different jobs — this one cuts new pixels, that one records which part to show — but
+ * "Wide 16:9" has to mean the same rectangle in both, or an editor who frames a photograph in one and
+ * crops a copy in the other gets two pictures that disagree and reports it as "the crop moved". The
+ * ids match too, so a `cropAspect` stored by either dialog reopens on the shape it was made on.
+ */
+import { CROP_ASPECTS } from "@/components/studio/ImageCropper";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field } from "@/components/ui/Field";
@@ -78,28 +87,6 @@ const MIN_CROP = 16;
 /** One arrow press. Shift multiplies it — a pixel at a time is not a gesture. */
 const NUDGE = 1;
 const NUDGE_FAST = 10;
-
-interface AspectPreset {
-  id: string;
-  label: string;
-  /** Width divided by height. `null` is free. */
-  ratio: number | null;
-}
-
-/**
- * The presets, with the social card spelled out as its real numbers.
- *
- * 1200 × 630 is the size an Open Graph image is served at (`VARIANT_WIDTHS.og` in lib/media/url.ts), so
- * a crop made at that shape is the one that appears when somebody shares a page.
- */
-const ASPECTS: readonly AspectPreset[] = [
-  { id: "free", label: "Free — any shape", ratio: null },
-  { id: "1-1", label: "Square (1:1)", ratio: 1 },
-  { id: "4-3", label: "Landscape (4:3)", ratio: 4 / 3 },
-  { id: "16-9", label: "Wide (16:9)", ratio: 16 / 9 },
-  { id: "4-5", label: "Portrait (4:5)", ratio: 4 / 5 },
-  { id: "og", label: "Social card (1200 × 630)", ratio: 1200 / 630 }
-];
 
 interface Rect {
   x: number;
@@ -194,7 +181,7 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const source = asset ? mediaSrc(asset, 2560) : null;
-  const ratio = ASPECTS.find((entry) => entry.id === aspectId)?.ratio ?? null;
+  const ratio = CROP_ASPECTS.find((entry) => entry.id === aspectId)?.ratio ?? null;
 
   const space = useMemo(
     () => (natural ? outputSize(natural, rotation) : null),
@@ -494,7 +481,7 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
               <Select
                 value={aspectId}
                 onChange={(event) => setAspectId(event.target.value)}
-                options={ASPECTS.map((entry) => ({ value: entry.id, label: entry.label }))}
+                options={CROP_ASPECTS.map((entry) => ({ value: entry.id, label: entry.label }))}
               />
             </Field>
 

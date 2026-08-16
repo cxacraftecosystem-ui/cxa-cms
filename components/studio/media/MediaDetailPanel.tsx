@@ -92,9 +92,11 @@ import {
   CROP_ASPECTS,
   ImageCropper as FramingCropper,
   cropFrameStyle,
-  isUsableCrop,
-  type CropChoice,
-  type CropRect
+  // Shared rather than re-derived here: the picker and the upload queue read the same five columns,
+  // and three copies of "is there a crop on this row" is three chances for them to disagree about a
+  // half-written rectangle. Its own doc comment carries the reason the `?? undefined`s are there.
+  storedCrop,
+  type CropChoice
 } from "@/components/studio/ImageCropper";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -175,26 +177,6 @@ function bodyFromForm(form: MetaForm): MetaBody {
 /** A stable snapshot for the dirty comparison. Key order is fixed by `bodyFromForm`, so this is stable. */
 function snapshot(form: MetaForm): string {
   return JSON.stringify(bodyFromForm(form));
-}
-
-/**
- * The crop stored on this row, or null for "nobody has chosen — show the whole picture".
- *
- * ⚠ THE `?? undefined` ON EACH LINE IS LOAD-BEARING, not noise. The column is `number | null` and
- * `isUsableCrop` takes a `Partial<CropRect>`, whose members are `number | undefined`; passing the
- * nulls straight through does not typecheck, and widening the predicate instead would weaken the one
- * test that both the studio and the render side rely on. Anything incomplete or out of range comes
- * back null here for exactly the reason the migration gives: a bad rectangle must degrade to today's
- * behaviour — the whole picture, cover-fitted — rather than to a broken frame.
- */
-function storedCrop(asset: StudioMediaAsset): CropRect | null {
-  const rect = {
-    x: asset.cropX ?? undefined,
-    y: asset.cropY ?? undefined,
-    width: asset.cropWidth ?? undefined,
-    height: asset.cropHeight ?? undefined
-  };
-  return isUsableCrop(rect) ? rect : null;
 }
 
 /** The shape the editor was working on, in their words, or null if the id is not one we offer. */

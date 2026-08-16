@@ -61,6 +61,16 @@
  * edit text" — and the click that opened it would be forwarded straight back into the input. This is
  * the same reason `PasswordInput` exists as a separate component with the same rule.
  *
+ * ⚠ THE TRIGGER NEEDS `isolate` ON ITS WRAPPER AND A RUNG OF ITS OWN, AND WITHOUT THEM THIS FIELD
+ * LOOKS LIKE A PLAIN TEXT BOX. `.field-input` composes `bg-card`; app/globals.css also declares a bare
+ * `.bg-card { position: relative; z-index: 45 }`, and Tailwind's `@apply` inlines a `@layer components`
+ * rule of the same name alongside the utility — so every `.field-input` in this repository is a
+ * positioned element at z-index 45, and an `absolute` adornment at z-index auto paints UNDERNEATH its
+ * opaque fill. It was reported as "the calendar has been removed from the date fields". The wrapper's
+ * own note below carries the mechanism; the same trap is waiting for `PasswordInput`'s eye, `Input`'s
+ * leading `icon` and `Input`'s `suffix`, and the real cure is `:where(.bg-card)` in globals.css, which
+ * `@apply` cannot reach.
+ *
  * THE TRIGGER IS IN THE TAB ORDER, WHICH IS WHERE IT DIFFERS FROM `PasswordInput`'s EYE. That button
  * is `tabIndex={-1}` because revealing a password is a convenience nobody has to use to finish the
  * form. This one is a second, complete route to the field's value — the route a reader takes when
@@ -384,8 +394,37 @@ function DateFieldControl({
 
   return (
     <div className={cn("flex flex-wrap items-start gap-2", withTime && "sm:flex-nowrap")}>
-      {/* Positions the trigger over the input, exactly as PasswordInput positions its eye. */}
-      <span className={cn("relative block min-w-0", withTime ? "w-full sm:flex-1" : "w-full")}>
+      {/*
+        Positions the trigger over the input, exactly as PasswordInput positions its eye.
+
+        ⚠ `isolate` IS THE REASON THE CALENDAR BUTTON IS VISIBLE AT ALL, AND IT IS NOT DECORATION.
+        `.field-input` composes `bg-card`, and app/globals.css gives `.bg-card` `position: relative;
+        z-index: 45` (the rung that lifts every card over the fluid cursor). Tailwind's `@apply`
+        resolves a class defined in `@layer components` as well as the utility of the same name, so
+        that whole rule is inlined into `.field-input` — every input on this site is a POSITIONED
+        element at z-index 45. The trigger below is `absolute` at z-index auto, so it painted UNDER
+        the input's opaque card fill: invisible, and unclickable, because the input's own box then
+        swallowed the pointer. That is the "the calendar is gone" this component was reported for.
+
+        `isolate` makes this span a stacking context, so the input's 45 and the trigger's 50 are
+        compared HERE and nowhere else — the trigger can sit above the fill it was buried under
+        without its rung ever being measured against the z-50 header or anything else on the ladder
+        (contract §6). The fix survives `.bg-card` being repaired: with the input back at z-index
+        auto the trigger is still the higher of the two.
+
+        `[&_input]:block` is the second half of the same repair. `Input` wraps its `<input>` in a
+        `relative block` span, and an inline-level input gives that span a LINE BOX — five or six
+        pixels of descender leading below the field — so `top-1/2` centres on the span rather than
+        on the box the reader sees. A block-level input makes the two the same height and the
+        centring honest, which matters now that the trigger is a visible chip rather than a bare
+        glyph: 2px out of centre reads as a mistake once there is a border to see it against.
+      */}
+      <span
+        className={cn(
+          "relative isolate block min-w-0 [&_input]:block",
+          withTime ? "w-full sm:flex-1" : "w-full"
+        )}
+      >
         <Input
           // ⚠ NOT `type="date"`. See the file header — two browsers draw their own picker glyph and
           // one of them cannot be talked out of it.
@@ -403,8 +442,8 @@ function DateFieldControl({
           value={dayText}
           onChange={(event) => onDayText(event.target.value)}
           onBlur={onSettled}
-          // The eye's 40px button inset by 4px needs 44px kept clear, and 48px is the nearest step —
-          // the same sum, and the same class, as PasswordInput. `.field-input` pays 14px of its own
+          // The trigger's 36px chip inset by 6px needs 42px kept clear, and 48px is the nearest step
+          // — the same class PasswordInput uses for its own sum. `.field-input` pays 14px of its own
           // right padding, which would leave the year underneath the button.
           className="pr-12 tabular-nums"
         />
@@ -421,7 +460,28 @@ function DateFieldControl({
           aria-controls={open ? panelId : undefined}
           // Says WHICH field, because six of these share the event screen. See `DateFieldProps.label`.
           aria-label={`Open the calendar for ${label}`}
-          className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md text-ink-500 transition hover:bg-surface-100 hover:text-ink-900"
+          // ⚠ A BORDERED, FILLED CHIP RATHER THAN A BARE GREY GLYPH, AND THAT IS THE POINT OF IT.
+          //
+          // What this component replaced was a native `type="date"`, which handed the reader the
+          // browser's own picker button for free. An `ink-500` icon floating on the field's own fill
+          // announces nothing: it reads as an ornament printed on the box, so a reader who wants a
+          // month grid never learns there is one — and losing a picker they had is worse than never
+          // having offered one. `border-line-200` is the same hairline the field itself wears and
+          // `bg-surface-100` is a genuinely different ground from `bg-card` in BOTH themes (#f3f1fa
+          // on white, #262135 on #1a1725), so the chip is a thing sitting IN the box rather than
+          // printed on it. Under `prefers-contrast: more` globals.css collapses surface-100 to the
+          // card colour and darkens line-200 — which is why the BORDER, not the fill, is the part
+          // carrying the message.
+          //
+          // `z-50` is measured only against the input's 45 inside this span's `isolate`; see the
+          // wrapper's note. `h-9 w-9` rather than the eye's `h-10 w-10`: the field is 42px between
+          // its borders, so a 40px chip's border would land flush against the field's own and read
+          // as one doubled line. 36px leaves 3px of air and is still a comfortable pointer target.
+          //
+          // The hover is Calendar's `NAV_BUTTON` hover, so the trigger and the arrows it opens tint
+          // identically — and every purple carries its `dark:` partner, because the purple ramp is
+          // brand colour and does not invert (see Calendar's DAY_STATE note).
+          className="absolute right-1.5 top-1/2 z-50 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md border border-line-200 bg-surface-100 text-ink-700 transition hover:border-purple-300 hover:bg-purple-50 hover:text-purple-700 dark:hover:bg-purple-950 dark:hover:text-purple-200"
         >
           <CalendarDays aria-hidden="true" className="h-4 w-4" />
         </button>

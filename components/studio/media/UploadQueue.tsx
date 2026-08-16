@@ -77,7 +77,7 @@ import {
 } from "@/lib/client/upload";
 import { mediaSrc } from "@/lib/media/url";
 import { cn, formatBytes } from "@/lib/utils";
-import { ImageCropper, isUsableCrop, type CropChoice } from "@/components/studio/ImageCropper";
+import { ImageCropper, storedCrop, type CropChoice } from "@/components/studio/ImageCropper";
 import { Button } from "@/components/ui/Button";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { FileDropzone } from "@/components/ui/FileDropzone";
@@ -599,21 +599,10 @@ export function UploadQueue({
   /**
    * The crop the dialog should open on, or null for the whole picture.
    *
-   * `?? undefined` on each field because the columns are `number | null` and `isUsableCrop` takes a
-   * `Partial<CropRect>`, whose members are `number | undefined`. Widening the predicate instead would
-   * weaken the one test the render side relies on.
+   * `storedCrop` is shared with the picker and the detail panel — see its own doc comment for why the
+   * five nullable columns cannot simply be passed through, and why null here means the whole image.
    */
-  const cropTargetRect = cropTarget
-    ? (() => {
-        const rect = {
-          x: cropTarget.asset.cropX ?? undefined,
-          y: cropTarget.asset.cropY ?? undefined,
-          width: cropTarget.asset.cropWidth ?? undefined,
-          height: cropTarget.asset.cropHeight ?? undefined
-        };
-        return isUsableCrop(rect) ? rect : null;
-      })()
-    : null;
+  const cropTargetRect = cropTarget ? storedCrop(cropTarget.asset) : null;
 
   const retryable = failures.filter((row) => row.retry !== null).length;
   const visibleRows = progress ? progress.files.slice(0, VISIBLE_PROGRESS_ROWS) : [];
