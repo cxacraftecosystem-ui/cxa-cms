@@ -709,9 +709,19 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
               {/* The five ways of knowing, strung on their own short thread: the mini-rail draws
                   under the scrub while each bead's line arrives with its word. */}
               <div data-cine-knowing="" className="relative mt-12">
+                {/*
+                  ⚠ THE RAIL AND THE BEADS SHARE ONE AXIS AT x = 4px, AND THEY DID NOT BEFORE.
+                  The rail was `left-[3px] w-px` — one pixel spanning 3→4, so its centre fell on
+                  3.5. Each bead is 8px wide at `-left-[25px]` inside an `<ol>` with `pl-6`, which
+                  puts its left edge at 24 − 25 = −1 and its centre on 3. Half a pixel apart, on
+                  every bead, all the way down: the thread visibly misses the middle of each dot
+                  instead of running through it.
+                  Both are now integers about the same axis: a 2px rail at `left-[3px]` (3→5,
+                  centre 4) and a bead at `-left-6` (24 − 24 = 0, 0→8, centre 4).
+                */}
                 <div
                   aria-hidden="true"
-                  className="absolute bottom-2 left-[3px] top-2 w-px bg-gold-300/15"
+                  className="absolute bottom-2 left-[3px] top-2 w-0.5 bg-gold-300/15"
                 >
                   <div
                     data-cine-knowing-rail
@@ -724,11 +734,20 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                     return (
                       <li key={line} className="relative">
                         <Reveal delay={0.06 * index} className="flex items-center gap-4">
+                          {/*
+                            EVERY bead is full gold in the markup and the scrub is what dims the ones
+                            the thread has not reached yet — see `data-cine-knowing-bead` in
+                            CinematicScrollStage.tsx. Writing the dim state into the class instead
+                            would leave a reader with no JavaScript looking at four grey dots and one
+                            gold one, as though the list had failed halfway; lit is the honest
+                            resting state, and the animation only withholds it.
+                          */}
                           <span
+                            data-cine-knowing-bead=""
                             aria-hidden="true"
                             className={cn(
-                              "absolute -left-[25px] h-2 w-2 shrink-0 rounded-full",
-                              last ? "bg-gold-300" : "bg-gold-300/40"
+                              "absolute -left-6 h-2 w-2 shrink-0 rounded-full bg-gold-300",
+                              last ? "ring-2 ring-gold-300/30" : undefined
                             )}
                           />
                           <span

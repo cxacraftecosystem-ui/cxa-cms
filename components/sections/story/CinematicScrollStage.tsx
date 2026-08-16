@@ -243,6 +243,43 @@ export function CinematicScrollStage({ children }: { children: ReactNode }) {
       );
     }
 
+    /*
+     * The knowing list's BEADS, lit one at a time as the thread reaches each of them.
+     *
+     * The rail above already draws itself across the list; the beads sat static while it went past,
+     * so the one thing the drawing was supposed to be doing — arriving at each way of knowing in
+     * turn — was never actually expressed. Each bead now has its own trigger on its own `<li>`, so
+     * the light follows the reader's scroll down the list rather than all five coming up together.
+     *
+     * ⚠ EACH BEAD IS TRIGGERED BY ITS OWN ROW, NOT BY THE LIST WITH A STAGGER. A stagger would be a
+     * second timeline racing the rail's scrub: at any scroll speed other than the one it was tuned
+     * at, the beads and the thread would disagree about where the front of the light is. Keying each
+     * bead to the row it belongs to means the two cannot drift, whatever the reader does.
+     *
+     * The window is short and closes ABOVE the middle of the screen (`top 78%` → `top 58%`) so a
+     * bead is fully lit by the time its words are comfortably in view — the light should lead the
+     * reading, not lag behind it.
+     */
+    for (const bead of q("[data-cine-knowing-bead]")) {
+      gsap.fromTo(
+        bead,
+        // 0.28, not 0 — an unlit bead is still a bead. Dropping it to nothing would make the list
+        // appear to grow items as you scroll, rather than illuminate ones that were always there.
+        { opacity: 0.28, scale: 0.8 },
+        {
+          opacity: 1,
+          scale: 1,
+          ease: "none",
+          scrollTrigger: {
+            trigger: bead.closest("li") ?? bead,
+            start: "top 78%",
+            end: "top 58%",
+            scrub: true
+          }
+        }
+      );
+    }
+
     // The blooms: soft lights that rise as their moment arrives. Ornament (aria-hidden), never
     // below 0.15 — the resting design includes the lamp, the scrub only turns the wick.
     for (const bloom of q("[data-cine-bloom]")) {
