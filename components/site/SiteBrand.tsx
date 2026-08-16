@@ -72,54 +72,39 @@ export interface SiteBrandProps {
 /**
  * The mark: `app/icon.svg`'s geometry, inline.
  *
- * An observatory reticle — a ring, a solid core, three cream ticks and one gold one. The gold tick is
- * the single deliberate asymmetry that gives the mark an orientation; without it the thing reads as a
- * loading spinner. Proportions are the file's: a 64-unit box with a 14-unit corner radius, a ring at
- * r=15, a core at r=5.5, and ticks that stop 6 units short of the edge.
+ * An eight-point terracotta star with a near-black core on a cream tile — the Centre's existing mark,
+ * carried over verbatim from the Portal_Development_Web project so the two properties share one
+ * identity. Proportions are that file's: a 108-unit box, a 24-unit corner radius, a star spanning
+ * 14→94, and a core at r=15.
  *
- * Colours come through Tailwind classes rather than the file's literal hex, so the tile is the real
- * `purple-700` rather than the sRGB approximation `icon.svg` carries for surfaces that cannot resolve
- * oklch. None of these three colours inverts with the theme, which is correct — a logo that changed
- * colour with a preference would not be a logo.
+ * ⚠ LITERAL HEX HERE, NOT TAILWIND CLASSES, AND THAT IS THE CHANGE FROM THE MARK THIS REPLACED. The
+ * old reticle drew its colours from `fill-purple-700` / `stroke-logo-cream` so the tile could be the
+ * true oklch purple rather than `icon.svg`'s sRGB approximation. These three colours are brand-native
+ * — they are not in the site's palette, they do not invert, and there is no theme in which they
+ * should — so routing them through utilities would only create a second place for them to drift from
+ * the SVG and the launcher icon they came from.
  *
- * ON THE FOOTER THE MARK INVERTS: the purple tile becomes a faint cream plate (the band beneath it is
- * already purple-950, so a purple tile would simply disappear), the reticle stays cream, and the gold
- * tick stays gold.
+ * ⚠ THE CREAM TILE IS KEPT ON THE FOOTER TOO, which reverses what the old mark did there. That one
+ * inverted because its tile was purple and the footer band is `purple-950`, so the tile vanished. A
+ * terracotta star has the opposite problem: floated on purple-950 without its cream ground it loses
+ * most of its contrast and reads as a smudge. The tile IS the logo here, not a backing plate.
  */
-function BrandMark({ variant, className }: { variant: SiteBrandVariant; className?: string }) {
-  const onDark = variant === "footer";
-
+function BrandMark({ className }: { variant: SiteBrandVariant; className?: string }) {
   return (
     <svg
-      viewBox="0 0 64 64"
+      viewBox="0 0 108 108"
       // Decorative: the wordmark beside it is the link's accessible name, and a second name here
       // would have a screen reader read the Centre twice on one link.
       aria-hidden="true"
       focusable="false"
       className={className}
     >
-      <rect
-        width="64"
-        height="64"
-        rx="14"
-        className={onDark ? "fill-logo-cream/10" : "fill-purple-700"}
+      <rect width="108" height="108" rx="24" fill="#FAF9F5" />
+      <path
+        d="M54 14l7 27 27-7-20 20 20 20-27-7-7 27-7-27-27 7 20-20-20-20 27 7z"
+        fill="#CC785C"
       />
-      <circle cx="32" cy="32" r="15" fill="none" strokeWidth="3" className="stroke-logo-cream/90" />
-      <circle cx="32" cy="32" r="5.5" className="fill-logo-cream" />
-      <g strokeWidth="3" strokeLinecap="round" className="stroke-logo-cream/90">
-        <line x1="32" y1="7" x2="32" y2="13" />
-        <line x1="32" y1="51" x2="32" y2="57" />
-        <line x1="7" y1="32" x2="13" y2="32" />
-      </g>
-      <line
-        x1="51"
-        y1="32"
-        x2="57"
-        y2="32"
-        strokeWidth="3"
-        strokeLinecap="round"
-        className="stroke-gold-500"
-      />
+      <circle cx="54" cy="54" r="15" fill="#181715" />
     </svg>
   );
 }

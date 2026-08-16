@@ -27,19 +27,17 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          // purple-700 as sRGB — `next/og` renders with Satori, which does not resolve oklch().
-          background: "#5B21B6"
+          // The mark's own cream ground, filling the tile. iOS masks the corners itself, so the
+          // rounded rect from `app/icon.svg` is deliberately NOT drawn here — see the header note.
+          background: "#FAF9F5"
         }}
       >
-        <svg width="180" height="180" viewBox="0 0 64 64">
-          <circle cx="32" cy="32" r="15" fill="none" stroke="#FAF9F5" strokeWidth="3" opacity="0.92" />
-          <circle cx="32" cy="32" r="5.5" fill="#FAF9F5" />
-          <g stroke="#FAF9F5" strokeWidth="3" strokeLinecap="round" opacity="0.92">
-            <line x1="32" y1="7" x2="32" y2="13" />
-            <line x1="32" y1="51" x2="32" y2="57" />
-            <line x1="7" y1="32" x2="13" y2="32" />
-          </g>
-          <line x1="51" y1="32" x2="57" y2="32" stroke="#E8B23A" strokeWidth="3" strokeLinecap="round" />
+        <svg width="180" height="180" viewBox="0 0 108 108">
+          <path
+            d="M54 14l7 27 27-7-20 20 20 20-27-7-7 27-7-27-27 7 20-20-20-20 27 7z"
+            fill="#CC785C"
+          />
+          <circle cx="54" cy="54" r="15" fill="#181715" />
         </svg>
       </div>
     ),
