@@ -166,7 +166,33 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self)" },
+          /**
+           * ⚠ `microphone=(self)`, AND THE EMPTY ALLOWLIST IT REPLACES IS WHY THE ORB NEVER HEARD
+           * ANYTHING.
+           *
+           * This read `microphone=()` — an EMPTY allowlist, which is not "ask the reader first", it
+           * is "this document may not use the microphone at all, including from its own origin".
+           * Under it `getUserMedia({ audio: true })` rejects immediately with `NotAllowedError` and
+           * the browser NEVER SHOWS A PROMPT. That is exactly the reported symptom: press "Let it
+           * hear you", watch nothing happen, and never get asked for permission — in Chrome, which
+           * has the API and would otherwise have offered it.
+           *
+           * It is also why every fix attempted inside `AiOrb.tsx` was wasted: the component was
+           * asking correctly the whole time and the response header was refusing on its behalf,
+           * one layer above anything a component can see. A header is the right place to look when
+           * a browser API fails silently and identically for every user.
+           *
+           * `(self)` is the narrow grant, not a blanket one: this origin may ask, and the reader
+           * still has to say yes at the browser's own prompt — which is where that decision belongs.
+           * Cross-origin frames are still refused, and `camera=()` stays empty because nothing on
+           * this site has ever wanted one. Adding an origin here is a real decision: it is the
+           * difference between "no code on this page can reach the microphone" and "our code may
+           * ask", so it should not be widened past `self` without a reason written down.
+           */
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(self), geolocation=(self)"
+          },
           /**
            * A DELIBERATELY PARTIAL Content-Security-Policy.
            *
