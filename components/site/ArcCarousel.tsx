@@ -42,7 +42,14 @@ import { useRef, type FocusEvent, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { motion, useMotionValue, useSpring, useTransform, type MotionValue } from "framer-motion";
+import {
+  motion,
+  useMotionValue,
+  useScroll,
+  useSpring,
+  useTransform,
+  type MotionValue
+} from "framer-motion";
 
 import { SPRING_SCROLL } from "@/components/motion/constants";
 import { useReducedMotionPreference } from "@/components/motion/useReducedMotionPreference";
@@ -104,9 +111,52 @@ function ArcFan({ items }: ArcCarouselProps) {
   const dragX = useMotionValue(0);
   /** Cancels the drag layer's travel so the content holds still while the gesture is read. */
   const cancelX = useTransform(dragX, (value) => -value);
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE PAGE'S OWN SCROLL TURNS THE FAN, and it is the PRIMARY driver now — the drag is a nudge on
+   * top of it rather than the only input.
+   *
+   * Scrolling DOWN carries the fan to the LEFT (later cards come to the centre); scrolling back up
+   * carries it right. That is what a reel of objects passing a window does, and it means a reader
+   * who never touches the carousel still sees all eight cards instead of the three that happened to
+   * fit on the first screen.
+   *
+   * ⚠ THIS ALSO FIXES THE COMPOSITION, WHICH WAS THE REAL DEFECT. Card 0 sits at 0° — top dead
+   * centre — and every later card fans to its RIGHT, so at rest the left half of a 30rem stage was
+   * empty page while the right-hand cards ran under the `overflow-hidden` edge and were clipped
+   * mid-title. Measured on the live site: the first card began near x=580 of 1440 and only three of
+   * eight were visible. Binding the span to the section's transit means the fan is only one-sided
+   * at the very start and very end of that transit — when the section is half off-screen anyway —
+   * and is balanced for the whole of the time the reader is actually looking at it.
+   *
+   * The offset spans the full deck: card 0 centred as the section enters, the middle card at
+   * mid-transit, the last card as it leaves.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const stageRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: stageRef,
+    // "the stage's top reaches the bottom of the window" → "its bottom reaches the top".
+    offset: ["start end", "end start"]
+  });
+  const scrollX = useTransform(scrollYProgress, [0, 1], [0, -lastIndex * DRAG_PER_STEP]);
+
+  /**
+   * Drag and scroll, added.
+   *
+   * ⚠ UNDER REDUCED MOTION THE SCROLL TERM IS DROPPED ENTIRELY — a fan that turns because the page
+   * moved is precisely the scroll-coupled motion that preference asks not to happen, and the buttons
+   * and drag still reach every card without it. The hook still runs so the hook order never changes
+   * between renders (the same rule the spring below already follows).
+   */
+  const totalX = useTransform([dragX, scrollX] as MotionValue<number>[], (values: number[]) =>
+    reduce ? (values[0] ?? 0) : (values[0] ?? 0) + (values[1] ?? 0)
+  );
+
   /** Pixels → degrees. Unclamped on purpose: the elastic overdrag at either end should turn the
    *  fan a little past the last card and be pulled back, not hit a wall while the finger keeps going. */
-  const angle = useTransform(dragX, (value) => (value / DRAG_PER_STEP) * STEP_DEGREES);
+  const angle = useTransform(totalX, (value) => (value / DRAG_PER_STEP) * STEP_DEGREES);
   /**
    * The smoothing. `SPRING_SCROLL` is the house spring for exactly this — a value the reader is
    * already driving with their own hand, lagged just enough to look liquid (contract §8). Under
@@ -116,13 +166,23 @@ function ArcFan({ items }: ArcCarouselProps) {
   const smoothed = useSpring(angle, SPRING_SCROLL);
   const rotation = reduce ? angle : smoothed;
 
-  /** Which card the fan is nearest to right now, from the input value rather than the spring. */
-  const nearestIndex = () => clamp(Math.round(-dragX.get() / DRAG_PER_STEP), 0, lastIndex);
+  /**
+   * Which card the fan is nearest to right now, from the COMBINED input rather than the spring —
+   * `totalX`, not `dragX`, or the buttons would count from a position the reader can no longer see
+   * once the page has scrolled.
+   */
+  const nearestIndex = () => clamp(Math.round(-totalX.get() / DRAG_PER_STEP), 0, lastIndex);
 
   const turnTo = (index: number) => {
     // Stop first: a set() during the drag's momentum animation would be overwritten a frame later.
     dragX.stop();
-    dragX.set(-clamp(index, 0, lastIndex) * DRAG_PER_STEP);
+    // ⚠ SOLVED FOR THE DRAG TERM, because the scroll term is not ours to move: the reader's scroll
+    // position owns it. Landing card `index` at the centre means `drag + scroll = -index·step`, so
+    // the drag has to absorb whatever the scroll currently contributes. Without this subtraction a
+    // button press part-way down the section jumps to the wrong card by however far the page has
+    // scrolled.
+    const scrollTerm = reduce ? 0 : scrollX.get();
+    dragX.set(-clamp(index, 0, lastIndex) * DRAG_PER_STEP - scrollTerm);
   };
 
   /**
@@ -140,6 +200,7 @@ function ArcFan({ items }: ArcCarouselProps) {
         drop of its neighbours down the curve, and everything past the curve is clipped here.
       */}
       <div
+        ref={stageRef}
         className="relative h-[30rem] overflow-hidden"
         onScroll={(event) => {
           // The browser scrolled the clip box to reveal a focused card — undo it; the focus
@@ -149,7 +210,17 @@ function ArcFan({ items }: ArcCarouselProps) {
       >
         <motion.div
           drag="x"
-          dragConstraints={{ left: -lastIndex * DRAG_PER_STEP, right: 0 }}
+          // ⚠ SYMMETRIC AND DELIBERATELY SMALLER THAN THE DECK, because the drag no longer has to
+          // reach every card on its own — the scroll term does that. Left at the old
+          // `{ left: -lastIndex·step, right: 0 }` the two inputs would ADD to nearly twice the deck,
+          // spinning the fan a full turn past the last card at the foot of the section. A ±2-card
+          // nudge is enough to look at a neighbour without leaving where the page has put you, and
+          // `turnTo` writes outside these bounds freely — constraints govern the gesture, not `set`.
+          dragConstraints={
+            reduce
+              ? { left: -lastIndex * DRAG_PER_STEP, right: 0 }
+              : { left: -2 * DRAG_PER_STEP, right: 2 * DRAG_PER_STEP }
+          }
           // Overdrag is a spring-back animation the reader did not perform, so reduction turns the
           // give off entirely along with the momentum — the fan simply stops at either end.
           dragElastic={reduce ? 0 : 0.4}

@@ -192,6 +192,13 @@ export function ParallaxBannerSection({ data, section, resolved }: ParallaxBanne
             aspect="16 / 9"
             sizes="100vw"
             parallax={drifts}
+            // ⚠ NO REGION CAPTION ON A FULL-BLEED BAND. `StoryPicture` and `CraftPhoto` both default
+            // `showRegion` to true, and that caption is a `<figcaption>` SIBLING of the frame — so on
+            // a band it escaped the picture entirely and printed dark-on-light on the page ground
+            // below, reading as a stray line belonging to the next section. ("RAJASTHAN AND GUJARAT",
+            // under the jaali banner, on the live site.) The band's own words already say where the
+            // archive is; the credit that IS obligatory rides on the photograph via `creditOverlay`.
+            showRegion={false}
             // THE CREDIT GOES ON THE PHOTOGRAPH. A band that spans the window has no "under" — the
             // strip below it is the page's own ground, where a credit reads as belonging to whatever
             // comes next. `CraftPhoto` carries its own scrim for this, which matters because the
@@ -211,7 +218,14 @@ export function ParallaxBannerSection({ data, section, resolved }: ParallaxBanne
               // screen. `!` because `cn()` is a plain join and one utility cannot beat another on
               // source order alone (contract §5). If the frame stops being the figure's only element
               // child the picture reverts to looking like a very wide card, which is a soft landing.
-              "[&>div]:h-full [&>div]:!rounded-none [&>div]:!border-0 [&>div]:!shadow-none"
+              //
+              // ⚠ `[&>div]:w-full` IS LOAD-BEARING AND WAS MISSING. With only `h-full`, the frame took
+              // its HEIGHT from the band and then derived its WIDTH from `aspect="16 / 9"` — so the
+              // photograph was a fixed 1024×576 box inside a window-wide band. Measured on the live
+              // site: the picture stopped at x=1024 at BOTH 1440px (416px of bare purple to its
+              // right) and 1920px (896px bare, 47% of the band). A ratio plus a height is already two
+              // constraints; the width has to be told, or CSS solves for it.
+              "[&>div]:h-full [&>div]:w-full [&>div]:!rounded-none [&>div]:!border-0 [&>div]:!shadow-none"
             )}
             emptyLabel="No photograph has been chosen for this banner yet."
           />
