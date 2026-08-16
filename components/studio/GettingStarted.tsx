@@ -256,7 +256,10 @@ export async function GettingStarted({ user }: GettingStartedProps) {
     {
       key: "invite",
       label: "Invite a colleague",
-      why: "Nobody can sign in unless their address is on the studio access list — not with a password they were given, and not with a Google account at the right domain.",
+      // ⚠ "COVERS" RATHER THAN "IS ON", because since domain grants exist the two stopped being the same
+      // sentence: an entry may be "@iitkgp.ac.in" and name nobody. The older wording ended "…and not with
+      // a Google account at the right domain", which is now the one case that DOES admit somebody.
+      why: "Nobody can sign in unless the studio access list covers them — by name, or through an entry for their whole domain. A password they were given is not enough on its own, and neither is a Google account.",
       href: "/studio/access",
       done: accessGrants > 1,
       // Master administrator only, deliberately: an administrator runs the site, and deciding who may be

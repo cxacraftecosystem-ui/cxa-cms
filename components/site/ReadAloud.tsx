@@ -234,6 +234,8 @@ export function ReadAloud({
   className
 }: ReadAloudProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const stopRef = useRef<HTMLButtonElement>(null);
   const reduce = useReducedMotionPreference();
   const { toast } = useToast();
 
@@ -332,12 +334,41 @@ export function ReadAloud({
     };
   }, []);
 
+  /**
+   * Hand focus to the toggle when the control the reader is standing on is about to stop existing.
+   *
+   * ⚠ STOP IS RENDERED ONLY WHILE THERE IS SOMETHING TO STOP, so EVERY path to "idle" unmounts it —
+   * its own press, the last utterance ending, and an error. When the element holding focus is removed
+   * the browser drops focus to `<body>`, and the next Tab starts again at the top of the page: a
+   * keyboard reader who stopped an article two thirds of the way down loses their place in it, which
+   * is a worse thing to happen than the one they pressed the button to get. The toggle is the one
+   * control that is always present once the group renders, so it is where focus belongs.
+   *
+   * ⚠ AND ONLY WHEN THE FOCUS IS GENUINELY OURS TO MOVE. The `activeElement` test is not a
+   * precaution, it is the whole design: the natural end of a reading is NOT a user action, so an
+   * article that finishes while the reader has moved on to the search field must not yank the caret
+   * out of it. The same test is what makes this inert for a mouse user under Safari, which does not
+   * focus a button on click — there is no focus to restore, so none is taken.
+   */
+  const keepFocusInGroup = useCallback(() => {
+    // The null test comes first and is not redundant with the one below it: `activeElement` is
+    // specified as NULLABLE, and Stop is unmounted for most of this component's life, so comparing
+    // the two directly would find `null === null` and move focus in the one case that means "there
+    // is no Stop button and nothing was focused" — the case that must do nothing at all.
+    if (stopRef.current === null) return;
+    if (document.activeElement !== stopRef.current) return;
+    toggleRef.current?.focus();
+  }, []);
+
   const stop = useCallback(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     queueRef.current = null;
     window.speechSynthesis.cancel();
     setMode("idle");
-  }, []);
+    // Before React commits: the handler has not returned yet, so Stop is still mounted and still the
+    // active element. Moving focus after the unmount would be moving it from `<body>`, too late.
+    keepFocusInGroup();
+  }, [keepFocusInGroup]);
 
   const play = useCallback(() => {
     const synth = window.speechSynthesis;
@@ -396,6 +427,7 @@ export function ReadAloud({
           if (queueRef.current !== queue) return;
           queueRef.current = null;
           setMode("idle");
+          keepFocusInGroup();
         };
       }
 
@@ -409,6 +441,7 @@ export function ReadAloud({
         queueRef.current = null;
         synth.cancel();
         setMode("idle");
+        keepFocusInGroup();
         if (event.error === "interrupted" || event.error === "canceled") return;
         toast({
           tone: "error",
@@ -423,7 +456,7 @@ export function ReadAloud({
     queueRef.current = queue;
     for (const utterance of queue) synth.speak(utterance);
     setMode("playing");
-  }, [toast]);
+  }, [toast, keepFocusInGroup]);
 
   /*
    * ⚠ NOTHING IS AWAITED BETWEEN THE CLICK AND `speak()`. Safari only honours the first `speak()` of a
@@ -478,7 +511,7 @@ export function ReadAloud({
           not a two-state toggle. Idle, playing and paused are three states, and the label is the only
           thing that can carry three.
         */}
-        <Button variant="secondary" icon={toggleIcon} onClick={toggle}>
+        <Button ref={toggleRef} variant="secondary" icon={toggleIcon} onClick={toggle}>
           {toggleLabel}
         </Button>
 
@@ -487,9 +520,13 @@ export function ReadAloud({
           holding its text, which Button.tsx notes is announced inconsistently — that is fine here and
           is in fact what is wanted: the state change was already announced by the toggle above, and a
           second reading of "Stop" would be the duplicate this component is avoiding.
+
+          ⚠ Its `ref` is not decoration: it is the identity `keepFocusInGroup` compares against, which
+          is how "the reader is standing on the button that is about to be removed" is told apart from
+          "the reading merely finished". See that function.
         */}
         {mode === "idle" ? null : (
-          <Button variant="ghost" icon={Square} onClick={stop}>
+          <Button ref={stopRef} variant="ghost" icon={Square} onClick={stop}>
             Stop
           </Button>
         )}

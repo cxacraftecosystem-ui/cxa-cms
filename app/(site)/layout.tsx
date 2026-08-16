@@ -206,7 +206,16 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           `tabIndex={-1}` makes this focusable by the skip link without putting it in the tab order.
           `.page-top` is the only place the header clearance is paid.
         */}
-        <main id="main-content" tabIndex={-1} className="page-top flex-1 outline-none">
+        {/*
+          ⚠ `relative z-10` IS HALF OF THE FLUID CURSOR'S STACKING CONTRACT — see the header of
+          `components/site/SplashCursor.tsx`. The canvas is `fixed … z-0`, which puts it above this
+          wrapper's own `bg-bg-0` ground and below anything raised over it. Raising `<main>` here is
+          what makes the trail slide UNDER the cards rather than smear across the top of them: the
+          cards' grounds are opaque, so they occlude it, and the trail shows only in the space
+          between. Drop this class and `z-0` loses to DOM order — the canvas is the last child, so it
+          would climb straight back over the content it is meant to sit beneath.
+        */}
+        <main id="main-content" tabIndex={-1} className="page-top relative z-10 flex-1 outline-none">
           {/*
             INSIDE `<main>`, and first, exactly as AnnouncementBar's own header requires: the header is
             a `position: fixed` pill that occupies no flow space, so a band above it in the document

@@ -32,6 +32,7 @@ import {
   ChartNoAxesCombined,
   CircleHelp,
   Columns2,
+  Columns3,
   Compass,
   Download,
   FileCheck,
@@ -55,6 +56,7 @@ import {
   ListChecks,
   Mail,
   Map as MapIcon,
+  MapPin,
   Megaphone,
   Microscope,
   MousePointerClick,
@@ -81,8 +83,14 @@ import {
 
 /**
  * The closed set, in the order the picker offers it: the general shapes first, then teaching, then
- * research, then the record-keeping kinds. Every icon the nine built-in templates declare is in here,
- * so a built-in and a template somebody wrote are drawn from one list.
+ * research, then the record-keeping kinds. Every icon the built-ins in lib/page-templates.ts declare is
+ * in here, so a built-in and a template somebody wrote are drawn from one list.
+ *
+ * ⚠ THAT IS AN INVARIANT SOMEBODY HAS TO KEEP BY HAND, and nothing fails loudly when they do not: a
+ * built-in naming an icon this map has never heard of is answered by `templateIcon()` with
+ * `LayoutTemplate`, silently, on every card. So a template added to that file with a new `icon` needs a
+ * name added here in the same change — the note on `PAGE_TEMPLATES` there says the same thing from the
+ * other end, because the two halves are a screen apart and the failure is invisible.
  */
 const TEMPLATE_ICONS: Record<string, LucideIcon> = {
   LayoutTemplate,
@@ -198,7 +206,17 @@ const BLOCK_ICONS: Record<string, LucideIcon> = {
   BookOpenText,
   GalleryHorizontalEnd,
   GalleryHorizontal,
-  Workflow
+  Workflow,
+  /*
+   * ⚠ THESE TWO ARE WHY "EVERY TYPE IN THE REGISTRY" ABOVE IS WORTH RE-MEASURING RATHER THAN TRUSTING.
+   * `PLATFORM_PILLARS` (`Columns3`) and `INDIA_MAP` (`MapPin`) are declared in lib/sections/registry.ts
+   * and were missing from this map, so both drew the plain square `blockIcon()` falls back to — on the
+   * template editor's block list and on every preview card that shows one. That fallback is deliberate
+   * and silent by design, which is exactly why a gap here survives unreported: nothing renders wrongly,
+   * one row simply says less than its neighbours.
+   */
+  Columns3,
+  MapPin
 };
 
 /**

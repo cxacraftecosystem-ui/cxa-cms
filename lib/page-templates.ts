@@ -1137,8 +1137,8 @@ export function pageTemplateProblems(
  * Checked when this module is first loaded, and REPORTED rather than thrown.
  *
  * A throw here would take the templates screen — and any page that imports this module — down over a
- * mistake in one arrangement, losing eight working templates to protect nobody from the ninth. The log
- * line names the template, which is the whole of what a developer needs.
+ * mistake in one arrangement, losing every working template to protect nobody from the broken one. The
+ * log line names the template, which is the whole of what a developer needs.
  */
 const TEMPLATE_PROBLEMS = pageTemplateProblems();
 if (TEMPLATE_PROBLEMS.length > 0) {

@@ -109,7 +109,15 @@
  * stays where it is.
  *
  * An async Server Component — it awaits the settings read and the MDX compiler. Nothing here may be
- * rendered from a client tree, which is correct: long-form prose ships no JavaScript.
+ * rendered from a client tree.
+ *
+ * ⚠ THIS PARAGRAPH USED TO END "long-form prose ships no JavaScript", AND THAT IS NO LONGER TRUE — the
+ * listen control above is a client component. It is still very nearly true, and the distinction is the
+ * one worth keeping: the typesetting read, the renderer, the MDX compiler and every word of the prose
+ * remain server-only, and the single client chunk is a LEAF that drags none of them into the browser.
+ * A page that renders no `ProseArticle` never loads it at all, and a reader whose browser cannot speak
+ * downloads it and is shown nothing (see `ReadAloud`, which is deliberately built to decide that
+ * itself rather than make this file guess).
  */
 
 import type { ReactNode } from "react";

@@ -75,7 +75,7 @@ sequenceDiagram
 flowchart TB
     build["next build"] --> gsp["generateStaticParams()"]
     gsp --> pp["prerenderParams('[...slug]', …)<br/>lib/prerender.ts"]
-    pp -->|"database reachable"| list["listPublishedPageSlugs()<br/>minus RESERVED_PREFIXES<br/>capped at PRERENDER_LIMIT = 1000"]
+    pp -->|"database reachable"| list["listPublishedPageSlugs()<br/>minus RESERVED_PREFIXES (a warning per shadowed slug)<br/>capped at this route's own PRERENDER_LIMIT = 1000"]
     pp -->|"database unreachable"| empty["[] — logged as an ERROR naming the route"]
     list --> pages["Prerendered pages"]
     empty --> ondemand["Every page renders on FIRST REQUEST instead,<br/>and is cached from that point on.<br/>Nothing is lost but the head start."]
@@ -92,6 +92,15 @@ answer is a 500 and a loud log.
 `prerenderSafe()` is the same guard for a page's *data* read rather than its list of paths, and ⚠ it
 **must be paired with `export const revalidate`**: a page prerendered with the empty fallback would
 otherwise serve that snapshot until the next deploy.
+
+⚠ **`PRERENDER_LIMIT` is a per-route constant, declared in each route file rather than in
+`lib/prerender.ts`** — 1000 for the CMS catch-all, 300 for events, 200 for news and for a gallery
+album — because the right ceiling is a property of how heavy that route's render is, not of the
+guard. Passing it is a `console.warn` and a `slice`, never a failure: the remainder render on demand
+and are cached from that point on, which is slower on first visit and otherwise identical.
+`generateStaticParams` also warns, by name, for every published slug it skipped because
+`RESERVED_PREFIXES` owns its first segment — that page is published and unreachable, and the build
+log is where a developer will actually see it.
 
 `experimental.staticGenerationRetryCount = 1` in `next.config.ts` absorbs one transient blip. The
 build generates pages in parallel and every worker opens its own Prisma pool against one forwarded

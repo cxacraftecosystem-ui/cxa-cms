@@ -5,7 +5,7 @@ before your first change; it is not a tutorial and it is not a substitute for th
 the file you are about to edit — every module here carries one, and where this document and that
 comment disagree, **the comment is right**, because it lives next to the code.
 
-Four documents already exist and this one deliberately does not repeat them:
+Five documents already exist and this one deliberately does not repeat them:
 
 | Read that instead | For |
 |---|---|
@@ -13,6 +13,7 @@ Four documents already exist and this one deliberately does not repeat them:
 | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Getting it running on Vercel or in a container; every `vercel.json` key; the two database URLs. |
 | [`OPERATIONS.md`](./OPERATIONS.md) | Bucket CORS, environment variables whose absence is *silent*, backups, the verification suite. |
 | [`SIGN-IN.md`](./SIGN-IN.md) | The studio access list as an administrator experiences it — adding, revoking, the master-admin rule. |
+| [`OUTSTANDING.md`](./OUTSTANDING.md) | What was once broken and what now prevents each class of it recurring. Nothing is outstanding; the *shape* of the failures is why the checks in §6.5 exist. |
 
 Two companions sit beside this one: [`DATA-MODEL.md`](./DATA-MODEL.md) for the entities and their
 relationships, and [`REQUEST-LIFECYCLE.md`](./REQUEST-LIFECYCLE.md) for what happens between a
@@ -810,8 +811,9 @@ what appears on screen to what they just typed.
 ### 6.5 The verification layers
 
 `npm run check` = `typecheck` + `lint` + `route-check` + `font-check` + `theme-check`. CI
-(`.github/workflows/ci.yml`) runs those first because they fail in about two minutes with no database
-and no build, then pays for the two runtime checks:
+(`.github/workflows/ci.yml`) runs the first three ahead of everything else, because they fail in
+about two minutes with no database and no build, and only then pays for a migrate, a seed, a build, a
+server and the two runtime checks:
 
 - **`npm run smoke`** exists because typecheck, lint and route-check were **all green** while
   twenty-odd studio routes were unreachable. Nothing but a real request against a real server catches
@@ -819,9 +821,20 @@ and no build, then pays for the two runtime checks:
 - **`npm run leak-check`** exists because a draft leaking to the public site is an omission across
   ninety-odd queries.
 
+⚠ **`font-check` and `theme-check` are in `npm run check` but not in `ci.yml`**, so they are yours to
+run locally. Both catch a class of defect every other gate is blind to *by construction*:
+`theme-check` finds a themed ink token used as a **scrim** under unconditionally-coloured text —
+`bg-ink-900/55` with `text-white` is near-black in the light theme and near-*white* in the dark one,
+so it shipped five times, including on the CC BY attribution chip whose entire job is to satisfy a
+licence. `font-check` compares the generated manifest in `lib/typography/fonts.ts` against the bytes
+actually on disk: a deleted `.woff2` compiles, lints and builds perfectly, and the first person to
+notice is a reader who gets Georgia where Lora was specified.
+
 Object storage is deliberately **unset** in CI: the application must run without it and report that
 uploads are disabled (`configurationWarnings()` in `lib/env.ts`), and CI is the right place to prove
-that holds.
+that holds. `JWT_SECRET` is not, and cannot be, a placeholder even there — `lib/auth/config.ts`
+refuses to start on a secret that is short, placeholder-shaped, or built from too few distinct
+characters, so the CI value is genuine entropy.
 
 ---
 

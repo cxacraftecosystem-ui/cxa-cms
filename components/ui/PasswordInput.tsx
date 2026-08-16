@@ -35,11 +35,19 @@
  * is where it is actually used. It is a convenience for checking what was typed, never the only route
  * through the form: the field can be completed and submitted without it.
  *
- * WHAT A SCREEN READER HEARS. `aria-pressed` carries the state and the name carries the ACTION, so
+ * WHAT A SCREEN READER HEARS. `aria-pressed` carries the STATE and the name carries the ACTION, so
  * the two do not restate one another: "Show password, toggle button, not pressed" becomes "Hide
- * password, toggle button, pressed". There is no live region — the button takes focus when it is
- * clicked, so its new name is announced already, and a `role="status"` alongside would say the same
- * thing a second time.
+ * password, toggle button, pressed".
+ *
+ * Keeping both is a considered compromise, not an oversight — a name describing the next action
+ * beside a state describing the present one can be heard as contradicting itself. Dropping either is
+ * worse. Without `aria-pressed`, somebody who arrives at the button (or comes back to the form later)
+ * is told nothing about whether their password is currently on screen — which on a shared or
+ * screen-shared machine is the one fact that matters. With a FIXED name, the button never says what
+ * pressing it will achieve.
+ *
+ * There is no live region: the button takes focus when it is clicked, so its new name is announced
+ * already, and a `role="status"` alongside would say the same thing a second time.
  */
 
 import { useState } from "react";

@@ -24,8 +24,14 @@
  *   • THE KOLAM draws itself under the reader's hand at the centre of a sticky mandala that HOLDS
  *     while its chapter scrolls past (the StoryScroll sticky-figure pattern, which degrades to a
  *     complete page with no JavaScript at all), and leans gently toward the pointer.
+ *   • THE PLATES: movement I mounts the Centre's OWN contact sheets in preference to any photograph,
+ *     at their own proportion and cropped nowhere — see `CINE_PLATES` for where the two slugs come
+ *     from (the section's own row first, then that list) and why no photograph is hard-coded into
+ *     this file any more.
  *   • THE STATEMENTS rise word by word out of masks (`CineLine`) — entrances are framer's half of
- *     the contract; every scrub is GSAP's, in `CinematicScrollStage`.
+ *     the contract; every scrub is GSAP's, in `CinematicScrollStage`. Two of them are their own
+ *     client halves: `CineFlipDeck` turns movement III's three questions over in one seat as the
+ *     reader scrolls, and `CineBubbles` springs the word chips into place with a sweep of light.
  *
  * THE ARCHITECTURE IS StoryScrollSection's, DELIBERATELY: a SERVER COMPONENT holding every word in
  * the HTML, wrapped by a thin client stage that adds only scroll-scrubbed motion over a layout that
@@ -46,17 +52,22 @@
 
 import "@/app/cinematic-story.css";
 
+import Image from "next/image";
 import type { PageSection } from "@prisma/client";
 
 import { KolamMark } from "@/components/craft/KolamMark";
 import { BUTI_BOX, BUTI_BY_ID, jaaliTile, NATURAL_DYES, type ButiId } from "@/components/craft/motifs";
+import { STAGGER } from "@/components/motion/constants";
 import { Reveal } from "@/components/motion/Reveal";
 import { AiOrb } from "@/components/sections/story/AiOrb";
+import { CineBubbles } from "@/components/sections/story/CineBubbles";
+import { CineFlipDeck } from "@/components/sections/story/CineFlipDeck";
 import { CineLine } from "@/components/sections/story/CineLine";
 import { CinematicScrollStage } from "@/components/sections/story/CinematicScrollStage";
 import { PointerDrift } from "@/components/sections/story/PointerDrift";
 import { CraftPhoto } from "@/components/site/CraftPhoto";
-import { craftImage } from "@/lib/media/craft-imagery";
+import { craftImage, type CraftImage } from "@/lib/media/craft-imagery";
+import { craftSheet, type CraftSheet } from "@/lib/media/craft-sheets";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,6 +186,234 @@ function JaaliLight({ className }: { className?: string }) {
   );
 }
 
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * CINE_PLATES — WHERE MOVEMENT I'S PICTURES COME FROM, AND WHY NO PHOTOGRAPH IS TYPED INTO THIS FILE.
+ *
+ * What used to stand at the top of the component was `craftImage("patola")` and
+ * `craftImage("zardozi")`: two Wikimedia Commons photographs nailed into a component, on the one
+ * page whose whole argument is that the Centre keeps its OWN record. Pictures are now resolved, in
+ * this order:
+ *
+ *   1. THE SECTION'S OWN ROW. A STORY_SCROLL block carries chapters and each chapter names a picture
+ *      by slug. The cinematic presentation ignores the chapter PROSE — the words are the owner's
+ *      script and the schema says so on the `presentation` field — but it has no business ignoring
+ *      the pictures an editor chose. `craftImageSlug` in schema.ts is a SHAPE test rather than a
+ *      check against a manifest, so a chapter slug that names one of the Centre's contact sheets
+ *      ("textile-block-printing") resolves to that sheet exactly as one naming a Commons photograph
+ *      ("patola") resolves to that photograph.
+ *   2. THIS LIST, in order, for whatever the row did not supply.
+ *   3. Nothing at all. One plate is a finished composition and none is a finished composition too —
+ *      the words simply take the width, which is what every screen below `lg` already gets.
+ *
+ * ⚠ THE LIST IS SHEET SLUGS ONLY, AND THAT IS THE PREFERENCE THE OWNER ASKED FOR. A sheet is the
+ * Centre's own picture and owes nobody an attribution; a `craftImage` is licensed from Commons and
+ * discharges its CC BY on /credits. So `pickPlates` sorts every resolved candidate SHEETS FIRST
+ * whatever order it met them in, and the only photographs that can reach this column are ones the
+ * row itself names — a floor under the composition, never a preference.
+ *
+ * ⚠ THE ORDER IS FOUR CATEGORIES WITH ONE SUBCATEGORY SECOND, NOT FIVE OF ANYTHING. Movement I says
+ * craft is "a technique, a material, a pattern, a story", so the pair the reader normally meets is a
+ * whole branch of the taxonomy (`wood`) beside one trade from a DIFFERENT branch
+ * (`textile-block-printing`) — two materials, two levels, and the claim that each of nine categories
+ * is itself a dozen living traditions, made in two pictures instead of a sentence. It is the hero's
+ * own device (`CURATED` in HeroSection.tsx), and it deliberately avoids the hero's own first two
+ * choices, `textile` and `mud-terracotta`: those plates are on screen one scroll above this one, and
+ * the same picture twice on a page reads as a mistake to a reader who cannot say why.
+ *
+ * ⚠ `craftSheet()` AND `craftImage()` BOTH RETURN NULL. Both manifests are generated and a slug can
+ * be retired by a later run, so an unresolvable first choice falls to the second rather than leaving
+ * a hole where a picture was.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+const CINE_PLATES = [
+  "wood",
+  "textile-block-printing",
+  "mud",
+  "metal",
+  "natural-fibre"
+] as const;
+
+/** A resolved picture, tagged with which manifest it came out of — the two are mounted differently. */
+type CinePlate =
+  | { kind: "sheet"; slug: string; sheet: CraftSheet }
+  | { kind: "photo"; slug: string; photo: CraftImage };
+
+/**
+ * Every picture slug the section's own row names, in chapter order.
+ *
+ * ⚠ THIS READS THE RAW `Json` COLUMN AND MUST THEREFORE TRUST NOTHING. The component is handed the
+ * `PageSection` row rather than the parsed payload (StoryScrollSection passes `section`, and the
+ * cinematic branch takes no `data`), so every hop is checked: a row written by an older schema, an
+ * import, or a hand-edited database can put anything at all in `data.chapters`. A bad shape yields
+ * an empty list and the constant list below carries the movement, which is the same outcome as a
+ * row with no chapters in it.
+ */
+function chapterPlateSlugs(section: PageSection): string[] {
+  const data = section.data;
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return [];
+  const chapters = (data as { chapters?: unknown }).chapters;
+  if (!Array.isArray(chapters)) return [];
+  // `Array.isArray` narrows an `unknown` to `any[]`, and `any` spreads through everything it
+  // touches. Naming the list `unknown[]` stops it at the door, so each hop below has to earn its
+  // type the way the rest of the file does.
+  const list: unknown[] = chapters;
+
+  const slugs: string[] = [];
+  for (const chapter of list) {
+    if (typeof chapter !== "object" || chapter === null) continue;
+    const slug = (chapter as { craftImage?: unknown }).craftImage;
+    if (typeof slug === "string" && slug.length > 0) slugs.push(slug);
+  }
+  return slugs;
+}
+
+/**
+ * The first `count` pictures, sheets before photographs.
+ *
+ * The two buckets are filled in one pass and concatenated at the end, so a sheet named by the LAST
+ * chapter of a row still outranks a photograph named by the first — "prefer the Centre's own
+ * imagery" is a rule about the KIND of picture, not about where in the row it was mentioned. Within
+ * a kind, order is preserved: the row speaks before the constant list does.
+ *
+ * A `Set` of slugs rather than of resolved objects, so a slug repeated between the row and the list
+ * cannot put the same plate in both frames — the flaw a reader notices at once and cannot name.
+ */
+function pickPlates(section: PageSection, count: number): CinePlate[] {
+  const seen = new Set<string>();
+  const sheets: CinePlate[] = [];
+  const photos: CinePlate[] = [];
+
+  for (const slug of [...chapterPlateSlugs(section), ...CINE_PLATES]) {
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+
+    const sheet = craftSheet(slug);
+    if (sheet) {
+      sheets.push({ kind: "sheet", slug, sheet });
+      continue;
+    }
+    const photo = craftImage(slug);
+    if (photo) photos.push({ kind: "photo", slug, photo });
+  }
+
+  return [...sheets, ...photos].slice(0, count);
+}
+
+/**
+ * The two seats in movement I's column, as complete literal class strings in a lookup rather than
+ * assembled at the call site — `cn()` is a plain join and could not settle `opacity-80` against an
+ * `opacity-*` arriving from anywhere else (contract §5).
+ *
+ * `drift` is the px-rate the stage's `data-cine-drift` scrub multiplies by two; `speed` is the
+ * `data-cine-photo` band. Which of the two is used depends on what the plate turns out to BE — see
+ * `CinePlateMount`.
+ */
+const PLATE_SEATS = {
+  /** The plate the eye lands on: nearest, so it travels most, and a gold fillet says so. */
+  principal: { tilt: "-rotate-1", mount: "ring-gold-500/25", drift: 12, speed: "fast" },
+  /** The second, set behind it: tilted the other way, quieter, travelling less. */
+  second: { tilt: "rotate-2", mount: "opacity-80 ring-white/15", drift: -8, speed: "slow" }
+} as const;
+
+/**
+ * One of the Centre's contact sheets, mounted.
+ *
+ * ⚠ INTRINSIC SIZING, NEVER `aspect` + `object-cover`, AND THAT IS THE ENTIRE REASON THIS EXISTS
+ * BESIDE `CraftPhoto` RATHER THAN INSIDE IT. A sheet is a mosaic of six to eight photographs on a
+ * cream ground; cropping it to a shape the layout preferred would slice through the middle of its
+ * cells and leave a row of severed pictures along one edge. `width`/`height` come from the manifest
+ * and are of the stored file, so `h-auto w-full` reserves the exact box, nothing shifts when the
+ * picture decodes, and not one pixel of the plate is lost — the rule craft-sheets.ts states in its
+ * own header and HeroSection's `SheetPlate` follows for the same reason.
+ *
+ * ⚠ A DARK MOUNT, BECAUSE THE PICTURE IS PALE. A sheet is laid out on cream, so the frosted white
+ * mat the photographic plates carry would put a translucent white border around an almost-white
+ * rectangle. `purple-950/70` is a dark mount board — the night canvas's own ground — and it makes
+ * the sheet read as lit paper in a case rather than as a bright patch burnt into the story.
+ *
+ * NO CREDIT OVERLAY, AND NOTHING IS BEING SKIPPED: these are the Centre's own pictures and owe no
+ * attribution. `craftSheet` carries no licence fields to render even if one wanted to.
+ */
+function CineSheetPlate({ sheet, className }: { sheet: CraftSheet; className?: string }) {
+  return (
+    <div className={cn("rounded-lg bg-purple-950/70 p-2.5 shadow-2xl ring-1", className)}>
+      {/* `rounded-sm` (8px) inside `rounded-lg` (16px) with 10px of padding: concentric radii want
+          the inner one to be the outer minus the gap. ⚠ Neither utility is what its name suggests
+          (contract §4). `bg-purple-900` is what shows for the instant before the blur paints. */}
+      <div className="overflow-hidden rounded-sm bg-purple-900">
+        <Image
+          src={sheet.src}
+          // Named as what it is. A sheet is a plate OF photographs, and calling it "Wood crafts"
+          // alone would promise a screen-reader user one picture of one thing.
+          alt={`A plate of photographs of ${sheet.title.toLowerCase()}`}
+          width={sheet.width}
+          height={sheet.height}
+          // The column is 0.9fr of a 84rem shell: about 40vw from `lg` up, and never rendered below
+          // it. Not `priority` — this is the second screen of the page, and a lazy image inside a
+          // `display: none` container is never fetched at all, so phones pay nothing for the vitrine.
+          sizes="(min-width: 1024px) 42vw, 90vw"
+          placeholder="blur"
+          blurDataURL={sheet.blurDataUrl}
+          className="h-auto w-full"
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A plate in movement I's column, mounted according to what it IS.
+ *
+ * ⚠ TWO DEPTH MECHANISMS, AND WHICH ONE IS USED IS FORCED BY THE PICTURE RATHER THAN CHOSEN. A
+ * `craftImage` is CROPPED to a shape, so it can be parallaxed INSIDE its own frame — that is what
+ * `data-cine-photo` drives, and CraftPhoto's 1.18 overscan is what stops the travel uncovering an
+ * edge. A sheet is cropped nowhere and therefore has no spare picture to travel across, so the only
+ * honest depth cue left is to move the whole mounted OBJECT: `data-cine-drift`, the same per-element
+ * rate the butis drift on. A plate that slid inside its mount would be the cropping this component
+ * exists to refuse, one frame at a time.
+ *
+ * ⚠ SO THE TILT SITS ON AN INNER ELEMENT IN THE SHEET BRANCH. GSAP writes the whole inline transform
+ * of whatever it drives, and a `rotate-*` utility on the same element is erased the first time the
+ * scrub fires (contract §8) — the two-wrapper rule `DriftingButi` sets out, restated for an object a
+ * hundred times its size. The photograph branch needs no such wrapper: there GSAP drives the `<img>`
+ * inside the frame, so the frame's own rotation is nobody else's channel.
+ */
+function CinePlateMount({
+  plate,
+  seat
+}: {
+  plate: CinePlate;
+  seat: (typeof PLATE_SEATS)[keyof typeof PLATE_SEATS];
+}) {
+  if (plate.kind === "sheet") {
+    return (
+      <div data-cine-drift={seat.drift}>
+        <div className={seat.tilt}>
+          <CineSheetPlate sheet={plate.sheet} className={seat.mount} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div data-cine-photo={seat.speed} className={seat.tilt}>
+      {/* No `caption`: CraftPhoto's figcaption is themed ink, unreadable on this permanently-dark
+          canvas. The licence attribution rides the overlay, and /credits carries it in full. */}
+      <CraftPhoto
+        image={plate.photo}
+        aspect="4 / 3"
+        sizes="(min-width: 1024px) 42vw, 90vw"
+        parallax
+        showRegion={false}
+        creditOnCreditsPage
+        creditOverlay
+        frameClassName={cn("rounded-lg ring-1", seat.mount)}
+      />
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The copy, from the script.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -273,8 +512,15 @@ export interface CinematicScrollProps {
 }
 
 export function CinematicScroll({ section }: CinematicScrollProps) {
-  const patola = craftImage("patola");
-  const zardozi = craftImage("zardozi");
+  /*
+   * Movement I's vitrine. Two plates, resolved from the row and then from `CINE_PLATES` — see that
+   * constant's header for the order and for why nothing here is a slug typed into a component.
+   * `?? null` rather than a bare index because `noUncheckedIndexedAccess` is on and a row with one
+   * resolvable picture is a real case: the frame that has no plate is simply not rendered.
+   */
+  const plates = pickPlates(section, 2);
+  const principal = plates[0] ?? null;
+  const second = plates[1] ?? null;
 
   return (
     <section
@@ -286,15 +532,31 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
       className="relative isolate overflow-hidden bg-purple-950 text-white"
     >
       {/*
-        THE NO-JAVASCRIPT RESCUE FOR EVERY MASKED WORD. Framer serialises each word's `initial`
-        into the SSR markup as an inline style, so with scripts off the statements would be
-        `opacity: 0` for ever — the one hole in "readable with JavaScript switched off", and the
-        review found it. `!important` is REQUIRED here, unlike HeroHeadline's noscript (which
-        overrides a stylesheet start state): an inline style cannot be beaten any other way.
-        Inside `<noscript>`, so a scripted reader never loads a rule that could fight framer.
+        THE NO-JAVASCRIPT RESCUE FOR EVERY MASKED WORD, EVERY CHIP AND THE DECK. Framer serialises
+        each element's `initial` into the SSR markup as an inline style, so with scripts off the
+        statements, the word bubbles and two of the three questions would be `opacity: 0` for ever —
+        the one hole in "readable with JavaScript switched off", and the review found it.
+        `!important` is REQUIRED here, unlike HeroHeadline's noscript (which overrides a stylesheet
+        start state): an inline style cannot be beaten any other way. Inside `<noscript>`, so a
+        scripted reader never loads a rule that could fight framer.
+
+        ⚠ THE DECK NEEDS `position` AS WELL AS THE TWO USUAL PROPERTIES. Its three panels are
+        absolutely seated on top of one another inside an 8rem box, so clearing the opacity alone
+        would print all three questions over each other in it. `static` returns them to ordinary
+        flow, the sibling margin puts a reading gap back between them, and the progress dots go —
+        with the deck un-stacked there is no "current" seat for them to be honest about. `position`
+        comes from a class rather than an inline style and would fall to source order alone, but it
+        is spelled `!important` beside its neighbours so the rule cannot quietly stop working
+        because a utility moved in the stylesheet.
+
+        ⚠ AND `[data-cine-sheen]` IS DELIBERATELY NOT LISTED. The bubbles' sweep of light is a child
+        of the chip, not the chip, so the selector below leaves it at its own inline `opacity: 0` —
+        clearing it would paint a bright gradient bar across every chip on precisely the pages this
+        rescue exists to save. If CineBubbles or CineFlipDeck renames an attribute, it is renamed
+        here; that is the whole contract between the three files.
       */}
       <noscript>
-        <style>{`[data-cine-word]{opacity:1!important;transform:none!important}`}</style>
+        <style>{`[data-cine-word],[data-cine-bubble]{opacity:1!important;transform:none!important}[data-cine-flip]{position:static!important;opacity:1!important;transform:none!important}[data-cine-flip]+[data-cine-flip]{margin-top:2rem}[data-cine-flip-dots]{display:none!important}`}</style>
       </noscript>
 
       <CinematicScrollStage>
@@ -491,45 +753,29 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
               />
             </div>
 
-            {/* Two photographs at two depths — the double weave the copy is describing — leaning
-                gently toward the pointer as one plate. */}
-            <PointerDrift depth={12} className="relative hidden lg:block">
-              <div data-cine-photo-group="">
-                {zardozi ? (
-                  <div
-                    data-cine-photo="slow"
-                    className="absolute -right-6 -top-16 w-3/5 rotate-2 opacity-70"
-                  >
-                    <CraftPhoto
-                      image={zardozi}
-                      aspect="4 / 5"
-                      sizes="24rem"
-                      parallax
-                      showRegion={false}
-                      creditOnCreditsPage
-                      creditOverlay
-                      frameClassName="rounded-2xl ring-1 ring-white/10"
-                    />
-                  </div>
-                ) : null}
-                {patola ? (
-                  <div data-cine-photo="fast" className="relative w-4/5 -rotate-1">
-                    {/* No `caption`: CraftPhoto's figcaption is themed ink, unreadable on this
-                        permanently-dark canvas. The licence attribution rides the overlay. */}
-                    <CraftPhoto
-                      image={patola}
-                      aspect="3 / 4"
-                      sizes="30rem"
-                      parallax
-                      showRegion={false}
-                      creditOnCreditsPage
-                      creditOverlay
-                      frameClassName="rounded-2xl ring-1 ring-white/10 shadow-2xl"
-                    />
-                  </div>
-                ) : null}
-              </div>
-            </PointerDrift>
+            {/*
+              THE VITRINE — two plates at two depths, the double weave the copy is describing,
+              leaning toward the pointer as one group.
+
+              ⚠ STACKED AND FULL-COLUMN-WIDTH, WHERE THIS USED TO BE A `w-4/5` PLATE WITH A `w-3/5`
+              ONE OVERLAPPING ITS CORNER — and the geometry had to change because the pictures did.
+              craft-sheets.ts sets a floor of about 380 CSS px on any frame a contact sheet is
+              mounted in, below which its six-to-eight cells stop being separable. This column is
+              `0.9fr` of an 84rem shell: 403px at the `lg` breakpoint itself and about 547px at
+              1536, so a plate at the FULL column clears the floor everywhere the column exists —
+              while the old inset's 60% would have been 242px at `lg`, which is a thumbnail of a
+              mosaic and unreadable as either. The two plates are told apart by tilt, depth and
+              mount instead of by size (see `PLATE_SEATS`), and the group is `hidden lg:block`, so
+              no narrow screen pays for a picture it was never going to be shown.
+            */}
+            {principal ? (
+              <PointerDrift depth={12} className="relative hidden lg:block">
+                <div className="flex flex-col gap-10">
+                  <CinePlateMount plate={principal} seat={PLATE_SEATS.principal} />
+                  {second ? <CinePlateMount plate={second} seat={PLATE_SEATS.second} /> : null}
+                </div>
+              </PointerDrift>
+            ) : null}
           </div>
         </div>
 
@@ -544,13 +790,17 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
               </p>
             </Reveal>
 
-            <Reveal delay={0.1} className="mt-8 flex flex-wrap items-center justify-center gap-2.5">
-              {TRANSMISSION.map((word) => (
-                <span key={word} className={CHIP}>
-                  {word}
-                </span>
-              ))}
-            </Reveal>
+            {/* The four verbs are SET DOWN one after another rather than revealed as a block: each
+                springs into its seat with a sweep of light across it, and scrolling back up picks
+                the row up again from the end (CineBubbles owns both directions and the
+                reduced-motion fade). `loose`, because four short statements with full stops want
+                the beat between them — the stagger is the punctuation. */}
+            <CineBubbles
+              words={TRANSMISSION}
+              chipClassName={CHIP}
+              stagger={STAGGER.loose}
+              className="mt-8"
+            />
 
             {/* The constellation, in light broken through the jaali: the one chain that exists,
                 and the four fields adrift around it at their own drift rates. The names repeat in
@@ -605,13 +855,13 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
           <div className="shell flex flex-col items-center gap-14 py-20 text-center md:gap-20 md:py-28">
             <CineLine as="h3" text="What if we could connect it?" className={HUGE} />
 
-            {WHAT_IFS.map((question, index) => (
-              <Reveal key={question} delay={0.05 * index}>
-                <p className="mx-auto max-w-[40ch] text-lg leading-relaxed text-white/70 sm:text-xl">
-                  {question}
-                </p>
-              </Reveal>
-            ))}
+            {/* ONE SEAT, THREE QUESTIONS, TURNED OVER BY THE READER'S OWN SCROLL. Printed as three
+                stacked paragraphs with this movement's `gap-14 md:gap-20` between them they cost
+                about 400 vertical pixels to say one thought, which is the note the owner made.
+                CineFlipDeck holds all three in the DOM at all times — the accessibility answer, not
+                an oversight — and falls back to exactly the stacked layout this replaced under
+                reduced motion. See its header. */}
+            <CineFlipDeck lines={WHAT_IFS} />
 
             <div className="relative">
               {/* The bloom: the light rising behind the question where AI enters — scrubbed up
@@ -860,13 +1110,19 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                     creativity.
                   </p>
                 </Reveal>
-                <Reveal delay={0.12} className="mt-8 flex flex-wrap items-center justify-center gap-2.5">
-                  {RESEARCH_THEMES.map((theme) => (
-                    <span key={theme} className={cn(CHIP, "transition-colors duration-300 hover:border-gold-300/40 hover:text-gold-200")}>
-                      {theme}
-                    </span>
-                  ))}
-                </Reveal>
+                {/* The same arrival as the transmission verbs, at `tight`: eight chips on the same
+                    0.08 beat would leave the last theme more than half a second behind the first,
+                    and this row is a field of study rather than four separate statements — it
+                    should read as one gesture. */}
+                <CineBubbles
+                  words={RESEARCH_THEMES}
+                  chipClassName={cn(
+                    CHIP,
+                    "transition-colors duration-300 hover:border-gold-300/40 hover:text-gold-200"
+                  )}
+                  stagger={STAGGER.tight}
+                  className="mt-8"
+                />
               </div>
             </div>
           </div>

@@ -155,8 +155,14 @@ export function SiteFooter({ branding, contact, social, footer, items }: SiteFoo
       corner notches, which is what makes the curve read as a curve rather than as clipping. The
       outer element carries no text, so the themed token under unconditionally-white type is never
       in play (theme-check's rule).
+
+      ⚠ `z-10` IS ALSO THE FLUID CURSOR'S STACKING CONTRACT, not decoration — see the header of
+      `components/site/SplashCursor.tsx`. That canvas is `fixed … z-0` and is the LAST child of the
+      site wrapper, so without an index here the footer loses to DOM order and the trail paints over
+      the whole band. This element was already `relative`, which is what makes an index take effect;
+      `<main>` carries the matching class in app/(site)/layout.tsx.
     */
-    <footer className="relative bg-bg-0">
+    <footer className="relative z-10 bg-bg-0">
       {/* `text-white` lives HERE, beside the literal purple-950 it depends on — putting it on the
           themed outer element above is exactly the inverting-scrim defect theme-check exists to
           catch (it did). */}

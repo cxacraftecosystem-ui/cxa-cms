@@ -186,8 +186,11 @@ export function layoutPins(points: MapPoint[], unitsPerKilometre: number): Place
     });
   }
 
-  // Back into a stable render order — largest last, so a big pin never hides a small one it was
-  // drawn before. The layout order above is about who wins a collision, not about who is on top.
+  // Back into a stable render order — LARGEST FIRST, which in an svg means largest at the BOTTOM of
+  // the stack: there is no z-index here, painting is document order, so a 26-unit pin emitted first
+  // can never cover a 12.5-unit one emitted after it. ⚠ Reversing this comparator buries the smallest
+  // pins under the biggest, which is the one arrangement in which a place disappears entirely. The
+  // sort in the loop above is about who WINS a collision; this one is about who is on top.
   return placed.sort((a, b) => b.radius - a.radius);
 }
 

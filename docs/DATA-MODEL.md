@@ -373,10 +373,19 @@ obligation, so replacing one re-runs the derivative pipeline in place.
 
 ---
 
-## 5. Search, redirects, settings and analytics
+## 5. Search, redirects, navigation, settings and analytics
 
 ```mermaid
 erDiagram
+    NavigationItem ||--o{ NavigationItem : "NavTree"
+    NavigationItem {
+        string location "header | footer | utility — a STRING, not an enum"
+        string href "an address, never a page id"
+        string parentId "self-relation, onDelete Cascade"
+        int    position
+        bool   isExternal
+        bool   isVisible
+    }
     SearchDocument {
         string entityType "unique with entityId"
         string entityId
@@ -434,6 +443,47 @@ never matches a JSON key name out of a Tiptap document.
 A page address is quoted in papers, syllabi and emails written years earlier. `app/(site)/[...slug]`
 checks this table **before** it 404s, and `permanent` decides 308 (replace the old address in caches,
 bookmarks and indexes) versus 307 (do not).
+
+### `NavigationItem` — the one ordered tree with no constraint holding it up
+
+Every menu on the site is rows in this table: `location` separates the header, the footer columns and
+the utility bar, so one studio screen drives all three. `getNavigation()` in
+`lib/navigation-server.ts` reads the whole table in **one** query and assembles the tree in memory —
+a recursive query per level would be three round trips for a two-level menu, on every page.
+
+Three things about it are worth knowing before you write to it:
+
+⚠ **There is no `@@unique([location, position])`**, deliberately unlike `PageSection`'s
+`@@unique([pageId, position])`. Nothing in the database would catch two rows both claiming position
+3. That absence is why **both** writers rewrite an ordered set *whole, in one transaction* rather
+than issuing N updates: `PUT`/`PATCH /api/studio/navigation` replaces the menus by description (every
+row is created anew, so every row gets a new id), and `PATCH /api/studio/navigation/order` moves the
+**existing** rows by id and touches only `position` and `parentId` — a drag that changed thirty ids
+would invalidate every reference to them and rewrite thirty audit payloads to record a change of
+position. The order body must name **every** item in the location; a set missing one is refused
+rather than half-applied. `position` is not sent at all: it is the index among the items sharing a
+`parentId`, computed on the server, because a client could otherwise send two 3s and no 4 and leave
+the server deciding what that meant.
+
+⚠ **The depth cap and the cycle check live in the route, not in the schema.** The self-relation
+`NavTree` permits an item to be its own ancestor, which would make the tree builder recurse forever —
+the site's *header* would hang rather than render, on every page. Two levels is the ceiling the
+editor and the renderers can show; a third level in a header menu is a level nobody finds, and the
+one a CMS lets an administrator create by accident. `onDelete: Cascade` here (contrast
+`CraftRegion`'s `RegionTree`, which is `SetNull`) because a sub-item has no meaning without the item
+it sits under.
+
+**`location` is a plain `String`, not an enum**, so a row can hold a fourth value — and one that
+does is *stranded*: `buildTrees()` drops it from every menu and reports it back to the studio as a
+`stranded` count, so an item that has silently stopped appearing is named on screen instead of being
+hunted for in the database.
+
+**No rows is not emptiness.** A fresh installation has none, and a site with an empty header looks
+broken rather than new, so `getNavigation()` falls back to `DEFAULT_HEADER` / `DEFAULT_FOOTER` in
+`lib/navigation.ts` — which is also the path an unreachable database takes, because the site layout
+calls this for every page the build renders and a throw here failed the whole build on whichever page
+Next happened to prerender first. `prisma/seed.ts` writes the same defaults as real rows, so an
+administrator can immediately edit what they see.
 
 ### `Setting` is one row per group
 

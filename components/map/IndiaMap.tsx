@@ -109,19 +109,38 @@ function bloomDelays(pins: readonly PlacedPin[]): Map<string, number> {
  * ⚠ IT LIVES HERE RATHER THAN IN components/motion/variants.ts, WHICH IS NOT A LICENCE TO INVENT
  * MOTION. Every number in it comes from constants.ts; what the shared vocabulary cannot express is
  * the delay, because a variant factory there takes `reduce` and a distance and knows nothing about
- * where a mark sits on a map. `SPRING_PRESS` is the springiest entry in the house set — damping ratio
- * about 0.92, so it passes its target and comes back — and the lightest, which is what makes a small
- * mark read as popping rather than swelling.
+ * where a mark sits on a map. `SPRING_PRESS` is the springiest thing the house set holds: its damping
+ * ratio is 30 / (2√(380 × 0.7)) ≈ 0.92, against 0.93 for ISLAND, 0.99 for TOAST and over 1 — no
+ * overshoot at all — for the other four.
+ *
+ * ⚠ THAT IS NOT A VISIBLE BOUNCE, AND NOBODY SHOULD WRITE THAT IT IS. At ζ = 0.92 the analytic
+ * overshoot is exp(−πζ/√(1−ζ²)) ≈ 0.0006 — six hundredths of one per cent of a 0.7 step, four
+ * ten-thousandths of a scale unit, which is not a thing an eye can see. What makes a small mark read
+ * as POPPING rather than swelling is the delta and the speed: 0.3 → 1 at ωₙ ≈ 23 rad/s lands in about
+ * 190 ms (4/ζωₙ) and stops dead. A pin that genuinely passed 1 and came back would need a constant
+ * under ζ ≈ 0.9, and constants.ts deliberately holds none — SPRING_ISLAND's own line is "arrives
+ * without a visible bounce". Inventing one HERE is the thing this comment exists to prevent.
  *
  * Under reduction the scale collapses to 1 and the transition to zero, exactly as `scaleIn` does:
  * the pin is simply there. `opacity: 0` stays in BOTH branches of `hidden`, because the preference
  * resolves after hydration and an `initial` that differs between the server and the client is a
  * flash (useReducedMotionPreference.ts). The delay is zeroed WITH the duration — a zero-duration
  * animation that still waits its turn is a staggered pop, which is louder than the bloom it replaced.
+ *
+ * ⚠ `hidden` CARRIES A TRANSITION TOO, WHICH IT WOULD NOT NEED ANYWHERE ELSE. `viewport.once` is
+ * false, so this variant is not only the initial state — it is played, every time the reader scrolls
+ * back past the map. Left bare it would leave for ever on framer's own default (a 0.3 s opacity tween
+ * and an untuned spring on the scale), which is house motion nobody chose and, for a reader who asked
+ * for none, motion after the promise above said there would be none. Entry and exit are now the same
+ * spring and the same zero.
  */
 function pinPop(reduce: boolean): Variants {
   return {
-    hidden: { opacity: 0, scale: reduce ? 1 : 0.3 },
+    hidden: {
+      opacity: 0,
+      scale: reduce ? 1 : 0.3,
+      transition: reduce ? { duration: 0 } : SPRING_PRESS
+    },
     visible: (delay: number) => ({
       opacity: 1,
       scale: 1,
@@ -139,7 +158,14 @@ function pinPop(reduce: boolean): Variants {
  */
 function leaderFade(reduce: boolean): Variants {
   return {
-    hidden: { opacity: 0 },
+    hidden: {
+      opacity: 0,
+      // Played on the way out as well (see `pinPop`), and ⚠ WITHOUT `visible`'s `delay`. That wait
+      // is there so a hairline is never drawn to a pin that has not arrived; carried into the exit it
+      // would instead hold the lines on screen for `BLOOM` seconds after the pins they explain had
+      // gone — leaders to nowhere, which is the exact failure the delay was added to prevent.
+      transition: reduce ? { duration: 0 } : { duration: DURATION.scrim, ease: EASE_OUT }
+    },
     visible: {
       opacity: 1,
       transition: reduce

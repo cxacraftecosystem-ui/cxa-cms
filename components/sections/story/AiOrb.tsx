@@ -57,6 +57,8 @@ export function AiOrb({ className }: { className?: string }) {
   const [near, setNear] = useState(false);
   const [covered, setCovered] = useState(false);
   const [listening, setListening] = useState(false);
+  /** What the microphone permission did when the reader asked for it. See the effect below. */
+  const [mic, setMic] = useState<"idle" | "asking" | "granted" | "denied" | "unavailable">("idle");
   const [speaking, setSpeaking] = useState(false);
   /** The reader's words, live. Null when recognition is unsupported — a different fact from "". */
   const [transcript, setTranscript] = useState<string | null>("");
@@ -164,6 +166,66 @@ export function AiOrb({ className }: { className?: string }) {
     return () => window.removeEventListener(TAKEOVER_EVENT, sync);
   }, []);
 
+  /*
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ASK FOR THE MICROPHONE HERE, FROM THE BUTTON — because until now NOTHING RELIABLY DID.
+   *
+   * The permission prompt had exactly two possible sources and both are conditional:
+   *
+   *   • `VoicePoweredOrb`'s own `getUserMedia`, which only runs once the orb is MOUNTED — and it
+   *     mounts on `!reduce && near && !covered && Orb !== null`. Reduced motion, a WebGL refusal, a
+   *     chunk that has not landed yet, or a takeover covering the page, and there is no orb, so
+   *     nothing asks.
+   *   • `recognition.start()` below, which prompts in Chromium — but Firefox has no
+   *     `SpeechRecognition` at all and Brave deletes it, so on those there is no second chance.
+   *
+   * Land on any of those combinations and the reader presses "Let it hear you", the label flips to
+   * "Stop listening", and the browser never asks them anything. Reported as "the site never asks for
+   * microphone permissions", and that is exactly right.
+   *
+   * ⚠ THE TRACKS ARE STOPPED IMMEDIATELY, ON PURPOSE. This call exists to raise the PROMPT and to
+   * learn the answer, not to hold the device: the orb opens its own stream when it mounts, and the
+   * grant persists for the page, so its request goes through without a second prompt. Holding this
+   * one open as well would light the recording indicator for a feature the reader may have turned
+   * straight back off, and would keep the microphone busy for another tab.
+   *
+   * It runs only while `listening` is true, so the prompt still follows the reader's own press —
+   * the consent gate this component is careful about everywhere else.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  useEffect(() => {
+    if (!listening) {
+      setMic("idle");
+      return;
+    }
+
+    // `mediaDevices` is undefined outside a secure context, which on this site means somebody is
+    // running it over plain http — worth saying rather than failing mutely.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMic("unavailable");
+      return;
+    }
+
+    let cancelled = false;
+    setMic("asking");
+
+    void navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        stream.getTracks().forEach((track) => track.stop());
+        if (!cancelled) setMic("granted");
+      })
+      .catch(() => {
+        // Refused, dismissed, blocked by policy, or no input device — the reader cannot tell these
+        // apart and neither can we, so one honest sentence covers all of them.
+        if (!cancelled) setMic("denied");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [listening]);
+
   const showShader = !reduce && near && !covered && Orb !== null;
 
   return (
@@ -210,7 +272,20 @@ export function AiOrb({ className }: { className?: string }) {
           every sentence and a screen reader narrating that is noise (the §8 readout rule). */}
       {listening ? (
         <p className="mt-2 text-xs text-white/50">
-          {speaking ? "It hears you — watch it turn." : "Listening. Say something."}
+          {/*
+            The permission comes FIRST, because until it is answered "Listening" is a claim the page
+            cannot support — the microphone is not open yet. Only once it is granted does the old
+            speaking/quiet readout mean anything.
+          */}
+          {mic === "asking"
+            ? "Waiting for you to allow the microphone…"
+            : mic === "denied"
+              ? "The microphone was not allowed, so it cannot hear anything. Your browser's address bar has the switch."
+              : mic === "unavailable"
+                ? "No microphone is available to this page."
+                : speaking
+                  ? "It hears you — watch it turn."
+                  : "Listening. Say something."}
         </p>
       ) : null}
 

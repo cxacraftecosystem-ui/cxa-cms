@@ -38,13 +38,26 @@
  * The shaders, the config defaults and the whole solver below are the reference's, untouched, so the
  * trail looks exactly like the source. Only the two things below are this site's.
  *
- * ⚠ 1. THE STACKING RUNG IS `z-40`, NOT THE REFERENCE'S `z-[-1]`, AND IT HAS TO BE. A negative
- * z-index puts the canvas behind its own stacking context's background — which works on a portfolio
- * whose body is transparent, and renders this canvas completely invisible here, because
- * `app/(site)/layout.tsx` wraps the whole site in `<div className="… bg-bg-0">`. An opaque page
- * ground would paint straight over it. z-40 is the SCRIM rung of the site's ladder (contract §6):
- * the trail washes over page content but stays under the z-50 header, the z-60 skip link, and
- * anything portalled above them.
+ * ⚠ 1. THE STACKING RUNG IS `z-0`, AND IT IS NEITHER THE REFERENCE'S NOR THE ONE THIS FILE SHIPPED
+ * WITH. Three positions were tried and only the third is right:
+ *
+ *   `z-[-1]` (the reference's) — invisible here. A negative index puts the canvas behind its own
+ *      stacking context's background, which is fine on a portfolio whose body is transparent and
+ *      useless here, because `app/(site)/layout.tsx` wraps the site in `<div class="… bg-bg-0">`
+ *      and that opaque ground paints straight over it.
+ *   `z-40` (the scrim rung) — visible, and WRONG: the trail washed over the top of every card,
+ *      photograph and panel on the page. A cursor ornament that paints over the content is not
+ *      atmosphere, it is a smear across the thing the reader is trying to look at.
+ *   `z-0` — the canvas sits above the wrapper's own background and BELOW the content, which is
+ *      given `relative z-10` in the layout. Cards have opaque grounds, so the trail slides under
+ *      them and shows only in the space between — which is what was asked for and what it should
+ *      always have been.
+ *
+ * ⚠ z-0 ONLY WORKS BECAUSE THE CONTENT IS RAISED TO MEET IT. `z-0` is not "behind"; it is the same
+ * rung as any un-indexed positioned element, and paint order would then fall back to DOM order —
+ * putting this canvas, which comes last, back on top. `app/(site)/layout.tsx` carries the other
+ * half of this contract on `<main>` and the footer. Move one without the other and the trail either
+ * vanishes under the page ground or climbs back over the cards.
  *
  * ⚠ 2. `pointer-events-none` IS LOAD-BEARING, and is the reference's own. A full-screen fixed canvas
  * that captured the pointer would swallow every click on the site.
@@ -1309,7 +1322,7 @@ function InternalSplashCursor({
   ]);
 
   return (
-    <div className="pointer-events-none fixed left-0 top-0 z-40">
+    <div className="pointer-events-none fixed left-0 top-0 z-0">
       <canvas ref={canvasRef} id="fluid" className="w-screen h-screen" />
     </div>
   );
