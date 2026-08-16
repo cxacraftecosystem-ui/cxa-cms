@@ -48,7 +48,9 @@ import { RailStage } from "@/components/sections/story/RailStage";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
 import { ArcCarousel, type ArcCarouselItem } from "@/components/site/ArcCarousel";
 import { SectionHeading } from "@/components/site/SectionHeading";
+import { hashUnit } from "@/components/craft/motifs";
 import { craftImage, type CraftImage } from "@/lib/media/craft-imagery";
+import { CRAFT_CATEGORY_SHEETS, craftSheet, type CraftSheet } from "@/lib/media/craft-sheets";
 import { mediaAlt, mediaSrc } from "@/lib/media/url";
 import { sectionLabel } from "@/lib/sections/registry";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
@@ -128,6 +130,23 @@ function isInternalHref(href: string): boolean {
  * the fan shows comes back in `credits`, and the caller renders the lot directly beneath the
  * stage. Deduplicated because the licence asks for attribution, not for one line per appearance.
  */
+/**
+ * A Centre category plate for a row that named no picture of its own.
+ *
+ * Keyed on the row's `href` where it has one and its `title` otherwise — the two things about a card
+ * an editor is least likely to change once it is written. `hashUnit`'s channel is named so a second
+ * thing derived from the same row later cannot move in step with this one and read as a mistake.
+ */
+function fallbackSheet(item: HorizontalRailItem): CraftSheet | null {
+  const identity = (item.href.trim() || item.title.trim()).toLowerCase();
+  if (!identity) return null;
+  const index = Math.min(
+    CRAFT_CATEGORY_SHEETS.length - 1,
+    Math.floor(hashUnit(identity, "arc-plate") * CRAFT_CATEGORY_SHEETS.length)
+  );
+  return CRAFT_CATEGORY_SHEETS[index] ?? null;
+}
+
 function arcCardsOf(
   items: HorizontalRailItem[],
   resolved: ResolvedSectionData | undefined
@@ -137,7 +156,36 @@ function arcCardsOf(
 
   for (const item of items) {
     const asset = item.mediaId.trim() ? resolved?.media[item.mediaId.trim()] : undefined;
-    const craft = !asset && item.craftImage.trim() ? craftImage(item.craftImage.trim()) : null;
+    const slug = item.craftImage.trim();
+
+    /*
+     * ══════════════════════════════════════════════════════════════════════════════════════════
+     * THE CENTRE'S OWN PLATES COME FIRST, AND A COMMONS PHOTOGRAPH IS NOW THE LAST RESORT.
+     *
+     * This row used to resolve `item.craftImage` through `craftImage()` alone, so the fan was eight
+     * Wikimedia photographs — on the page that is the Centre's own archive. The order is now:
+     *
+     *   1. an UPLOADED asset, which still wins over everything (StoryPicture's rule, unchanged);
+     *   2. the slug read as a CONTACT SHEET, so an editor can name `metal` or `textile-embroidery`
+     *      directly and get the Centre's plate;
+     *   3. the slug read as a manifest photograph, for rows authored before the sheets existed;
+     *   4. failing all of those, a Centre CATEGORY plate chosen deterministically from the row's own
+     *      href-or-title, so the fan is never a hole and never somebody else's picture.
+     *
+     * ⚠ STEP 4 IS A STABLE HASH, NOT A ROTATION. `hashUnit` keyed on the row's identity means a
+     * given card always draws the same plate — between renders, between visits and between server
+     * and client. A random or index-based pick would reshuffle the fan on every navigation, which
+     * reads as a bug even to somebody who cannot say what changed.
+     *
+     * ⚠ A SHEET IS A MOSAIC AND THESE CARDS ARE 256px WIDE, which is below the ~380px floor
+     * craft-sheets.ts sets for reading one. That is accepted here on purpose: at this size the plate
+     * is being used as a TEXTURE — a dense field of craft with the card's own title over it — not as
+     * something to read. The full sheet is legible where it is offered as a subject, in the hero's
+     * vitrine and the map's hover card.
+     * ══════════════════════════════════════════════════════════════════════════════════════════
+     */
+    const sheet = !asset ? (slug ? craftSheet(slug) : null) ?? fallbackSheet(item) : null;
+    const craft = !asset && !sheet && slug ? craftImage(slug) : null;
     if (craft && !credits.some((image) => image.slug === craft.slug)) credits.push(craft);
 
     cards.push({
@@ -146,10 +194,12 @@ function arcCardsOf(
       subtitle: item.meta.trim() || undefined,
       // 640 targets the card's real cost: a 256px slot at a 2× screen is a 512px image, and the
       // derivative ladder's next rung up from that is the 640 "sm".
-      imageSrc: asset ? mediaSrc(asset, 640) ?? undefined : craft?.src,
+      imageSrc: asset ? mediaSrc(asset, 640) ?? undefined : (sheet?.src ?? craft?.src),
       // The empty string is deliberate where nothing better exists: it marks the picture decorative
-      // rather than making a screen reader announce a filename (contract §11).
-      imageAlt: asset ? mediaAlt(asset) : craft ? craft.title : ""
+      // rather than making a screen reader announce a filename (contract §11). A sheet gets no alt
+      // text at all here: the card's own `<h3>` already carries the craft's name, and announcing
+      // "a plate of photographs of metal crafts" beside it would read the card twice.
+      imageAlt: asset ? mediaAlt(asset) : sheet ? "" : craft ? craft.title : ""
     });
   }
 
