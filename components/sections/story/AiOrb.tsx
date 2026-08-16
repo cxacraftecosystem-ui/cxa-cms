@@ -216,10 +216,34 @@ export function AiOrb({ className }: { className?: string }) {
 
       {/* What it heard, mirrored back — the words themselves, in the story's own gold. Fixed
           height so the line's arrival never shoves the chapter below; sliced from the END because
-          the freshest words are the mirror. Absent entirely where the browser has no recogniser. */}
+          the freshest words are the mirror. */}
       {listening && transcript !== null ? (
         <p className="mt-3 flex min-h-10 max-w-md items-center justify-center px-4 text-center font-display text-sm italic leading-snug text-gold-200/90">
           {transcript ? `“${transcript.length > 140 ? `…${transcript.slice(-140)}` : transcript}”` : null}
+        </p>
+      ) : null}
+
+      {/*
+        ⚠ THE BROWSER HAS NO RECOGNISER — SAY SO, RATHER THAN RENDERING NOTHING.
+        `transcript` is set to `null` in exactly one case that is not an error: the effect above
+        found neither `SpeechRecognition` nor `webkitSpeechRecognition`. Until now that produced
+        SILENCE — the orb turned, the button said "Stop listening", and no words ever appeared —
+        which is indistinguishable from a bug, and was reported as one.
+
+        It is not a bug, and it is not rare. FIREFOX has never shipped the interface at all, and
+        BRAVE REMOVES IT ON PURPOSE: the Chromium implementation streams the microphone to Google's
+        servers for recognition, so Brave deletes the API rather than route its users' audio there.
+        Both are working as their makers intend, and no amount of code here changes it — the honest
+        response is to tell the reader what happened and let them decide.
+
+        The orb itself is amplitude-driven from `getUserMedia` and turns perfectly well in both, so
+        this really is the feature shedding WORDS rather than failing.
+      */}
+      {listening && transcript === null ? (
+        <p className="mt-3 flex min-h-10 max-w-md items-center justify-center px-4 text-center text-xs leading-snug text-white/50">
+          It is listening and the orb is turning, but this browser has no speech recogniser, so the
+          words cannot be shown. Firefox has never had one, and Brave removes it deliberately rather
+          than send your microphone to Google. Chrome, Edge or Safari will show them.
         </p>
       ) : null}
     </div>
