@@ -133,12 +133,17 @@ function isInternalHref(href: string): boolean {
 /**
  * A Centre category plate for a row that named no picture of its own.
  *
- * Keyed on the row's `href` where it has one and its `title` otherwise — the two things about a card
- * an editor is least likely to change once it is written. `hashUnit`'s channel is named so a second
- * thing derived from the same row later cannot move in step with this one and read as a mistake.
+ * ⚠ KEYED ON THE TITLE, NOT THE HREF, AND THE FIRST VERSION OF THIS HAD IT THE OTHER WAY ROUND.
+ * A rail's rows very often share a destination — the landing page's own fan points ELEVEN rows at
+ * `/craft-explorer` — so hashing the href gave every card in the fan the identical plate, which is
+ * exactly what an editor would report as "all the images are the same". The title is the one field
+ * that is reliably distinct per row, because it is what tells the two rows apart on screen.
+ *
+ * `hashUnit`'s channel is named so a second thing derived from the same row later cannot move in
+ * step with this one and read as a mistake.
  */
 function fallbackSheet(item: HorizontalRailItem): CraftSheet | null {
-  const identity = (item.href.trim() || item.title.trim()).toLowerCase();
+  const identity = (item.title.trim() || item.href.trim()).toLowerCase();
   if (!identity) return null;
   const index = Math.min(
     CRAFT_CATEGORY_SHEETS.length - 1,

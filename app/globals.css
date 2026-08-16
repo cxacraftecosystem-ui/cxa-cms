@@ -376,9 +376,24 @@ input[type="number"] {
    * at once — an underglow strong enough to notice on one card is a haze across a whole grid.
    * ══════════════════════════════════════════════════════════════════════════════════════════════
    */
+  /*
+   * ⚠ THE SELECTOR IS DOUBLED, AND THAT IS THE WHOLE REASON THE GLOW WAS INVISIBLE FIRST TIME.
+   * `.bg-card` alone is one class, and so is `.shadow-sm` — which most cards on this site also
+   * carry. Tailwind emits its utilities layer AFTER this components layer, so at equal specificity
+   * the utility won on source order and replaced this `box-shadow` outright. Every card that had a
+   * shadow — which is nearly all of them — got none of this. `.bg-card.bg-card` is specificity
+   * (0,2,0) and beats any single utility class, which is the standard way to say "a component
+   * default that a utility may not silently delete" without reaching for `!important`.
+   *
+   * The position and z-index stay on the SINGLE class deliberately: those genuinely should yield to
+   * an element that declares `absolute` or its own rung, and nothing was overriding them.
+   */
   .bg-card {
     position: relative;
     z-index: 45;
+  }
+
+  .bg-card.bg-card {
     box-shadow:
       0 1px 2px rgb(0 0 0 / 0.04),
       0 12px 28px -12px oklch(0.47 0.198 305 / 0.22),
@@ -387,8 +402,8 @@ input[type="number"] {
 
   /* The dark theme needs a deeper, wider glow: the same alphas over a near-black ground are
      invisible, and a card that floats in the light theme and sits flat in the dark one reads as two
-     different components. */
-  :root[data-theme="dark"] .bg-card {
+     different components. Doubled for the same reason as above. */
+  :root[data-theme="dark"] .bg-card.bg-card {
     box-shadow:
       0 1px 2px rgb(0 0 0 / 0.5),
       0 14px 34px -12px oklch(0.56 0.205 305 / 0.4),
