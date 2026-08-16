@@ -22,6 +22,17 @@ import { RegionMapManager, type RegionAnchor, type RegionRowData } from "./Regio
  * region's fate in the same terms, computed by the SAME walk over the same tree: on the map, counting
  * under a named parent, or reported as not yet placed.
  *
+ * AND IT HAS A MAP ON IT NOW. Every row opens `components/studio/RegionMapPicker.tsx` — the same
+ * outline at the same `VIEW_BOX`, through the same projection, as the picture on the homepage — so a
+ * region can be placed by clicking where it is instead of by looking its decimal degrees up first.
+ * The two number fields stay, and the two are one value: see RegionMapManager.tsx's header for why
+ * that means the coordinates are held by the list rather than by each row.
+ *
+ * ⚠ FILING A CRAFT UNDER A REGION IS NOT DONE HERE AND MUST NOT BE ADDED HERE. `Craft.regionId` is a
+ * single optional foreign key, and the studio already writes it on the craft's own editor
+ * (app/studio/crafts/[id]/CraftEditor.tsx, "Where it comes from"). A second writer for one column is
+ * two screens that can silently overwrite each other; this screen signposts that one instead.
+ *
  * ⚠ THIS SEGMENT IS STATIC AND `[id]` IS DYNAMIC, so `/studio/crafts/regions` resolves here rather
  * than to the craft editor with `id="regions"` — the same routing fact the news taxonomy screens rest
  * on (contract §13b). No `loading.tsx` may be added above this segment for the reason the craft
@@ -113,7 +124,7 @@ export default async function StudioCraftRegionsPage() {
         title="Regions on the map"
         back={{ href: "/studio/crafts", label: "Craft archive" }}
         breadcrumb={[{ label: "Craft archive", href: "/studio/crafts" }, { label: "Regions on the map" }]}
-        description="The homepage map pins every region that has coordinates. A region without them is not lost — its crafts count under the nearest parent region that has coordinates, and if no parent has any, the map says so out loud."
+        description="The homepage map pins every region that has coordinates. Give a region its own by opening its map and clicking where the place is, or by typing the two numbers. A region without them is not lost — its crafts count under the nearest parent region that has coordinates, and if no parent has any, the map says so out loud."
         meta={
           <span className="text-xs tabular-nums text-ink-500">
             {placed} of {regions.length === 1 ? "1 region" : `${regions.length} regions`} on the map

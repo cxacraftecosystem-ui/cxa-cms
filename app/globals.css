@@ -1972,3 +1972,243 @@ input[type="number"] {
     padding-left: 0 !important;
   }
 }
+
+/*
+ * ════════════════════════════════════════════════════════════════════════════
+ * THE EMBROIDERED MARGIN — the drawn half of components/site/EmbroideryEdge.tsx
+ *
+ * A narrow worked selvedge down the left and right of the light part of the page: a running stitch
+ * on each rail with a column of half-size `buti` between them. That component builds the repeat out
+ * of `BUTI_BY_ID` in components/craft/motifs.ts, hands it over as `--cxa-edge-thread`, and adds
+ * `--lit` when no dark band is on screen. Everything else — the ground, the repeat, the widths, the
+ * paper edition — is here, because none of it can be said with a utility.
+ *
+ * ⚠ IT IS A MASK OVER A TOKEN COLOUR, NOT A PICTURE. The strip is a plain rectangle of
+ * `--ink-300` with the stitches cut out of it, so the thread inverts with the theme like every other
+ * surface on this site (contract §1.2). A background IMAGE would have had to bake a neutral into the
+ * data URI and carry a second dark copy of it — the one part of the page that could not invert.
+ *
+ * ⚠ AND THE `@supports` GUARD IS LOAD-BEARING, WHICH `.mask-edges-x` DOES NOT NEED. That utility
+ * fails safe: an engine with no mask support simply loses an edge fade. This one fails LOUD — with
+ * the mask ignored, `background-color` paints the whole rectangle and the reader gets two solid bars
+ * of ink down the page. So the strip is `display: none` by default and only the block inside the
+ * `@supports` ever turns it on. Nothing to undo if the query is false; there is simply no strip.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+/*
+ * The carrier for the tile, and NOTHING ELSE. It generates no box, so it costs no layout and cannot
+ * shift anything; its only job is to hold `--cxa-edge-thread` — the 8.4kB data URI — in one place
+ * that both strips inherit from, instead of writing that string into the markup twice on every page.
+ */
+.cxa-edge-set {
+  display: contents;
+}
+
+.cxa-edge {
+  /* Zero until a breakpoint in the ladder below claims otherwise, so a width can never be inherited
+     from nowhere. The real values are 16 / 18 / 22px — see the arithmetic beside them. */
+  --cxa-edge-width: 0px;
+
+  /*
+   * FIXED, AND THE COMPONENT'S HEADER ARGUES THE THREE ALTERNATIVES AT LENGTH. The two properties
+   * that matter here: a fixed box contributes NOTHING to the document's scrollable overflow, so this
+   * cannot produce a horizontal scrollbar at any width; and its containing block is the viewport, so
+   * it costs no layout and can shift nothing.
+   */
+  position: fixed;
+  display: none;
+
+  /*
+   * The margin begins where the page does. `.nav-frame` insets the floating header pill by only
+   * 0.75rem, so a strip starting at the top of the viewport would run underneath it for 96px on
+   * every screen; starting at the clearance the header is already owed keeps ONE number in play
+   * (contract §7) instead of inventing a second that means the same thing.
+   */
+  top: var(--nav-clearance);
+  bottom: 0;
+  width: var(--cxa-edge-width);
+
+  /*
+   * ⚠ 30 IS DELIBERATELY BELOW EVERY RUNG THE FLUID CURSOR'S CONTRACT NAMES, so this adds nothing to
+   * it. The canvas is `fixed … z-40` and the cards are raised to 45 (see `.bg-card` above and the
+   * header of components/site/SplashCursor.tsx); at 30 the trail washes OVER the stitching exactly as
+   * it washes over each section's ground, the cards still rise above both, and the z-50 header is
+   * untouched. A rung above 40 would have made this ornament the one thing on the site the trail
+   * cannot pass in front of, for no reason anybody could state.
+   */
+  z-index: 30;
+  pointer-events: none;
+
+  /* The thread. A token, so it follows the ink ladder into the dark theme (#a7a3bc → #6e6884). */
+  background-color: rgb(var(--ink-300));
+
+  /*
+   * The resting state, and the one every reader's first paint agrees on — server, client, cold load
+   * on the homepage where the hero is a dark band. `--lit` below is the only thing that raises it.
+   */
+  opacity: 0;
+
+  /*
+   * The tile itself comes from `EmbroideryEdge.tsx` as `--cxa-edge-thread`, inherited from the
+   * carrier above — it is built out of `BUTI_BY_ID` and can only be computed in TypeScript. Every
+   * mask property is written twice: Safari still wants the prefixed spelling.
+   *
+   * ⚠ THE FALLBACK IS A FULLY TRANSPARENT GRADIENT AND IT MUST NOT BE `none`. A missing custom
+   * property with no fallback makes the declaration invalid at computed-value time, which lands on
+   * the INITIAL value — and `mask-image: none` means "no mask", i.e. the whole rectangle, i.e. a
+   * solid bar of ink down the page. `none` written as an explicit fallback fails the same way. A
+   * gradient from transparent to transparent is a real mask that lets nothing through, so a strip
+   * that somehow reaches the page without its tile is simply not visible.
+   */
+  -webkit-mask-image: var(--cxa-edge-thread, linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / 0)));
+  mask-image: var(--cxa-edge-thread, linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / 0)));
+  -webkit-mask-repeat: repeat-y;
+  mask-repeat: repeat-y;
+
+  /* `100% auto` keeps the tile's own 20 : 56 ratio, so narrowing the strip at a smaller breakpoint
+     scales the motifs with it rather than cropping them. */
+  -webkit-mask-size: 100% auto;
+  mask-size: 100% auto;
+  -webkit-mask-position: center top;
+  mask-position: center top;
+
+  /* No `will-change`. It would hold a promoted layer down both edges of every page for the whole
+     visit in order to smooth an opacity change that happens a handful of times per scroll. */
+}
+
+.cxa-edge--left {
+  left: 0;
+}
+
+/*
+ * ⚠ `right` PAYS THE SCROLLBAR GUTTER, LIKE EVERY OTHER FIXED OVERLAY ON THIS SITE (contract §6).
+ * `lockScroll()` freezes the document while a sheet or the lightbox is open, the scrollbar goes, the
+ * viewport widens by its width, and a right-anchored fixed element slides outwards by that much at
+ * the moment an overlay opens. `.nav-frame`, `.overlay-frame`, `Dialog`, `MediaLightbox` and
+ * `ToastProvider` all read the same variable, and the print block above zeroes it for all of them at
+ * once; this strip joins that list rather than measuring anything for itself.
+ *
+ * The mirror is what makes it a border rather than two copies of one edge: a selvedge is worked
+ * inwards from each side, so the mango leans towards the text on both. It creates a containing block
+ * for fixed descendants — this element has none, and must not be given any.
+ */
+.cxa-edge--right {
+  right: var(--scroll-gutter, 0px);
+  transform: scaleX(-1);
+}
+
+/*
+ * A DECORATED MARGIN, NOT A BORDER. 0.55 of `--ink-300` lands at about #d3d0e0 on the page canvas,
+ * and the mask's own per-motif alphas (0.46–0.96) take it further down from there. If this is the
+ * first thing the eye finds on the page, it is wrong.
+ */
+.cxa-edge--lit {
+  opacity: 0.55;
+}
+
+/*
+ * ⚠ THE CURVE IS WRITTEN OUT AND IT IS NOT THE CSS KEYWORD `ease-out`. `EASE_OUT` in
+ * components/motion/constants.ts is cubic-bezier(0.16, 1, 0.3, 1) — the house curve, the same one
+ * tailwind.config.ts gives the `ease-out` CLASS — and the identically-spelled CSS keyword is a
+ * different, much lazier curve (contract §4). 500ms is `DURATION.rise`, the standard below-the-fold
+ * rise-and-fade, in the milliseconds CSS wants rather than the seconds framer wants.
+ *
+ * The class is withheld by `useReducedMotionPreference()` after hydration; before it, the global
+ * reduced-motion rules near the top of this file collapse the transition to 0.01ms. Both halves land
+ * on the same finished state, so there is no flash either way (contract §8).
+ */
+.cxa-edge--fade {
+  transition: opacity 500ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@supports (mask-image: linear-gradient(#000, #000)) or
+  (-webkit-mask-image: linear-gradient(#000, #000)) {
+  /*
+   * ── WHERE THERE IS MARGIN TO DECORATE ───────────────────────────────────────────────────────
+   *
+   * `.shell` is `max-w-[84rem]` (1344px) with `px-5 sm:px-8`, so from `sm` up the content column
+   * keeps 32px of padding inside whatever width it is given. The strip has to live inside that and
+   * still leave air:
+   *
+   *   lg  1024px — shell is full width, content starts 32px in, 16px strip → 16px clear.
+   *   xl  1280px — same padding, 18px strip → 14px clear.
+   *   2xl 1536px — the shell has hit its 84rem cap, so each side has (1536 − 1344) / 2 = 96px of
+   *                real margin plus the 32px of padding = 128px clear for a 22px strip.
+   *
+   * BELOW `lg` THERE IS NOTHING TO DECORATE AND THE STRIP IS GONE, not narrowed: under 640px the
+   * shell pays only 20px (`px-5`), the page is a single column read edge to edge, and a stitched band
+   * in the last 16px of a phone screen is a band under the reader's thumb rather than a margin.
+   *
+   * ⚠ THE BREAKPOINTS ARE IN `rem` AND STILL MEAN 1024 / 1280 / 1536px EXACTLY, INCLUDING FOR A
+   * READER USING THE LARGER-TEXT SETTING. `rem` inside a media query resolves against the INITIAL
+   * root font size and ignores the root's own — which is what makes it safe to state Tailwind's
+   * pixel breakpoints this way, and is also why `:root[data-larger-text="true"] { font-size: 112.5% }`
+   * cannot drag this ladder out of step with every `lg:` utility on the page.
+   */
+  @media (min-width: 64rem) {
+    .cxa-edge {
+      display: block;
+      --cxa-edge-width: 16px;
+    }
+  }
+
+  @media (min-width: 80rem) {
+    .cxa-edge {
+      --cxa-edge-width: 18px;
+    }
+  }
+
+  @media (min-width: 96rem) {
+    .cxa-edge {
+      --cxa-edge-width: 22px;
+    }
+  }
+}
+
+/*
+ * HIGH CONTRAST TURNS ORNAMENT OFF, NOT UP. The contrast blocks near the top of this file re-point
+ * the low end of every ladder, so `--ink-300` goes from #a7a3bc to #615d7a — and a decoration that
+ * gets NEARER the body text in the mode a reader chose in order to find the body text is a
+ * distraction the setting was meant to remove. (0,2,0), so it beats the `display: block` above at
+ * every width without an `!important`.
+ */
+:root[data-high-contrast="true"] .cxa-edge {
+  display: none;
+}
+
+/*
+ * Forced colours, for the same reason and a stronger one: the platform replaces `background-color`
+ * with a system colour of its own, which would turn a whisper of lavender into two solid bars in the
+ * reader's chosen foreground.
+ */
+@media (forced-colors: active) {
+  .cxa-edge {
+    display: none;
+  }
+}
+
+/*
+ * ⚠ AND IT DOES NOT PRINT — AND THE RULE IS NEEDED, WHICH IS THE PART THAT IS EASY TO GET WRONG.
+ *
+ * The tempting assumption is that the ladder above never matches on paper and nothing has to be said.
+ * It does match: a print resolves `min-width` against the PAGE BOX rather than a window, and group 13
+ * of the block above works the same arithmetic out for the studio sidebar — A4 landscape with the
+ * margins set to none is 297mm ≈ 1122px, which is over the 1024px this ladder starts at. Landscape
+ * with tight margins is exactly what somebody printing a wide page chooses, so the strip is `block`
+ * on precisely the sheet where it would be noticed.
+ *
+ * Group 3 above would then take its `background-color` away and it would print as an empty 16px
+ * column — invisible, but only by accident, and only for as long as that `*` reset stays. Saying
+ * `display: none` says the actual intention.
+ *
+ * The `!important` is the paper edition's own convention rather than a cascade necessity today: this
+ * rule and the ladder's are both (0,1,0) and this one is later in the file, so it already wins. It is
+ * stated anyway because that is the ONE thing about this pair a later edit can quietly reverse —
+ * moving the `@supports` block below this one would put the stitching back on paper with no error
+ * anywhere — and every other print rule in this file is written the same way for the same reason.
+ */
+@media print {
+  .cxa-edge {
+    display: none !important;
+  }
+}

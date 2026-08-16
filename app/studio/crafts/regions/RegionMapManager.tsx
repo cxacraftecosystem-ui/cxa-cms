@@ -9,20 +9,40 @@
  * save them around it and leave the reader unsure which rows took. Each row validates, saves and
  * reports on its own.
  *
+ * TWO WAYS TO PLACE A REGION, AND NEITHER IS THE ONLY ONE. The two number fields are for somebody
+ * holding a gazetteer coordinate; the map behind each row's "Place on the map" is for somebody who
+ * knows where Kutch is and not what its decimal degrees are. They are the same value seen twice:
+ * typing moves the pin, clicking rewrites the boxes. Which is WHY THE COORDINATES ARE HELD HERE
+ * rather than inside each row — the picker and the fields are two views of one piece of state, and a
+ * row that owned its own text could not be written to by a map drawn beside it. Everything else about
+ * a row — whether it is saving, and what the server said if it refused — stays in the row, because
+ * that is the part "one save per row" is about.
+ *
  * ⚠ THE VALIDATION MIRRORS THE SERVER'S BOX EXACTLY — latitude 6–38, longitude 68–98, the
  * whole-degree box around India's outline (app/api/studio/crafts/regions/[id]/route.ts cites the
- * geometry). The client check exists so the refusal appears while the reader is still in the field;
- * the server's is the one that counts. A pin needs BOTH numbers, so a half-filled pair marks the
- * empty box rather than saving a value the map can never draw.
+ * geometry). There is now ONE copy of it on the client, in components/studio/RegionMapPicker.tsx,
+ * imported by both the fields below and the map: a click outside the box is refused in the same terms
+ * and against the same four numbers as a typed value outside it, never clamped to the edge. The
+ * client check exists so the refusal appears while the reader is still in the field; the server's is
+ * the one that counts. A pin needs BOTH numbers, so a half-filled pair marks the empty box rather
+ * than saving a value the map can never draw.
  *
  * WHAT A ROW SAYS ABOUT THE MAP is server-derived (`anchor`): the homepage rolls a region's crafts
  * up to the nearest placed ancestor, and this screen states each region's fate in the same words —
  * on the map, counting under a named parent, or reported as unplaced — so an editor can see exactly
  * what giving a region coordinates would change before typing anything.
+ *
+ * ⚠ WHAT THIS SCREEN DOES NOT DO IS FILE A CRAFT UNDER A REGION, AND THAT IS NOT AN OMISSION.
+ * `Craft.regionId` is a single optional foreign key (prisma/schema.prisma — `region CraftRegion?`,
+ * one region per craft, not a join table), and the studio already writes it in exactly one place:
+ * the craft's own editor, "Where it comes from" (app/studio/crafts/[id]/CraftEditor.tsx), through
+ * `PATCH /api/studio/crafts/[id]`. A craft picker here would be a SECOND writer for that one column,
+ * and two screens that can each silently overwrite the other's answer is the shape of bug nobody
+ * reproduces. What this screen owes that journey is a signpost to it, which is the note at the foot.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { useState } from "react";
+import { useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MapPin } from "lucide-react";
@@ -35,12 +55,14 @@ import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/ToastProvider";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
-
-/** ⚠ The same box as `app/api/studio/crafts/regions/[id]/route.ts`. Change them together. */
-const LAT_MIN = 6;
-const LAT_MAX = 38;
-const LNG_MIN = 68;
-const LNG_MAX = 98;
+import {
+  LAT_MAX,
+  LAT_MIN,
+  LNG_MAX,
+  LNG_MIN,
+  RegionMapPicker,
+  type PlacedRegion
+} from "@/components/studio/RegionMapPicker";
 
 /** Where this region's own published crafts land on the homepage map today. */
 export type RegionAnchor =
@@ -70,6 +92,12 @@ export interface RegionMapManagerProps {
   limit: number;
 }
 
+/** One region's two boxes as the reader currently has them. Text, for the reason `RegionRowData` says. */
+interface Coordinates {
+  latitude: string;
+  longitude: string;
+}
+
 function toFloatOrNull(text: string): number | null {
   const trimmed = text.trim();
   if (trimmed.length === 0) return null;
@@ -95,17 +123,35 @@ function anchorPhrase(region: RegionRowData): string {
   }
 }
 
-function RegionRow({ region }: { region: RegionRowData }) {
+function RegionRow({
+  region,
+  value,
+  onChange,
+  isOpen,
+  onToggle,
+  placed
+}: {
+  region: RegionRowData;
+  /** The live boxes, owned by the list above — see this file's header. */
+  value: Coordinates;
+  onChange: (next: Coordinates) => void;
+  /** Whether THIS row's map is the one showing. At most one is, so at most one outline is mounted. */
+  isOpen: boolean;
+  onToggle: () => void;
+  /** Every region with coordinates right now, this one included — the picker drops itself. */
+  placed: readonly PlacedRegion[];
+}) {
   const router = useRouter();
   const { toast } = useToast();
+  const pickerId = useId();
 
-  const [latitude, setLatitude] = useState(region.latitude);
-  const [longitude, setLongitude] = useState(region.longitude);
-  // What the server last agreed to, so the row knows when there is anything to save.
+  // What the server last agreed to, so the row knows when there is anything to save. Still the row's
+  // own business: it is what THIS row's Save button is about, and no other row or map reads it.
   const [saved, setSaved] = useState({ latitude: region.latitude, longitude: region.longitude });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const { latitude, longitude } = value;
   const lat = toFloatOrNull(latitude);
   const lng = toFloatOrNull(longitude);
   const hasLat = latitude.trim().length > 0;
@@ -174,6 +220,27 @@ function RegionRow({ region }: { region: RegionRowData }) {
             </Link>{" "}
             · {anchorPhrase(region)}
           </p>
+
+          {/*
+            The disclosure that opens this row's map. It sits under the region's name rather than
+            beside the Save button so that the thing it opens appears directly beneath it.
+
+            ⚠ `aria-controls` ONLY WHILE THE PICKER IS MOUNTED — pointing at an id that is not in the
+            document is worse than not pointing at all (contract §11).
+          */}
+          <div className="mt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={MapPin}
+              aria-expanded={isOpen}
+              aria-controls={isOpen ? pickerId : undefined}
+              onClick={onToggle}
+            >
+              {isOpen ? "Hide the map" : "Place on the map"}
+              <span className="sr-only"> for {region.name}</span>
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-start gap-3">
@@ -190,7 +257,7 @@ function RegionRow({ region }: { region: RegionRowData }) {
             <Input
               inputMode="decimal"
               value={latitude}
-              onChange={(event) => setLatitude(event.target.value)}
+              onChange={(event) => onChange({ latitude: event.target.value, longitude })}
               placeholder="26.9124"
               className="font-mono text-xs"
             />
@@ -209,7 +276,7 @@ function RegionRow({ region }: { region: RegionRowData }) {
             <Input
               inputMode="decimal"
               value={longitude}
-              onChange={(event) => setLongitude(event.target.value)}
+              onChange={(event) => onChange({ latitude, longitude: event.target.value })}
               placeholder="75.7873"
               className="font-mono text-xs"
             />
@@ -232,6 +299,24 @@ function RegionRow({ region }: { region: RegionRowData }) {
         </div>
       </div>
 
+      {isOpen ? (
+        <RegionMapPicker
+          id={pickerId}
+          className="mt-4"
+          regionName={region.name}
+          // Parsed, not validated: a value the fields are already refusing still moves the pin, so
+          // the reader can SEE that 260.9 is off the country rather than only being told so.
+          latitude={lat}
+          longitude={lng}
+          others={placed.filter((other) => other.id !== region.id)}
+          // A pick is two numbers at once — writing them one at a time would flash a half-moved pin
+          // and, worse, briefly leave a legal pair the fields would mark as out of range.
+          onPick={(nextLatitude, nextLongitude) =>
+            onChange({ latitude: String(nextLatitude), longitude: String(nextLongitude) })
+          }
+        />
+      ) : null}
+
       {error ? (
         // `role="alert"`: the reader has just pressed Save and been stopped.
         <p role="alert" className="mt-2 text-sm leading-relaxed text-error-600">
@@ -239,6 +324,104 @@ function RegionRow({ region }: { region: RegionRowData }) {
         </p>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * The list, and the coordinates every row and every map read from.
+ *
+ * Split from `RegionMapManager` below ONLY so the empty state can be an early return: hooks cannot
+ * sit after one, and an empty gazetteer has nothing for this state to be about.
+ */
+function RegionList({ regions, truncated, limit }: RegionMapManagerProps) {
+  /**
+   * The boxes, by region id — and ONLY for rows that have been touched.
+   *
+   * ⚠ SPARSE ON PURPOSE, WITH THE PROPS AS THE FALLBACK. Seeding this from `regions` once would
+   * freeze the screen against its own `router.refresh()`, and re-seeding it on every render would
+   * throw away what the reader is typing. Reading through to the prop for any row not in the map
+   * gives an untouched row the server's latest answer and a touched one the reader's, which is the
+   * behaviour both halves need.
+   *
+   * THE COST, STATED RATHER THAN OPTIMISED AWAY: a keystroke in one row now re-renders every row,
+   * where before it re-rendered one. That is the price of the two-way binding and it is affordable
+   * because of a bound this screen already documents — `REGION_LIMIT` is "a safety bound, not a page
+   * size… the gazetteer holds tens of regions, not thousands" (page.tsx). Tens of rows of plain
+   * inputs is nothing. If this list ever genuinely runs to hundreds, the fix is `memo` on `RegionRow`
+   * plus stable per-row callbacks — NOT moving the text back into the rows, which is what makes the
+   * map able to write to it at all.
+   */
+  const [drafts, setDrafts] = useState<Record<string, Coordinates>>({});
+
+  /** At most one map is open, so at most one 18 KiB outline is ever mounted. */
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const coordinatesFor = (region: RegionRowData): Coordinates =>
+    drafts[region.id] ?? { latitude: region.latitude, longitude: region.longitude };
+
+  /**
+   * Every region that has a pin right now, for the faint dots behind whichever one is being placed.
+   *
+   * Read from the DRAFTS, not from the props: a region moved and not yet saved should appear where
+   * the editor has just put it, or the picture would contradict the boxes on the same screen.
+   */
+  const placed = useMemo(() => {
+    const list: PlacedRegion[] = [];
+    for (const region of regions) {
+      const held = drafts[region.id] ?? region;
+      const latitude = toFloatOrNull(held.latitude);
+      const longitude = toFloatOrNull(held.longitude);
+      // Both or neither, exactly as the map and the server require — half a coordinate is not a dot.
+      if (latitude === null || longitude === null) continue;
+      list.push({ id: region.id, latitude, longitude });
+    }
+    return list;
+  }, [regions, drafts]);
+
+  return (
+    <FormSection
+      title="Where each region sits"
+      description="Decimal degrees, or a click on the map. With coordinates the region appears on the homepage map; without, its crafts count under the nearest parent that has them."
+    >
+      <ul className="divide-y divide-line-200">
+        {regions.map((region) => (
+          <RegionRow
+            key={region.id}
+            region={region}
+            value={coordinatesFor(region)}
+            onChange={(next) => setDrafts((held) => ({ ...held, [region.id]: next }))}
+            isOpen={openId === region.id}
+            onToggle={() => setOpenId((open) => (open === region.id ? null : region.id))}
+            placed={placed}
+          />
+        ))}
+      </ul>
+
+      {/*
+        The signpost, not a second way to do it — see this file's header. `region=none` is a filter the
+        craft archive already supports (app/studio/crafts/page.tsx), and it is the exact list an editor
+        with a placed region and no crafts on it needs: the crafts that are filed nowhere.
+      */}
+      <HelpText>
+        A craft is filed under a region on the craft’s own page, under “Where it comes from” — not
+        here. If a region has a pin but nothing published on it,{" "}
+        <Link
+          href="/studio/crafts?region=none"
+          className="underline underline-offset-4 hover:text-purple-700"
+        >
+          the crafts with no region recorded
+        </Link>{" "}
+        are the place to start.
+      </HelpText>
+
+      {/* A capped list says so, always (contract §1.6). */}
+      {truncated ? (
+        <HelpText>
+          Only the first {limit} regions are listed here, alphabetically. There are more — and a
+          region left off this screen still counts on the map exactly as its stored coordinates say.
+        </HelpText>
+      ) : null}
+    </FormSection>
   );
 }
 
@@ -253,24 +436,5 @@ export function RegionMapManager({ regions, truncated, limit }: RegionMapManager
     );
   }
 
-  return (
-    <FormSection
-      title="Where each region sits"
-      description="Decimal degrees. With coordinates the region appears on the homepage map; without, its crafts count under the nearest parent that has them."
-    >
-      <ul className="divide-y divide-line-200">
-        {regions.map((region) => (
-          <RegionRow key={region.id} region={region} />
-        ))}
-      </ul>
-
-      {/* A capped list says so, always (contract §1.6). */}
-      {truncated ? (
-        <HelpText>
-          Only the first {limit} regions are listed here, alphabetically. There are more — and a
-          region left off this screen still counts on the map exactly as its stored coordinates say.
-        </HelpText>
-      ) : null}
-    </FormSection>
-  );
+  return <RegionList regions={regions} truncated={truncated} limit={limit} />;
 }

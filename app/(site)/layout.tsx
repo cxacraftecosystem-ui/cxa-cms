@@ -2,6 +2,7 @@ import { SmoothScroll } from "@/components/motion/SmoothScroll";
 import { AnnouncementBar } from "@/components/site/AnnouncementBar";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { SiteFooter } from "@/components/site/SiteFooter";
+import { EmbroideryEdge } from "@/components/site/EmbroideryEdge";
 import { SplashCursorMount } from "@/components/site/SplashCursorMount";
 import { StudioDoorway } from "@/components/site/StudioDoorway";
 import type { NavNode } from "@/lib/navigation";
@@ -254,6 +255,13 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           machine cannot tell you whether it is fixed. If it returns, remove this one element again
           and say so — that is a cheaper answer than a fourth pass at a shader.
         */}
+        {/*
+          The embroidered margins, ONCE for the whole site rather than per page — see the component's
+          header, which is explicit that mounting it per page would re-run its work on every
+          navigation and put it over the dark bands it is meant to skip.
+        */}
+        <EmbroideryEdge />
+
         <SplashCursorMount />
       </div>
 

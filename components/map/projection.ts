@@ -39,6 +39,32 @@ export function project(longitude: number, latitude: number): { x: number; y: nu
   };
 }
 
+/**
+ * The exact algebraic inverse of `project`: a point in the SVG user space, back to a coordinate.
+ *
+ * ⚠ THESE TWO FUNCTIONS ARE ONE THING AND MUST ALWAYS BE CHANGED TOGETHER. The header's claim that
+ * this projection "inverts exactly" is only true while the arithmetic below is `project`'s arithmetic
+ * rearranged and nothing else — same constants, same order, no rounding, no clamping. Add a term to
+ * one and the other silently starts answering a different question: `RegionMapPicker` would write a
+ * latitude that `project` then draws somewhere the editor did not click, and the pin would be wrong
+ * by exactly the size of the change, which is the hardest kind of wrong to notice.
+ *
+ * ⚠ IT DOES NOT CLAMP, AND MUST NOT. The user space is `INDIA_BOUNDS` plus `PADDING`, so it answers
+ * outside the geometry's own bounds by design: x = 0 is 67.47 E and x = 1000 is 98.13 E, either side
+ * of the studio's 68–98 box. (The vertical padding is worth 0.68 of a degree and lands at 37.77 N and
+ * 6.07 N, which stay inside 6–38 — so it is the LEFT AND RIGHT EDGES that produce refusable values,
+ * not the top and bottom.) Clamping here would turn a click off the edge into a coordinate nobody
+ * typed and nobody could be shown to have chosen; refusing it is the caller's job
+ * (`components/studio/RegionMapPicker.tsx`), and the caller can only refuse a value it has been told
+ * the truth about.
+ */
+export function unproject(x: number, y: number): { longitude: number; latitude: number } {
+  return {
+    longitude: INDIA_BOUNDS.minLongitude + (x - PADDING) / (LONGITUDE_SCALE * UNITS_PER_DEGREE),
+    latitude: INDIA_BOUNDS.maxLatitude - (y - PADDING) / UNITS_PER_DEGREE
+  };
+}
+
 /** How many user-space units a distance in kilometres covers. Used to size the scale bar. */
 export function unitsPerKilometre(): number {
   return UNITS_PER_DEGREE / 111.32;

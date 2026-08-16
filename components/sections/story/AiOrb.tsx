@@ -16,12 +16,18 @@
  * the resting state is a still dye-gradient disc, which is the design at rest, not a stopped
  * animation (contract §1.4). The takeover signal (lib/takeover) is honoured too: while the modal
  * story covers the page there is no reason to keep a hidden orb burning frames.
+ *
+ * WHERE IT COMES FROM. The orb does not simply appear: a mandala turns into it. `MandalaOrb` wraps
+ * the two layers below and drives both the ornament's rotation and this orb's arrival off one
+ * scroll value measured on `hostRef` — see that file for the effect and for the reduced-motion
+ * resting state. It is decoration only, and it deliberately knows nothing about the microphone.
  */
 
 import { Mic, MicOff } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 
 import type { VoicePoweredOrbProps } from "@/components/ui/voice-powered-orb";
+import { MandalaOrb } from "@/components/sections/story/MandalaOrb";
 import { useReducedMotionPreference } from "@/components/motion/useReducedMotionPreference";
 import { pageIsCovered, TAKEOVER_EVENT } from "@/lib/takeover";
 import { cn } from "@/lib/utils";
@@ -231,18 +237,36 @@ export function AiOrb({ className }: { className?: string }) {
   return (
     <div className={cn("flex flex-col items-center", className)}>
       <div ref={hostRef} className="relative h-56 w-56 sm:h-72 sm:w-72">
-        {/* The resting disc — always in the markup, so reduced motion, a slow chunk and a far
-            scroll position all show the same composed presence rather than a hole. The shader
-            paints over it when it is allowed to run. */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-4 rounded-full opacity-80"
-          style={{
-            background:
-              "radial-gradient(closest-side, oklch(0.56 0.205 305 / 0.5), oklch(0.4 0.18 305 / 0.25) 55%, transparent 72%)"
-          }}
-        />
-        {showShader ? <Orb className="absolute inset-0" enableVoiceControl={listening} onVoiceDetected={setSpeaking} /> : null}
+        {/*
+          THE MANDALA, AND WHY IT WRAPS THE ORB RATHER THAN SITTING BESIDE IT.
+
+          MandalaOrb draws the ornament behind everything here and turns it INTO this orb as the
+          section scrolls — and it can only claim that if both halves are read off the same
+          MotionValue, so it owns the single `useScroll` and the orb travels inside it as children.
+          It measures THIS div, which is why `hostRef` is handed over as well: the same box the
+          IntersectionObserver above watches is the box whose journey up the viewport drives the
+          morph, so the chunk lands, the orb mounts and the handover begins on one schedule.
+
+          ⚠ IT IS DECORATION AND IT STAYS OUT OF THE MICROPHONE'S WAY. The consent flow, the
+          capability probe and the near-viewport unmount all key off `hostRef` and `near`, and this
+          wrapper changes neither: it renders no controls, reads no permission state, and its own
+          layers are `aria-hidden` and `pointer-events-none` so nothing here can intercept a press
+          meant for the button below.
+        */}
+        <MandalaOrb scrollTarget={hostRef}>
+          {/* The resting disc — always in the markup, so reduced motion, a slow chunk and a far
+              scroll position all show the same composed presence rather than a hole. The shader
+              paints over it when it is allowed to run. */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-4 rounded-full opacity-80"
+            style={{
+              background:
+                "radial-gradient(closest-side, oklch(0.56 0.205 305 / 0.5), oklch(0.4 0.18 305 / 0.25) 55%, transparent 72%)"
+            }}
+          />
+          {showShader ? <Orb className="absolute inset-0" enableVoiceControl={listening} onVoiceDetected={setSpeaking} /> : null}
+        </MandalaOrb>
       </div>
 
       {/*
