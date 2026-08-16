@@ -100,34 +100,29 @@ function firstValue(raw: string | string[] | undefined): string | undefined {
 }
 
 /**
- * The mark, inverted into a cream tile.
+ * The mark.
  *
- * The same reticle as `app/icon.svg`: a ring, a solid core, three cream ticks and one gold one. On the
- * deep purple band the tile is cream and the reticle is drawn in `purple-900`, which is the inversion
- * of the header lockup rather than a second logo. None of these colours moves with the theme, which is
- * correct — a logo that changed colour with a preference would not be a logo.
+ * ⚠ THIS WAS STILL DRAWING THE OLD RETICLE, and it is why the studio's sign-in page kept the previous
+ * logo after the public site had changed. The mark lives inline in FOUR places by design — app/icon.svg,
+ * app/apple-icon.tsx, components/site/SiteBrand.tsx and here — because each needs different colouring,
+ * and the cost of that is exactly this: a change has to visit all four. It did not visit this one.
+ *
+ * The Centre's mark is an eight-point terracotta star with a near-black core on cream, in a 108-unit box.
+ * The tile that used to invert the reticle into cream IS the logo's own ground now, so the wrapper's
+ * `bg-logo-cream` becomes redundant and is dropped — a cream tile behind a cream tile is a seam at the
+ * radius. None of these colours moves with the theme, which is correct: a logo that changed colour with
+ * a preference would not be a logo.
  */
 function BrandTile() {
   return (
-    <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-logo-cream shadow-glow-soft">
-      <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false" className="h-9 w-9">
-        <circle cx="32" cy="32" r="15" fill="none" strokeWidth="3" className="stroke-purple-900" />
-        <circle cx="32" cy="32" r="5.5" className="fill-purple-900" />
-        <g strokeWidth="3" strokeLinecap="round" className="stroke-purple-900">
-          <line x1="32" y1="7" x2="32" y2="13" />
-          <line x1="32" y1="51" x2="32" y2="57" />
-          <line x1="7" y1="32" x2="13" y2="32" />
-        </g>
-        {/* The one deliberate asymmetry. Without it the mark reads as a loading spinner. */}
-        <line
-          x1="51"
-          y1="32"
-          x2="57"
-          y2="32"
-          strokeWidth="3"
-          strokeLinecap="round"
-          className="stroke-gold-600"
+    <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg shadow-glow-soft">
+      <svg viewBox="0 0 108 108" aria-hidden="true" focusable="false" className="h-14 w-14">
+        <rect width="108" height="108" rx="24" fill="#FAF9F5" />
+        <path
+          d="M54 14l7 27 27-7-20 20 20 20-27-7-7 27-7-27-27 7 20-20-20-20 27 7z"
+          fill="#CC785C"
         />
+        <circle cx="54" cy="54" r="15" fill="#181715" />
       </svg>
     </span>
   );
@@ -223,17 +218,16 @@ export default async function StudioLoginPage({
         <div className="mx-auto w-full max-w-md">
           {/* The lockup again, for the widths where the brand panel is not on screen at all. */}
           <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-purple-700">
-              <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false" className="h-7 w-7">
-                <circle
-                  cx="32"
-                  cy="32"
-                  r="15"
-                  fill="none"
-                  strokeWidth="3"
-                  className="stroke-logo-cream/90"
+            {/* The same star as the panel's tile — see BrandTile for why this mark is inline in
+                four places and why that means a change has to visit all of them. */}
+            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md">
+              <svg viewBox="0 0 108 108" aria-hidden="true" focusable="false" className="h-11 w-11">
+                <rect width="108" height="108" rx="24" fill="#FAF9F5" />
+                <path
+                  d="M54 14l7 27 27-7-20 20 20 20-27-7-7 27-7-27-27 7 20-20-20-20 27 7z"
+                  fill="#CC785C"
                 />
-                <circle cx="32" cy="32" r="5.5" className="fill-logo-cream" />
+                <circle cx="54" cy="54" r="15" fill="#181715" />
               </svg>
             </span>
             <span className="min-w-0 truncate font-display text-base font-semibold text-ink-900">

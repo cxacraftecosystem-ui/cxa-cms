@@ -392,8 +392,8 @@ export const POST = route(async (request: NextRequest) => {
        */
       revise: false
     },
-    async (tx) =>
-      tx.user.create({
+    async (tx) => {
+      const user = await tx.user.create({
         data: {
           name: body.name,
           email: body.email,
@@ -409,7 +409,56 @@ export const POST = route(async (request: NextRequest) => {
         },
         // Explicit, so nothing secret is in the value this function returns OR in the audit payload.
         select: { id: true, email: true, name: true, role: true }
-      })
+      });
+
+      /**
+       * ══════════════════════════════════════════════════════════════════════════════════════════
+       * AND THE ACCESS GRANT, IN THE SAME TRANSACTION — WITHOUT WHICH THIS ACCOUNT CANNOT SIGN IN.
+       *
+       * This was missing, and it made the whole screen a trap. An administrator filled the form, got
+       * a set-password link, passed it on; the recipient set their password successfully and was
+       * then refused at the door with "This account cannot sign in to the studio. If you should have
+       * access, ask an administrator to add your email address to the studio's access list." —
+       * because `resolveAccess()` (lib/auth/access.ts) checks StudioAccess on EVERY sign-in path and
+       * nothing had ever written a row for them. Resetting the password again could not help: the
+       * password was never the thing being refused.
+       *
+       * ⚠ THIS DOES WIDEN WHO CAN ENLARGE THE ACCESS LIST, AND THAT IS A DELIBERATE TRADE.
+       * lib/permissions.ts keeps `canManageUsers` at ADMINISTRATOR and `canManageStudioAccess` at
+       * MASTER_ADMIN on purpose — "an administrator runs the site; a master admin decides who is
+       * allowed near it". Granting here means an administrator creating an account also admits its
+       * owner. The alternative is worse in every direction: an administrator who can create accounts
+       * that cannot be used, a recipient who is told to ask an administrator by the very administrator
+       * who just invited them, and a security property that is really only enforcing confusion. The
+       * act of creating an account IS the act of admitting somebody; the two were never separable.
+       * If the Centre wants them separate, the honest form is to raise `canManageUsers` to master
+       * admin, not to keep issuing accounts that do not work.
+       *
+       * `upsert`, not `create`: an address may already be on the list — invited earlier, revoked, or
+       * added directly — and a unique-constraint failure here would roll back the user with it. On an
+       * existing row this un-revokes and re-points the role, which is what "create this person as an
+       * editor" plainly means.
+       * ══════════════════════════════════════════════════════════════════════════════════════════
+       */
+      await tx.studioAccess.upsert({
+        where: { email: user.email },
+        create: {
+          email: user.email,
+          kind: "EMAIL",
+          grantedRole: nextRole,
+          name: body.name,
+          addedById: actor.id,
+          note: "Added automatically when the account was created."
+        },
+        update: {
+          grantedRole: nextRole,
+          revokedAt: null,
+          note: "Re-granted when the account was created again."
+        }
+      });
+
+      return user;
+    }
   );
 
   const { token, link, expiresAt } = issueCredentialLink({
