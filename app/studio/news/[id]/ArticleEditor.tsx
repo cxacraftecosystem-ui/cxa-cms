@@ -77,6 +77,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems, type StatusControlValue } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
+import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
@@ -362,11 +363,26 @@ export function ArticleEditor({
     [mode, postId, router]
   );
 
+  /**
+   * The public address, handed over the moment this article crosses onto the site. `basePath` is the
+   * same string `SlugField` is given below, so the preview in the form and the link in the notice
+   * cannot disagree about where the article has gone.
+   */
+  const announcePublished = usePublishNotice({
+    initial,
+    origin: siteOrigin,
+    basePath: "/news/",
+    subject: "article"
+  });
+
   const autosave = useAutosave<ArticleValue>({
     data: payload,
     save,
     enabled: mode === "edit",
-    isPublished: isPublic
+    isPublished: isPublic,
+    // The snapshot that was SENT, so the address in the notice is the one the server has just stored —
+    // not a slug the reader carried on editing while the request was in flight.
+    onSaved: (sent) => announcePublished(sent)
   });
 
   useLeaveGuard(autosave.isDirty);

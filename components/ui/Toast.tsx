@@ -21,6 +21,25 @@
  * Every tone carries an ICON AND A WORD. Colour alone is not a signal (contract §11) — and the status
  * ramps are literal hex that do NOT invert, so the tone colours appear as a light chip with dark
  * ink, which reads the same in both themes rather than sinking into the dark canvas.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * A TOAST MAY CARRY ONE LINK, AND THAT IS THE ONLY INTERACTIVE THING IT WILL EVER HOLD.
+ *
+ * It exists for one case: something has just been published, and the editor wants its public address
+ * without hunting for it. `link` renders the address in a selectable box with a copy button
+ * (`CopyLinkRow`), so the shortcut is right where the news arrived.
+ *
+ * ⚠ THIS SITS AGAINST THE RULE AT THE TOP OF THIS FILE, AND STAYS INSIDE IT ONLY BECAUSE THE LINK IS A
+ * SHORTCUT AND NEVER THE ONLY ROUTE. The record's own screen still shows the same address — in
+ * `SlugField`'s preview, and in the "View on the site" action on its table row — so a polite region
+ * that is never read costs the reader nothing but a few seconds. The day something appears here that
+ * exists NOWHERE ELSE, it belongs in a dialog instead: a live region is not a place to put the only
+ * copy of anything.
+ *
+ * The countdown for a link-carrying toast is longer than the rest (`LINKED_DURATION`), because reaching
+ * a control is slower than reading a sentence — and once the pointer or focus arrives the countdown
+ * pauses anyway, which is what makes the reach safe rather than a race.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -36,8 +55,22 @@ import {
 
 import { cn } from "@/lib/utils";
 import { SPRING_TOAST, useReducedMotionPreference } from "@/components/motion";
+import { CopyLinkRow } from "@/components/ui/CopyLink";
 
 export type ToastTone = "info" | "success" | "warn" | "error";
+
+/** One address a notice hands over, with a copy button. See the header — a toast carries at most one. */
+export interface ToastLink {
+  /** Absolute, and exactly as it should be pasted. */
+  url: string;
+  /** Names the box for a screen reader: "Public address of this page". Not drawn. */
+  label: string;
+  /**
+   * Offer an Open button beside Copy. True for a page that is now live; FALSE for anything one-off —
+   * following a password link from the studio spends it.
+   */
+  openable?: boolean;
+}
 
 export interface ToastOptions {
   /** One plain sentence. It is the accessible announcement, so it must stand alone. */
@@ -46,6 +79,8 @@ export interface ToastOptions {
   tone?: ToastTone;
   /** Milliseconds on screen. Zero or less keeps it until it is dismissed by hand. */
   duration?: number;
+  /** An address to hand over. See the header before adding one anywhere new. */
+  link?: ToastLink;
 }
 
 /** An options object with the defaults resolved and an id attached. Built by ToastProvider. */
@@ -55,10 +90,21 @@ export interface ToastRecord {
   description?: string;
   tone: ToastTone;
   duration: number;
+  link?: ToastLink;
 }
 
 /** Long enough to read two lines, short enough not to sit over the page a reader is using. */
 export const DEFAULT_DURATION = 5000;
+
+/**
+ * The countdown for a toast carrying a link.
+ *
+ * Reading a sentence and reaching a control are different jobs: five seconds is generous for the
+ * first and mean for the second, and a copy button that vanishes from under the pointer teaches an
+ * editor never to trust one again. Hover and focus both pause the countdown (see the header), so this
+ * only has to be long enough for the reader to START moving.
+ */
+export const LINKED_DURATION = 12_000;
 
 interface ToneStyle {
   icon: LucideIcon;
@@ -144,6 +190,21 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           <p className="mt-0.5 text-sm font-medium text-ink-900">{toast.title}</p>
           {toast.description ? (
             <p className="mt-1 text-sm leading-relaxed text-ink-500">{toast.description}</p>
+          ) : null}
+
+          {/*
+            The address, in a box that can be selected, with the copy shortcut beside it. Outside the
+            two paragraphs above rather than inside one of them: a live region reads its text, and an
+            input's VALUE is not text a polite announcement picks up — the `title` has to stand alone
+            regardless, which is the rule at the top of this file.
+          */}
+          {toast.link ? (
+            <CopyLinkRow
+              value={toast.link.url}
+              label={toast.link.label}
+              openable={toast.link.openable ?? false}
+              className="mt-2.5"
+            />
           ) : null}
         </div>
 

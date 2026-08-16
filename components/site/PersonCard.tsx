@@ -23,14 +23,22 @@ import { TagList } from "@/components/site/TagList";
 import type { MediaLike } from "@/lib/media/url";
 
 /**
- * The group order for the whole product: faculty first, alumni last.
+ * The group order for the whole product: the Development Commissioner first, faculty next, alumni last.
  *
- * It happens to match the declaration order of the `PersonKind` enum in prisma/schema.prisma, so a
- * Postgres `ORDER BY kind` would produce the same sequence — and this array exists so that no page
- * depends on that coincidence. Grouping in code means the order survives a migration that adds a value
- * in the middle of the enum, which is otherwise a silent reordering of every people page on the site.
+ * ⚠ IT NO LONGER MATCHES THE DECLARATION ORDER OF THE `PersonKind` ENUM, and that is the point. It once
+ * did, so a Postgres `ORDER BY kind` happened to produce the same sequence; `DC_HANDICRAFTS` was
+ * appended at the END of the enum (a plain `ALTER TYPE … ADD VALUE`, see the migration) and belongs at
+ * the HEAD of the roster, so the two orders have diverged. Every page groups from this array rather
+ * than in SQL, which is why that divergence costs nothing — grouping in code is what made the enum free
+ * to be appended to.
+ *
+ * DC, Handicrafts heads the list rather than sitting among the staff grades because it is an office of
+ * the Ministry of Textiles rather than a rank of Centre employment, and a reader looking for it is
+ * looking for the Centre's line to craft policy. That is a presentation decision and lives ONLY here:
+ * moving the group is a one-line edit in this array, with no migration and no other file touched.
  */
 export const PERSON_KIND_ORDER: readonly PersonKind[] = [
+  "DC_HANDICRAFTS",
   "FACULTY",
   "SCIENTIST",
   "RESEARCH_ASSISTANT",
@@ -48,15 +56,20 @@ export const PERSON_KIND_LABELS: Record<PersonKind, string> = {
   STUDENT: "Student",
   STAFF: "Staff",
   VISITOR: "Visitor",
-  ALUMNUS: "Alumnus"
+  ALUMNUS: "Alumnus",
+  // "DC" is not expanded. It is how the office is written on every letterhead and how anyone looking
+  // for it would scan a roster; "Development Commissioner (Handicrafts)" is the expansion and belongs
+  // in the person's `designation`, which is what that free-text field is for. The comma is part of the
+  // title, not a list separator.
+  DC_HANDICRAFTS: "DC, Handicrafts"
 };
 
 /**
  * Plural — a group heading and a filter option.
  *
  * Kept separate from the singular map rather than pluralised by adding an "s": "Faculty" and "Staff"
- * are already plural, and "Alumnus" pluralises to "Alumni". A naive `${label}s` gets three of the
- * seven wrong on the most visible heading on the page.
+ * are already plural, "Alumnus" pluralises to "Alumni", and an office does not pluralise at all. A
+ * naive `${label}s` gets four of the eight wrong on the most visible heading on the page.
  */
 export const PERSON_KIND_GROUPS: Record<PersonKind, string> = {
   FACULTY: "Faculty",
@@ -65,7 +78,10 @@ export const PERSON_KIND_GROUPS: Record<PersonKind, string> = {
   STUDENT: "Students",
   STAFF: "Staff",
   VISITOR: "Visitors",
-  ALUMNUS: "Alumni"
+  ALUMNUS: "Alumni",
+  // Identical to the singular label on purpose: there is one Development Commissioner (Handicrafts) at
+  // a time, so "DCs, Handicrafts" would be a heading for a group that cannot have two members.
+  DC_HANDICRAFTS: "DC, Handicrafts"
 };
 
 /**

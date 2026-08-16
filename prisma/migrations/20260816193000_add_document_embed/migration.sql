@@ -1,0 +1,26 @@
+-- One new block type: DOCUMENT_EMBED, an uploaded document placed on a page.
+--
+-- Written by hand to match what `prisma migrate diff` produces for the value appended to
+-- `SectionType` in schema.prisma in the same change, so a later `prisma migrate dev` finds nothing
+-- left to do. Purely additive: no column changes, no backfill, no row rewritten. Every existing
+-- `page_sections.type` keeps the value it has, so this is safe to apply to a populated database with
+-- no downtime, and a deployment running the PREVIOUS code against this database is unaffected until
+-- somebody actually adds a block of the new type.
+--
+-- ⚠ AN ENUM VALUE ADDED HERE CANNOT BE REMOVED LATER WITHOUT A REWRITE. Postgres offers
+-- `ALTER TYPE … ADD VALUE` and no `DROP VALUE`: undoing this means creating a replacement type,
+-- `ALTER TABLE … ALTER COLUMN … TYPE` on `page_sections.type` — which takes an ACCESS EXCLUSIVE lock
+-- and rewrites the table — repointing its default, and dropping the old type, after re-filing every
+-- row already carrying the value. Treat 'DOCUMENT_EMBED' as permanent.
+--
+-- ⚠ APPENDED AT THE END OF THE TYPE, WHICH IS WHY THERE IS NO `BEFORE`/`AFTER` CLAUSE. Reading order
+-- in the studio's palette is `SECTION_REGISTRY`'s groups in lib/sections/registry.ts, precisely so
+-- that this enum's declaration order never has to be curated; nothing sorts by this column
+-- (`PageSection` is ordered by `position`).
+--
+-- ⚠ THE VALUE IS NOT USED IN THIS TRANSACTION, and it must not be. Postgres refuses to compare
+-- against or insert an enum value added in the same transaction, and Prisma wraps a migration in
+-- one — so a seed or a backfill mentioning 'DOCUMENT_EMBED' belongs in a LATER migration, not here.
+
+-- AlterEnum
+ALTER TYPE "SectionType" ADD VALUE 'DOCUMENT_EMBED';

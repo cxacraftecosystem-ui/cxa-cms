@@ -66,6 +66,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems, type StatusControlValue } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
+import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
@@ -376,11 +377,27 @@ export function EventEditor({
     [eventId, mode, router]
   );
 
+  /**
+   * The public address, handed over the moment this event crosses onto the site.
+   *
+   * `CoeEvent` carries no `publishAt`/`unpublishAt` — its status column is the whole of its publication
+   * state (see `StatusControl`'s header on which models can be scheduled) — so neither is passed and
+   * `isLive()` reads them as absent, which is the truth for this model.
+   */
+  const announcePublished = usePublishNotice({
+    initial,
+    origin: siteOrigin,
+    basePath: "/events/",
+    subject: "event"
+  });
+
   const autosave = useAutosave<EventValue>({
     data: value,
     save,
     enabled: mode === "edit",
-    isPublished: isPublic
+    isPublished: isPublic,
+    // The snapshot that was SENT, so the address in the notice is the one the server has just stored.
+    onSaved: (sent) => announcePublished(sent)
   });
 
   useLeaveGuard(autosave.isDirty);

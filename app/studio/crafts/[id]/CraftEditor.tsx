@@ -60,6 +60,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
+import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
@@ -347,6 +348,18 @@ export function CraftEditor({
     [craftId]
   );
 
+  /**
+   * Hands over the public address the moment this record crosses onto the site. `basePath` is the same
+   * string `SlugField` is given below, so the preview in the form and the link in the notice cannot
+   * disagree about where the craft has gone.
+   */
+  const announcePublished = usePublishNotice({
+    initial: initialValue,
+    origin: siteUrl,
+    basePath: "/craft-explorer/",
+    subject: "craft record"
+  });
+
   const autosave = useAutosave<CraftFormValue>({
     data: value,
     save,
@@ -358,9 +371,13 @@ export function CraftEditor({
       if (fresh !== null) {
         createdId.current = null;
         toast({ tone: "success", title: "The craft record has been created" });
+        // Announced AFTER the creation notice, so the two arrive in the order they happened — a record
+        // can be created straight into PUBLISHED, and "it exists" reads oddly after "it is public".
+        announcePublished(sent);
         router.replace(`/studio/crafts/${fresh}`);
         return;
       }
+      announcePublished(sent);
       router.refresh();
     }
   });

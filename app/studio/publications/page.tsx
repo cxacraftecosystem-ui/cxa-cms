@@ -72,9 +72,19 @@ const KIND_LABELS: Record<PublicationKind, string> = {
   SOFTWARE: "Software",
   PREPRINT: "Preprint",
   THESIS: "Thesis",
-  REPORT: "Report"
+  REPORT: "Report",
+  FLYER: "Flyer",
+  BOOKLET: "Booklet"
 };
 
+/**
+ * The order of the "Type" filter's options, mirroring `PUBLICATION_KIND_ORDER` in
+ * app/(site)/publications/filters.ts.
+ *
+ * ⚠ UNLIKE `KIND_LABELS` THIS IS NOT A TOTAL RECORD, so a kind left out of it is not a compile error —
+ * it is a type an editor can save a publication as and then never filter the table by. Check it
+ * whenever the enum grows.
+ */
 const KIND_ORDER: readonly PublicationKind[] = [
   "JOURNAL_ARTICLE",
   "CONFERENCE_PAPER",
@@ -85,7 +95,9 @@ const KIND_ORDER: readonly PublicationKind[] = [
   "DATASET",
   "SOFTWARE",
   "THESIS",
-  "REPORT"
+  "REPORT",
+  "BOOKLET",
+  "FLYER"
 ];
 
 const SORT_KEYS = ["title", "year", "kind", "status", "updated"] as const;

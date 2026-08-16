@@ -31,11 +31,14 @@ import { blockTypesetSchema } from "@/lib/typography/typeset";
  *     rule that fires halfway through an edit ("you picked Manual but have not picked anything yet")
  *     refuses the save while the editor is still working. Where a value is genuinely missing, the
  *     RENDERER states it — §6: a block that quietly renders nothing is indistinguishable from a
- *     block that was never filled in. There are exactly TWO exceptions, the EMBED title and the
- *     FORM_EMBED title, and both are accessibility requirements rather than editorial preferences:
- *     a screen reader announces an untitled `<iframe>` as "frame". Both bind only once there is a URL
- *     to label (§10: a field may only be mandatory where it is answerable). FORM_EMBED carries one
- *     further rule — a host allow-list — which is a SECURITY requirement; see its header.
+ *     block that was never filled in. The exceptions are all of ONE KIND rather than a list to
+ *     memorise: every conditionally required field in this file is an `<iframe>`'s accessible name —
+ *     the EMBED, FORM_EMBED and DOCUMENT_EMBED titles — and each is an accessibility requirement
+ *     rather than an editorial preference, because a screen reader announces an untitled `<iframe>`
+ *     as "frame" and gives its reader nothing else to go on. Each binds only once there is something
+ *     to label: a URL for the first two, a chosen document for the third (§10 — a field may only be
+ *     mandatory where it is answerable). FORM_EMBED carries one further rule — a host allow-list —
+ *     which is a SECURITY requirement; see its header.
  *
  *  5. **Every on-screen string carries a `.max()` and a `.describe()`.** The max is a length a human
  *     would choose, so a headline cannot silently become a paragraph; the description is the inline
@@ -239,6 +242,12 @@ const alignment = (fallback: "left" | "center" | "right", help: string) =>
 // `@prisma/client`, and this module is imported by studio client components — that import would drag
 // the Prisma client into the browser bundle. Adding a kind to the schema means adding it here too;
 // the empty string is "no filter", so the payload stays flat and a cleared picker is expressible.
+//
+// ⚠ THE MIRRORING IS NOT CHECKED BY ANYTHING. There is no `satisfies` to hang these off, because the
+// empty string is not a member of either Prisma enum — so a value added to the schema and forgotten
+// here compiles, and the symptom is a saved block whose filter Zod strips on the next read. Three
+// files move together: this one, the option lists in components/studio/sections/ (ShowcaseForm.tsx
+// for people, SimpleForms.tsx for publications) and the filter unions in ./resolve.ts.
 const PERSON_KINDS = [
   "",
   "FACULTY",
@@ -247,7 +256,8 @@ const PERSON_KINDS = [
   "STUDENT",
   "STAFF",
   "VISITOR",
-  "ALUMNUS"
+  "ALUMNUS",
+  "DC_HANDICRAFTS"
 ] as const;
 
 const PROJECT_STATES = ["", "PROPOSED", "ACTIVE", "COMPLETED", "ON_HOLD"] as const;
@@ -263,7 +273,9 @@ const PUBLICATION_KINDS = [
   "SOFTWARE",
   "PREPRINT",
   "THESIS",
-  "REPORT"
+  "REPORT",
+  "FLYER",
+  "BOOKLET"
 ] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1022,6 +1034,169 @@ export const embedSectionSchema = z
     }
   });
 
+/**
+ * DOCUMENT_EMBED — one uploaded document, shown where the editor put it on the page.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * IT NAMES A `MediaAsset`, NOT A `FileAsset`, AND THAT IS A TECHNICAL FINDING RATHER THAN A
+ * PREFERENCE.
+ *
+ * Both are existing upload paths and neither is being replaced here, so the question is only which
+ * one produces bytes a browser can render IN PLACE:
+ *
+ *   • A `FileAsset` is served by `app/api/public/files/[slug]`, which 302s to a signed URL carrying
+ *     `Content-Disposition: attachment` (lib/storage/client.ts, `presignDownload`). A browser
+ *     handed an attachment DOWNLOADS it — an `<iframe>` pointed there leaves an empty box on the
+ *     page and a file in the reader's Downloads folder, which is precisely the silent failure a
+ *     preview block must not ship. That disposition is deliberate and load-bearing: the file store's
+ *     presign route accepts `application/octet-stream` for research data specifically BECAUSE
+ *     everything it serves is saved rather than rendered. It is not ours to weaken from here.
+ *   • A `MediaAsset` is served straight off the object store's public base by
+ *     `publicObjectUrl(objectKey)` — no disposition header, the stored `Content-Type`, and a
+ *     DIFFERENT origin from the site. That renders inline, and `app/api/studio/media/presign`
+ *     already accepts `application/pdf` and the PowerPoint types and files them as `DOCUMENT`.
+ *
+ * So the document is chosen from the media library, with the same `mediaId()` reference every other
+ * block uses for an uploaded asset. A file that is ALSO meant to be counted as a download belongs in
+ * a DOWNLOADS block beside this one; the two answer different questions.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `title` is required once a document is chosen — the third of the conditional requirements
+ * described in rule 4 at the top of this file, and the same kind as the other two: it is the
+ * `<iframe>`'s accessible name, and a screen reader announces an untitled frame as "frame". Because
+ * of it this is a `ZodEffects` rather than a `ZodObject`, so the studio form reads its field
+ * descriptions through `.innerType()`, as EMBED's and FORM_EMBED's do.
+ *
+ * ⚠ NOTHING HERE PROMISES A PREVIEW. A browser renders a PDF and renders nothing else — no
+ * PowerPoint, no Word, no OpenDocument — so `DocumentEmbedSection` shows a download card for those
+ * and says so in words. That is stated in the `mediaId` help below rather than left for an editor to
+ * discover by publishing a page with a blank frame on it.
+ */
+export const documentEmbedSectionSchema = z
+  .object({
+    mediaId: mediaId(
+      "The document, chosen from the media library. Upload it there first. A PDF is shown on the page itself; a PowerPoint, Word or OpenDocument file cannot be — browsers cannot draw those — so it is offered as a download with its name, type and size."
+    ),
+    title: text(
+      160,
+      "What this document is, in a sentence. It is the heading above it and the only description read aloud to anyone using a screen reader, so “PDF” is not enough."
+    ),
+    description: text(
+      320,
+      "A sentence or two under the heading — what is in the document, or which version this is. Optional."
+    ),
+    height: z
+      .enum(["sm", "md", "lg", "xl"])
+      .default("md")
+      .describe(
+        "How much of the page the document takes up. It scrolls inside its own frame whatever you choose, so this is about the shape of the page rather than about how much of the document can be read."
+      ),
+    downloadLabel: text(
+      60,
+      "The words on the link that opens the document on its own, which is always shown. Leave it empty for “Download the document”."
+    )
+  })
+  .superRefine((value, ctx) => {
+    if (value.mediaId !== "" && value.title === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["title"],
+        message:
+          "Describe this document before saving it. A screen reader announces an untitled frame only as 'frame', which tells the reader nothing about what is inside."
+      });
+    }
+  });
+
+/**
+ * What a reader would call a document, and whether a browser can draw it.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * EXPORTED BECAUSE THE STUDIO'S FORM SHOWS THE EDITOR EXACTLY THE VERDICT THE PAGE WILL REACH, while
+ * they are still choosing the file — the same argument, and the same shape, as `resolveFormTarget` in
+ * `components/sections/FormEmbedSection.tsx`. Two copies of this decision would disagree the first
+ * time either learned about a format, and the disagreement would show as a studio that promises a
+ * preview and a page that does not give one.
+ *
+ * It lives HERE rather than in the renderer because this module is isomorphic (rule 1) and the
+ * renderer is not: a `"use client"` form importing the renderer would drag that whole component tree
+ * into the studio bundle to read one lookup table.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * KEYED ON THE EXTENSION, NOT ON THE STORED MIME TYPE, following `DownloadsSection`: the extension is
+ * what an editor actually named the file, whereas a declared type is whatever the uploading browser
+ * guessed — and browsers guess `application/octet-stream` for a great deal.
+ *
+ * ⚠ `previewable` IS TRUE FOR PDF AND NOTHING ELSE, and that is a fact about browsers rather than a
+ * policy of ours: none of them can draw a PowerPoint, a Word file or an OpenDocument. Adding a format
+ * to this list makes `DocumentEmbedSection` frame it, so add one only when a browser has actually
+ * been observed to render it.
+ */
+export interface DocumentFormat {
+  /** Lowercased, no dot. `""` where the name carries none. */
+  extension: string;
+  /** "PDF", "PowerPoint presentation". Never empty — an unknown extension is shown in capitals. */
+  label: string;
+  /** Can a browser render it in a frame? Only a PDF can. */
+  previewable: boolean;
+  /** Lets a caller say "a PowerPoint presentation cannot be shown" rather than "this file type". */
+  isPresentation: boolean;
+}
+
+const DOCUMENT_FORMAT_NAMES: Record<string, string> = {
+  pdf: "PDF",
+  ppt: "PowerPoint presentation",
+  pptx: "PowerPoint presentation",
+  pps: "PowerPoint slide show",
+  ppsx: "PowerPoint slide show",
+  key: "Keynote presentation",
+  odp: "OpenDocument presentation",
+  doc: "Word document",
+  docx: "Word document",
+  odt: "OpenDocument text",
+  rtf: "Rich text document",
+  xls: "Excel spreadsheet",
+  xlsx: "Excel spreadsheet",
+  ods: "OpenDocument spreadsheet",
+  csv: "CSV data",
+  txt: "Plain text",
+  zip: "ZIP archive"
+};
+
+const PRESENTATION_EXTENSIONS = new Set(["ppt", "pptx", "pps", "ppsx", "key", "odp"]);
+
+/**
+ * The extension, lowercased and stripped of anything that is not a letter or a digit.
+ *
+ * Written out here rather than imported from `lib/storage/keys.ts`, which needs `node:crypto` for key
+ * generation — a dependency this isomorphic module must not acquire, and the same trade
+ * `DownloadsSection` makes for the same reason.
+ */
+function documentExtensionOf(fileName: string): string {
+  const index = fileName.lastIndexOf(".");
+  if (index <= 0 || index === fileName.length - 1) return "";
+  return fileName
+    .slice(index + 1)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Read a document's format off its name.
+ *
+ * Takes the object key as a second chance, because `buildObjectKey` preserves the extension at the
+ * end of the key (lib/storage/keys.ts) and an asset imported from elsewhere can have lost its
+ * original filename while keeping a usable key.
+ */
+export function documentFormat(fileName: string, objectKey = ""): DocumentFormat {
+  const extension = documentExtensionOf(fileName) || documentExtensionOf(objectKey);
+  return {
+    extension,
+    label: DOCUMENT_FORMAT_NAMES[extension] ?? (extension ? extension.toUpperCase() : "Document"),
+    previewable: extension === "pdf",
+    isPresentation: PRESENTATION_EXTENSIONS.has(extension)
+  };
+}
+
 export const downloadsSectionSchema = showcase({
   plural: "files",
   latestMeaning: "most recently added first",
@@ -1724,7 +1899,10 @@ export const SECTION_SCHEMAS = {
   HORIZONTAL_RAIL: horizontalRailSectionSchema,
   PROCESS_STEPS: processStepsSectionSchema,
   PLATFORM_PILLARS: platformPillarsSectionSchema,
-  INDIA_MAP: indiaMapSectionSchema
+  INDIA_MAP: indiaMapSectionSchema,
+  // One uploaded document — a PDF on the page, anything else as a download card. See its schema for
+  // why it names a `MediaAsset` rather than a `FileAsset`.
+  DOCUMENT_EMBED: documentEmbedSectionSchema
 } satisfies Record<SectionType, z.ZodTypeAny>;
 
 type SectionSchemas = typeof SECTION_SCHEMAS;
@@ -1777,6 +1955,7 @@ export type HorizontalRailSectionData = SectionPayloads["HORIZONTAL_RAIL"];
 export type ProcessStepsSectionData = SectionPayloads["PROCESS_STEPS"];
 export type PlatformPillarsSectionData = SectionPayloads["PLATFORM_PILLARS"];
 export type IndiaMapSectionData = SectionPayloads["INDIA_MAP"];
+export type DocumentEmbedSectionData = SectionPayloads["DOCUMENT_EMBED"];
 
 /** One step out of an ACTION_STEPS block, for a component that renders a single row. */
 export type ActionStep = ActionStepsSectionData["steps"][number];
@@ -2150,7 +2329,12 @@ const SECTION_PLACEHOLDERS: Partial<{ [K in SectionType]: z.input<SectionSchemas
   // block visibly unfinished to lib/health.ts and lib/pages.ts until somebody heads it or clears it.
   PLATFORM_PILLARS: {
     heading: "Add a heading"
-  }
+  },
+  // No `mediaId` seed, for the same reason FORM_EMBED has no seeded address: there is no document
+  // this block could point at that would not be somebody else's, and a placeholder that works is a
+  // placeholder that gets published. The title is seeded because it is both the visible heading and
+  // the frame's only description, and the renderer states plainly that no document has been chosen.
+  DOCUMENT_EMBED: { title: "Add a description of this document" }
   // SPACER needs no seed: its only field has a default and empty is what it is for.
 };
 

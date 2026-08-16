@@ -11,9 +11,10 @@ import type { Config } from "tailwindcss";
  * Purple ramp: OKLCH, hue locked at 305°; purple-700 is THE action colour and never inverts.
  * Tinted neutrals (ink/line/surface/bg-0) replace grey and DO invert under [data-theme="dark"].
  * Gold is a marketing accent (hero + auth + institutional headline spans only), never a data screen.
+ * Earth is a second, quieter marketing accent on the same terms — see its own header below.
  * Shadows are purple-tinted; the stock black `shadow`/`shadow-xl`/`shadow-2xl` must not be used.
  *
- * TWO DELIBERATE DIVERGENCES FROM THE FIELD REPOSITORY CONFIG, both strictly additive:
+ * THREE DELIBERATE DIVERGENCES FROM THE FIELD REPOSITORY CONFIG, all strictly additive:
  *
  *  1. `surface` exposes the FULL 50→300 ladder. In the Field Repository only `surface: { 50 }` is
  *     declared, so `bg-surface-100/200/300` silently purge and the legacy `bg-field-100/200/300`
@@ -24,6 +25,10 @@ import type { Config } from "tailwindcss";
  *     stock Tailwind amber and `amber-50`/`amber-200` quietly resolve to non-brand values (§3.5).
  *     Here the brand rungs are namespaced as `warn-*` as well, so a component can opt out of the
  *     merge entirely. `amber-100/500/800` are retained for wording parity with existing components.
+ *  3. `earth` does not exist in the Field Repository at all. It is a NEW ramp rather than a
+ *     re-pointing of an existing one, so a researcher moving between the two products still meets one
+ *     design language: everything they have already seen is character-for-character where it was, and
+ *     the warm rungs are simply a vocabulary this product has and that one has not yet needed.
  *
  * `fontSize`, `spacing`, `screens`, `letterSpacing` and `zIndex` stay STOCK — the z-index ladder is a
  * convention (§6.4), not a config, and inventing a rung is how overlays end up behind the nav.
@@ -52,6 +57,63 @@ const gold = {
   500: "oklch(0.7 0.145 80 / <alpha-value>)",
   600: "oklch(0.6 0.13 75 / <alpha-value>)",
   700: "oklch(0.5 0.11 70 / <alpha-value>)"
+};
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE EARTH RAMP — terracotta, ochre and umber: the colours of the materials this Centre documents.
+ *
+ * WHERE THE VALUES CAME FROM, because a warm ramp invented by eye is how a site ends up with three
+ * browns that nearly match. Rung 500 is not invented at all: it is `logo.terracotta` — `#CC785C`,
+ * already declared below and already on every piece of the mark — converted to OKLCH, where it lands
+ * at oklch(0.658 0.113 39.2). The ramp is that one measured colour carried in both directions, so an
+ * ochre accent on a page and the terracotta in the logo are the same pigment at two strengths rather
+ * than two warm colours that happen to sit near each other.
+ *
+ * ⚠ THE HUE DRIFTS — 72° at the top to 45° at the foot — WHICH `purple` MUST NEVER DO AND `gold`
+ * ALREADY DOES (90 → 70). Purple is an IDENTITY: one hue, eleven strengths, and a drift in it would
+ * read as the brand printing badly. This is a PIGMENT FAMILY, and the family is the whole point: a
+ * yellow earth (ochre, raw sienna) genuinely is a different hue from a red-brown one (burnt sienna,
+ * umber), and locking them to one figure gives a light end that looks like weak gold and a dark end
+ * that looks like mud. Chroma peaks in the middle and falls at both ends for the same reason a real
+ * pigment does — thinned to a wash it loses saturation, burnt to an umber it loses it again.
+ *
+ * MEASURED, NOT ESTIMATED — the two figures anybody spending this ramp on a light page needs.
+ * Against `--bg-0` in the light theme (#f7f6fb, relative luminance 0.927):
+ *
+ *   • earth-700 (≈ #91492F) …… luminance 0.110 → 6.1:1  ✓ small text, 13px eyebrow capitals included
+ *   • earth-600 …………………………… luminance 0.179 → 4.3:1  ✗ decoration and large text only (WCAG 1.4.3)
+ *
+ * So 700 is the rung a WORD may be set in and 600 is not, however alike the two look side by side.
+ * earth-50 (≈ #FCF5EC) is a paper wash rather than a colour: it is there to be laid under a block.
+ *
+ * ⚠ IT IS LITERAL OKLCH, LIKE `purple` AND `gold`, AND IT MUST NEVER BE GIVEN A DARK TWIN. Brand
+ * colour does not invert, which is exactly what makes an earth rule or an earth hairline safe over a
+ * photograph — and `scripts/theme-check.ts` reads the `[data-theme="dark"]` block of app/globals.css
+ * and FAILS on any `--token` redefined there that its own `INVERTING` list has not heard of. Putting
+ * `--earth-*` into that block would break `npm run check` until somebody edited the script. There is
+ * no reason to; this note is the reason not to.
+ *
+ * WHERE IT IS ACTUALLY SPENT TODAY, because a ramp with no callers is a ramp nobody can judge:
+ * `--earth-700` in app/globals.css tints the eyebrow of every LIGHT block on the hero-led front page,
+ * and `ring-earth-500/25` is the fillet on the hero's second contact sheet. That is the whole of it,
+ * and it is meant to stay close to that: the brand is purple and gold, and this is seasoning.
+ * ⚠ A rung nobody writes out IN FULL compiles to nothing (§5) — which is the right cost for a token
+ * library and the fatal one for a class name assembled from data.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+const earth = {
+  50: "oklch(0.972 0.014 72 / <alpha-value>)",
+  100: "oklch(0.942 0.034 70 / <alpha-value>)",
+  200: "oklch(0.888 0.062 66 / <alpha-value>)",
+  300: "oklch(0.822 0.09 60 / <alpha-value>)",
+  400: "oklch(0.752 0.11 50 / <alpha-value>)",
+  // #CC785C, the mark's own terracotta, stated in the space the rest of this file is stated in.
+  500: "oklch(0.658 0.113 39.2 / <alpha-value>)",
+  600: "oklch(0.575 0.112 38 / <alpha-value>)",
+  700: "oklch(0.49 0.105 40 / <alpha-value>)",
+  800: "oklch(0.405 0.085 42 / <alpha-value>)",
+  900: "oklch(0.33 0.062 45 / <alpha-value>)"
 };
 
 /** Brand status rungs. Literal hex on purpose: a status must read the same in both themes. */
@@ -131,6 +193,7 @@ const config: Config = {
       colors: {
         purple,
         gold,
+        earth,
         ink: {
           DEFAULT: neutral("ink-900"),
           900: neutral("ink-900"),

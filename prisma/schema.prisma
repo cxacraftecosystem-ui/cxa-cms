@@ -419,6 +419,15 @@ enum SectionType {
   /// The outline of India (the official depiction — see components/map/indiaGeometry.ts) with a
   /// pin per craft region, counted from the published archive. Appended at the end, as ever.
   INDIA_MAP
+  /// One uploaded document shown where an editor put it: a PDF in a frame on the page, anything else
+  /// as a download card naming the file, its type and its size. Appended at the end, as ever.
+  ///
+  /// It names a `MediaAsset`, NOT a `FileAsset`, and the reason is in `documentEmbedSectionSchema`
+  /// (lib/sections/schema.ts): the file store serves every version with `Content-Disposition:
+  /// attachment`, which a browser downloads rather than draws, so a frame pointed at it would leave
+  /// an empty box on the page. Media assets are served from the public object base with no such
+  /// header, and `app/api/studio/media/presign` already accepts PDFs and PowerPoint files.
+  DOCUMENT_EMBED
 }
 
 model Page {
@@ -740,6 +749,20 @@ model FileVersion {
 // People
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// The groups the roster is divided into. Adding one is a value here, a migration, and a set of
+/// hand-written mirrors in TypeScript. Most of them announce themselves: a `Record<PersonKind, …>`
+/// (`PERSON_KIND_LABELS` and `_GROUPS` in components/site/PersonCard.tsx, `GROUP_LABELS` in
+/// app/api/studio/people/reorder/route.ts) and a tuple with `satisfies readonly PersonKind[]` (the
+/// `PERSON_KINDS` in the three app/api/studio/people routes) are both compile errors when a value is
+/// missing. Two are NOT, and are the ones to check by hand: `PERSON_KIND_ORDER` in PersonCard.tsx,
+/// which decides what a reader sees, and the `PERSON_KINDS` in lib/sections/schema.ts with its
+/// matching `PersonFilter` in lib/sections/resolve.ts, which cannot use `satisfies` because they
+/// carry an extra "" for "no filter".
+///
+/// ⚠ A VALUE HERE IS PERMANENT. Postgres has `ALTER TYPE … ADD VALUE` and nothing that removes one:
+/// dropping a value means creating a replacement type, rewriting every column that uses it and
+/// dropping the old — with a table lock — so the list below only ever grows. Weigh a new group as a
+/// decision that cannot be undone cheaply.
 enum PersonKind {
   FACULTY
   SCIENTIST
@@ -748,6 +771,17 @@ enum PersonKind {
   STAFF
   VISITOR
   ALUMNUS
+  /// ── Appended, and appended DELIBERATELY AT THE END ───────────────────────
+  /// Appending is a plain `ALTER TYPE … ADD VALUE`; placing it where it reads best in the roster
+  /// would need `… BEFORE 'FACULTY'`, which is the same migration with one more way to get it wrong.
+  /// Nothing on screen is ordered by this enum — `PERSON_KIND_ORDER` in components/site/PersonCard.tsx
+  /// decides that, and it puts this group first.
+  ///
+  /// The Development Commissioner (Handicrafts): an office of the Ministry of Textiles, not a grade of
+  /// Centre employment, which is why it is its own group rather than a `designation` string on STAFF.
+  /// `designation` is free text and therefore unfilterable and unsortable; the roster groups, the
+  /// people-showcase block's "only one group" picker and the studio board all work off `kind`.
+  DC_HANDICRAFTS
 }
 
 model Person {
@@ -971,6 +1005,13 @@ model ProjectFaq {
   @@map("project_faqs")
 }
 
+/// What a publication IS, which decides its chip, its BibTeX entry type and how every citation style
+/// sets its title. Adding one is: a value here, a migration, and the mirrors in
+/// app/(site)/publications/filters.ts, app/studio/publications/, components/sections/
+/// PublicationListSection.tsx, lib/citation.ts, lib/sections/ and the two studio routes.
+///
+/// ⚠ A VALUE HERE IS PERMANENT, for the reason spelled out on `PersonKind` above: Postgres can add an
+/// enum value and cannot drop one without rewriting every column typed as it.
 enum PublicationKind {
   JOURNAL_ARTICLE
   CONFERENCE_PAPER
@@ -982,6 +1023,22 @@ enum PublicationKind {
   PREPRINT
   THESIS
   REPORT
+  /// ── Appended, and appended DELIBERATELY AT THE END ───────────────────────
+  /// Same reason as `PersonKind`: appending is `ALTER TYPE … ADD VALUE` and nothing more. Reading order
+  /// is `PUBLICATION_KIND_ORDER` in app/(site)/publications/filters.ts, which files both of these with
+  /// the other outreach material rather than at the bottom of the list.
+  ///
+  /// The Centre's dissemination output — a single sheet handed out at a cluster visit, and the
+  /// saddle-stitched booklet that goes with a training programme. Without these the only home for
+  /// either is REPORT, which files a two-sided leaflet under the same chip as a funded technical
+  /// report; the two are different objects to a reader and to a citation.
+  ///
+  /// They are two values rather than one "outreach" value because they cite differently: a booklet is
+  /// a bound work that carries an ISBN often enough to matter and has a real `@booklet` entry type in
+  /// BibTeX, whereas a flyer has neither and becomes `@misc`. See `BIBTEX_ENTRY_TYPES` in
+  /// lib/citation.ts.
+  FLYER
+  BOOKLET
 }
 
 model Publication {

@@ -1,0 +1,63 @@
+-- The stored crop rectangle: which part of a picture the site is allowed to show.
+--
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+-- ⚠ THIS MIGRATION WAS WRITTEN BY HAND. There is no local database on this machine, so
+-- `prisma migrate dev` could not be run and this file is not a `migrate diff` output. It is written
+-- to match, character for character, what Prisma emits for five nullable scalars appended to
+-- `model MediaAsset` in prisma/schema.prisma, so that the first `prisma migrate dev` on a machine
+-- that HAS a database finds nothing left to do rather than generating a second, duplicate migration.
+--
+-- ⚠ THE MATCHING BLOCK IN prisma/schema.prisma MUST LAND IN THE SAME COMMIT AS THIS FILE. Without it
+-- `prisma migrate` reports drift in the opposite direction (the database has columns the schema does
+-- not) and `@prisma/client` will not expose the fields at all, so every read below is a type error.
+-- The block is, appended after `blurDataUrl` in `model MediaAsset`:
+--
+--     /// The part of the picture the site shows, as fractions of the FULL image (0–1), origin at the
+--     /// top left. All five are null together and null means "no crop chosen — show the whole thing".
+--     /// Applied at RENDER by components/ui/MediaImage.tsx; the stored bytes are never touched, so a
+--     /// crop is adjustable for ever and costs no re-upload. See the migration for why.
+--     cropX      Float?
+--     cropY      Float?
+--     cropWidth  Float?
+--     cropHeight Float?
+--     /// The preset the editor picked ("16-9", "1-1", "free", …), kept only so the cropper reopens on
+--     /// the shape they chose. Nothing renders from it — the four numbers above are the truth.
+--     cropAspect String?
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- WHY A STORED RECTANGLE RATHER THAN RE-ENCODED BYTES. The owner's report is that "a larger portion
+-- of the image that is relevant is cut off or not shown". That is a DISPLAY fault, not an upload
+-- fault: `MediaImage` draws every asset `object-cover` inside a frame whose aspect ratio the calling
+-- section chose, so any picture whose shape differs from its frame is trimmed from the centre —
+-- centre being a guess that is wrong for most photographs of people and objects. Baking a crop into
+-- the uploaded bytes would fix that only for files uploaded after the change, and would break the
+-- rule the schema states one line above `objectKey` ("Originals are retained forever: a derivative
+-- pipeline that has thrown the source away can never be re-run with better settings"). Four numbers
+-- fix the entire existing library, cost nothing to change again, and destroy nothing.
+--
+-- WHY FLOATS AND NOT PIXELS. A pixel rectangle is only meaningful against one particular width, and
+-- an asset is served at six of them (`VARIANT_WIDTHS` in lib/media/url.ts, 320→2560). Fractions of
+-- the full image are the only form that survives the derivative pipeline, a later regeneration at
+-- different widths, and the `og` variant's forced 1200×630.
+--
+-- WHY NOT A CHECK CONSTRAINT ON THE RANGE. Tempting — the four are meant to satisfy
+-- 0 ≤ x, 0 < w ≤ 1, x + w ≤ 1 — but a CHECK here would be a second, silent copy of a rule that is
+-- already enforced where a person can be told about it (the cropper clamps every drag, and the API
+-- route validates with Zod and answers a sentence). A constraint violation surfaces to an editor as
+-- "something went wrong", which is the outcome contract §6 exists to prevent. The render side is
+-- written to treat any out-of-range rectangle as "no crop" and show the whole picture, so a bad row
+-- degrades to today's behaviour rather than to a broken image.
+--
+-- PURELY ADDITIVE AND SAFE ON A POPULATED DATABASE. Five nullable columns with no default: Postgres
+-- 11+ adds those as a catalogue-only change, so there is no table rewrite and no long lock, and every
+-- existing row reads as "no crop chosen" — which is exactly today's behaviour.
+--
+-- ROLLING BACK IS `ALTER TABLE "media_assets" DROP COLUMN …` five times, and it loses every crop an
+-- editor has set. Nothing else references these columns.
+
+-- AlterTable
+ALTER TABLE "media_assets" ADD COLUMN     "cropX" DOUBLE PRECISION,
+ADD COLUMN     "cropY" DOUBLE PRECISION,
+ADD COLUMN     "cropWidth" DOUBLE PRECISION,
+ADD COLUMN     "cropHeight" DOUBLE PRECISION,
+ADD COLUMN     "cropAspect" TEXT;

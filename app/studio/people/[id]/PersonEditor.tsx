@@ -621,6 +621,30 @@ export function PersonEditor({
           description="Turn this off and the profile page still exists and can still be linked from a project or a publication — it simply does not appear on the people page. That is what you want for a visitor or an alumnus who should stay reachable without being in the current roster."
         />
 
+        {/*
+          ⚠ THE PROFILE PAGE IS LIVE AT ONCE AND THE DIRECTORY IS NOT, AND THAT GAP HAS TO BE SAID OUT LOUD.
+
+          `app/(site)/people/page.tsx` carries `export const revalidate = 300`, so /people is served from a
+          snapshot that is rebuilt at most every five minutes. A brand-new address has no snapshot to serve,
+          so /people/<slug> renders on the first request and is correct immediately. The two together produce
+          the one complaint this screen keeps attracting: "I published the profile, the link you gave me
+          works, and the person is not on the people page" — reported as data loss, when the row is in the
+          database and the listing simply has not been rebuilt yet.
+
+          Nothing in this repository calls `revalidatePath`, so publishing cannot shorten that window; the
+          only honest thing an editor can be told is how long it is. Shown only where it applies — an
+          unpublished profile, or one kept out of the lists on purpose, is absent for a reason the two
+          controls above have already given.
+        */}
+        {isLiveOrGoingLive && value.isVisible ? (
+          <HelpText>
+            The profile&rsquo;s own page appears on the site as soon as it is published, so the link works
+            straight away. The people page is a listing that is rebuilt every few minutes, so this person can
+            take up to five minutes to appear on it. Nothing has gone wrong in the meantime, and there is
+            nothing to press — reload /people after a few minutes and they will be there.
+          </HelpText>
+        ) : null}
+
         <Field
           label="Position in their group"
           help="People are listed in this order within their group, lowest number first, before falling back to alphabetical order. It is usually easier to drag names on the people screen than to type numbers here."

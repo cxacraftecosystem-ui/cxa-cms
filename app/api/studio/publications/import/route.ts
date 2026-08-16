@@ -90,7 +90,9 @@ const KIND_LABELS: Record<PublicationKind, string> = {
   SOFTWARE: "Software",
   PREPRINT: "Preprint",
   THESIS: "Thesis",
-  REPORT: "Report"
+  REPORT: "Report",
+  FLYER: "Flyer",
+  BOOKLET: "Booklet"
 };
 
 const RequestBody = z.object({
@@ -201,6 +203,12 @@ function kindFromBibtexType(type: string): PublicationKind | null {
       return "DATASET";
     case "software":
       return "SOFTWARE";
+    // `@booklet` is standard BibTeX — "printed and bound, but with no named publisher or sponsoring
+    // institution" — which is exactly what a Centre booklet is, and until BOOKLET existed this fell
+    // through to `null` and the editor had to pick a type by hand for every one of them. There is no
+    // entry type for a flyer in BibTeX or in CSL, so FLYER is reachable only from the picker.
+    case "booklet":
+      return "BOOKLET";
     default:
       return null;
   }

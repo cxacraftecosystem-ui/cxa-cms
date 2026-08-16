@@ -124,7 +124,11 @@ const HINT_SHAPES: Record<SectionType, HintShape> = {
   GALLERY: "wall",
   MEDIA_SPLIT: "split",
   EMBED: "frame",
-  MAP: "frame"
+  MAP: "frame",
+  // A document on the page is a framed panel from across the room, exactly as an embedded video and a
+  // map are. A sixteenth drawing would have to be kept in agreement with a renderer that draws either
+  // a frame or a download card depending on the file, and would be wrong half the time.
+  DOCUMENT_EMBED: "frame"
 };
 
 /** Complete literal class strings throughout — a name built by concatenation is purged (contract §5). */

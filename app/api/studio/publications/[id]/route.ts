@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { Prisma, type ContentStatus } from "@prisma/client";
+import { Prisma, type ContentStatus, type PublicationKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   assertSameOrigin,
@@ -57,6 +57,7 @@ const MIN_YEAR = 1500;
 
 const CONTENT_STATUSES = ["DRAFT", "IN_REVIEW", "SCHEDULED", "PUBLISHED", "ARCHIVED"] as const;
 
+/** Every `PublicationKind`, as a tuple. `satisfies` for the reason spelled out in ../route.ts. */
 const PUBLICATION_KINDS = [
   "JOURNAL_ARTICLE",
   "CONFERENCE_PAPER",
@@ -67,8 +68,10 @@ const PUBLICATION_KINDS = [
   "SOFTWARE",
   "PREPRINT",
   "THESIS",
-  "REPORT"
-] as const;
+  "REPORT",
+  "FLYER",
+  "BOOKLET"
+] as const satisfies readonly PublicationKind[];
 
 const slugField = z
   .string()

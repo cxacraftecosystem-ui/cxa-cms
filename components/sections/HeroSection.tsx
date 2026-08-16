@@ -902,10 +902,13 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
             ) : null}
 
             {/*
-              The headline is its own component because the GSAP timeline, the per-word split and the
-              embroidered thread are one mechanism with one set of reasons. It renders NOTHING when the
-              headline is empty, which is the same answer `sectionsOwnPageTitle` gives in
-              SectionRenderer.tsx — the two must agree or a page ends up with no `<h1>` at all.
+              The headline is its own component because the GSAP timeline and the per-word split are
+              one mechanism with one set of reasons. (It used to own a third: an embroidered gold
+              thread drawn under the accent phrase. That is gone — under an accent this long it read
+              as an underline, which in a heading reads as a link. HeroHeadline's header carries the
+              full argument.) It renders NOTHING when the headline is empty, which is the same answer
+              `sectionsOwnPageTitle` gives in SectionRenderer.tsx — the two must agree or a page ends
+              up with no `<h1>` at all.
             */}
             <HeroHeadline
               headline={data.headline}
@@ -1159,6 +1162,20 @@ function SheetPlate({
   /** The gold hairline, for the plate the eye is meant to land on first. */
   fillet?: boolean;
 }) {
+  /*
+   * ⚠ THE SECOND PLATE'S HAIRLINE IS TERRACOTTA, AND IT IS THE ONE PLACE THIS SECTION SPENDS THE
+   * `earth` RAMP. It was `ring-white/15` — a neutral, which is what you reach for when the only job
+   * is "separate this from the ground", and it made the pair read as one frame in gold and one frame
+   * in nothing. earth-500 IS the mark's own terracotta (#CC785C; the ramp is built outwards from it,
+   * see tailwind.config.ts), so the vitrine now holds two objects lit by two threads the Centre
+   * actually owns — gold on the plate the eye lands on, the warmer and quieter one beside it. The
+   * hierarchy is unchanged, and stated in colour rather than only in size.
+   *
+   * The alpha is what keeps it a fillet rather than a border: at 0.25 over `purple-950` it is a warm
+   * edge you find when you look at the plate, not a rectangle drawn around it. Earth is literal oklch
+   * like purple and gold, so this hairline is the same colour in both themes — correct here, because
+   * the mount beneath it is `purple-950` in both as well.
+   */
   return (
     <div
       className={cn(
@@ -1167,7 +1184,7 @@ function SheetPlate({
         // opacity (an ancestor with `opacity < 1` becomes the backdrop root — see `.glass-card` in
         // globals.css). A border that arrives unfrosted and settles frosted is not worth a branch.
         "rounded-lg bg-purple-950/70 p-2.5 shadow-cinema backdrop-blur-sm ring-1",
-        fillet ? "ring-gold-500/30" : "ring-white/15",
+        fillet ? "ring-gold-500/30" : "ring-earth-500/25",
         className
       )}
     >

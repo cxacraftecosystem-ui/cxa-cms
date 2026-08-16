@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, type PublicationKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   assertSameOrigin,
@@ -56,6 +56,13 @@ const MAX_KEYWORDS = 40;
 
 const CONTENT_STATUSES = ["DRAFT", "IN_REVIEW", "SCHEDULED", "PUBLISHED", "ARCHIVED"] as const;
 
+/**
+ * Every `PublicationKind`, as a tuple, for the Zod field below.
+ *
+ * `satisfies` rather than a bare `as const`: a kind added to the Prisma enum and forgotten here would
+ * otherwise be a SILENT gap — nothing fails to compile, and the only symptom is an editor choosing the
+ * new type in the picker and being told the request is invalid. The clause makes it a compile error.
+ */
 const PUBLICATION_KINDS = [
   "JOURNAL_ARTICLE",
   "CONFERENCE_PAPER",
@@ -66,8 +73,10 @@ const PUBLICATION_KINDS = [
   "SOFTWARE",
   "PREPRINT",
   "THESIS",
-  "REPORT"
-] as const;
+  "REPORT",
+  "FLYER",
+  "BOOKLET"
+] as const satisfies readonly PublicationKind[];
 
 /**
  * The earliest year a publication may claim.

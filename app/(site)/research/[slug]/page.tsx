@@ -178,7 +178,9 @@ const KIND_LABEL: Record<PublicationKind, string> = {
   SOFTWARE: "Software",
   PREPRINT: "Preprint",
   THESIS: "Thesis",
-  REPORT: "Report"
+  REPORT: "Report",
+  FLYER: "Flyer",
+  BOOKLET: "Booklet"
 };
 
 /**

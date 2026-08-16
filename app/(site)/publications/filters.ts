@@ -52,10 +52,26 @@ export const PUBLICATION_KIND_LABELS: Record<PublicationKind, string> = {
   SOFTWARE: "Software",
   PREPRINT: "Preprint",
   THESIS: "Thesis",
-  REPORT: "Report"
+  REPORT: "Report",
+  FLYER: "Flyer",
+  BOOKLET: "Booklet"
 };
 
-/** Every kind, in the order a reader expects to meet them. Used to order the filter chips. */
+/**
+ * Every kind, in the order a reader expects to meet them: peer-reviewed work first, then the material
+ * the Centre issues itself. BOOKLET and FLYER are filed after REPORT rather than at the end because
+ * "something the Centre produced for a cluster" is the group a reader is scanning for, and the enum
+ * appended them last for a migration's convenience, not a reader's.
+ *
+ * ⚠ NOTHING CONSUMES THIS TODAY, so keeping it complete is a discipline rather than a behaviour. The
+ * listing's kind chips are built from a `groupBy(["kind"])` with `orderBy: { kind: "asc" }`
+ * (app/(site)/publications/page.tsx), which sorts by the Postgres enum's DECLARATION order and omits
+ * kinds nothing is filed under — so a new kind reaches the chips on its own, at the end of the row,
+ * the moment one publication uses it. This array is the answer to "what order SHOULD they be in", kept
+ * total so that a page which starts ordering chips deliberately has something correct to order them
+ * by. Being a `readonly PublicationKind[]` does not make an omission a compile error the way the label
+ * `Record` does, so it has to be updated by hand alongside the enum.
+ */
 export const PUBLICATION_KIND_ORDER: readonly PublicationKind[] = [
   "JOURNAL_ARTICLE",
   "CONFERENCE_PAPER",
@@ -66,7 +82,9 @@ export const PUBLICATION_KIND_ORDER: readonly PublicationKind[] = [
   "DATASET",
   "SOFTWARE",
   "THESIS",
-  "REPORT"
+  "REPORT",
+  "BOOKLET",
+  "FLYER"
 ];
 
 function isPublicationKind(value: string): value is PublicationKind {

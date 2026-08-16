@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { Prisma, type ContentStatus } from "@prisma/client";
+import { Prisma, type ContentStatus, type PersonKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   assertSameOrigin,
@@ -52,6 +52,7 @@ const MAX_INTERESTS = 40;
 
 const CONTENT_STATUSES = ["DRAFT", "IN_REVIEW", "SCHEDULED", "PUBLISHED", "ARCHIVED"] as const;
 
+/** Every `PersonKind`, as a tuple. `satisfies` for the reason spelled out in ../route.ts. */
 const PERSON_KINDS = [
   "FACULTY",
   "SCIENTIST",
@@ -59,8 +60,9 @@ const PERSON_KINDS = [
   "STUDENT",
   "STAFF",
   "VISITOR",
-  "ALUMNUS"
-] as const;
+  "ALUMNUS",
+  "DC_HANDICRAFTS"
+] as const satisfies readonly PersonKind[];
 
 const slugField = z
   .string()

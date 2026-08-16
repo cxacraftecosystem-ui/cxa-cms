@@ -39,7 +39,13 @@ export interface PeopleShowcaseSectionProps {
   droppedIds?: number;
 }
 
-/** The plural an editor would say, for the empty state and the footnote. */
+/**
+ * The plural an editor would say, for the empty state and the footnote.
+ *
+ * Lower case, because every use is mid-sentence — "No scientists to show yet", "Showing 6 of 11
+ * scientists." A `Record` over the block's own kind union rather than over `PersonKind`, so it also
+ * covers "" ("everyone").
+ */
 const KIND_PLURAL: Record<PeopleShowcaseSectionData["kind"], string> = {
   "": "people",
   FACULTY: "faculty members",
@@ -48,7 +54,11 @@ const KIND_PLURAL: Record<PeopleShowcaseSectionData["kind"], string> = {
   STUDENT: "students",
   STAFF: "staff",
   VISITOR: "visitors",
-  ALUMNUS: "alumni"
+  ALUMNUS: "alumni",
+  // The one entry that keeps its capitals and takes a noun after it: "DC, Handicrafts" is a title, and
+  // both sentences this map feeds need something countable to follow it — "Showing 1 of 1 DC,
+  // Handicrafts." reads as a truncated sentence, "…1 of 1 DC, Handicrafts profiles." does not.
+  DC_HANDICRAFTS: "DC, Handicrafts profiles"
 };
 
 /** A portrait is taller than the card's default. See the header. */

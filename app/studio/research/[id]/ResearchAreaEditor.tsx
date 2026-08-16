@@ -45,6 +45,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
+import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { IconPicker } from "@/components/studio/fields/IconPicker";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
@@ -212,6 +213,14 @@ export function ResearchAreaEditor({
     [areaId]
   );
 
+  /** The public address, handed over the moment this area crosses onto the site. */
+  const announcePublished = usePublishNotice({
+    initial: initialValue,
+    origin: siteUrl,
+    basePath: "/research/",
+    subject: "research area"
+  });
+
   const autosave = useAutosave<ResearchAreaFormValue>({
     data: value,
     save,
@@ -224,12 +233,16 @@ export function ResearchAreaEditor({
       if (fresh !== null) {
         createdId.current = null;
         toast({ tone: "success", title: "The research area has been created" });
+        // After the creation notice, so the two arrive in the order they happened: an area can be
+        // created straight into PUBLISHED, and "it exists" reads oddly after "it is public".
+        announcePublished(sent);
         // A programmatic navigation, which the leave guard deliberately does not intercept — and the
         // form is clean by now anyway. `replace`, so Back does not return to a "new" screen that would
         // create a second copy.
         router.replace(`/studio/research/${fresh}`);
         return;
       }
+      announcePublished(sent);
       // The list, the diagram and the header's status chip are all server-rendered from this row.
       router.refresh();
     }

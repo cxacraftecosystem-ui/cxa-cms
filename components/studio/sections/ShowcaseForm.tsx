@@ -573,6 +573,7 @@ export function PeopleShowcaseForm({
           value={data.kind}
           options={[
             { value: "", label: "Everyone" },
+            { value: "DC_HANDICRAFTS", label: "DC, Handicrafts" },
             { value: "FACULTY", label: "Faculty" },
             { value: "SCIENTIST", label: "Scientists" },
             { value: "RESEARCH_ASSISTANT", label: "Research assistants" },

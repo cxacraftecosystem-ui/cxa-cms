@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, type PersonKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   assertSameOrigin,
@@ -53,6 +53,15 @@ const MAX_INTERESTS = 40;
 
 const CONTENT_STATUSES = ["DRAFT", "IN_REVIEW", "SCHEDULED", "PUBLISHED", "ARCHIVED"] as const;
 
+/**
+ * Every `PersonKind`, as a tuple, for the Zod field below.
+ *
+ * `satisfies` rather than a bare `as const`: a group added to the Prisma enum and forgotten here would
+ * otherwise be a SILENT gap — Prisma still accepts the value, so nothing fails to compile and nothing
+ * throws; the studio simply cannot save a profile into the new group, and the only symptom is a picker
+ * option that hits a 422. The clause makes that a compile error instead. (The same tuple, for the same
+ * reason, is in ./[id]/route.ts and ./reorder/route.ts.)
+ */
 const PERSON_KINDS = [
   "FACULTY",
   "SCIENTIST",
@@ -60,8 +69,9 @@ const PERSON_KINDS = [
   "STUDENT",
   "STAFF",
   "VISITOR",
-  "ALUMNUS"
-] as const;
+  "ALUMNUS",
+  "DC_HANDICRAFTS"
+] as const satisfies readonly PersonKind[];
 
 const slugField = z
   .string()

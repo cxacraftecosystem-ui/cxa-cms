@@ -11,6 +11,7 @@ import {
   type CensusMetric,
   type StatsSectionData,
   type CraftExplorerSectionData,
+  type DocumentEmbedSectionData,
   type DownloadsSectionData,
   type EventShowcaseSectionData,
   type GallerySectionData,
@@ -165,14 +166,28 @@ export function pickShowcase<T>(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Everything `<MediaImage>` needs and nothing else.
+ * Everything `<MediaImage>` needs, plus the two columns that describe a DOCUMENT.
  *
  * `variants` is not optional: without it `pickVariant` has nothing to choose from and every image on
  * the page falls back to the full-size ORIGINAL — a 6 MB photograph inside a 320px card. The shape is
- * deliberately structurally identical to `MediaLike` in lib/media/url.ts.
+ * deliberately a superset of `MediaLike` in lib/media/url.ts, which reads only what it names.
+ *
+ * ⚠ `fileName` AND `byteSize` ARE READ BY A BLOCK RATHER THAN BY AN IMAGE, and they are here rather
+ * than in a select of their own because the media map is ONE batched read keyed by asset id (see
+ * `ResolvedSectionData.media`): a second select would mean a second query for assets the page has
+ * already fetched. `DOCUMENT_EMBED` needs both — the name a reader recognises and the file saves as,
+ * whose extension also decides whether a browser can draw the thing at all, and the size that stops
+ * somebody starting a 40 MB download on a telephone. Two small columns on a row the page was already
+ * selecting; no new join and no new query.
+ *
+ * `mimeType` is deliberately NOT here. The format is read off the extension instead, for the reason
+ * `DownloadsSection` sets out: a stored type is whatever the uploading browser guessed, and the
+ * extension is what an editor actually named the file.
  */
 const mediaSelect = {
   objectKey: true,
+  fileName: true,
+  byteSize: true,
   width: true,
   height: true,
   altText: true,
@@ -926,6 +941,16 @@ async function resolveSectionDataOrThrow(
       case "QUOTE":
         rememberMedia((parsed.data as QuoteSectionData).portraitMediaId);
         break;
+      /*
+       * The document a DOCUMENT_EMBED block puts on the page. It is a `MediaAsset` like every other
+       * id collected here — see the block's schema for why it is not a `FileAsset` — so it costs one
+       * more id in the same `IN (…)` and no extra query. The file name and size that this one block
+       * reads are the two columns added to `mediaSelect` above, on a row the page was fetching
+       * anyway.
+       */
+      case "DOCUMENT_EMBED":
+        rememberMedia((parsed.data as DocumentEmbedSectionData).mediaId);
+        break;
       case "TIMELINE":
         for (const entry of (parsed.data as TimelineSectionData).entries) {
           rememberMedia(entry.mediaId);
@@ -1096,6 +1121,7 @@ function projectSource(): EntitySource<ProjectFilter, ProjectRow, ProjectRow> {
   };
 }
 
+/** Mirrors `PERSON_KINDS` in ./schema.ts — see the warning there about nothing checking the mirror. */
 interface PersonFilter {
   kind:
     | ""
@@ -1105,7 +1131,8 @@ interface PersonFilter {
     | "STUDENT"
     | "STAFF"
     | "VISITOR"
-    | "ALUMNUS";
+    | "ALUMNUS"
+    | "DC_HANDICRAFTS";
 }
 
 function personSource(): EntitySource<PersonFilter, PersonRow, PersonRow> {
@@ -1138,6 +1165,7 @@ function personSource(): EntitySource<PersonFilter, PersonRow, PersonRow> {
   };
 }
 
+/** Mirrors `PUBLICATION_KINDS` in ./schema.ts — see the warning there about nothing checking the mirror. */
 interface PublicationFilter {
   kind:
     | ""
@@ -1150,7 +1178,9 @@ interface PublicationFilter {
     | "SOFTWARE"
     | "PREPRINT"
     | "THESIS"
-    | "REPORT";
+    | "REPORT"
+    | "FLYER"
+    | "BOOKLET";
 }
 
 function publicationSource(): EntitySource<PublicationFilter, PublicationPayload, PublicationRow> {
@@ -1491,6 +1521,13 @@ function galleryImageSource(): EntitySource<EmptyFilter, GalleryItemPayload, Gal
     // different in two albums, and the asset caption is the fallback rather than the authority.
     hydrate: (raw) => ({
       objectKey: raw.asset.objectKey,
+      // `fileName` and `byteSize` are flattened through even though no gallery surface prints them.
+      // `GalleryImageRow extends MediaRow`, and `mediaSelect` gained both when the document block
+      // started needing them (see the note at mediaSelect) — so omitting them here is not "leaving
+      // out what we do not use", it is failing to satisfy the type this row claims to be. They are
+      // already in the payload; this only carries them across the flattening.
+      fileName: raw.asset.fileName,
+      byteSize: raw.asset.byteSize,
       width: raw.asset.width,
       height: raw.asset.height,
       altText: raw.asset.altText,

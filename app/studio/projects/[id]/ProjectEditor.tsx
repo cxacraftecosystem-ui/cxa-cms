@@ -50,6 +50,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
+import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker, lookupResolvePath, type LookupItem, type LookupResponse } from "@/components/studio/fields/EntityPicker";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
@@ -299,6 +300,14 @@ export function ProjectEditor({
     [projectId]
   );
 
+  /** The public address, handed over the moment this project crosses onto the site. */
+  const announcePublished = usePublishNotice({
+    initial: initialValue,
+    origin: siteUrl,
+    basePath: "/projects/",
+    subject: "project"
+  });
+
   const autosave = useAutosave<ProjectFormValue>({
     data: value,
     save,
@@ -310,9 +319,12 @@ export function ProjectEditor({
       if (fresh !== null) {
         createdId.current = null;
         toast({ tone: "success", title: "The project has been created" });
+        // After the creation notice, so the two arrive in the order they happened.
+        announcePublished(sent);
         router.replace(`/studio/projects/${fresh}`);
         return;
       }
+      announcePublished(sent);
       router.refresh();
     }
   });

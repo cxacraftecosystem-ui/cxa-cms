@@ -14,6 +14,20 @@
  *    holds the actual `File` objects. Not a toast — a toast is `aria-live="polite"`, never interrupts,
  *    and may never be read at all (Toast.tsx). The names stay on screen until they are dealt with.
  *
+ * 1b. WHAT WILL ACTUALLY BE SHOWN IS OFFERED BEFORE ANYBODY DISCOVERS IT ON A PUBLISHED PAGE. Every
+ *    picture that lands gets a row in the "Choose what is shown" panel, which opens
+ *    `components/studio/ImageCropper` — a preview of the picture in the frames the site uses, a
+ *    choice of shape, and a draggable rectangle. The chosen rectangle is stored on the asset and
+ *    applied at RENDER; the uploaded bytes are never altered. See that component's header, and
+ *    prisma/migrations/20260816190000_media_asset_crop for the columns.
+ *
+ *    ⚠ IT IS OFFERED AFTER THE BYTES LAND, NOT BEFORE THEY ARE SENT, and that is a deliberate
+ *    ordering. Cropping first would mean thirty modal dialogs standing between a reader and a thirty
+ *    file drop, with the uplink idle throughout — and the crop is a display decision that can be
+ *    changed at any time afterwards, so there is nothing to be gained by blocking on it. Uploading
+ *    first also means the preview can use the local `File` rather than waiting for the CDN, so the
+ *    picture appears instantly and works even where object storage has no public address configured.
+ *
  * 2. IDENTICAL BYTES ARE REPORTED, NOT MERGED. Straight after a batch the server is asked which of the
  *    new rows match an existing asset's checksum — never the filename, because "IMG_0421.jpg" collides
  *    constantly and identical bytes almost never do. The offer names the asset it matched and shows
@@ -36,9 +50,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CircleCheck, Copy, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { CircleCheck, Copy, Crop, RefreshCw, TriangleAlert, X } from "lucide-react";
 
-import { asApiClientError, del, post } from "@/lib/client/fetcher";
+import { asApiClientError, del, patch, post } from "@/lib/client/fetcher";
 import {
   ACCEPTED_CONTENT_TYPES,
   MAX_UPLOAD_BYTES,
@@ -49,6 +63,7 @@ import {
   type UploadProgress
 } from "@/lib/client/upload";
 import { cn, formatBytes } from "@/lib/utils";
+import { ImageCropper, type CropChoice } from "@/components/studio/ImageCropper";
 import { Button } from "@/components/ui/Button";
 import { FileDropzone } from "@/components/ui/FileDropzone";
 import { MediaImage } from "@/components/ui/MediaImage";
@@ -125,6 +140,50 @@ function pairFailures(batch: readonly File[], failed: readonly UploadFailure[]):
   });
 }
 
+/**
+ * A picture that has landed and has not yet been given a crop.
+ *
+ * The `File` is kept rather than the asset's CDN URL, and that is what makes the preview instant: the
+ * bytes are already in this browser, so `URL.createObjectURL` costs nothing and there is no wait for
+ * storage, no dependence on `NEXT_PUBLIC_CDN_URL` being configured, and no CORS header needed.
+ */
+interface CropTarget {
+  assetId: string;
+  fileName: string;
+  file: File;
+  /** True once a crop has been chosen (or explicitly declined) for this one. */
+  settled: boolean;
+}
+
+/**
+ * Match the assets that were created back to the `File`s they came from.
+ *
+ * Matched BY NAME AND IN ORDER, exactly as `pairFailures` does above and for the same reason: two
+ * files in one drop can legitimately share a name, `uploadFiles` preserves the order it was given,
+ * and the server answers with the row it created for each. Anything unmatched is dropped from the
+ * crop offer rather than paired with a guess — showing a reader the wrong photograph to crop is
+ * worse than not offering to crop that one.
+ */
+function pairUploads(batch: readonly File[], uploaded: readonly StudioMediaAsset[]): CropTarget[] {
+  const byName = new Map<string, File[]>();
+  for (const file of batch) {
+    const list = byName.get(file.name);
+    if (list) list.push(file);
+    else byName.set(file.name, [file]);
+  }
+
+  const targets: CropTarget[] = [];
+  for (const asset of uploaded) {
+    if (!hasPicture(asset.kind)) continue;
+    // SVG is filed as a DOCUMENT by the server, so `hasPicture` already excludes it — which is right,
+    // because a vector has no pixels to crop and the whole document scales.
+    const file = byName.get(asset.fileName)?.shift();
+    if (!file) continue;
+    targets.push({ assetId: asset.id, fileName: asset.fileName, file, settled: false });
+  }
+  return targets;
+}
+
 export function UploadQueue({
   folderId,
   folderLabel,
@@ -143,6 +202,34 @@ export function UploadQueue({
   const [duplicates, setDuplicates] = useState<MediaDuplicateMatch[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState<string | null>(null);
+
+  const [cropTargets, setCropTargets] = useState<CropTarget[]>([]);
+  /** The `assetId` currently open in the cropper, or null when the dialog is closed. */
+  const [cropping, setCropping] = useState<string | null>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+
+  const cropTarget = cropTargets.find((target) => target.assetId === cropping) ?? null;
+
+  /**
+   * The `blob:` URL for the picture being cropped, created on open and REVOKED ON CLOSE.
+   *
+   * ⚠ AN UNREVOKED OBJECT URL PINS THE WHOLE FILE IN MEMORY for the lifetime of the document. A drop
+   * of forty 12-megapixel photographs is comfortably a gigabyte, so creating one per target up front —
+   * the obvious shape — turns a routine batch into a tab the browser kills. One at a time, revoked
+   * the moment the dialog closes, means at most one file is held.
+   */
+  useEffect(() => {
+    if (!cropTarget) {
+      setCropSrc(null);
+      return;
+    }
+    const url = URL.createObjectURL(cropTarget.file);
+    setCropSrc(url);
+    return () => {
+      URL.revokeObjectURL(url);
+      setCropSrc(null);
+    };
+  }, [cropTarget]);
 
   const running = progress !== null;
 
@@ -187,6 +274,11 @@ export function UploadQueue({
       setNotice(null);
       setFailures([]);
       setDuplicates([]);
+      // The previous batch's crop offer goes with it. Leaving it up would invite a reader to crop a
+      // photograph from a drop they finished ten minutes ago while a new one is running, and the
+      // `File` handles behind those rows are exactly what we do not want to keep alive (see below).
+      setCropTargets([]);
+      setCropping(null);
 
       let uploaded: StudioMediaAsset[] = [];
       let failed: UploadFailure[] = [];
@@ -222,6 +314,9 @@ export function UploadQueue({
       if (!mountedRef.current) return;
 
       if (uploaded.length > 0) onUploaded(uploaded);
+      // Offered, never forced: an editor who ignores this panel gets exactly today's behaviour, which
+      // is the whole picture cover-fitted into whatever frame the section chose.
+      if (uploaded.length > 0) setCropTargets(pairUploads(files, uploaded));
 
       const stopped = cancelled || stoppedRef.current;
 
@@ -303,6 +398,52 @@ export function UploadQueue({
       if (mountedRef.current) setDiscarding(null);
     }
   };
+
+  /**
+   * Store the chosen crop against the asset.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ THIS NEEDS THE PATCH ROUTE AND THE SCHEMA TO CARRY THE FIVE CROP FIELDS, AND AT THE TIME OF
+   * WRITING THEY DO NOT. `PatchBody` in app/api/studio/media/[id]/route.ts accepts `altText`,
+   * `caption`, `credit`, `copyright`, `tags` and `folderId` and nothing else, and Zod strips unknown
+   * keys — so until that route is extended this call SUCCEEDS AND SILENTLY STORES NOTHING, which is
+   * the worst of the three possible outcomes and the reason it is written out here rather than left
+   * to be discovered. The columns exist (see the hand-written migration
+   * prisma/migrations/20260816190000_media_asset_crop); the schema block, the Zod fields and the
+   * render side in components/ui/MediaImage.tsx are the remaining three edits, and all three live in
+   * files this change does not own.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * `null` clears the crop, which is what "show the whole picture" means. The five fields are always
+   * sent together — a row with three of five set is not a rectangle, and the render side treats any
+   * incomplete or out-of-range set as "no crop" (`isUsableCrop`).
+   */
+  const saveCrop = async (assetId: string, choice: CropChoice | null) => {
+    try {
+      await patch(MEDIA_ENDPOINTS.detail(assetId), {
+        cropX: choice ? choice.rect.x : null,
+        cropY: choice ? choice.rect.y : null,
+        cropWidth: choice ? choice.rect.width : null,
+        cropHeight: choice ? choice.rect.height : null,
+        cropAspect: choice ? choice.aspectId : null
+      });
+      if (!mountedRef.current) return;
+      setCropTargets((current) =>
+        current.map((target) => (target.assetId === assetId ? { ...target, settled: true } : target))
+      );
+    } catch (thrown) {
+      if (!mountedRef.current) return;
+      // On screen rather than in a toast: the reader has just spent time positioning a rectangle and
+      // must be told it did not stick, at the moment they would otherwise move on to the next one.
+      setNotice(
+        `The crop for that picture could not be saved, so the site will keep showing the whole image. ${
+          asApiClientError(thrown).message
+        }`
+      );
+    }
+  };
+
+  const unsettledCrops = cropTargets.filter((target) => !target.settled).length;
 
   const retryable = failures.filter((row) => row.retry !== null).length;
   const visibleRows = progress ? progress.files.slice(0, VISIBLE_PROGRESS_ROWS) : [];
@@ -515,6 +656,90 @@ export function UploadQueue({
           </ul>
         </div>
       ) : null}
+
+      {cropTargets.length > 0 ? (
+        <div className="mt-3 rounded-md border border-line-200 bg-surface-50 p-3">
+          <p className="flex items-start gap-1.5 text-sm font-semibold text-ink-900">
+            <Crop aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+            <span>
+              {cropTargets.length === 1
+                ? "Choose what is shown of this picture"
+                : `Choose what is shown of these ${cropTargets.length} pictures`}
+            </span>
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-ink-700">
+            The site fits pictures into frames of its own — a wide hero, a card, a square tile — and
+            trims whatever does not fit. Left alone it trims from the middle, which is often the wrong
+            half. Setting a crop here says which part must survive. It never changes the file, and it
+            can be changed again at any time.
+          </p>
+
+          {/*
+            No thumbnails in this list, deliberately. Each one would need its own object URL, and an
+            object URL pins the entire file in memory until it is revoked — forty photographs is
+            comfortably a gigabyte. The name is enough to choose a row, and the picture itself appears
+            the instant the row is opened.
+          */}
+          <ul className="mt-2.5 space-y-1.5">
+            {cropTargets.map((target) => (
+              <li
+                key={target.assetId}
+                className="flex flex-wrap items-center gap-2 rounded-md bg-card px-2.5 py-2"
+              >
+                <span className="min-w-0 flex-1 break-all text-xs font-medium text-ink-900">
+                  {target.fileName}
+                </span>
+                {target.settled ? (
+                  <span className="flex shrink-0 items-center gap-1 text-xs text-ink-500">
+                    <CircleCheck aria-hidden="true" className="h-3.5 w-3.5" />
+                    Crop set
+                  </span>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant={target.settled ? "ghost" : "secondary"}
+                  onClick={() => setCropping(target.assetId)}
+                >
+                  {target.settled ? "Change it" : "Choose"}
+                  {/*
+                    Every row's button would otherwise be called "Choose", and a screen reader listing
+                    the buttons on this panel would read forty identical names with nothing to tell
+                    them apart. The file name goes into the accessible name and stays out of the
+                    visible one, where it would wrap the button to three lines.
+                  */}
+                  <span className="sr-only"> what is shown of {target.fileName}</span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-2.5">
+            <Button size="sm" variant="ghost" onClick={() => setCropTargets([])}>
+              {unsettledCrops === 0
+                ? "Hide this list"
+                : unsettledCrops === 1
+                  ? "Leave that one showing the whole picture"
+                  : `Leave those ${unsettledCrops} showing the whole picture`}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {/*
+        One dialog for the whole list rather than one per row: it is a modal, only one can be open,
+        and mounting forty of them would mount forty <img> elements pointed at forty object URLs.
+      */}
+      <ImageCropper
+        open={cropTarget !== null}
+        onClose={() => setCropping(null)}
+        src={cropSrc}
+        fileName={cropTarget?.fileName ?? ""}
+        onApply={(choice) => {
+          const assetId = cropTarget?.assetId;
+          if (!assetId) return;
+          return saveCrop(assetId, choice);
+        }}
+      />
 
       {notice ? (
         <p

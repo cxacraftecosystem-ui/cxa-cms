@@ -47,6 +47,16 @@
   --purple-950: oklch(0.255 0.108 305);
   --gold-300: oklch(0.85 0.11 86);
   --gold-500: oklch(0.7 0.145 80);
+  /*
+   * The one rung of the `earth` ramp that handwritten CSS reaches for — the umber a word may be set
+   * in. tailwind.config.ts owns the ramp and the arithmetic behind it (6.1:1 on `--bg-0`, which is
+   * what lets 13px capitals wear it); this is the same value in the form a `color:` can take.
+   *
+   * ⚠ ONLY THE RUNGS THAT ARE USED, exactly as the purple and gold lines above do it. A raw copy of
+   * a ramp nobody reads is a second source of truth that drifts silently, and this file has no way of
+   * noticing when it has.
+   */
+  --earth-700: oklch(0.49 0.105 40);
 
   /* Gradients — exactly three recipes. Anything else is a fourth thing to keep in step. */
   --grad-brand: linear-gradient(135deg, oklch(0.47 0.198 305) 0%, oklch(0.34 0.15 305) 100%);
@@ -422,8 +432,25 @@ input[type="number"] {
     @apply rounded-lg bg-surface-50;
   }
 
+  /*
+   * The small-caps label every section on the public site opens with.
+   *
+   * ⚠ THE COLOUR COMES THROUGH A VARIABLE INSTEAD OF `@apply text-purple-700`, AND THE INDIRECTION IS
+   * THE WHOLE POINT — it is what lets a PAGE re-tint its eyebrows without winning a specificity fight
+   * it must not win. The earth block further down sets `--eyebrow-ink` on one `<main>`; if it had
+   * instead written `color` at a selector strong enough to beat this recipe, it would also have beaten
+   * every `text-*` UTILITY the eyebrows on dark bands carry — `eyebrow text-gold-300` in the hero, in
+   * the dark CTA band and in SectionHeading's `dark` tone — and turned all three earth on a ground
+   * where earth is unreadable.
+   *
+   * As written, none of that is at risk: a utility is emitted in the utilities layer, AFTER this
+   * components layer, at the same (0,1,0) specificity, so it still wins on source order exactly as it
+   * did before (contract §5). The variable only ever decides what this recipe's OWN default is, and
+   * the fallback is the value that was hard-coded here.
+   */
   .eyebrow {
-    @apply text-[0.8125rem] font-semibold uppercase tracking-[0.14em] text-purple-700;
+    @apply text-[0.8125rem] font-semibold uppercase tracking-[0.14em];
+    color: var(--eyebrow-ink, var(--purple-700));
   }
 
   .file-trigger {
@@ -473,6 +500,74 @@ input[type="number"] {
 
   main.page-top > [data-bleed-top]:first-child {
     --bleed-top: var(--nav-clearance);
+  }
+
+  /*
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE EARTH SEASONING — two warm notes on the hero-led page, and deliberately only two
+   *
+   * The Centre's subject is terracotta, ochre, madder, umber and turmeric, and the front page was
+   * telling that story entirely in violet and gold. So the `earth` ramp (tailwind.config.ts, built
+   * outwards from the mark's own `#CC785C`) gets spent here — twice, on the page whose subject it is.
+   *
+   * ⚠ RESTRAINT IS THE REQUIREMENT, NOT A STYLE PREFERENCE. The brand is purple and gold; a front
+   * page that has gone brown is a failure of this block, not a stronger version of it. What is here
+   * is a LABEL COLOUR and a PAPER TINT — no heading, no button, no card, no border, no icon. If a
+   * third note is ever wanted, it should replace one of these rather than join them.
+   *
+   *   1. `--eyebrow-ink`. Every light block on this page opens with an eyebrow (`SectionHeading`
+   *      renders one from `.eyebrow`), and a 13px line of capitals is the smallest place on a page
+   *      where a colour can be felt without being looked at. earth-700 measures 6.1:1 on `--bg-0`,
+   *      which is more than the 4.5:1 small text owes (WCAG 1.4.3) — the arithmetic is in the ramp's
+   *      own header. The eyebrows on this page's DARK bands are untouched and stay gold: they carry a
+   *      `text-*` utility, and the note on `.eyebrow` above explains why a variable — rather than a
+   *      stronger selector — is what keeps that true.
+   *
+   *   2. A wash of warm paper on the page canvas, immediately under the hero. It is what the first
+   *      light block sits on, so that block reads as paper the Centre chose rather than as the cool
+   *      violet-grey `--bg-0` every other page uses. At its strongest the canvas moves from #f7f6fb to
+   *      roughly #f6f0f1: three per cent, which is felt as warmth and not seen as colour.
+   *
+   * ⚠ THE STOPS ARE IN `vh` AND THEY ARE AIMED AT THE HERO'S OWN HEIGHT. HeroSection is
+   * `min-h-[calc(88vh + var(--bleed-top))]` and takes the 6rem nav clearance onto itself (see the
+   * bleed contract above), so its foot lands near 99vh on a 900px-tall window. The band therefore
+   * starts after it and peaks at 128vh. `vh` stops are ABSOLUTE lengths — they resolve against the
+   * viewport, never against `<main>`'s own height — so a page that runs to eight screens still gets
+   * the band in the same place rather than a gradient stretched down the whole document.
+   *
+   * The aim is soft on purpose: an announcement bar pushes the hero down by about 3rem on the days it
+   * is live, and a 50vh-wide fade does not notice.
+   *
+   * ⚠ THE SELECTOR IS NOT `:has(> [data-hero]:first-child)`, WHICH IS THE SHAPE THE BLEED CONTRACT
+   * ABOVE USES, AND THE DIFFERENCE IS INTENTIONAL. That one MUST be first-child-gated: it moves the
+   * header clearance from `<main>` onto the hero, and doing that when an `AnnouncementBar` is above
+   * the hero would pull the announcement up under the floating header. Nothing here depends on the
+   * hero being first — losing the Centre's own colours on the days an announcement is live would be a
+   * bug with no upside — so this asks the plainer question: does this page open with the cinematic
+   * hero? In practice that is the front page, which is where the blocks whose subject is craft live.
+   *
+   * ⚠ AND `<main>` STILL HAS NO `z-index`, WHICH app/(site)/layout.tsx CALLS LOAD-BEARING. A
+   * `background-image` creates no stacking context, so nothing changes: the fluid cursor (fixed, z-40)
+   * still washes over this the way it washes over every section's ground, and `.bg-card`'s rung 45
+   * still lifts every card above both.
+   *
+   * WHY A PAGE-LEVEL WASH RATHER THAN A TINT ON THE FIRST BLOCK: the blocks on this page are rows in
+   * a database that an administrator reorders in the studio, so no stylesheet can know which one is
+   * first, and a rule that guessed would either paint the wrong block or lose its ground the first
+   * time somebody dragged a section. The canvas is the one surface on the page that is always there.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  main:has([data-hero]) {
+    --eyebrow-ink: var(--earth-700);
+
+    /* earth-400 (≈ #E7996E), literal with its own alpha — the spelling `--grad-mesh` already uses,
+       because a Tailwind class cannot be written inside a gradient and a token would invert. */
+    background-image: linear-gradient(
+      180deg,
+      oklch(0.752 0.11 50 / 0) 96vh,
+      oklch(0.752 0.11 50 / 0.07) 128vh,
+      oklch(0.752 0.11 50 / 0) 180vh
+    );
   }
 
   /* The standard content column. Wide enough for a two-up grid, never wider than the eye tracks. */
@@ -1631,11 +1726,16 @@ input[type="number"] {
    * by force that anybody wanted — a print has no viewport to enter and no animation to interrupt.
    *
    * Keyed on `data-reveal`, the attribute `Reveal` stamps on itself and `HeroSection` stamps by hand
-   * on the four elements its variants drive; `data-hero-word` and `data-hero-thread` are the hero
-   * headline's equivalents, hidden by a Tailwind class and an inline dash offset respectively until
-   * GSAP runs. Those three attributes are the complete set of "invisible until JavaScript says
-   * otherwise" on this site, and each is a deliberate, documented hook rather than a class name that
-   * a restyle would take away.
+   * on the four elements its variants drive; `data-hero-word` is the hero headline's equivalent,
+   * hidden by a Tailwind class until GSAP runs. Those two attributes are the complete set of
+   * "invisible until JavaScript says otherwise" on this site, and each is a deliberate, documented
+   * hook rather than a class name that a restyle would take away.
+   *
+   * ⚠ THERE WAS A THIRD, `data-hero-thread`, WITH A RULE OF ITS OWN BENEATH THIS ONE — the accent
+   * phrase's embroidered underline, held off the page by an inline `stroke-dashoffset` rather than by
+   * opacity, so it needed its own declaration to print. The ornament has been removed (see the header
+   * of components/sections/hero/HeroHeadline.tsx); the rule went with it rather than being left
+   * behind to guard an attribute nothing renders.
    *
    * ⚠ DO NOT GENERALISE THIS TO `.opacity-0`. That class is also worn by things that are SUPPOSED to
    * stay invisible: the anchor-link icon RichText reveals on hover, the map's hover label, a
@@ -1646,10 +1746,6 @@ input[type="number"] {
   [data-hero-word] {
     opacity: 1 !important;
     transform: none !important;
-  }
-
-  [data-hero-thread] {
-    stroke-dashoffset: 0 !important;
   }
 
   /*

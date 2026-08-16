@@ -53,7 +53,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
   CircleCheck,
@@ -281,19 +281,28 @@ export interface UserManagerProps {
   /** The signed-in administrator, as the predicates want them. Read from the row on the server. */
   currentUser: PermissionSubject & { id: string; name: string; role: Role };
   /**
-   * How many ACTIVE administrators there are.
+   * How many ACTIVE administrators there are, as the Server Component last counted them.
    *
    * The guard against the last one demoting or locking themselves out is a count, not a permission —
    * `canAssignRole` deliberately permits self-demotion. See the header.
+   *
+   * ⚠ THE FIRST-PAINT VALUE, NOT THE AUTHORITY. The list answer carries the same count and is re-read after
+   * every change, so it is preferred; this is what the screen has to go on until the first answer arrives.
    */
   activeAdministrators: number;
   /**
    * How many ACTIVE master administrators there are, when the server has said.
    *
-   * ⚠ OPTIONAL ON PURPOSE. The list answer carries it too and is refreshed after every change, so this prop
-   * is the first-paint value rather than the authority. When neither source supplies it the screen shows no
-   * master-administrator warning and offers no client-side refusal — the count inside the writing
-   * transaction on the server is the guard either way, and a made-up number here would be worse than none.
+   * ⚠ OPTIONAL ON PURPOSE, AND AN ABSENT COUNT DISARMS THE GUARD ENTIRELY. When neither source supplies it
+   * the screen shows no master-administrator warning and offers no client-side refusal — the count inside
+   * the writing transaction on the server is the guard either way, and a made-up number here would be worse
+   * than none.
+   *
+   * ⚠ IT STAYED ABSENT FOR A LONG TIME AND NOBODY COULD SEE IT: `GET /api/studio/users` does not return
+   * `activeMasterAdmins`, and the page did not count it either, so both sources were empty and the whole
+   * master-administrator half of this screen was quietly dead. `app/studio/users/page.tsx` now counts it.
+   * The list answer is still preferred the moment the route starts sending one — which it should, because
+   * only the answer is re-read after a role change.
    */
   activeMasterAdmins?: number;
   /** True when a mail transport is configured, so an invitation can actually be delivered. */
@@ -307,6 +316,7 @@ export function UserManager({
   canSendEmail
 }: UserManagerProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -336,6 +346,17 @@ export function UserManager({
    * that case rather than to assume a number. See the prop's own note.
    */
   const masterAdmins = list.data?.activeMasterAdmins ?? activeMasterAdmins ?? null;
+  /**
+   * The same for administrators — and this one is never null, because the Server Component always counts
+   * them for the first paint.
+   *
+   * ⚠ THE LIST ANSWER IS PREFERRED BECAUSE IT IS RE-READ AFTER EVERY CHANGE, and reading only the prop was
+   * a real fault rather than a nicety: the number was frozen at whatever it had been when the page was
+   * first rendered. Promote a colleague to administrator and the "there is only one active administrator"
+   * warning stayed on screen underneath the proof that there were now two, and your own role picker went on
+   * refusing to lower your access, until somebody thought to reload the whole page.
+   */
+  const administrators = list.data?.activeAdministrators ?? activeAdministrators;
   /** Only a master administrator may open the access list, so only they are offered the link (§1.8). */
   const mayManageAccess = canManageStudioAccess(currentUser);
 
@@ -445,8 +466,46 @@ export function UserManager({
           if (result.link) {
             setHandoverLink({ label: `Invitation link for ${result.email}`, url: result.link });
           }
-          await list.refresh();
+
+          /**
+           * ⚠ THE LIST IS NARROWED TO THE PERSON JUST INVITED, NOT MERELY RE-READ. THIS WAS THE BUG.
+           *
+           * Refreshing on its own is not enough, because the answer is ONE PAGE OF 25 ORDERED BY NAME
+           * (`app/api/studio/users/route.ts` — `orderBy: [{ name }, { email }]`, `skip`/`take`), narrowed by
+           * whatever is in the search box and the two pickers. An invitation sent while any of that was in
+           * force writes a row the current answer cannot contain: invite Zoe from page 1 of a 40-account
+           * Centre, or from a search for the address you have just discovered nobody holds, and the account
+           * is created, the audit entry is written, the link comes back — and the administrator who created
+           * it is looking at a table that does not have them in it.
+           *
+           * It got worse from there. `setActiveId` then pointed at a row that is not in `rows`, so
+           * `selected` fell back to null and the panel on the right said "Nobody is selected" as well. Every
+           * signal the screen had agreed that nothing had happened.
+           *
+           * Filtering to the address makes the new row the only row, on page 1, whatever the roster's size
+           * and whatever was being looked at a moment ago. The "Some filters are set" line and the "Clear
+           * all filters" button are already rendered directly above the table, so the way back to everybody
+           * is on screen and needs no explaining.
+           */
+          setFilters({ ...DEFAULT_FILTERS, q: result.email });
           setActiveId(result.id);
+
+          /**
+           * BOTH REFRESHES, AND NEITHER IS REDUNDANT.
+           *
+           * `list.refresh()` covers the case where the line above did NOT change the path — an
+           * administrator who searched for a colleague, found nobody and invited them from that same search
+           * leaves `q` exactly as it was, and `useResource` re-fetches on a CHANGE of path. Without this the
+           * screen would sit on the answer that predates the account it has just created, which is the very
+           * failure this whole block is here to end.
+           *
+           * `router.refresh()` re-runs the Server Component, which owns three numbers this component cannot
+           * recompute: the "N accounts" figure in the page header, and both lockout counts. All three were
+           * read once at first paint, so without this the header went on contradicting the table and an
+           * installation went on being told it had one administrator after its second was invited.
+           */
+          await list.refresh();
+          router.refresh();
         }}
         onFailed={(thrown) => report(thrown, "Nobody has been invited")}
       />
@@ -502,7 +561,7 @@ export function UserManager({
         </div>
       </section>
 
-      {activeAdministrators <= 1 ? (
+      {administrators <= 1 ? (
         <HelpText tone="warn">
           There is only one active administrator on this installation. If that account is lost — a forgotten
           password with no way to send email, a device with the second factor on it — nobody can manage
@@ -691,11 +750,17 @@ export function UserManager({
                 key={selected.id}
                 user={selected}
                 currentUser={currentUser}
-                activeAdministrators={activeAdministrators}
+                activeAdministrators={administrators}
                 activeMasterAdmins={masterAdmins}
                 canSendEmail={canSendEmail}
                 onClose={() => setActiveId(null)}
-                onChanged={() => void list.refresh()}
+                // Both halves again, for the reason set out beside the invitation: a role change or a
+                // switched-off account moves an account in or out of a lockout count, and that count is
+                // rendered by the Server Component.
+                onChanged={() => {
+                  void list.refresh();
+                  router.refresh();
+                }}
                 onHandoverLink={setHandoverLink}
                 onFailed={report}
                 confirm={confirm}

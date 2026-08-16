@@ -301,6 +301,19 @@ export const SECTION_REGISTRY = {
     group: "Media",
     allowMultiple: true
   },
+  DOCUMENT_EMBED: {
+    type: "DOCUMENT_EMBED",
+    label: "Document",
+    description:
+      "One uploaded document placed on the page. A PDF is shown here and can be read without leaving; a PowerPoint or Word file cannot be — no browser can draw those — so it is offered as a download with its name, type and size.",
+    icon: "FileText",
+    // Beside the video and the map rather than under Showcase: somebody looking for "the annual
+    // report on the page" is looking among the things a page SHOWS, not among the lists it pulls in.
+    // "Downloads" is the block for a list of files from the file store.
+    group: "Media",
+    // Two documents on one page is normal — a report and its annexe, a syllabus and a timetable.
+    allowMultiple: true
+  },
   MAP: {
     type: "MAP",
     label: "Map",

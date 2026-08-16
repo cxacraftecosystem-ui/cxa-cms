@@ -206,7 +206,9 @@ export function PublicationListForm({
             { value: "SOFTWARE", label: "Software" },
             { value: "PREPRINT", label: "Preprints" },
             { value: "THESIS", label: "Theses" },
-            { value: "REPORT", label: "Reports" }
+            { value: "REPORT", label: "Reports" },
+            { value: "BOOKLET", label: "Booklets" },
+            { value: "FLYER", label: "Flyers" }
           ]}
           onChange={(event) =>
             update({ kind: event.target.value as PublicationListSectionData["kind"] })

@@ -9,7 +9,10 @@
  * ⚠ `aria-live="polite"` NEVER INTERRUPTS. The reader finishes the sentence it is on and only then
  * reads the toast; if they navigate away first it may never be read at all. **A toast is therefore
  * the wrong home for anything the user must act on.** Confirmations, expired sessions and destructive
- * warnings need a dialog, which takes focus and will not proceed without an answer.
+ * warnings need a dialog, which takes focus and will not proceed without an answer. The one control a
+ * toast may hold is `link` — a published address with a copy button — and the argument for why that
+ * stays inside this rule (it is a shortcut to something the record's own screen also shows, never the
+ * only copy of anything) is set out at length in Toast.tsx. Read it before adding a second kind.
  *
  * THE VIEWPORT RENDERS EVEN WHEN EMPTY, AND THAT IS THE POINT. Assistive technology only announces
  * mutations inside a live region that ALREADY EXISTED when the mutation happened. A region mounted
@@ -37,6 +40,7 @@ import { AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_DURATION,
+  LINKED_DURATION,
   Toast,
   type ToastOptions,
   type ToastRecord
@@ -84,7 +88,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       title: options.title,
       description: options.description,
       tone: options.tone ?? "info",
-      duration: options.duration ?? DEFAULT_DURATION
+      // A notice carrying a link is asking the reader to REACH for something, not only to read it, so
+      // it gets the longer countdown by default (Toast.tsx, LINKED_DURATION). An explicit `duration`
+      // still wins — a caller who says 0 means "leave it until it is dismissed" either way.
+      duration: options.duration ?? (options.link ? LINKED_DURATION : DEFAULT_DURATION),
+      link: options.link
     };
     setQueue((current) => [...current, record]);
     return id;

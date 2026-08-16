@@ -61,6 +61,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
+import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 
@@ -147,10 +148,19 @@ const KIND_OPTIONS: readonly { value: PublicationKind; label: string }[] = [
   { value: "DATASET", label: "Dataset" },
   { value: "SOFTWARE", label: "Software" },
   { value: "THESIS", label: "Thesis" },
-  { value: "REPORT", label: "Report" }
+  { value: "REPORT", label: "Report" },
+  { value: "BOOKLET", label: "Booklet" },
+  { value: "FLYER", label: "Flyer" }
 ];
 
-/** What the venue field means for each type, so the label is never a guess. */
+/**
+ * What the venue field means for each type, so the label is never a guess.
+ *
+ * ⚠ THIS IS THE ONE MAP HERE THAT IS TOTAL. `KIND_OPTIONS` above is an array, so a kind missing from it
+ * compiles and simply cannot be chosen; a kind missing from this `Record` is a build failure. That
+ * asymmetry is why a new value must be added to BOTH by hand — check the array first, since it is the
+ * half that fails quietly.
+ */
 const VENUE_LABELS: Record<PublicationKind, string> = {
   JOURNAL_ARTICLE: "Journal",
   CONFERENCE_PAPER: "Conference or proceedings",
@@ -161,7 +171,11 @@ const VENUE_LABELS: Record<PublicationKind, string> = {
   DATASET: "Repository",
   SOFTWARE: "Repository or registry",
   THESIS: "University or institution",
-  REPORT: "Institution"
+  REPORT: "Institution",
+  // Both are issued by the Centre or by a programme rather than by a publisher, so the useful thing to
+  // record is which one — "Bagru cluster training programme", not a journal name.
+  BOOKLET: "Programme or series it belongs to",
+  FLYER: "Programme or event it was issued for"
 };
 
 const MONTHS: readonly { value: string; label: string }[] = [
@@ -307,6 +321,14 @@ export function PublicationEditor({
     [publicationId]
   );
 
+  /** The public address, handed over the moment this publication crosses onto the site. */
+  const announcePublished = usePublishNotice({
+    initial: initialValue,
+    origin: siteUrl,
+    basePath: "/publications/",
+    subject: "publication"
+  });
+
   const autosave = useAutosave<PublicationFormValue>({
     data: value,
     save,
@@ -318,9 +340,12 @@ export function PublicationEditor({
       if (fresh !== null) {
         createdId.current = null;
         toast({ tone: "success", title: "The publication has been created" });
+        // After the creation notice, so the two arrive in the order they happened.
+        announcePublished(sent);
         router.replace(`/studio/publications/${fresh}`);
         return;
       }
+      announcePublished(sent);
       router.refresh();
     }
   });

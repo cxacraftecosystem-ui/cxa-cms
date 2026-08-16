@@ -66,7 +66,9 @@ const KIND_LABEL: Record<PublicationKind, string> = {
   SOFTWARE: "Software",
   PREPRINT: "Preprint",
   THESIS: "Thesis",
-  REPORT: "Report"
+  REPORT: "Report",
+  FLYER: "Flyer",
+  BOOKLET: "Booklet"
 };
 
 /** Above this many rows the year labels are worth sticking. See the header. */

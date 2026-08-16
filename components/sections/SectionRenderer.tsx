@@ -74,6 +74,7 @@ import { ActionStepsSection } from "@/components/sections/ActionStepsSection";
 import { ContactFormSection } from "@/components/sections/ContactFormSection";
 import { CraftExplorerSection } from "@/components/sections/CraftExplorerSection";
 import { CtaSection } from "@/components/sections/CtaSection";
+import { DocumentEmbedSection } from "@/components/sections/DocumentEmbedSection";
 import { DownloadsSection } from "@/components/sections/DownloadsSection";
 import { EmbedSection } from "@/components/sections/EmbedSection";
 import { EventShowcaseSection } from "@/components/sections/EventShowcaseSection";
@@ -210,7 +211,16 @@ const RENDERERS: { [K in SectionType]: Renderer<K> } = {
   // The platform's three fixed vignettes. All copy and geometry are code (see the schema's note),
   // so it renders only its own payload and is handed `{ resolved }` it does not declare.
   PLATFORM_PILLARS: PlatformPillarsSection,
-  INDIA_MAP: IndiaMapSection
+  INDIA_MAP: IndiaMapSection,
+  /*
+   * One uploaded document, placed on the page. It is absent from `EXTRAS` below and takes the
+   * fall-through `{ resolved }`, which is exactly right: like the hero's backdrop and the picture
+   * beside a text block, its document is a `MediaAsset` named BY ID in the payload and keyed by ASSET
+   * id in `resolved.media`, not a curated list keyed by block. `lib/sections/resolve.ts` is where that
+   * id is collected into the batched read; the renderer states its own case when it resolves to
+   * nothing, because an asset can be deleted after a payload has named it.
+   */
+  DOCUMENT_EMBED: DocumentEmbedSection
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

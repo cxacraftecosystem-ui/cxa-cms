@@ -70,7 +70,8 @@ const PERSON_KINDS = [
   "STUDENT",
   "STAFF",
   "VISITOR",
-  "ALUMNUS"
+  "ALUMNUS",
+  "DC_HANDICRAFTS"
 ] as const satisfies readonly PersonKind[];
 
 /**
@@ -78,12 +79,13 @@ const PERSON_KINDS = [
  *
  * ⚠ A deliberate second copy of `PERSON_KIND_GROUPS` in components/site/PersonCard.tsx. That module is a CARD
  * — importing it here to read a label would pull a renderer and the components under it into an API route,
- * which is the wrong dependency for the sake of seven strings (`app/api/studio/research/route.ts` refuses the
+ * which is the wrong dependency for the sake of a handful of strings (`app/api/studio/research/route.ts` refuses the
  * same import for the same reason). Being a total `Record<PersonKind, string>` is what stops the two drifting:
  * a new group is a compile error in both files.
  *
- * Written out rather than derived from the enum because "Faculty" and "Staff" are already plural and
- * "Alumnus" pluralises to "Alumni" — a naive `${label}s` gets three of the seven wrong.
+ * Written out rather than derived from the enum because "Faculty" and "Staff" are already plural,
+ * "Alumnus" pluralises to "Alumni" and "DC, Handicrafts" is one office — a naive `${label}s` gets four of
+ * the eight wrong.
  */
 const GROUP_LABELS: Record<PersonKind, string> = {
   FACULTY: "Faculty",
@@ -92,11 +94,12 @@ const GROUP_LABELS: Record<PersonKind, string> = {
   STUDENT: "Students",
   STAFF: "Staff",
   VISITOR: "Visitors",
-  ALUMNUS: "Alumni"
+  ALUMNUS: "Alumni",
+  DC_HANDICRAFTS: "DC, Handicrafts"
 };
 
 const orderBody = z.object({
-  // One `message` rather than Zod's default, which lists all seven enum values back at the reader. The group
+  // One `message` rather than Zod's default, which lists every enum value back at the reader. The group
   // is chosen by the screen and never typed by hand, so an unexpected value means the screen is out of date.
   kind: z.enum(PERSON_KINDS, {
     message: "That is not a group on the people board. Reload the page and try the move again."

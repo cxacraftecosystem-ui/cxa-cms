@@ -475,6 +475,11 @@ function keySlug(input: string): string {
  * recognise is silently dropped from the bibliography, which is worse than a coarse but rendered one.
  * THESIS maps to `@phdthesis`: the schema has a single THESIS kind, so a master's thesis is labelled
  * doctoral everywhere in this file. An editor with a master's thesis should say so in the venue.
+ *
+ * BOOKLET gets the real `@booklet` — classic BibTeX has it, for "printed and bound, but with no named
+ * publisher", which is a Centre booklet exactly. FLYER has no counterpart in any `.bst` and becomes
+ * `@misc` for the same reason as datasets and software: a coarse entry type renders, and one a style
+ * file does not recognise is dropped from the bibliography without a word.
  */
 const BIBTEX_ENTRY_TYPES: Record<PublicationKind, string> = {
   JOURNAL_ARTICLE: "article",
@@ -486,7 +491,9 @@ const BIBTEX_ENTRY_TYPES: Record<PublicationKind, string> = {
   SOFTWARE: "misc",
   PREPRINT: "misc",
   THESIS: "phdthesis",
-  REPORT: "techreport"
+  REPORT: "techreport",
+  FLYER: "misc",
+  BOOKLET: "booklet"
 };
 
 const BIBTEX_ESCAPES: Record<string, string> = {
@@ -615,6 +622,11 @@ export function generateBibtex(publication: CitablePublication): string {
       break;
     case "DATASET":
     case "SOFTWARE":
+    // `howpublished` is a standard field of `@booklet` as well as of `@misc`, and it is the only place
+    // a self-issued work can say where it came from. Without this case both would fall to `default` and
+    // export as an author, a title and a year — an entry a reader cannot act on.
+    case "BOOKLET":
+    case "FLYER":
       pushText("howpublished", publisher ?? venue);
       break;
     case "PREPRINT": {
@@ -698,7 +710,13 @@ export function formatCitation(publication: CitablePublication, style: CitationS
   }
 }
 
-/** The bracketed descriptor APA requires for anything that is not an article, book or chapter. */
+/**
+ * The bracketed descriptor APA requires for anything that is not an article, book or chapter.
+ *
+ * ⚠ THE `default` MEANS A NEW KIND FAILS SILENTLY HERE. Adding a value to `PublicationKind` does not
+ * break this function — it just returns null, and the citation loses the one clause that tells a reader
+ * the work is not a journal article. Every kind that is not an article, book or chapter needs a case.
+ */
 function apaDescriptor(kind: PublicationKind): string | null {
   switch (kind) {
     case "CONFERENCE_PAPER":
@@ -711,6 +729,13 @@ function apaDescriptor(kind: PublicationKind): string | null {
       return "[Preprint]";
     case "REPORT":
       return "[Report]";
+    // APA's own example for this family of grey literature is "[Brochure]"; the schema's two words for
+    // it are kept rather than folded into one, because a reader deciding whether to chase up a citation
+    // wants to know whether it is a single sheet or a bound programme booklet.
+    case "FLYER":
+      return "[Flyer]";
+    case "BOOKLET":
+      return "[Booklet]";
     default:
       return null;
   }
@@ -780,6 +805,10 @@ function apaCitation(publication: CitablePublication, authors: readonly ParsedAu
     case "DATASET":
     case "SOFTWARE":
     case "REPORT":
+    // `publisher ?? venue` rather than the `default`'s publisher alone: a flyer or a booklet usually has
+    // no publisher at all, and the venue is where the editor has recorded the programme that issued it.
+    case "FLYER":
+    case "BOOKLET":
       parts.push(publisher ? terminate(publisher) : venue ? terminate(venue) : null);
       break;
     default:
@@ -806,6 +835,14 @@ function isStandaloneWork(kind: PublicationKind, style: CitationStyle): boolean 
     case "DATASET":
     case "SOFTWARE":
     case "PATENT":
+    // A flyer and a booklet are each the whole object — there is no journal, proceedings or edited
+    // volume containing them. All three styles set such a title as the work rather than quoting it, so
+    // unlike THESIS and REPORT below these need no per-style split. ⚠ Falling through to the `default`
+    // instead — which is what a new kind does if it is not listed — would quote the title as though the
+    // work were an extract from something, and leave the reader looking for a container that does not
+    // exist.
+    case "FLYER":
+    case "BOOKLET":
       return true;
     case "THESIS":
       // MLA treats a dissertation as a self-contained work and italicises it. Chicago and IEEE both

@@ -72,6 +72,7 @@ import type { SectionPayloads } from "@/lib/sections/schema";
 
 import { ActionStepsForm } from "@/components/studio/sections/ActionStepsForm";
 import { CtaForm } from "@/components/studio/sections/CtaForm";
+import { DocumentEmbedForm } from "@/components/studio/sections/DocumentEmbedForm";
 import { EmbedForm } from "@/components/studio/sections/EmbedForm";
 import { FaqForm } from "@/components/studio/sections/FaqForm";
 import { FeatureGridForm } from "@/components/studio/sections/FeatureGridForm";
@@ -167,7 +168,11 @@ export const SECTION_FORMS: { [K in SectionType]: SectionFormComponent<SectionPa
   // The platform's three fixed vignettes: the drawings and their captions are code, so the form
   // edits the header only and says so (see PlatformPillarsForm's own header).
   PLATFORM_PILLARS: PlatformPillarsForm,
-  INDIA_MAP: IndiaMapForm
+  INDIA_MAP: IndiaMapForm,
+  // One uploaded document, placed on a page. Its form is the third to read its field descriptions
+  // through `.innerType()` — the schema is a `ZodEffects`, because the title is required once a
+  // document is chosen, for the same accessibility reason as EMBED's and FORM_EMBED's.
+  DOCUMENT_EMBED: DocumentEmbedForm
 };
 
 /** The props a form takes once the type is only known at runtime. */
@@ -303,6 +308,7 @@ export { mergeSectionData } from "@/lib/sections/anchor";
 // than through the builder — the homepage hero, for instance, or a settings screen that owns one block.
 export { ActionStepsForm } from "@/components/studio/sections/ActionStepsForm";
 export { CtaForm } from "@/components/studio/sections/CtaForm";
+export { DocumentEmbedForm } from "@/components/studio/sections/DocumentEmbedForm";
 export { EmbedForm } from "@/components/studio/sections/EmbedForm";
 export { FaqForm } from "@/components/studio/sections/FaqForm";
 export { FeatureGridForm } from "@/components/studio/sections/FeatureGridForm";

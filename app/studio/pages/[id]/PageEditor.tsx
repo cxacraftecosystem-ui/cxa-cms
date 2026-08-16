@@ -72,6 +72,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems, type StatusControlValue } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
+import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { PageBuilder } from "@/components/studio/builder/PageBuilder";
 import type { BuilderSection } from "@/components/studio/builder/SectionCard";
@@ -490,12 +491,29 @@ export function PageEditor({
     [mode, pageId, router]
   );
 
+  /**
+   * The public address, handed over the moment this page crosses onto the site.
+   *
+   * `basePath` is "/" because a `Page`'s slug IS its whole path — "research/roadmap" is a page two
+   * levels down, not a slug inside a section — which is also why `SlugField` below is given
+   * `allowSlashes`. The homepage's slug is empty, and `usePublishNotice` resolves that to the origin.
+   */
+  const announcePublished = usePublishNotice({
+    initial,
+    origin: siteOrigin,
+    basePath: "/",
+    subject: "page"
+  });
+
   const autosave = useAutosave<PageSettingsValue & { createRedirect: boolean }>({
     data: savePayload,
     save,
     // A new page has nothing to PATCH, so the timer stands down and Save is the only way to create it.
     enabled: mode === "edit",
-    isPublished: isPublic
+    isPublished: isPublic,
+    // The snapshot that was SENT, so the address in the notice is the one the server has just stored —
+    // not an address the reader carried on editing while the request was in flight.
+    onSaved: (sent) => announcePublished(sent)
   });
 
   /**

@@ -52,6 +52,7 @@ import {
   Eye,
   EyeOff,
   FileInput,
+  FileText,
   FolderKanban,
   GalleryHorizontal,
   GalleryHorizontalEnd,
@@ -228,7 +229,11 @@ const SECTION_ICONS: Record<string, LucideIcon> = {
   // Platform pillars: three columns, which is what the block is.
   Columns3,
   // Map of India: a pin, which is what the block puts on the country.
-  MapPin
+  MapPin,
+  // The document block. A page with lines on it, which is what it puts on the page — and it is
+  // deliberately NOT `Download`: that glyph belongs to the Downloads block, which is a list of files
+  // to take away, and two blocks wearing one icon is how an editor adds the wrong one.
+  FileText
 };
 
 /**
@@ -511,6 +516,18 @@ export function summariseSection(type: SectionType, raw: unknown): string {
     case "DOWNLOADS": {
       const category = readText(data, "category");
       return joinParts([heading, curationWords(data, "files"), category ? `${category} only` : ""]);
+    }
+    case "DOCUMENT_EMBED": {
+      // The chosen document is a `MediaAsset` id, and this summariser reads the RAW payload with no
+      // lookup behind it — so the row can say WHETHER a document is chosen and never which one. That
+      // is the honest half: "no document chosen yet" is the state an editor needs to see from a list
+      // of twenty blocks, and the name is one click away in the panel that can resolve it.
+      const title = readText(data, "title");
+      const chosen = readText(data, "mediaId") !== "";
+      return (
+        joinParts([title, chosen ? "one document" : "no document chosen yet"]) ||
+        "Nothing chosen yet"
+      );
     }
     case "CRAFT_EXPLORER": {
       const view = readText(data, "view") || "grid";

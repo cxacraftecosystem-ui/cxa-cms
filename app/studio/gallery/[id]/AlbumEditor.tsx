@@ -91,6 +91,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
+import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
@@ -346,13 +347,28 @@ export function AlbumEditor({
    */
   const isPublic = draft.status === "PUBLISHED" || draft.status === "SCHEDULED";
 
+  /**
+   * The public address, handed over the moment this album crosses onto the site. `basePath` is the same
+   * string `SlugField` is given below, so the preview in the form and the link in the notice cannot
+   * disagree about where the album has gone.
+   */
+  const announcePublished = usePublishNotice({
+    initial: album,
+    origin: siteUrl,
+    basePath: "/gallery/",
+    subject: "album"
+  });
+
   const autosave = useAutosave<AlbumPayload>({
     data: payload,
     save,
     isPublished: isPublic,
     // Nothing is created behind the reader's back. An album that does not exist yet is saved when they
     // choose Save, and the bar says so.
-    enabled: albumId !== null
+    enabled: albumId !== null,
+    // The snapshot that was SENT, which is what `save` has just written — not `draft`, which the reader
+    // may have carried on editing while the request was in flight.
+    onSaved: (sent) => announcePublished(sent)
   });
 
   useLeaveGuard(autosave.isDirty);
