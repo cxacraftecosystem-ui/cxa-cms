@@ -19,6 +19,11 @@
  * IT COUNTS PROGRESS OUT LOUD AND CAN BE STOPPED. Anything left unattempted after a stop stays
  * selected and is named as unattempted rather than as failed: "we did not try" and "we tried and it
  * refused" are different facts and lead to different next steps.
+ *
+ * DELETING IS SOFT, AND WHAT IT BREAKS IS NAMED AFTERWARDS. The bar cannot know what uses a file — see
+ * `applyDelete` — so it does not pretend to; it collects the reference list each `DELETE` answers with
+ * and lists every record left without a picture, each as a link. The recovery window is stated as a
+ * real number of days where the caller passed one, and not guessed at where it did not.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * The bar's own motion is the one kind the studio allows: a state change that carries meaning, 4px and
@@ -26,8 +31,9 @@
  */
 
 import { useRef, useState, type KeyboardEvent } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { FolderInput, Pencil, Tags, Trash2, TriangleAlert, X } from "lucide-react";
+import { FolderInput, Link2Off, Pencil, Tags, Trash2, TriangleAlert, X } from "lucide-react";
 
 import { asApiClientError, del, patch } from "@/lib/client/fetcher";
 import { cn, unique } from "@/lib/utils";
@@ -39,7 +45,13 @@ import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Select } from "@/components/ui/Select";
-import { MEDIA_ENDPOINTS, type MediaFolderNode, type StudioMediaAsset } from "./MediaGrid";
+import {
+  MEDIA_ENDPOINTS,
+  type MediaDeleteResponse,
+  type MediaFolderNode,
+  type MediaUsage,
+  type StudioMediaAsset
+} from "./MediaGrid";
 
 export interface BulkOutcome {
   /** Ids that were changed. The caller re-reads these rather than trusting local state. */
@@ -56,9 +68,23 @@ export interface BulkActionsProps {
   /** How many rows there are in the whole filtered list, if known. */
   totalRows?: number | null;
   folders: readonly MediaFolderNode[] | null;
+  /**
+   * How many days a deleted file can still be restored for — `MEDIA_PURGE_AFTER_DAYS` as configured on
+   * this installation. Null where the caller does not know it, and the confirmation then names the
+   * recycle bin without inventing a period.
+   */
+  recoveryDays?: number | null;
   onFinished: (outcome: BulkOutcome) => void;
   onClearSelection: () => void;
   className?: string;
+}
+
+/** One file that has gone to the recycle bin while something on the site was still using it. */
+interface BrokenReference {
+  fileName: string;
+  usage: MediaUsage[];
+  /** True when the server stopped counting. Said out loud rather than rounded off (contract §1.6). */
+  truncated: boolean;
 }
 
 type Job =
@@ -80,6 +106,7 @@ export function BulkActions({
   rowsOnPage,
   totalRows,
   folders,
+  recoveryDays = null,
   onFinished,
   onClearSelection,
   className
@@ -97,6 +124,8 @@ export function BulkActions({
   const [running, setRunning] = useState<string | null>(null);
   const [done, setDone] = useState(0);
   const [failures, setFailures] = useState<Failure[]>([]);
+  /** What the last delete left without a picture. Stays on screen until it is dismissed. */
+  const [broken, setBroken] = useState<BrokenReference[]>([]);
 
   const stopRef = useRef(false);
   const tagInputRef = useRef<HTMLInputElement | null>(null);
@@ -198,6 +227,22 @@ export function BulkActions({
       await patch(MEDIA_ENDPOINTS.detail(asset.id), { credit: credit.trim() || null });
     });
 
+  /**
+   * Move the selection to the recycle bin, and REPORT WHAT THAT BROKE.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ NOTHING IN THE BROWSER CAN COUNT REFERENCES BEFORE THE FACT, and the confirmation says so rather
+   * than implying the check has been made. "Is this photograph used anywhere" spans fifteen relations
+   * — avatars, covers, galleries, page sharing images, craft photographs — and the rows the bar holds
+   * carry none of that. Only the server counts, and it counts inside `DELETE`, which is the honest
+   * place: a page that started using a file two seconds ago is included, where a check made before the
+   * confirmation would already be out of date.
+   *
+   * So each reply's reference list is collected and shown afterwards, named, with a link to each
+   * record. Discarding it would leave an administrator to find out from a reader — which is the outcome
+   * the whole usage machinery in that route exists to prevent.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
   const applyDelete = async () => {
     const agreed = await confirm({
       title:
@@ -207,12 +252,23 @@ export function BulkActions({
       body: (
         <>
           <p>
-            They disappear from the site straight away. Nothing is destroyed yet — everything can be
-            restored from the recycle bin.
+            They disappear from the site straight away, and nothing is destroyed:{" "}
+            {/*
+              The REAL configured window, or no number at all — see `recoveryDays`. And "an
+              administrator can put them back", never "you can": deleting needs `canManageMedia`,
+              restoring needs `canRestoreDeleted`, which is ADMINISTRATOR only (lib/permissions.ts).
+            */}
+            {typeof recoveryDays === "number"
+              ? `they go to the recycle bin, where an administrator can put them back for the next ${
+                  recoveryDays === 1 ? "1 day" : `${recoveryDays} days`
+                }, after which the stored copies are removed for good.`
+              : "they go to the recycle bin, where an administrator can put them back. Studio → Recycle bin states how long this installation keeps them for."}
           </p>
           <p className="mt-2">
-            Anything on the site that used one of these files will be left without a picture. Open a
-            file on its own to see where it is used before removing it.
+            Anything on the site that used one of these files will be left without a picture.{" "}
+            <span className="font-semibold">Which pages those are is not known yet</span> — that is
+            counted as each file is removed, and every one of them will be listed here afterwards.
+            Opening a file on its own shows the list before you commit to it.
           </p>
         </>
       ),
@@ -220,9 +276,23 @@ export function BulkActions({
     });
     if (!agreed) return;
 
+    setBroken([]);
+    // Filled from inside the loop and read after it: `run` awaits every step before it returns, so by
+    // the line below this array is complete.
+    const collected: BrokenReference[] = [];
+
     await run("Moving to the recycle bin", async (asset) => {
-      await del(MEDIA_ENDPOINTS.detail(asset.id));
+      const result = await del<MediaDeleteResponse>(MEDIA_ENDPOINTS.detail(asset.id));
+      if (result.referenceCount > 0) {
+        collected.push({
+          fileName: result.fileName,
+          usage: result.references,
+          truncated: result.referencesTruncated
+        });
+      }
     });
+
+    setBroken(collected);
   };
 
   const folderOptions = (folders ?? [])
@@ -373,6 +443,72 @@ export function BulkActions({
 
           <div className="mt-2">
             <Button size="sm" variant="ghost" onClick={() => setFailures([])}>
+              Dismiss this list
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {broken.length > 0 ? (
+        /*
+          What the delete actually broke, named. `role="alert"`, not a toast: a toast is
+          `aria-live="polite"`, never interrupts, and may never be read at all — and "the About page
+          now has a hole in it" is the one thing on this screen somebody has to act on today. Amber
+          rather than red because nothing failed: the deletion did exactly what was asked, and this is
+          the consequence of asking.
+        */
+        <div
+          role="alert"
+          className="mt-2 rounded-md border border-amber-800/25 bg-amber-100 p-3 text-amber-800"
+        >
+          <p className="flex items-start gap-1.5 text-sm font-semibold">
+            <Link2Off aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {broken.length === 1
+                ? "1 of the files that was removed is still used on the site"
+                : `${broken.length} of the files that were removed are still used on the site`}
+            </span>
+          </p>
+          <p className="mt-1 text-xs leading-relaxed">
+            These records will render without a picture until somebody chooses another one, or until
+            an administrator puts the file back from the recycle bin.
+          </p>
+
+          <ul className="mt-2 space-y-2">
+            {broken.map((entry) => (
+              <li key={entry.fileName} className="text-xs leading-relaxed">
+                <span className="block break-all font-semibold">{entry.fileName}</span>
+                <ul className="mt-0.5 space-y-0.5">
+                  {entry.usage.map((use, index) => (
+                    <li key={`${use.where}-${use.label}-${index}`}>
+                      {use.href ? (
+                        <Link
+                          href={use.href}
+                          className="font-medium underline underline-offset-4"
+                        >
+                          {use.label}
+                        </Link>
+                      ) : (
+                        <span className="font-medium">{use.label}</span>
+                      )}
+                      <span> — {use.where}</span>
+                    </li>
+                  ))}
+                </ul>
+                {entry.truncated ? (
+                  // The cap, on screen. A list that quietly stops is indistinguishable from that being
+                  // all there was (contract §1.6).
+                  <p className="mt-0.5 italic">
+                    There are more places than these — the count stops after a while. Treat the list as
+                    “at least these”.
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-2">
+            <Button size="sm" variant="ghost" onClick={() => setBroken([])}>
               Dismiss this list
             </Button>
           </div>

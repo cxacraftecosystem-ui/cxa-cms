@@ -159,7 +159,7 @@ const DAY_BUTTON =
 
 /** Shared by the two month-navigation buttons. Ported from the source's `NAV_BUTTON`. */
 const NAV_BUTTON =
-  "inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-700 outline-none transition-colors " +
+  "inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-ink-700 outline-none transition-colors " +
   "hover:bg-purple-50 hover:text-purple-700 dark:hover:bg-purple-950 dark:hover:text-purple-200 " +
   "focus-visible:ring-2 focus-visible:ring-purple-700 focus-visible:ring-offset-2 focus-visible:ring-offset-card " +
   "disabled:pointer-events-none disabled:text-ink-300";
@@ -215,6 +215,27 @@ interface CalendarBaseProps {
   weekStartsOn?: 0 | 1;
   /** The grid's accessible name — "Start date", "Filter from". Say which date, not "Calendar". */
   label?: string;
+  /**
+   * Move focus onto the tab stop as soon as the grid mounts.
+   *
+   * ⚠ OFF BY DEFAULT, AND IT HAS TO BE. Rendered inline in a form, a calendar that took focus on
+   * mount would take it away from whatever the reader was typing into — which is exactly the trap
+   * `wantsFocusRef` below exists to avoid, and the one the source's library falls into (it moves
+   * focus onto a day in a mount effect; AnchoredPopover.tsx in the Design Workshop carries a comment
+   * about the damage that does).
+   *
+   * A calendar in a POPOVER is the opposite case and the only reason this prop exists. The panel is
+   * portalled to the end of `<body>`, so Tab from the trigger walks into the next form field rather
+   * than into the grid — without this the whole month would be unreachable by keyboard. `DateField`
+   * turns it on; nothing rendered inline should.
+   *
+   * ⚠ It does NOT paint a focus ring when the panel was opened with a POINTER. `DAY_BUTTON` rings on
+   * `focus-visible`, and a programmatic focus inherits the trigger's own visibility — mouse-opened,
+   * that is "not visible". The first arrow key moves focus again, in response to a key press, and the
+   * ring appears from there on. Painting it unconditionally would mean a ring flashing on every
+   * single click of every day, which is the trade the `focus-visible` note above already refused.
+   */
+  autoFocus?: boolean;
   className?: string;
 }
 
@@ -243,6 +264,7 @@ export function Calendar(props: CalendarProps) {
     isDisabled,
     weekStartsOn = 1,
     label,
+    autoFocus = false,
     className
   } = props;
 
@@ -349,14 +371,40 @@ export function Calendar(props: CalendarProps) {
     return days[0] ?? startOfMonth(month);
   }, [focusedDay, selectedSingle, selectedRange, today, month, days]);
 
+  /**
+   * Put the real DOM focus on whichever day currently holds the tab stop.
+   *
+   * `preventScroll` in both callers, and it is not decoration: inside a `Popover` the panel is
+   * portalled to `<body>`, and that component closes itself on any scroll it did not cause. A browser
+   * scrolling the page to reveal a day it has just focused would therefore shut the calendar the
+   * instant it opened.
+   */
+  const focusTabStop = useCallback(() => {
+    gridRef.current
+      ?.querySelector<HTMLButtonElement>('button[data-tab-stop="true"]')
+      ?.focus({ preventScroll: true });
+  }, []);
+
   // Move the real DOM focus only after a key press. See `wantsFocusRef`.
   useEffect(() => {
     if (!wantsFocusRef.current) return;
     wantsFocusRef.current = false;
-    const grid = gridRef.current;
-    if (!grid) return;
-    grid.querySelector<HTMLButtonElement>('button[data-tab-stop="true"]')?.focus({ preventScroll: true });
-  }, [tabStop, month]);
+    focusTabStop();
+  }, [tabStop, month, focusTabStop]);
+
+  /**
+   * The one focus move that is NOT a key press: a caller that asked for it. See `autoFocus`.
+   *
+   * The flag is copied into a ref and spent, so a re-render that happens to arrive with `autoFocus`
+   * still true cannot yank focus back out of the day the reader has since arrowed to. Empty
+   * dependencies on purpose — "on mount" is the whole contract.
+   */
+  const autoFocusRef = useRef(autoFocus);
+  useEffect(() => {
+    if (!autoFocusRef.current) return;
+    autoFocusRef.current = false;
+    focusTabStop();
+  }, [focusTabStop]);
 
   const moveFocus = (to: Date) => {
     wantsFocusRef.current = true;

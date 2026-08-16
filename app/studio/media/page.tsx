@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
-import { cdnBaseUrl, storageConfigured } from "@/lib/env";
+import { cdnBaseUrl, mediaPurgeAfterDays, storageConfigured } from "@/lib/env";
 import { canManageMedia } from "@/lib/permissions";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
 import {
@@ -260,6 +260,14 @@ export default async function StudioMediaPage({
         initialFolders={folders}
         initialTags={initialTags}
         storageReady={storageReady}
+        /*
+          Read HERE, on the server, because `MEDIA_PURGE_AFTER_DAYS` has no `NEXT_PUBLIC_` prefix and
+          the browser therefore cannot see it — which is correct, and is why every confirmation that
+          promises a file can be restored takes the number as a prop rather than writing "30 days" into
+          its own copy. It is the same function the purge job reads, so the promise and the deletion
+          cannot drift apart.
+        */
+        recoveryDays={mediaPurgeAfterDays()}
         configurationWarnings={warnings}
       />
     </div>

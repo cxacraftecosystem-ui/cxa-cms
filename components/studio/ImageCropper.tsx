@@ -90,23 +90,54 @@ interface AspectPreset {
 }
 
 /**
- * The shapes on offer, and they are the shapes the site actually draws.
+ * The shapes on offer, and every one of them is a shape the site actually draws.
  *
- * Deliberately five and not fifteen. 16:9 is the hero and the media-split block, 4:3 the card grids,
- * 1:1 the avatars and the square gallery tiles, 3:4 the portrait rail — those four cover every fixed
- * `aspect` passed to `MediaImage` in components/sections. "Free" exists for the editor who is
- * trimming dead space rather than fitting a frame. A longer list would be a list nobody reads, and
- * every extra entry is a shape no section ever asks for.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ THIS LIST IS NOT A DESIGNER'S GUESS. It was read off the `aspect` props actually passed to
+ * `MediaImage` across components/sections and components/site, and each entry names the surface it
+ * serves so that the list can be checked against the code again later:
+ *
+ *   21:9        components/site/PageHero.tsx — the wide plate under a page title
+ *   1200 × 630  lib/seo.ts and `VARIANT_WIDTHS.og` — the picture that appears when a page is shared
+ *   16:9        ParallaxBannerSection, NewsShowcaseSection, ArticleMeta (lead), EmbedSection
+ *   16:10       components/site/EntityCard.tsx, `cover` variant — the ordinary card across the site
+ *   3:2         PartnerLogosSection, ProcessStepsSection
+ *   4:3         GallerySection, HorizontalRailSection, TimelineSection, story/CinematicScroll
+ *   1:1         EntityCard `compact`, QuoteSection, ArticleMeta avatar, CraftMap, the library tiles
+ *   3:4         components/site/EntityCard.tsx, `portrait` variant
+ *   4:5         `PORTRAIT_ASPECT` in PersonCard and PeopleShowcaseSection, ArcCarousel, StoryScroll
+ *
+ * THE PREVIOUS FIVE WERE NOT ENOUGH, and the gap mattered most for people. Every photograph of a
+ * person on this site is drawn at 4:5 (`PORTRAIT_ASPECT`, defined identically in two files), and the
+ * closest shape previously on offer was 3:4 — a crop framed to 3:4 loses another 6% off the top and
+ * bottom in a 4:5 frame, which is exactly where a head is. 16:10, 3:2, 21:9 and the social card were
+ * simply absent, so a card cover, a partner logo, a page hero and a shared link were all being framed
+ * against the wrong rectangle or against nothing at all.
+ *
+ * ⚠ NO ID FROM THE PREVIOUS LIST WAS RENAMED OR REMOVED. `cropAspect` values are already stored
+ * against real assets; a renamed id would silently reopen the dialog on "free" and lose the shape the
+ * editor chose. Ids are only ever ADDED here.
+ *
+ * "Free" stays, and it is not an afterthought: it is the right answer for trimming dead space or a
+ * scanned border, where the point is the picture rather than a frame.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 // `as const satisfies` rather than a `: readonly AspectPreset[]` annotation. The annotation checks the
 // shape but WIDENS every `id` to `string`, so `CropAspectId` below would have been an alias for
 // `string` and would have caught nothing — a typo in a stored `cropAspect` would compile.
 export const CROP_ASPECTS = [
   { id: "free", label: "Free — trim to any shape", ratio: null },
-  { id: "16-9", label: "Wide 16:9 — heroes and banners", ratio: 16 / 9 },
-  { id: "4-3", label: "Landscape 4:3 — card grids", ratio: 4 / 3 },
-  { id: "1-1", label: "Square 1:1 — tiles and portraits", ratio: 1 },
-  { id: "3-4", label: "Upright 3:4 — standing subjects", ratio: 3 / 4 }
+  { id: "21-9", label: "Page hero 21:9", ratio: 21 / 9 },
+  // Spelled as its real pixels rather than as 40:21. A crop made at this shape is the one that appears
+  // when somebody shares the page, and "1200 × 630" is what everybody outside this file calls it.
+  { id: "og", label: "Social card 1200 × 630", ratio: 1200 / 630 },
+  { id: "16-9", label: "Wide 16:9 — banners and news covers", ratio: 16 / 9 },
+  { id: "16-10", label: "Card 16:10 — the usual card cover", ratio: 16 / 10 },
+  { id: "3-2", label: "Landscape 3:2 — logos and step photographs", ratio: 3 / 2 },
+  { id: "4-3", label: "Landscape 4:3 — galleries and rails", ratio: 4 / 3 },
+  { id: "1-1", label: "Square 1:1 — tiles and avatars", ratio: 1 },
+  { id: "3-4", label: "Upright 3:4 — portrait cards", ratio: 3 / 4 },
+  { id: "4-5", label: "Portrait 4:5 — photographs of people", ratio: 4 / 5 }
 ] as const satisfies readonly AspectPreset[];
 
 export type CropAspectId = (typeof CROP_ASPECTS)[number]["id"];
@@ -228,11 +259,26 @@ const CORNERS: readonly { corner: Corner; label: string; cursor: string }[] = [
   { corner: "se", label: "bottom right", cursor: "cursor-nwse-resize" }
 ];
 
-/** The frames the preview strip shows, with the `aspect-ratio` each section actually passes. */
+/**
+ * The frames the preview strip shows, with the `aspect-ratio` each surface actually passes.
+ *
+ * SIX, NOT TEN, and chosen for SPREAD rather than for frequency: the two extremes (21:9 and 4:5) are
+ * where a centre-cropped picture goes most obviously wrong, and the four between them are what an
+ * editor will actually see the picture in. 16:10 and 3:2 are deliberately absent — at this size they
+ * are indistinguishable from 16:9 and 4:3 respectively, so a preview of each would be four boxes
+ * saying the same thing while pushing the useful ones off the bottom.
+ *
+ * They are laid out two abreast, which is what keeps the strip shorter than the picture beside it. One
+ * column of six would run to roughly 50rem against a 24rem picture, so the reader would be scrolling
+ * to compare the thing they are adjusting with the result of adjusting it.
+ */
 const PREVIEW_FRAMES: readonly { id: string; label: string; ratio: string }[] = [
-  { id: "hero", label: "Hero", ratio: "16 / 9" },
-  { id: "card", label: "Card", ratio: "4 / 3" },
-  { id: "tile", label: "Tile", ratio: "1 / 1" }
+  { id: "page-hero", label: "Page hero", ratio: "21 / 9" },
+  { id: "social", label: "Shared link", ratio: "1200 / 630" },
+  { id: "banner", label: "Banner", ratio: "16 / 9" },
+  { id: "gallery", label: "Gallery", ratio: "4 / 3" },
+  { id: "tile", label: "Square tile", ratio: "1 / 1" },
+  { id: "person", label: "Person", ratio: "4 / 5" }
 ];
 
 /**
@@ -329,7 +375,14 @@ export function ImageCropper({
   useEffect(() => {
     if (!open) return;
     setRect(initialRect && isUsableCrop(initialRect) ? initialRect : FULL_CROP);
-    setAspectId(initialAspectId ?? "free");
+    // An id this build does not know — a preset removed in a later version, or a hand-edited row —
+    // falls back to "free" rather than leaving every chip unselected, which would read as a broken
+    // control. The stored rectangle is still honoured; only the lock on its shape is lost.
+    setAspectId(
+      initialAspectId && CROP_ASPECTS.some((entry) => entry.id === initialAspectId)
+        ? initialAspectId
+        : "free"
+    );
     setLoadError(false);
     setBusy(false);
     // `natural` is deliberately NOT cleared: the same picture is usually being reopened, the <img>
@@ -568,10 +621,10 @@ export function ImageCropper({
           <fieldset className="min-w-0">
             <legend className="mb-1.5 text-sm font-medium text-ink-900">Shape</legend>
             {/*
-              Radio buttons, not a <select>. There are five, they are the point of the dialog, and a
-              closed list would hide four of them behind a click on the one screen where comparing
-              them is the task. Native radios keep arrow-key navigation and the grouped announcement
-              ("Shape, Square 1:1, 4 of 5") for free.
+              Radio buttons, not a <select>. The shapes are the point of the dialog, and a closed list
+              would hide all but one of them behind a click on the one screen where comparing them is
+              the task. Native radios keep arrow-key navigation and the grouped announcement
+              ("Shape, Square 1:1, tiles and avatars") for free.
             */}
             <div className="flex flex-wrap gap-1.5">
               {CROP_ASPECTS.map((preset) => {
@@ -715,11 +768,12 @@ export function ImageCropper({
             <div className="min-w-0">
               <p className="text-sm font-medium text-ink-900">On the site</p>
               <p className="mt-0.5 text-xs leading-relaxed text-ink-500">
-                The same crop in the three frames the site uses most.
+                The same crop in six of the frames the site draws. A picture only ever lands in some of
+                these, so judge the ones it is actually for.
               </p>
-              <ul className="mt-2 space-y-2">
+              <ul className="mt-2 grid grid-cols-2 gap-x-2 gap-y-2">
                 {PREVIEW_FRAMES.map((frame) => (
-                  <li key={frame.id}>
+                  <li key={frame.id} className="min-w-0">
                     <div
                       // Inline, not a Tailwind class: an `aspect-[16/9]` assembled from data would be
                       // purged by the content scanner (contract §5).

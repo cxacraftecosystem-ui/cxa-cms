@@ -608,6 +608,18 @@ model MediaAsset {
   /// Tiny base64 LQIP used as next/image `blurDataURL`. Generated once at upload.
   blurDataUrl String?
 
+  /// The part of the picture the site shows, as fractions of the FULL image (0–1), origin at the
+  /// top left. All five are null together and null means "no crop chosen — show the whole thing".
+  /// Applied at RENDER by components/ui/MediaImage.tsx; the stored bytes are never touched, so a
+  /// crop is adjustable for ever and costs no re-upload. See the migration for why.
+  cropX      Float?
+  cropY      Float?
+  cropWidth  Float?
+  cropHeight Float?
+  /// The preset the editor picked ("16-9", "1-1", "free", …), kept only so the cropper reopens on
+  /// the shape they chose. Nothing renders from it — the four numbers above are the truth.
+  cropAspect String?
+
   altText   String?
   caption   String?
   credit    String?

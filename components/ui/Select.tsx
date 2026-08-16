@@ -1,48 +1,99 @@
 "use client";
 
 /**
- * Two controls for choosing from a list, and knowing which one you want is the whole of this file.
+ * One control for choosing from a list, in two bodies, and knowing which body you get is the whole
+ * of this file.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
- * `Select`               — a NATIVE `<select>` in `.field-input` clothing. The default.
- * `SearchableSelect`     — a themed listbox that grows a filter box once the list is long enough.
- * `SearchableMultiSelect`— the same, with checkboxes, "select all" and a Confirm button.
- *
- * ⚠ DO NOT REPLACE THE NATIVE `Select` WITH THE SEARCHABLE ONE ACROSS THE STUDIO. On a phone the
- * native control opens the platform picker — a wheel or a full-height sheet, thumb-sized, scrollable
- * with momentum, searchable by typing, and already translated. A hand-built listbox on the same
- * screen is a 200px scroller with 32px rows that a screen reader has to be told about through eight
- * ARIA attributes, each of which can be got wrong. A four-option enum keeps the plain list it
- * deserves. The searchable pair earns its place at the OTHER end: a list of ninety artisans, four
- * hundred pages or a folder tree is one the reader has to hunt through, and there the native control
- * offers nothing but scrolling.
+ * `Select`               — THE studio's dropdown. A native `<select>` where a native `<select>` is
+ *                          genuinely better, and the ported themed listbox everywhere else. 49
+ *                          files, 103 call sites, none of which had to be edited.
+ * `SearchableSelect`     — that same themed listbox on its own, for a caller whose value is not a
+ *                          `<select>` (a toolbar funnel, a picker inside a dialog).
+ * `SearchableMultiSelect`— the same again, with checkboxes, "select all" and a Confirm button.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
- * ── The native Select ──────────────────────────────────────────────────────────────────────────
- * The chevron is ours because `appearance-none` removes the platform's. It is `pointer-events-none`
- * so a click on the arrow still opens the menu — an arrow that swallows the click is the classic
- * symptom of this pattern done in a hurry.
+ * ── WHY THE NATIVE `<select>` IS STILL IN THIS FILE ────────────────────────────────────────────
+ * The argument that put it here has not weakened and is not being deleted. ON A PHONE THE NATIVE
+ * CONTROL OPENS THE PLATFORM PICKER — a wheel or a full-height sheet, thumb-sized, scrollable with
+ * momentum, searchable by typing, and already translated into the reader's language by the operating
+ * system. A hand-built listbox on the same screen is a 200px scroller with 32px rows, described to a
+ * screen reader through eight ARIA attributes each of which can be got wrong, and re-implementing
+ * momentum and type-ahead badly. Nothing in this file beats that, and nothing in it tries to.
  *
- * THE OPTION LIST IS PAINTED BY THE OPERATING SYSTEM and cannot be styled from here. It follows the
- * theme anyway because globals.css sets `color-scheme` on `:root` for both themes, which is exactly
- * why we do not try to fight it.
+ * THE OPTION LIST OF A NATIVE SELECT IS PAINTED BY THE OPERATING SYSTEM and cannot be styled from
+ * here. It follows the theme anyway because globals.css sets `color-scheme` on `:root` for both
+ * themes, which is exactly why we do not try to fight it.
  *
- * THE PLACEHOLDER OPTION STAYS SELECTABLE, even on a required field. Disabling it means a reader who
- * picked a value by mistake cannot get back to "not answered"; the empty string is rejected by the
- * Zod schema on submit (contract §9), which is where every other rule in this product lives.
+ * ── WHY IT IS NO LONGER THE ONLY THING IN THIS FILE ────────────────────────────────────────────
+ * Reported: "the dropdown has not been applied". The themed listbox was ported into this file and
+ * then never reached a single screen, because `Select` — the only dropdown the studio actually uses —
+ * went on rendering a native `<select>` at all 103 of its call sites.
  *
- * ── The searchable pair, and where it came from ────────────────────────────────────────────────
+ * The half of the argument above that does NOT hold is the desktop half. With a mouse and a keyboard
+ * the OS menu is a grey unthemed rectangle with no filter box, no diacritic folding, no ranking, no
+ * "N of M shown" and no way to reach entry 140 of 300 except by scrolling; it cannot be told that a
+ * folder list is still loading, and it looks nothing like the rest of the studio. That is precisely
+ * where the ported listbox is better, and it is where most of this studio is used.
+ *
+ * ── THE RULE, STATED ONCE ──────────────────────────────────────────────────────────────────────
+ * `Select` renders the NATIVE control when ANY of these is true, and the ported listbox otherwise:
+ *
+ *  1. **The primary pointer is not fine** — `(pointer: fine)` does not match. Phones, tablets, a
+ *     Surface folded into tablet mode. This is the phone argument above, enforced rather than
+ *     asserted, and it re-evaluates live: docking a tablet to a keyboard swaps the control.
+ *  2. **JavaScript has not run** — the server render and the first client render both answer
+ *     "native". That keeps hydration identical on both sides, and it means the no-JavaScript GET
+ *     forms (`/studio/audit`, `/studio/subscribers`) still submit, because with scripts off the swap
+ *     never happens and the native control is what stays on the page.
+ *  3. **The call site is something a listbox cannot faithfully be** — `<optgroup>`/`<option>`
+ *     children, or `multiple`. Neither is used today; both are in the public type, so both are
+ *     answered rather than left to fail quietly.
+ *
+ * ⚠ THE SWAP HAPPENS ONE FRAME AFTER MOUNT, which unmounts the native control and mounts the
+ * listbox. That is safe only because it lands before anybody can have touched either — a swap
+ * triggered later (a tablet being docked mid-edit) carries the value across in the mirror below, so
+ * nothing is lost then either.
+ *
+ * ── HOW ONE PROP CHANGE REACHED 103 CALL SITES ─────────────────────────────────────────────────
+ * Every existing caller writes `onChange={(event) => …event.target.value}` — the native signature —
+ * and six of them submit through `name` with no `value` at all. Rewriting them was not on the table
+ * and, more to the point, was not necessary.
+ *
+ * SO THE ENHANCED PATH KEEPS A REAL `<select>` IN THE PAGE and drives it. It is visually hidden,
+ * `tabIndex={-1}` and `aria-hidden`, and it holds the name, the value, the options, `required` and
+ * anything else this file does not model. Picking a row writes to that element and dispatches a real
+ * `change` event on it, so:
+ *
+ *  • the caller's `onChange` receives a genuine `ChangeEvent<HTMLSelectElement>` — `event.target` is
+ *    a real select, not an object cast into the shape of one;
+ *  • `name`-based form submission, `defaultValue`, uncontrolled state, `form.reset()` and constraint
+ *    validation all go on working, because the thing the form sees never stopped being a `<select>`;
+ *  • nothing had to be added to any call site, and nothing has to be removed if this is ever undone.
+ *
+ * ⚠ THE WRITE GOES THROUGH `HTMLSelectElement.prototype`'s OWN value setter, not `node.value = x`.
+ * React installs its own value bookkeeping on form nodes; writing through the instance property can
+ * be seen as "nothing changed" and the dispatched event swallowed. Going through the prototype
+ * setter writes the DOM and leaves that bookkeeping alone, so the change is always a real one. It
+ * costs one line and removes an entire class of "the handler never fired".
+ *
+ * ⚠ THE PLACEHOLDER STAYS PICKABLE, exactly as it does on the native control. On a `<select>` it is
+ * an empty-valued first `<option>`, deliberately NOT disabled, because a reader who picked a value by
+ * mistake must be able to get back to "not answered"; the empty string is rejected by the Zod schema
+ * on submit (contract §9), which is where every other rule in this product lives. The listbox
+ * therefore gets the same row, as a real option at the top of the panel — without it the enhanced
+ * control would be strictly worse than the one it replaced.
+ *
+ * ── THE LISTBOX, AND WHERE IT CAME FROM ────────────────────────────────────────────────────────
  * Ported from D:/Portal_Development_Designer/frontend/components/ui/SearchableSelect.tsx (and its
  * thin adapters in that repository's `Dropdown.tsx`, which are not brought across — they were three
  * historical signatures kept for forty existing call sites there, and reproducing them here would be
- * importing somebody else's migration debt). NO DEPENDENCY WAS ADDED: the source is plain React over
- * its own `AnchoredPopover`, and this repository already has the equivalent in
- * `components/ui/Popover.tsx`.
+ * importing somebody else's migration debt). NO DEPENDENCY WAS ADDED.
  *
  * FOUR DECISIONS CARRY THE PORT, all inherited from the source and all worth keeping:
  *
- *  1. **Search is decided by option count, not by the call site.** Asking each of forty selects to opt
- *     in guarantees the long ones get missed. `SEARCH_THRESHOLD` splits them; see the constant for
+ *  1. **Search is decided by option count, not by the call site.** Asking each of a hundred selects to
+ *     opt in guarantees the long ones get missed. `SEARCH_THRESHOLD` splits them; see the constant for
  *     why the number is not a guess.
  *  2. **The highlight is derived, never stored raw.** A stored index goes stale the instant the
  *     filter changes, and a stale index means Enter commits a row that is not on screen — the exact
@@ -54,12 +105,15 @@
  *
  * WHAT CHANGED IN THE PORT, and why, so the two repositories can be compared later:
  *
- *  • `AnchoredPopover` → this repository's `Popover`. It already portals (to `<body>`, or to the
- *    enclosing `[data-dialog]` at the right z-rung), flips only when the panel does not fit AND the
- *    other side has more room, takes Escape on a stack so only the topmost panel closes, and closes on
- *    a user scroll or a width change but NOT on a height change. The source's `useEdgeTab` is
- *    therefore deleted rather than translated: `Popover` already intercepts both ends of the tab order
- *    and hands focus back to the anchor.
+ *  • `AnchoredPopover` → this repository's `Popover`, and NO `components/ui/AnchoredPopover.tsx` was
+ *    written. `Popover` already portals (to `<body>`, or to the enclosing `[data-dialog]` at the right
+ *    z-rung), flips only when the panel does not fit AND the other side has more room, takes Escape on
+ *    a stack so only the topmost panel closes, and closes on a user scroll or a width change but NOT
+ *    on a height change. A second 400-line positioner beside it would be two things to keep in step
+ *    and one of them would drift. The source's `useEdgeTab` is deleted rather than translated for the
+ *    same reason: `Popover` already intercepts both ends of the tab order and hands focus back to the
+ *    anchor. The one visible difference is the panel's test hook — `data-popover` here, where the
+ *    source's specs look for `data-anchored-popover`.
  *  • ⚠ `advanceOnSelect` IS GONE, and its absence is the one real loss. The source moves focus to the
  *    next form field after a pick, through `lib/formNav.focusNextField` — a DOM walker scoped with
  *    `closest("form")` and driven by `data-form-field` attributes on every control. That module does
@@ -68,14 +122,28 @@
  *    feature) or attributing every input in the studio (a change across forty files, in a commit
  *    about a dropdown). Focus returns to the trigger instead, which is where `Popover` puts it and
  *    where the reader's place in the tab order actually is.
- *  • The `describedBy`/`invalid` handling is wired to this repository's `Field` context, so a
+ *  • ⚠ THE WRAPPER IS A `<span className="block">`, NOT THE SOURCE'S `<div>`. `Field` renders a real
+ *    `<label>` around its control and a `<label>` takes phrasing content only, so a `<div>` there is
+ *    invalid HTML — at every one of the 103 call sites at once. The `<ul>` is not a problem because it
+ *    is inside the portalled panel, which is a child of `<body>`. (The click-forwarding trap in
+ *    Field.tsx is dodged for the same reason: an option the reader clicks is not a DOM descendant of
+ *    the label, so the browser has nothing to re-dispatch.)
+ *  • The `describedBy` handling is wired to this repository's `Field` context, so a
  *    `<Field label error help>` reaches these controls the way it reaches `Input` and the native
- *    `Select`. THERE IS STILL DELIBERATELY NO `invalid` BORDER: `aria-invalid` is not supported on
- *    `role="button"` and would be silently ignored, so a refusal reaches the reader through the
- *    Field's own error paragraph and `aria-describedby` rather than through a colour a screen reader
- *    cannot see.
- *  • `SelectOption` is shared with the native `Select` rather than declared twice, so a caller can
- *    hand the same array to either and swap between them without touching its data.
+ *    `<select>`.
+ *  • ⚠ THE INVALID BORDER IS PAINTED, WHERE THE SOURCE PAINTED NOTHING, but `aria-invalid` is still
+ *    not set. The two are not the same decision. `aria-invalid` is not supported on `role="button"`
+ *    and would be silently ignored, so setting it would look like marking the field in the source
+ *    while marking nothing at all; the refusal reaches a screen reader through the Field's error
+ *    paragraph and `aria-describedby` instead. The BORDER is for eyes, is the same
+ *    `FIELD_INVALID_CLASS` every other control in this repository uses, and dropping it now that this
+ *    is the default desktop control would have quietly removed the red edge from every erroring
+ *    dropdown in the studio. Colour is never the only carrier — the Field prints an icon and a
+ *    sentence underneath (contract §11).
+ *  • `SelectOption` is shared between the native `<select>` and the listbox rather than declared
+ *    twice, so the same array feeds either and the swap above needs no translation layer.
+ *  • The triggers carry `data-searchable-select`, the attribute the source's Playwright specs locate
+ *    a dropdown by. Free, and it keeps those specs portable to this repository.
  */
 
 import {
@@ -104,21 +172,95 @@ export interface SelectOption {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-// The native select
+// Which body of the control the reader gets
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The PRIMARY pointer, not "is a touchscreen present anywhere".
+ *
+ * `(any-pointer: fine)` would match a phone with a stylus paired to it and a laptop with a
+ * touchscreen alike, which is the wrong question: what decides whether the platform picker wins is
+ * what the reader is actually driving the page with. `(pointer: fine)` answers that.
+ *
+ * ⚠ IT STARTS `false` ON BOTH SIDES OF HYDRATION, and that is the point rather than a limitation.
+ * The server cannot know the answer, so the server, the first client render and every
+ * scripts-disabled visit all agree on the native control; only the effect below may change its mind.
+ * A device with no pointer at all (`pointer: none` — a keyboard-only kiosk, some assistive setups)
+ * matches neither branch and therefore keeps the native control too, which is the safer of the two
+ * for a control it may not be able to describe.
+ */
+const FINE_POINTER_QUERY = "(pointer: fine)";
+
+function useFinePointer(): boolean {
+  const [fine, setFine] = useState(false);
+
+  useEffect(() => {
+    // Guarded rather than assumed: `matchMedia` is missing in a few embedded webviews, and the
+    // honest answer there is "not fine", which lands on the native control.
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(FINE_POINTER_QUERY);
+    const read = () => setFine(query.matches);
+    read();
+    // Listened to rather than read once: a tablet gaining a keyboard and trackpad mid-session should
+    // get the desktop control, and a laptop folded into a tablet should give it back.
+    query.addEventListener("change", read);
+    return () => query.removeEventListener("change", read);
+  }, []);
+
+  return fine;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// The public Select
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface SelectProps extends Omit<ComponentPropsWithRef<"select">, "children"> {
   /** The closed list. Use this, or pass `<option>`/`<optgroup>` children, or both. */
   options?: readonly SelectOption[];
-  /** Rendered as an empty-valued first option — "Choose a research area". */
+  /** Rendered as an empty-valued first option — "Choose a research area". Stays pickable; see header. */
   placeholder?: string;
   /** Forces the error treatment. Normally inherited from the Field's `error`. */
   invalid?: boolean;
-  /** `<optgroup>`s, or extra options appended after `options`. */
+  /** `<optgroup>`s, or extra options appended after `options`. ⚠ Pins this call site to the native control. */
   children?: ReactNode;
 }
 
-export function Select({
+/**
+ * A `<select>`'s value is `string | number | readonly string[]`; the listbox deals in one string.
+ *
+ * `null` means "this call site cannot be a listbox" — the array case is `multiple`, which has no
+ * single value to show on a closed trigger and no sensible Enter behaviour.
+ */
+function singleValue(value: SelectProps["value"]): string | null {
+  if (value === undefined || value === null) return null;
+  if (Array.isArray(value)) return null;
+  return String(value);
+}
+
+export function Select(props: SelectProps) {
+  const fine = useFinePointer();
+
+  // The three "keep the native control" answers from the header's rule, in the same order.
+  const enhanced =
+    fine &&
+    props.options !== undefined &&
+    props.children === undefined &&
+    props.multiple !== true &&
+    !Array.isArray(props.value) &&
+    !Array.isArray(props.defaultValue);
+
+  if (!enhanced) return <NativeSelect {...props} />;
+  return <EnhancedSelect {...props} options={props.options ?? []} />;
+}
+
+/**
+ * The native control, unchanged.
+ *
+ * The chevron is ours because `appearance-none` removes the platform's. It is `pointer-events-none`
+ * so a click on the arrow still opens the menu — an arrow that swallows the click is the classic
+ * symptom of this pattern done in a hurry.
+ */
+function NativeSelect({
   options,
   placeholder,
   invalid,
@@ -165,6 +307,144 @@ export function Select({
   );
 }
 
+/**
+ * Tailwind's `sr-only`, spelled out, because this element is hidden for a DIFFERENT reason than the
+ * usual one and the difference matters.
+ *
+ * It is not hidden to be read aloud while invisible — `aria-hidden` takes it out of the tree
+ * entirely, since the trigger beside it already carries the name, the value and the popup semantics,
+ * and two controls for one field is worse than none. It is hidden while STAYING A RENDERED,
+ * FOCUSABLE ELEMENT, which `display: none` and `visibility: hidden` are not: a `required` control the
+ * browser cannot focus makes Chrome refuse the submit with only a console line to show for it
+ * ("An invalid form control … is not focusable"). Clipped to a pixel inside the field wrapper, the
+ * validation bubble still opens, and it opens next to the trigger the reader is looking at.
+ */
+const MIRROR_CLASS = "sr-only";
+
+/**
+ * The listbox, with a real `<select>` behind it carrying everything a form cares about.
+ *
+ * See "HOW ONE PROP CHANGE REACHED 103 CALL SITES" in the header — this component is the whole of
+ * that mechanism, and it is deliberately small: all the behaviour lives in `SearchableSelect`, and
+ * everything here is about staying honest to the `<select>` API the callers were written against.
+ */
+function EnhancedSelect({
+  options,
+  placeholder,
+  invalid,
+  className,
+  id,
+  required,
+  disabled,
+  children,
+  value,
+  defaultValue,
+  onChange,
+  "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedBy,
+  ...rest
+}: SelectProps & { options: readonly SelectOption[] }) {
+  const field = useFieldContext();
+  const isInvalid = invalid ?? field?.invalid ?? false;
+  const mirrorRef = useRef<HTMLSelectElement>(null);
+
+  // Uncontrolled callers (`defaultValue` + `name`, the no-JavaScript GET forms) have no prop to read
+  // the current value back from, so the last committed value is remembered here. A controlled caller
+  // never consults it: the prop is the truth on every render, exactly as it is for a `<select>`.
+  const [lastCommitted, setLastCommitted] = useState(() => singleValue(defaultValue) ?? "");
+  const current = singleValue(value) ?? lastCommitted;
+
+  /**
+   * The rows the panel shows: the placeholder first, as a real, pickable option.
+   *
+   * Without it the enhanced control would be a one-way door — see the header on why the native
+   * placeholder option is not disabled. With it, "not answered" is a row like any other and clearing
+   * a field is one click rather than a page reload.
+   */
+  const rows = useMemo<readonly SelectOption[]>(
+    () => (placeholder ? [{ value: "", label: placeholder }, ...options] : options),
+    [options, placeholder]
+  );
+
+  /**
+   * Whether the panel grows a filter box, decided on the REAL options.
+   *
+   * Left to `SearchableSelect`'s own count it would be decided on `rows`, and the placeholder row
+   * would tip a seven-option vocabulary over the threshold — a filter box on a list of seven, for
+   * the sake of a row that says "Anybody".
+   */
+  const searchable = options.length >= SEARCH_THRESHOLD;
+
+  const commit = (next: string) => {
+    // A `<select>` fires no change when the reader re-picks what was already selected, so neither
+    // does this. Skipping it also keeps a form's dirty-tracking honest: opening a dropdown, looking,
+    // and choosing the same thing again must not arm the unsaved-changes prompt.
+    if (next === current) return;
+    // Only the uncontrolled case has anything to remember. Writing it for a controlled caller too
+    // would be a second render per pick that nothing ever reads — and worse, it would look like this
+    // component holds an opinion about a value the caller owns.
+    if (value === undefined) setLastCommitted(next);
+
+    const node = mirrorRef.current;
+    if (!node) return;
+    // Through the prototype's setter, never `node.value = next` — see the ⚠ in the header.
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (setter) setter.call(node, next);
+    else node.value = next;
+    // `bubbles`, because React listens at the root container rather than on the element itself; a
+    // non-bubbling event would reach nothing at all.
+    node.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  return (
+    // `relative` so the clipped mirror above is positioned against this field rather than against
+    // whatever ancestor happens to be positioned; `block` so a `<span>` lays out as the `<div>` the
+    // source used. See the ⚠ in the header for why it may not BE a `<div>`.
+    <span className={cn("relative block min-w-0", className)}>
+      <select
+        // ⚠ SPREAD FIRST, so the props below win. Everything this file does not model — `name`,
+        // `form`, `autoComplete`, `onBlur` — lands here rather than being dropped in silence, but
+        // `rest` also carries `ref` (it comes from `ComponentPropsWithRef<"select">`), and `mirrorRef`
+        // is the handle this component drives the element with. Spread last, a caller's `ref` would
+        // replace it and picking a row would quietly stop doing anything at all.
+        {...rest}
+        ref={mirrorRef}
+        // No `id`: `field?.controlId` belongs to the TRIGGER, so the Field's `<label htmlFor>` points
+        // at the control the reader can actually operate rather than at a clipped pixel.
+        aria-hidden="true"
+        tabIndex={-1}
+        required={required}
+        disabled={disabled}
+        value={value}
+        defaultValue={defaultValue}
+        onChange={onChange}
+        className={MIRROR_CLASS}
+      >
+        {placeholder ? <option value="">{placeholder}</option> : null}
+        {options.map((option) => (
+          <option key={option.value} value={option.value} disabled={option.disabled}>
+            {option.label}
+          </option>
+        ))}
+        {children}
+      </select>
+
+      <SearchableSelect
+        id={id ?? field?.controlId}
+        value={current}
+        onChange={commit}
+        options={rows}
+        placeholder={placeholder}
+        disabled={disabled}
+        invalid={isInvalid}
+        searchable={searchable}
+        ariaLabel={ariaLabel}
+        describedBy={ariaDescribedBy}
+      />
+    </span>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // The searchable pair
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -195,8 +475,9 @@ const SUMMARY_NAMES = 6;
 
 /**
  * The trigger, built on `.field-input` so it sits at exactly the same height and weight as an
- * `<Input>` or a native `<Select>` beside it in the same `<Field>`. The source used its own border
- * and padding; matching the field primitive is what makes this look native to THIS repository.
+ * `<Input>` or a native `<select>` beside it in the same `<Field>`. The source used its own border
+ * and padding; matching the field primitive is what makes this look native to THIS repository — and
+ * it is what lets `Select` swap bodies without the row it sits in changing height.
  */
 const TRIGGER_CLASS =
   "field-input flex w-full cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60";
@@ -497,6 +778,16 @@ export interface SearchableSelectProps {
   disabled?: boolean;
   className?: string;
   /**
+   * The trigger's id, for a caller that owns the pairing itself. Omitted, the enclosing Field's
+   * `controlId` is used, which is what makes `<Field><SearchableSelect/></Field>` label correctly.
+   */
+  id?: string;
+  /**
+   * The error treatment on the trigger's border. ⚠ It does NOT set `aria-invalid` — see the header
+   * for why the colour and the attribute are two different decisions here.
+   */
+  invalid?: boolean;
+  /**
    * The control's accessible name. Inside a `<Field>` the label is picked up automatically and this
    * is only needed for a bare control — a toolbar filter with a visually hidden label, say.
    */
@@ -519,6 +810,8 @@ export function SearchableSelect({
   emptyLabel = "No options",
   disabled,
   className,
+  id,
+  invalid,
   ariaLabel,
   describedBy,
   searchable
@@ -532,6 +825,7 @@ export function SearchableSelect({
   const listboxId = `${baseId}-listbox`;
   const typeahead = useTypeahead();
 
+  const isInvalid = invalid ?? field?.invalid ?? false;
   const withSearch = searchable ?? options.length >= SEARCH_THRESHOLD;
   const chosen = useMemo(() => new Set(value ? [value] : []), [value]);
   const { filtered, rendered, capped } = useSelectList(options, query, withSearch, chosen);
@@ -545,6 +839,15 @@ export function SearchableSelect({
   useScrollHighlightIntoView(open, safeHighlight, baseId);
 
   const selected = options.find((option) => option.value === value);
+  /**
+   * "Not answered", whichever way it is expressed.
+   *
+   * `Select` hands the placeholder down as a real empty-valued ROW so the reader can pick their way
+   * back to it, which means `selected` is defined while the field is still blank. Keying the greyed
+   * treatment off `selected` alone would then paint an unanswered field in full-strength ink, and a
+   * form of eight dropdowns would look eight-eighths filled in at a glance.
+   */
+  const answered = value !== "" && selected !== undefined;
 
   const close = useCallback(() => {
     setOpen(false);
@@ -651,11 +954,14 @@ export function SearchableSelect({
     // wrapper past its column and the trigger overlaps the field beside it. The `truncate` inside
     // cannot prevent that on its own: it clips text within a box that has already been allowed to
     // grow. The box has to be allowed to shrink first.
-    <div className={cn("relative min-w-0", className)}>
+    //
+    // ⚠ A `<span className="block">` rather than the source's `<div>`: this control is rendered inside
+    // `Field`'s real `<label>`, which takes phrasing content only. See the header.
+    <span className={cn("relative block min-w-0", className)}>
       <button
         ref={triggerRef}
         type="button"
-        id={field?.controlId}
+        id={id ?? field?.controlId}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -667,9 +973,11 @@ export function SearchableSelect({
         aria-controls={open ? listboxId : undefined}
         // Only when the trigger itself owns the keyboard; with a search box the input does.
         aria-activedescendant={open && !withSearch ? activeId : undefined}
+        // The hook the source's Playwright specs locate a dropdown by. Kept so those specs port.
+        data-searchable-select=""
         onClick={() => (open ? close() : openPanel())}
         onKeyDown={onTriggerKeyDown}
-        className={TRIGGER_CLASS}
+        className={cn(TRIGGER_CLASS, isInvalid ? FIELD_INVALID_CLASS : undefined)}
       >
         {/*
           `ink-500`, NOT the `ink-300` placeholder rung, and the distinction is one the token ladder
@@ -678,8 +986,11 @@ export function SearchableSelect({
           while nothing is selected this span is the ONLY text the control has, and the whole question
           it is asking is carried by it.
         */}
-        <span className={cn("min-w-0 truncate", selected ? undefined : "text-ink-500")} title={selected?.label}>
-          {selected ? selected.label : placeholder}
+        <span
+          className={cn("min-w-0 truncate", answered ? undefined : "text-ink-500")}
+          title={answered ? selected?.label : undefined}
+        >
+          {answered ? selected?.label : placeholder}
         </span>
         <ChevronDown
           aria-hidden="true"
@@ -691,7 +1002,7 @@ export function SearchableSelect({
         open={open}
         onClose={close}
         // The BUTTON, not the wrapper: `Popover` returns focus to its anchor when the reader tabs off
-        // either end of the panel, and a `<div>` cannot take focus.
+        // either end of the panel, and a `<span>` cannot take focus.
         anchorRef={triggerRef}
         role="group"
         label={ariaLabel ? `${ariaLabel} options` : "Options"}
@@ -757,7 +1068,7 @@ export function SearchableSelect({
           </p>
         </div>
       </Popover>
-    </div>
+    </span>
   );
 }
 
@@ -769,6 +1080,10 @@ export interface SearchableMultiSelectProps {
   emptyLabel?: string;
   disabled?: boolean;
   className?: string;
+  /** See `SearchableSelectProps.id`. */
+  id?: string;
+  /** See `SearchableSelectProps.invalid` — the border, never `aria-invalid`. */
+  invalid?: boolean;
   ariaLabel?: string;
   describedBy?: string;
   searchable?: boolean;
@@ -792,6 +1107,8 @@ export function SearchableMultiSelect({
   emptyLabel = "No options",
   disabled,
   className,
+  id,
+  invalid,
   ariaLabel,
   describedBy,
   searchable,
@@ -807,6 +1124,7 @@ export function SearchableMultiSelect({
   const listboxId = `${baseId}-listbox`;
   const typeahead = useTypeahead();
 
+  const isInvalid = invalid ?? field?.invalid ?? false;
   const withSearch = searchable ?? options.length >= SEARCH_THRESHOLD;
   const chosen = useMemo(() => new Set(values), [values]);
   const { filtered, rendered, capped } = useSelectList(options, query, withSearch, chosen);
@@ -976,11 +1294,13 @@ export function SearchableMultiSelect({
     ) : null;
 
   return (
-    <div className={cn("relative min-w-0", className)}>
+    // A `<span className="block">` for the same reason as the single-select above: `Field`'s `<label>`
+    // takes phrasing content only.
+    <span className={cn("relative block min-w-0", className)}>
       <button
         ref={triggerRef}
         type="button"
-        id={field?.controlId}
+        id={id ?? field?.controlId}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -997,9 +1317,10 @@ export function SearchableMultiSelect({
         aria-describedby={cn(field?.describedBy, describedBy, `${baseId}-summary`)}
         aria-controls={open ? listboxId : undefined}
         aria-activedescendant={open && !withSearch ? activeId : undefined}
+        data-searchable-select=""
         onClick={() => (open ? close() : openPanel())}
         onKeyDown={onTriggerKeyDown}
-        className={TRIGGER_CLASS}
+        className={cn(TRIGGER_CLASS, isInvalid ? FIELD_INVALID_CLASS : undefined)}
       >
         {/* Same rung, same reason as the single-select trigger above. */}
         <span className={cn("min-w-0 truncate", values.length === 0 ? "text-ink-500" : undefined)}>
@@ -1110,6 +1431,6 @@ export function SearchableMultiSelect({
           </p>
         </div>
       </Popover>
-    </div>
+    </span>
   );
 }

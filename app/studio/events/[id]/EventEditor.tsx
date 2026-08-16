@@ -42,7 +42,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CalendarClock, ClipboardList, Image as ImageIcon, MapPin, Plus, X } from "lucide-react";
+import { ClipboardList, Image as ImageIcon, MapPin, Plus, X } from "lucide-react";
 import type { ContentStatus, EventMode } from "@prisma/client";
 
 import { asApiClientError, patch, post } from "@/lib/client/fetcher";
@@ -51,6 +51,7 @@ import { canPublish as canPublishPredicate, type PermissionSubject } from "@/lib
 import type { RichTextDoc } from "@/lib/richtext";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { DateField } from "@/components/ui/DateField";
 import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { MediaImage } from "@/components/ui/MediaImage";
@@ -1057,12 +1058,26 @@ export function EventEditor({
 /**
  * One date-and-time field, read and written in the Centre's zone, WITH THE ZONE NAMED UNDER IT.
  *
- * The naming is not decoration and it is not optional. `<input type="datetime-local">` has no zone of its
- * own: whatever is typed into it is just numbers, and the only thing that tells the person typing which
- * clock those numbers belong to is this sentence.
+ * The naming is not decoration and it is not optional. A date-and-time box has no zone of its own:
+ * whatever is typed into it is just numbers, and the only thing that tells the person typing which clock
+ * those numbers belong to is this sentence.
  *
- * `Field` (a real `<label>`) is correct here: the control is a plain native input, so there is no button
- * inside for a stray click to be forwarded into.
+ * ⚠ THE ZONE CONVERSION STAYS EXACTLY WHERE IT WAS — HERE, IN THIS FILE. `DateField` is deliberately
+ * string-in/string-out and holds no zone of its own (its header says so at length), so it is handed the
+ * SAME `YYYY-MM-DDTHH:mm` wall-clock string the native box used to hold, and `toZonedInput` /
+ * `fromZonedInput` go on doing the whole job on either side of it. Nothing about which clock these numbers
+ * belong to moved, which is the only way to swap the control without reopening the question this file
+ * exists to answer.
+ *
+ * ⚠ AND THAT IS WHY THE WRAPPER IS `DateField`'s OWN `FieldBlock` RATHER THAN THE `Field` THIS USED TO
+ * RENDER. The field now contains a button — the one that opens the calendar — and `Field` wraps its child
+ * in a real `<label>`, which re-dispatches a stray click to the first labelable control inside it and
+ * folds every named descendant into that control's accessible name (Field.tsx's header sets out both).
+ * Left as a `Field`, this field would be announced as "Starts, Open the calendar, edit text" and the
+ * click that opened the grid would be forwarded back into the box.
+ *
+ * The date and the time are two boxes rather than one, and both are still typed: the grid writes only the
+ * day, because a month grid has nothing to say about 16:00.
  */
 function ZonedDateTimeField({
   label,
@@ -1085,7 +1100,7 @@ function ZonedDateTimeField({
   required?: boolean;
 }): ReactNode {
   return (
-    <Field
+    <DateField
       label={label}
       required={required}
       error={error ?? null}
@@ -1098,19 +1113,16 @@ function ZonedDateTimeField({
           </span>
         </>
       }
-    >
-      <Input
-        type="datetime-local"
-        icon={CalendarClock}
-        value={toZonedInput(value, timeZone)}
-        onChange={(event) => {
-          const raw = event.target.value;
-          // A cleared box is "no time", not "the epoch". `fromZonedInput` returns null for anything it
-          // cannot read, which includes the half-typed values a date input emits while being edited.
-          onChange(raw.trim().length === 0 ? null : fromZonedInput(raw, timeZone));
-        }}
-      />
-    </Field>
+      withTime
+      value={toZonedInput(value, timeZone)}
+      onChange={(raw) => {
+        // A cleared field is "no time", not "the epoch". `fromZonedInput` returns null for anything it
+        // cannot read — and `DateField` only ever emits a complete `YYYY-MM-DDTHH:mm` or an empty string,
+        // never one of the half-typed values it holds internally while the reader is still typing, so the
+        // stored instant cannot be knocked out from under a date being edited one character at a time.
+        onChange(raw.trim().length === 0 ? null : fromZonedInput(raw, timeZone));
+      }}
+    />
   );
 }
 

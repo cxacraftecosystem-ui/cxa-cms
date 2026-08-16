@@ -5,11 +5,21 @@ import { CircleCheck, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 
 import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
-import { canPurge, canRestoreDeleted } from "@/lib/permissions";
+import { canRestoreDeleted, isMasterAdmin } from "@/lib/permissions";
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
 import { mediaPurgeAfterDays } from "@/lib/env";
-import { deleteObjects, storageAvailable } from "@/lib/storage/client";
+import { storageAvailable } from "@/lib/storage/client";
 import { formatBytes } from "@/lib/utils";
+// The bin's ONE list of kinds, and the ONE implementation of permanent deletion. The API route
+// (app/api/studio/recycle-bin/purge/route.ts) calls the same function with the same arguments, so this
+// screen and that endpoint cannot drift into two different ideas of what "delete for good" destroys.
+import {
+  deletedWhere,
+  metaFor,
+  type BinType,
+  type BinTypeMeta
+} from "@/app/api/studio/recycle-bin/kinds";
+import { purgeRecord } from "@/app/api/studio/recycle-bin/purge-record";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field } from "@/components/ui/Field";
@@ -24,8 +34,16 @@ import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * `requireStudioCapability(canRestoreDeleted)` IS THE FIRST STATEMENT — administrator only, and deliberately
  * stricter than editing. A restore can resurrect content an editor deliberately retired, which is why
- * lib/permissions.ts makes it an administrator's act; permanent deletion is `canPurge`, the same tier, but
- * it is checked separately so the two can diverge without either becoming the other by accident.
+ * lib/permissions.ts makes it an administrator's act.
+ *
+ * ⚠ PERMANENT DELETION IS A HIGHER TIER AGAIN: `isMasterAdmin`, checked separately, in the Server Action
+ * as well as in the render. lib/permissions.ts puts `canPurge` at ADMINISTRATOR, which is right for the
+ * automatic window-based purge the cron performs and wrong for a person destroying the only copy of
+ * something. That file argues `canManageStudioAccess` is master-admin because "an administrator runs the
+ * site; a master admin decides who is allowed near it" — irreversible destruction of the archive belongs
+ * on the same side of that line, for the same reason: the everyday administrator account is the one most
+ * likely to be phished. Hiding the control is NOT the guard; the Server Action and
+ * `app/api/studio/recycle-bin/purge/route.ts` both refuse independently.
  *
  * THE RECYCLE BIN IS `deletedAt IS NOT NULL`. There is no separate table and no flag to forget: every read
  * path on the public site and in the studio filters it out, so a row in here is already invisible
@@ -38,15 +56,11 @@ import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
  * because "the recycle bin empties itself" and "the recycle bin never empties" are both wrong and lead to
  * opposite mistakes.
  *
- * ⚠ PERMANENT DELETION OF A FILE DELETES ITS BYTES FIRST, AND THE ORDER IS THE WHOLE DESIGN. Bytes then
- * row:
- *
- *   • bytes gone, row gone         → correct.
- *   • bytes gone, row still here   → a visible orphan, reported and fixable. Recoverable.
- *   • row gone, bytes still there  → an object nothing references, invisible, unbilled to any feature, and
- *     it accumulates forever. Nobody ever finds it.
- *
- * So a failure to delete the bytes ABORTS the row deletion, exactly as the cron does.
+ * ⚠ WHAT A PERMANENT DELETE ACTUALLY DOES — the bytes before the row, and a refusal rather than silent
+ * damage to anything that still points at the record — lives in ONE place,
+ * `app/api/studio/recycle-bin/purge-record.ts`, and is argued in full at the top of that file. This screen
+ * calls it; it does not reimplement it. The version that did reimplement it deleted rows whose covers were
+ * still on live pages, because a second copy of a rule is a second chance to get it wrong.
  *
  * THE TYPED CONFIRMATION IS ENFORCED IN THE SERVER ACTION, not by a dialog. This screen is a Server
  * Component — making it a client one to borrow `ConfirmProvider`'s `requireTyping` would ship every deleted
@@ -69,50 +83,14 @@ export const metadata: Metadata = {
  */
 const PER_TYPE_LIMIT = 25;
 
-/** The kinds this screen can restore and purge. Each one has a case in both switches below. */
-type BinType =
-  | "Page"
-  | "Post"
-  | "Person"
-  | "Project"
-  | "Publication"
-  | "ResearchArea"
-  | "CoeEvent"
-  | "Craft"
-  | "GalleryAlbum"
-  | "Partner"
-  | "MediaAsset"
-  | "FileAsset"
-  | "ContactSubmission";
-
-interface BinGroupMeta {
-  type: BinType;
-  /** Plural, in the words an administrator uses. */
-  label: string;
-  singular: string;
-  /** True where the purge job will eventually remove these on its own. */
-  autoPurged: boolean;
-}
-
-const GROUPS: readonly BinGroupMeta[] = [
-  { type: "Page", label: "Pages", singular: "page", autoPurged: false },
-  { type: "Post", label: "News articles", singular: "news article", autoPurged: false },
-  { type: "Person", label: "People", singular: "person's profile", autoPurged: false },
-  { type: "Project", label: "Projects", singular: "project", autoPurged: false },
-  { type: "Publication", label: "Publications", singular: "publication", autoPurged: false },
-  { type: "ResearchArea", label: "Research areas", singular: "research area", autoPurged: false },
-  { type: "CoeEvent", label: "Events", singular: "event", autoPurged: false },
-  { type: "Craft", label: "Craft records", singular: "craft record", autoPurged: false },
-  { type: "GalleryAlbum", label: "Gallery albums", singular: "album", autoPurged: false },
-  { type: "Partner", label: "Partners", singular: "partner", autoPurged: false },
-  { type: "MediaAsset", label: "Media files", singular: "media file", autoPurged: true },
-  { type: "FileAsset", label: "Files", singular: "file", autoPurged: true },
-  { type: "ContactSubmission", label: "Enquiries", singular: "enquiry", autoPurged: false }
-];
-
-function metaFor(type: string): BinGroupMeta | null {
-  return GROUPS.find((group) => group.type === type) ?? null;
-}
+/**
+ * `BinType`, `BinTypeMeta` and `metaFor` come from `app/api/studio/recycle-bin/kinds.ts`.
+ *
+ * They used to be restated here, and in the listing route, and in the restore route. Four copies of one
+ * list is four chances for a kind to be listed on this screen and then have no branch in the route that
+ * has to act on it — with nothing to say so until an administrator pressed the button. `BinType` is what
+ * makes a missing branch a compile error rather than a `default:` somebody's row quietly falls into.
+ */
 
 interface BinRow {
   type: BinType;
@@ -177,72 +155,31 @@ async function restoreRow(
   }
 }
 
-/** A real DELETE. Same discipline as `restoreRow`. */
-async function purgeRow(
-  tx: TxClient,
-  type: string,
-  id: string
-): Promise<({ id: string } & Record<string, unknown>) | null> {
-  switch (type) {
-    case "Page":
-      return tx.page.delete({ where: { id } });
-    case "Post":
-      return tx.post.delete({ where: { id } });
-    case "Person":
-      return tx.person.delete({ where: { id } });
-    case "Project":
-      return tx.project.delete({ where: { id } });
-    case "Publication":
-      return tx.publication.delete({ where: { id } });
-    case "ResearchArea":
-      return tx.researchArea.delete({ where: { id } });
-    case "CoeEvent":
-      return tx.coeEvent.delete({ where: { id } });
-    case "Craft":
-      return tx.craft.delete({ where: { id } });
-    case "GalleryAlbum":
-      return tx.galleryAlbum.delete({ where: { id } });
-    case "Partner":
-      return tx.partner.delete({ where: { id } });
-    case "MediaAsset":
-      return tx.mediaAsset.delete({ where: { id } });
-    case "FileAsset":
-      return tx.fileAsset.delete({ where: { id } });
-    case "ContactSubmission":
-      return tx.contactSubmission.delete({ where: { id } });
-    default:
-      return null;
-  }
-}
+/**
+ * There is no `purgeRow` here.
+ *
+ * Permanent deletion is `purgeRecord` in `app/api/studio/recycle-bin/purge-record.ts`, which this screen
+ * and the API route both call. It is not merely a `delete` per model: it refuses a record something else
+ * still points at, removes an asset's original AND every derivative under its storage prefix before the
+ * row, and writes the audit entry that becomes the only surviving record of what was destroyed. A copy of
+ * that here would be a copy that drifts.
+ */
 
-/** Every stored object a row owns, so a purge can remove the bytes before the row. */
-async function objectKeysFor(type: string, id: string): Promise<string[]> {
-  if (type === "MediaAsset") {
-    const asset = await prisma.mediaAsset.findUnique({
-      where: { id },
-      select: { objectKey: true, variants: { select: { objectKey: true } } }
-    });
-    if (!asset) return [];
-    return [asset.objectKey, ...asset.variants.map((variant) => variant.objectKey)];
-  }
-  if (type === "FileAsset") {
-    const file = await prisma.fileAsset.findUnique({
-      where: { id },
-      select: { versions: { select: { objectKey: true } } }
-    });
-    if (!file) return [];
-    return file.versions.map((version) => version.objectKey);
-  }
-  return [];
-}
-
+/**
+ * The fixed refusals.
+ *
+ * ⚠ `in_use`, `protected` and `storage_failed` do NOT appear here, because their whole value is the
+ * detail: which records still use the picture, which structural page this is, how many objects could not
+ * be removed. Those arrive as `reason` — see `backWith` and the banner that renders it.
+ */
 const PROBLEMS: Record<string, string> = {
   not_found: "That item is no longer in the recycle bin. Somebody may have dealt with it while this page was open.",
   unknown_type: "This screen does not know how to handle that kind of record, so nothing was changed.",
   name_mismatch:
     "The name you typed did not match, so nothing was deleted. Type it exactly as it appears above the box.",
-  storage_failed:
-    "The stored files could not be removed, so the record was KEPT rather than leaving files behind that nothing points at. Try again, or ask whoever looks after storage. Nothing has been lost.",
+  // There is no entry for "you are not a master administrator": `requireStudioCapability` renders the
+  // forbidden screen rather than returning here, which is the right answer — a refused person should not
+  // be handed the list back with a note about it.
   purge_failed: "That could not be deleted for good. Nothing has been changed.",
   restore_failed:
     "That could not be restored. Nothing has been changed — this usually means something it referred to has since been deleted too."
@@ -250,8 +187,23 @@ const PROBLEMS: Record<string, string> = {
 
 const NOTICES: Record<string, string> = {
   restored: "It is back where it was, in the state it was in when it was deleted. If it was published before, it is published again.",
-  purged: "It has been deleted for good, along with any files stored with it. Nothing can bring it back."
+  /** A fallback only. A successful deletion normally reports exactly what went with it, through `reason`. */
+  purged: "It has been deleted for good, along with anything stored with it. Nothing can bring it back."
 };
+
+/**
+ * How much of a server-written sentence travels back in the address bar.
+ *
+ * ⚠ `reason` IS RENDERED, so it is CAPPED and it is rendered as TEXT — a string child of a React element,
+ * never markup, never a link, never `dangerouslySetInnerHTML`. So a crafted address can put a misleading
+ * sentence in the banner of somebody who follows it, and can do nothing else; there is no injection and
+ * nothing clickable. That is an accepted trade for a refusal that names the four records still using a
+ * picture, which is the difference between a message an administrator can act on and a message they cannot.
+ *
+ * The alternative — returning the sentence from the Server Action instead of redirecting with it — needs
+ * `useActionState`, which needs a Client Component, which this screen deliberately is not (see the header).
+ */
+const MAX_REASON = 500;
 
 function first(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -324,77 +276,66 @@ async function restore(formData: FormData): Promise<void> {
   backWith({ notice: "restored" });
 }
 
+/**
+ * Delete one record for good.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ `isMasterAdmin` IS THE FIRST STATEMENT, AND IT IS THE REAL GUARD. The control below is drawn only
+ * for a master admin, but a Server Action is a POST endpoint like any other: it can be invoked by
+ * anything that has the action id, whatever the page chose to render. An administrator — who can open
+ * this screen, and should be able to — is refused here.
+ *
+ * Everything after the boundary is `purgeRecord`, shared with `app/api/studio/recycle-bin/purge/route.ts`.
+ * This function's whole remaining job is to turn a `FormData` into that call and its answer into a
+ * sentence in the address bar.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
 async function purge(formData: FormData): Promise<void> {
   "use server";
 
   const user = await requireStudioCapability(
-    canPurge,
-    "Deleting something for good needs administrator access."
+    isMasterAdmin,
+    "Deleting something for good needs master administrator access. An administrator can restore it or " +
+      "leave it in the recycle bin, but only a master administrator can destroy it."
   );
 
   const type = String(formData.get("type") ?? "").trim();
   const id = String(formData.get("id") ?? "").trim();
-  const label = String(formData.get("label") ?? "").trim();
   const typed = String(formData.get("confirmName") ?? "").trim();
 
-  if (!metaFor(type)) backWith({ problem: "unknown_type" });
+  const meta = metaFor(type);
+  if (!meta) backWith({ problem: "unknown_type" });
   if (id.length === 0) backWith({ problem: "not_found" });
 
   /**
-   * THE TYPED CONFIRMATION, ENFORCED HERE.
+   * ⚠ THE TYPED NAME IS CHECKED AGAINST THE STORED ROW, NOT AGAINST THE HIDDEN FIELD.
    *
-   * Case and surrounding space are forgiven — the ceremony is what makes this a decision rather than a
-   * reflex, and somebody who typed the right name with a capital letter has already made it.
+   * `purgeRecord` re-reads the record and compares what was typed with what is actually in the database.
+   * Comparing against a `label` posted by the same form would let anything that can submit the form
+   * satisfy the confirmation by sending the same string twice — which is no confirmation at all. The
+   * label is still rendered above the box, because the person has to be able to read what to type.
    */
-  if (typed.toLowerCase() !== label.toLowerCase()) backWith({ problem: "name_mismatch" });
+  const outcome = await purgeRecord(await auditContext({ id: user.id, email: user.email }), {
+    type: meta.type,
+    id,
+    confirm: typed
+  });
 
-  // ⚠ BYTES FIRST. See the file header for why the order is not negotiable.
-  const keys = await objectKeysFor(type, id);
-  if (keys.length > 0) {
-    if (!storageAvailable()) {
-      backWith({ problem: "storage_failed" });
+  if (!outcome.ok) {
+    // `name_mismatch` and `not_found` have their own settled sentences on this screen; everything else —
+    // above all "something still uses this, and here is what" — is worth nothing without its detail.
+    if (outcome.code === "name_mismatch" || outcome.code === "not_found") {
+      backWith({ problem: outcome.code });
     }
-    const outcome = await deleteObjects(keys);
-    if (outcome.failed.length > 0) {
-      console.error("[recycle-bin] could not delete stored objects for", type, id, outcome.failed);
-      backWith({ problem: "storage_failed" });
-    }
+    backWith({ problem: "purge_failed", reason: outcome.message.slice(0, MAX_REASON) });
   }
 
-  const context = await auditContext({ id: user.id, email: user.email });
-
-  try {
-    await mutateWithHistory(
-      context,
-      {
-        action: "PURGE",
-        entityType: type,
-        entityLabel: label.length > 0 ? label : id,
-        revise: false,
-        // The audit entry is now the ONLY record that this ever existed, which is why it carries the count
-        // of files that went with it.
-        before: { storedFiles: keys.length }
-      },
-      async (tx) => {
-        const result = await purgeRow(tx, type, id);
-        if (!result) throw new Error(`No permanent delete is defined for ${type}.`);
-        return result;
-      }
-    );
-  } catch (thrown) {
-    console.error("[recycle-bin] a purge failed", type, id, thrown);
-    backWith({ problem: "purge_failed" });
-  }
-
-  backWith({ notice: "purged" });
+  backWith({ notice: "purged", reason: outcome.message.slice(0, MAX_REASON) });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // The screen
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-
-/** The recycle bin IS this filter. There is no separate table and no second flag to forget. */
-const deletedWhere = { deletedAt: { not: null } };
 
 function formatWhen(date: Date): string {
   return `${date.toLocaleString("en-GB", {
@@ -421,8 +362,20 @@ export default async function StudioRecycleBinPage({
   );
 
   const params = await searchParams;
-  const problem = PROBLEMS[first(params.problem)] ?? null;
-  const notice = NOTICES[first(params.notice)] ?? null;
+  /**
+   * The sentence the Server Action wrote, if it wrote one.
+   *
+   * A refusal from `purgeRecord` is worth reading BECAUSE of its detail — which records still use the
+   * picture, how many stored files could not be removed — so it is preferred over the fixed text. It is
+   * clipped and it is framed at the point of rendering; see `MAX_REASON`.
+   */
+  const reason = first(params.reason).slice(0, MAX_REASON).trim();
+  const problem = reason.length > 0 && first(params.problem).length > 0
+    ? reason
+    : (PROBLEMS[first(params.problem)] ?? null);
+  const notice = reason.length > 0 && first(params.notice).length > 0
+    ? reason
+    : (NOTICES[first(params.notice)] ?? null);
 
   const take = PER_TYPE_LIMIT + 1;
   const order = { deletedAt: "desc" as const };
@@ -501,9 +454,9 @@ export default async function StudioRecycleBinPage({
     { type: "ContactSubmission", rows: rowsFrom("ContactSubmission", enquiries, (row) => row.name, (row) => row.email) }
   ];
 
-  // `flatMap` with a lookup rather than an index into `GROUPS`: with `noUncheckedIndexedAccess` an index
-  // would be `BinGroupMeta | undefined` and need a non-null assertion at every one of thirteen call sites.
-  const groups: { meta: BinGroupMeta; rows: BinRow[]; truncated: boolean }[] = collected.flatMap((entry) => {
+  // `flatMap` with a lookup rather than an index into `BIN_META`: with `noUncheckedIndexedAccess` an index
+  // would be `BinTypeMeta | undefined` and need a non-null assertion at every one of thirteen call sites.
+  const groups: { meta: BinTypeMeta; rows: BinRow[]; truncated: boolean }[] = collected.flatMap((entry) => {
     const meta = metaFor(entry.type);
     if (!meta) return [];
     return [
@@ -517,7 +470,13 @@ export default async function StudioRecycleBinPage({
 
   const nonEmpty = groups.filter((group) => group.rows.length > 0);
   const totalShown = nonEmpty.reduce((sum, group) => sum + group.rows.length, 0);
-  const mayPurge = canPurge(user);
+  /**
+   * ⚠ MASTER ADMIN, NOT ADMINISTRATOR. See the header. This decides whether the control is DRAWN; the
+   * Server Action decides whether it WORKS, and it checks the same predicate itself. A failing check
+   * renders NOTHING rather than a disabled button (contract §7.5) — an ungated control that lands on a
+   * refusal invites every tier to press it, and this is the one control where pressing it matters.
+   */
+  const mayPurge = isMasterAdmin(user);
   const windowDays = mediaPurgeAfterDays();
   const now = Date.now();
 
@@ -649,15 +608,47 @@ export default async function StudioRecycleBinPage({
                           A SEPARATE form from Restore, so pressing Enter in the confirmation box cannot
                           reach the other button — and so the safe action is never one keystroke from the
                           irreversible one.
+
+                          ⚠ NO HIDDEN `label`. The name typed below is compared with the row as it is
+                          STORED, read fresh by `purgeRecord`. Posting the expected name alongside the
+                          typed one would let anything that can submit this form satisfy the confirmation
+                          by sending the same string twice, which is no confirmation at all.
                         */}
                         <form action={purge} className="mt-2.5 space-y-3">
                           <input type="hidden" name="type" value={row.type} />
                           <input type="hidden" name="id" value={row.id} />
-                          <input type="hidden" name="label" value={row.label} />
+
+                          {/*
+                            SAID PLAINLY, AND SAID TWICE — once as what happens and once as what stops
+                            being possible. "Permanent" is a word people read past; "Restore will no
+                            longer be offered" is a sentence about a button they can see.
+                          */}
+                          <p className="text-sm font-medium leading-relaxed text-error-700">
+                            This cannot be undone. “{row.label}” will be destroyed, not moved — the
+                            Restore button above will no longer be offered for it, and nobody, at any
+                            level of access, will be able to bring it back.
+                          </p>
 
                           <p className="text-sm leading-relaxed text-ink-700">
-                            This removes “{row.label}” and anything stored with it for good. Nothing can
-                            bring it back, and any address that pointed at it will stop working.
+                            {group.meta.type === "MediaAsset" ? (
+                              <>
+                                The original file and every resized copy of it are removed from storage,
+                                so every address it was ever served at will stop working — including on
+                                pages that are live now.
+                              </>
+                            ) : group.meta.type === "FileAsset" ? (
+                              <>
+                                Every stored version of this file is removed from storage, so every
+                                download link to any version of it will stop working.
+                              </>
+                            ) : (
+                              <>
+                                Everything kept inside this {group.meta.singular} goes with it, and any
+                                address that pointed at it will stop working.
+                              </>
+                            )}{" "}
+                            If something else still uses it, this will be refused rather than quietly
+                            changing that other record — and the refusal will name what is using it.
                           </p>
 
                           <Field
@@ -674,7 +665,7 @@ export default async function StudioRecycleBinPage({
                           </Field>
 
                           <Button type="submit" variant="danger" size="sm" icon={Trash2}>
-                            Delete for good
+                            Delete “{row.label}” for good
                           </Button>
                         </form>
                       </details>
@@ -696,7 +687,9 @@ export default async function StudioRecycleBinPage({
 
       {!mayPurge ? (
         <HelpText>
-          Deleting something for good needs administrator access, so it is not offered here. Restoring is.
+          Deleting something for good is the one action here that cannot be undone by anybody, so it needs
+          master administrator access and is not offered on this screen. Restoring is. Anything left in
+          this list is doing no harm — it is invisible on the site and in every other studio screen.
         </HelpText>
       ) : null}
 

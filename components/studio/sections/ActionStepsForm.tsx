@@ -35,6 +35,7 @@
  */
 
 import { actionStepsSectionSchema, type ActionStepsSectionData } from "@/lib/sections/schema";
+import { DateField } from "@/components/ui/DateField";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -71,7 +72,13 @@ function isStatus(value: string): value is StepStatus {
   return STATUS_OPTIONS.some((option) => option.value === value);
 }
 
-/** Today, as the `<input type="date">` and the schema both want it: `YYYY-MM-DD` in local time. */
+/**
+ * Today, as `DateField` and the schema both want it: `YYYY-MM-DD` in local time.
+ *
+ * ⚠ LOCAL, not UTC, and it has to match the day the field itself writes. `DateField` reads a clicked day
+ * off the local calendar, so a UTC "today" would be tomorrow's date for anyone east of Greenwich after
+ * their afternoon — and the warning below would fire on a deadline that has not passed.
+ */
 function todayValue(): string {
   const now = new Date();
   const pad = (part: number) => String(part).padStart(2, "0");
@@ -182,20 +189,26 @@ export function ActionStepsForm({
                 </HelpText>
               )}
 
-              <Field
+              {/*
+                `DateField`, not a bare `date` input: the box still takes a typed `YYYY-MM-DD` and the
+                month grid is one button away for the editor who knows the closing date as "the last
+                Friday" rather than as a number. It brings its own `FieldBlock` — the calendar button
+                may not sit inside a `<label>`, which is what `Field` renders (see Field.tsx).
+
+                It is string-in/string-out, which is the only thing that would have been safe here:
+                `deadline` is stored as the reader's own text and NEVER parsed (schema rule 6), and a
+                picker that turned it into a `Date` on the way through would hand back a value that had
+                silently acquired a time and a zone nobody typed.
+              */}
+              <DateField
                 label="Closing date for this step"
                 help={STEP.deadline.description}
                 value={item.deadline}
-              >
-                <Input
-                  type="date"
-                  value={item.deadline}
-                  onChange={(event) => updateStep({ ...item, deadline: event.target.value })}
-                  // Nothing before today is refused — a step whose date has gone is a normal thing to be
-                  // looking at, and the page states it as passed rather than hiding it.
-                  max="2999-12-31"
-                />
-              </Field>
+                onChange={(deadline) => updateStep({ ...item, deadline })}
+                // Nothing before today is refused — a step whose date has gone is a normal thing to be
+                // looking at, and the page states it as passed rather than hiding it.
+                max="2999-12-31"
+              />
 
               <Field label="Where this step stands" help={STEP.status.description}>
                 <Select

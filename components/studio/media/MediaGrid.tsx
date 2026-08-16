@@ -109,6 +109,22 @@ export interface StudioMediaAsset extends MediaLike {
   tags: string[];
   folderId: string | null;
   uploaderId: string | null;
+  /**
+   * The stored crop, as fractions of the FULL image (0–1, origin top left), or five nulls for "nobody
+   * has chosen — show the whole picture".
+   *
+   * ⚠ ALL FIVE MOVE TOGETHER. Four of five is not a rectangle, and both the render side
+   * (`isUsableCrop` in components/studio/ImageCropper.tsx) and the API refuse an incomplete set rather
+   * than guessing at the missing number. Optional on this type because a row read by an older client,
+   * or a `MediaLike` assembled by a section that never selected these columns, legitimately has none —
+   * and "no crop" is the same outcome either way.
+   */
+  cropX?: number | null;
+  cropY?: number | null;
+  cropWidth?: number | null;
+  cropHeight?: number | null;
+  /** The preset the editor chose ("16-9", "og", "free"). Nothing renders from it — see `cropX`. */
+  cropAspect?: string | null;
   /** ISO 8601. Not a `Date`. */
   createdAt: string;
   updatedAt: string;
@@ -134,6 +150,36 @@ export interface MediaAssetDetail extends StudioMediaAsset {
   usageTruncated?: boolean;
   /** Other live assets with byte-for-byte identical contents. */
   duplicates?: { id: string; fileName: string }[];
+  /**
+   * How many days a deleted file can still be restored for — `MEDIA_PURGE_AFTER_DAYS`, as configured
+   * on THIS installation.
+   *
+   * It arrives over the wire rather than being written into a component because the browser cannot
+   * read it: the variable has no `NEXT_PUBLIC_` prefix, which is right. Optional, because an older
+   * server answers without it, and the wording falls back to naming the recycle bin without a number
+   * rather than inventing one (contract §1.6 — say what you do not know).
+   */
+  recoveryDays?: number;
+}
+
+/**
+ * What `DELETE /api/studio/media/:id` answers.
+ *
+ * ⚠ THE REFERENCES ARE RE-READ AT DELETE TIME AND SENT BACK, so a page that started using the file
+ * between opening the panel and pressing the button is still named. Anything that deletes must show
+ * this list; discarding it is how an administrator finds out from a reader instead.
+ */
+export interface MediaDeleteResponse {
+  deleted: true;
+  id: string;
+  fileName: string;
+  references: MediaUsage[];
+  referenceCount: number;
+  referencesTruncated: boolean;
+  /** The configured recovery window in days. See `MediaAssetDetail.recoveryDays`. */
+  recoveryDays?: number;
+  /** A whole sentence, already fit to show a reader. */
+  message: string;
 }
 
 /**

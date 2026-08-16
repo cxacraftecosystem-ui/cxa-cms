@@ -110,6 +110,15 @@ export interface MediaLibraryProps {
   initialTags: MediaTagsResponse;
   /** False when object storage is not configured. Uploading and replacing then say so plainly. */
   storageReady: boolean;
+  /**
+   * How many days a file moved to the recycle bin can still be restored for — `MEDIA_PURGE_AFTER_DAYS`
+   * as configured on this installation, read on the server because the browser cannot.
+   *
+   * It is handed down rather than fetched so that every confirmation on this screen can name the real
+   * number BEFORE anybody agrees to anything. A component that wrote "30 days" into its own copy would
+   * go on saying 30 the day an administrator sets it to 7.
+   */
+  recoveryDays: number;
   /** The configuration sentences from lib/env, or an empty list. Shown once, at the top. */
   configurationWarnings: readonly string[];
 }
@@ -120,6 +129,7 @@ export function MediaLibrary({
   initialFolders,
   initialTags,
   storageReady,
+  recoveryDays,
   configurationWarnings
 }: MediaLibraryProps) {
   const pathname = usePathname();
@@ -679,7 +689,12 @@ export function MediaLibrary({
             folderId={filters.folder !== "" && filters.folder !== NO_FOLDER ? filters.folder : null}
             folderLabel={folderLabel}
             storageReady={storageReady}
+            recoveryDays={recoveryDays}
             onUploaded={onUploaded}
+            // The same handler as the detail panel's delete: the row has gone to the recycle bin, so
+            // the open panel closes if it was that file, the selection drops it, and the list and the
+            // folder counts are re-read.
+            onRemoved={onAssetDeleted}
             onUseExisting={(existing, discardedId) => {
               setActiveId(existing.id);
               flash([existing.id]);
@@ -692,6 +707,7 @@ export function MediaLibrary({
             rowsOnPage={(assets ?? []).length}
             totalRows={total}
             folders={folderList}
+            recoveryDays={recoveryDays}
             onClearSelection={() => setSelectedIds(new Set<string>())}
             onFinished={({ changedIds, keepSelectedIds }) => {
               flash(changedIds);

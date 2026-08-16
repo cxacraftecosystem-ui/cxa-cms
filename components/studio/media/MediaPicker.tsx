@@ -10,6 +10,14 @@
  * the article was not saved first, the paragraph as well. The upload area is here, in the dialog, and
  * a file that lands is selected straight away.
  *
+ * AND A FILE UPLOADED HERE CAN BE TAKEN BACK HERE. The upload area's own "Just added" list carries a
+ * Remove on every row, which matters more in this dialog than it does in the library: an author who
+ * picks the wrong photograph for the article they are writing has no reason to be sent to another
+ * screen to undo the last five seconds, and being sent there is how the wrong photograph gets
+ * published. Removing is the same soft delete as everywhere else — recycle bin, bytes intact — and the
+ * file leaves the selection with it, so "Use this file" can never confirm a row that is no longer in
+ * the library.
+ *
  * IT IS NOT A PERMISSION BOUNDARY. Whatever renders this dialog has already checked that the reader
  * may manage media (`canManageMedia` from lib/permissions.ts), and the `/api/studio/media/*` handlers
  * check it again — which is the check that actually matters. A dialog is a courtesy, never a guard.
@@ -68,6 +76,16 @@ export interface MediaPickerProps {
   kind?: MediaKindName;
   /** False when object storage is not configured — the upload area then says so instead of failing. */
   storageReady?: boolean;
+  /**
+   * How many days a file moved to the recycle bin can still be restored for — `MEDIA_PURGE_AFTER_DAYS`
+   * as configured on this installation.
+   *
+   * OPTIONAL, AND USUALLY ABSENT. Only a server component can read it, and this dialog is opened from a
+   * dozen editors that have no reason to. Where it is missing the removal confirmation names the
+   * recycle bin and says the period is stated there, rather than inventing a number — see
+   * `UploadQueue.recoveryDays`. An editor whose page already reads it may pass it through.
+   */
+  recoveryDays?: number | null;
   /** Overrides the dialog title where the slot has a name: "Choose a cover photograph". */
   title?: string;
 }
@@ -79,6 +97,7 @@ export function MediaPicker({
   multiple = false,
   kind,
   storageReady = true,
+  recoveryDays = null,
   title
 }: MediaPickerProps) {
   const [filters, setFilters] = useState<MediaFilters>({
@@ -267,6 +286,7 @@ export function MediaPicker({
                 : "no folder"
             }
             storageReady={storageReady}
+            recoveryDays={recoveryDays}
             {...(kind ? { kind } : {})}
             compact
             onUploaded={(uploaded) => {
@@ -275,8 +295,26 @@ export function MediaPicker({
               setChosen((current) => (multiple ? [...current, ...uploaded] : uploaded.slice(-1)));
               void list.refresh();
             }}
-            onUseExisting={(existing) => {
-              setChosen((current) => (multiple ? [...current, existing] : [existing]));
+            // ⚠ THE REMOVED FILE HAS TO LEAVE THE SELECTION TOO. `onUploaded` above chose it the
+            // instant it landed, which is the whole point of uploading from inside this dialog — so a
+            // reader who uploads the wrong photograph and removes it would otherwise press "Use this
+            // file" on a row that is now in the recycle bin, and the slot would be filled with a file
+            // that no longer exists.
+            onRemoved={(id) => {
+              setChosen((current) => current.filter((entry) => entry.id !== id));
+              void list.refresh();
+            }}
+            onUseExisting={(existing, discardedId) => {
+              setChosen((current) => {
+                // The discarded copy goes for the same reason: it was chosen on upload and has just
+                // been soft-deleted in favour of the older, identical file. `existing` is filtered out
+                // as well before being appended, so choosing the older copy twice — once from the grid
+                // and once from this offer — cannot put it in the list twice.
+                const withoutDiscarded = current.filter(
+                  (entry) => entry.id !== discardedId && entry.id !== existing.id
+                );
+                return multiple ? [...withoutDiscarded, existing] : [existing];
+              });
               void list.refresh();
             }}
           />

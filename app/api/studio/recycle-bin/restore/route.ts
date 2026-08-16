@@ -19,6 +19,9 @@ import {
   searchDocFromPublication,
   searchDocFromResearchArea
 } from "@/lib/search/index";
+// The bin's ONE list of kinds. See ../kinds.ts: four copies of it was four chances for a kind to be
+// listable but not restorable, with nothing to say so until somebody hit the missing branch.
+import { BIN_TYPES, isBinType, type BinType } from "../kinds";
 
 /**
  * Putting something back from the recycle bin.
@@ -48,28 +51,14 @@ import {
  *
  * `canRestoreDeleted` — administrator, and deliberately stricter than editing. A restore can resurrect
  * content an editor deliberately retired, which is why lib/permissions.ts makes it an administrator's act.
+ *
+ * Its opposite number, `../purge/route.ts`, is stricter AGAIN — master admin only. The asymmetry is the
+ * point: a restore that got the wrong record is undone by deleting it again, and there is no such second
+ * chance the other way.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
 export const dynamic = "force-dynamic";
-
-const BIN_TYPES = [
-  "Page",
-  "Post",
-  "Person",
-  "Project",
-  "Publication",
-  "ResearchArea",
-  "CoeEvent",
-  "Craft",
-  "GalleryAlbum",
-  "Partner",
-  "MediaAsset",
-  "FileAsset",
-  "ContactSubmission"
-] as const;
-
-type BinType = (typeof BIN_TYPES)[number];
 
 /** How many records one request may put back. Bounded, and the refusal says the number. */
 const MAX_PER_REQUEST = 50;
@@ -80,10 +69,6 @@ const RestoreBody = z.object({
   id: z.string().trim().max(64).optional(),
   ids: z.array(z.string().trim().min(1).max(64)).max(MAX_PER_REQUEST).optional()
 });
-
-function isBinType(value: string): value is BinType {
-  return (BIN_TYPES as readonly string[]).includes(value);
-}
 
 /**
  * Clear `deletedAt`.

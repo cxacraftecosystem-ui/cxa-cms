@@ -30,7 +30,35 @@
  * DELETING SHOWS WHAT BREAKS FIRST. Every place the file is used is listed, each as a link, because an
  * administrator about to remove a photograph needs to know it is the one on the About page. The delete
  * itself is a SOFT delete — the row goes to the recycle bin and the bytes survive the purge window —
- * so the confirm is a plain danger confirm rather than a type-the-name one.
+ * so the confirm is a plain danger confirm rather than a type-the-name one. The window is named as a
+ * REAL NUMBER OF DAYS, taken from `recoveryDays` on the loaded row rather than written into this file:
+ * see `MediaAssetDetail.recoveryDays`. Where the server did not send one, the confirm says the file
+ * goes to the recycle bin and stops there rather than inventing a period.
+ *
+ * ⚠ AND IT SAYS "AN ADMINISTRATOR CAN PUT IT BACK", NOT "YOU CAN". Deleting needs `canManageMedia`;
+ * restoring needs `canRestoreDeleted`, which is ADMINISTRATOR only. The two are not the same rank, so
+ * the reassurance has to name who can actually act on it.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ THE TWO CROP BUTTONS ARE TWO DIFFERENT OPERATIONS AND THE WORDING HAS TO KEEP THEM APART.
+ *
+ *   • "Choose what is shown" edits FIVE NUMBERS ON THIS ROW (`components/studio/ImageCropper`). No
+ *     bytes are touched, no derivative is regenerated, no new file appears in the library, and every
+ *     page already using this photograph picks the new framing up. It is undoable for ever, because
+ *     "show the whole picture" is just those five numbers set back to null. This is what an editor
+ *     wants nine times in ten, and it is the one that works on a photograph uploaded two years ago.
+ *
+ *   • "Crop a copy" re-encodes the pixels into a NEW asset (`./ImageCropper`, the sibling). It costs an
+ *     upload, a fresh set of derivatives and a description of its own, and nothing already using this
+ *     file changes. It is the right tool only when the two crops must exist side by side — a tight
+ *     portrait for a profile and the wide original for the story about the same person.
+ *
+ * SAVING A CROP DOES NOT GO THROUGH THE SAVE BAR, deliberately. The dialog's own "Use this crop" is the
+ * commit, exactly as it is in the upload queue, and it writes immediately. Folding it into the panel's
+ * dirty state would mean a reader could position a rectangle, press Cancel on the dialog, and still be
+ * told they have unsaved changes — and a crop is not something you keep half-finished while typing a
+ * caption.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * REPLACING THE FILE KEEPS THE SAME id, which is what makes it a replacement rather than a new upload:
  * every article, album and profile pointing at this asset picks up the new bytes with no re-linking.
@@ -42,11 +70,13 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import {
+  Copy,
   Crop,
   ExternalLink,
   Layers,
   Link2Off,
   RefreshCw,
+  RotateCcw,
   ScanEye,
   Trash2,
   TriangleAlert,
@@ -56,7 +86,16 @@ import {
 import { asApiClientError, del, patch, post } from "@/lib/client/fetcher";
 import { useResource } from "@/lib/client/useResource";
 import { kindForContentType, MAX_UPLOAD_BYTES } from "@/lib/client/upload";
+import { mediaSrc } from "@/lib/media/url";
 import { cn, formatBytes } from "@/lib/utils";
+import {
+  CROP_ASPECTS,
+  ImageCropper as FramingCropper,
+  cropFrameStyle,
+  isUsableCrop,
+  type CropChoice,
+  type CropRect
+} from "@/components/studio/ImageCropper";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
@@ -75,6 +114,7 @@ import {
   describeDimensions,
   hasPicture,
   type MediaAssetDetail,
+  type MediaDeleteResponse,
   type MediaFolderNode,
   type StudioMediaAsset
 } from "./MediaGrid";
@@ -137,6 +177,44 @@ function snapshot(form: MetaForm): string {
   return JSON.stringify(bodyFromForm(form));
 }
 
+/**
+ * The crop stored on this row, or null for "nobody has chosen — show the whole picture".
+ *
+ * ⚠ THE `?? undefined` ON EACH LINE IS LOAD-BEARING, not noise. The column is `number | null` and
+ * `isUsableCrop` takes a `Partial<CropRect>`, whose members are `number | undefined`; passing the
+ * nulls straight through does not typecheck, and widening the predicate instead would weaken the one
+ * test that both the studio and the render side rely on. Anything incomplete or out of range comes
+ * back null here for exactly the reason the migration gives: a bad rectangle must degrade to today's
+ * behaviour — the whole picture, cover-fitted — rather than to a broken frame.
+ */
+function storedCrop(asset: StudioMediaAsset): CropRect | null {
+  const rect = {
+    x: asset.cropX ?? undefined,
+    y: asset.cropY ?? undefined,
+    width: asset.cropWidth ?? undefined,
+    height: asset.cropHeight ?? undefined
+  };
+  return isUsableCrop(rect) ? rect : null;
+}
+
+/** The shape the editor was working on, in their words, or null if the id is not one we offer. */
+function cropShapeLabel(aspectId: string | null | undefined): string | null {
+  if (!aspectId || aspectId === "free") return null;
+  return CROP_ASPECTS.find((entry) => entry.id === aspectId)?.label ?? null;
+}
+
+/**
+ * What shape to draw the panel's own crop preview in.
+ *
+ * The stored preset when there is one — showing a 4:5 portrait crop inside a 16:9 box would re-trim it
+ * on screen and make a good crop look wrong. 16:9 is the fallback for a free-form crop, because it is
+ * the widest frame the site draws often and therefore the one that loses the most.
+ */
+function cropPreviewRatio(aspectId: string | null | undefined): number {
+  const preset = CROP_ASPECTS.find((entry) => entry.id === aspectId);
+  return preset?.ratio ?? 16 / 9;
+}
+
 export interface MediaDetailPanelProps {
   /** Null closes the panel. Changing it loads a different file. */
   assetId: string | null;
@@ -182,6 +260,9 @@ export function MediaDetailPanel({
   const [replacing, setReplacing] = useState(false);
   const [replaceError, setReplaceError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /** The framing dialog. Its own "Use this crop" is the commit — see the header. */
+  const [framingOpen, setFramingOpen] = useState(false);
+  const [framingError, setFramingError] = useState<string | null>(null);
 
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const altRef = useRef<HTMLTextAreaElement | null>(null);
@@ -211,6 +292,14 @@ export function MediaDetailPanel({
   if (assetId === null) return null;
 
   const state = data ? altState(data) : "not-applicable";
+
+  // The framing, read once per render. `mediaSrc` returns null where no public base URL is configured
+  // or the asset has no variants yet, and the cropper says so in its own words rather than opening
+  // onto an empty box.
+  const crop = data ? storedCrop(data) : null;
+  const cropSource = data && hasPicture(data.kind) ? mediaSrc(data, 1600) : null;
+  const cropShape = cropShapeLabel(data?.cropAspect);
+  const cropKept = crop ? Math.round(crop.width * crop.height * 100) : null;
 
   const folderOptions = (folders ?? [])
     .slice()
@@ -260,6 +349,53 @@ export function MediaDetailPanel({
     setSaveError(null);
   };
 
+  /**
+   * Store the crop against this row.
+   *
+   * ⚠ FIVE FIELDS, ALWAYS SENT TOGETHER, and `null` across all five is what "show the whole picture"
+   * means — the API refuses every other combination, because four numbers out of five is not a
+   * rectangle and the render side would have to guess at the missing one.
+   *
+   * ⚠ IT MUST NOT REJECT. The cropper calls this from `void apply()` and closes on the resolved
+   * promise; a rejection there is an unhandled rejection with no message anywhere a reader can see it.
+   * So the failure is caught and put on screen, in the panel, where the reader is looking.
+   */
+  const saveFraming = async (choice: CropChoice | null) => {
+    if (!data) return;
+    setFramingError(null);
+    try {
+      const updated = await patch<StudioMediaAsset>(MEDIA_ENDPOINTS.detail(data.id), {
+        cropX: choice ? choice.rect.x : null,
+        cropY: choice ? choice.rect.y : null,
+        cropWidth: choice ? choice.rect.width : null,
+        cropHeight: choice ? choice.rect.height : null,
+        cropAspect: choice ? choice.aspectId : null
+      });
+      onSaved(updated);
+      // Re-read: the panel draws its own preview from the crop, and the usage list is what tells the
+      // reader how many pages have just been reframed by this one click.
+      await detail.refresh();
+      toast({
+        title: choice ? "The framing was saved" : "The whole picture is shown again",
+        description:
+          data.usage.length === 0
+            ? "The file itself is unchanged — only which part of it the site shows."
+            : `The file itself is unchanged. ${
+                data.usage.length === 1
+                  ? "The 1 place using it"
+                  : `The ${data.usage.length} places using it`
+              } will show the new framing.`,
+        tone: "success"
+      });
+    } catch (thrown) {
+      setFramingError(
+        `The framing could not be saved, so the site will go on showing what it showed before. ${
+          asApiClientError(thrown).message
+        }`
+      );
+    }
+  };
+
   const remove = async () => {
     if (!data || deleting) return;
 
@@ -269,8 +405,35 @@ export function MediaDetailPanel({
       body: (
         <>
           <p>
-            It disappears from the site straight away. Nothing is destroyed yet — the file can be
-            restored from the recycle bin, and the stored copy is kept for a while after that.
+            It disappears from the site straight away. Nothing is destroyed yet — the file goes to the
+            recycle bin, and{" "}
+            {/*
+              ⚠ "AN ADMINISTRATOR CAN PUT IT BACK", NOT "YOU CAN". Deleting here needs
+              `canManageMedia` (MEDIA_MANAGER and up); restoring needs `canRestoreDeleted`, which is
+              ADMINISTRATOR only (lib/permissions.ts). Telling a media manager they can undo this
+              themselves is a promise the studio will refuse to keep, and they would find that out
+              only after deleting something.
+
+              The window is the REAL configured number, from the row the server sent, or no number at
+              all. A hard-coded "30 days" would go on saying 30 the day MEDIA_PURGE_AFTER_DAYS is set
+              to 7, and a promise about how long there is to change your mind is the last thing that
+              should be a guess (contract §1.6).
+            */}
+            {typeof data.recoveryDays === "number" ? (
+              <>
+                an administrator can put it back for the next{" "}
+                <span className="font-semibold">
+                  {data.recoveryDays === 1 ? "1 day" : `${data.recoveryDays} days`}
+                </span>
+                . After that the stored copy is removed for good.
+              </>
+            ) : (
+              <>
+                an administrator can put it back. It is removed for good once it has been in the
+                recycle bin longer than this installation allows — Studio → Recycle bin states the
+                period.
+              </>
+            )}
           </p>
           {used > 0 ? (
             <p className="mt-2">
@@ -298,9 +461,16 @@ export function MediaDetailPanel({
       // A DELETE with no body. The handler SOFT-deletes — it sets `deletedAt` and records the change
       // through `mutateWithHistory()` like every other mutation — so this is a move to the recycle bin
       // and not a removal of bytes. Only the purge job removes bytes.
-      await del(MEDIA_ENDPOINTS.detail(data.id));
+      const result = await del<MediaDeleteResponse>(MEDIA_ENDPOINTS.detail(data.id));
       onDeleted(data.id);
-      toast({ title: `${data.fileName} was moved to the recycle bin`, tone: "success" });
+      // The server's own sentence, verbatim. It counts the references AGAIN at delete time, so a page
+      // that started using this photograph while the panel was open is still named — which the list
+      // above, read when the panel loaded, could not have known about.
+      toast({
+        title: `${data.fileName} was moved to the recycle bin`,
+        description: result.message,
+        tone: result.referenceCount > 0 ? "warn" : "success"
+      });
       onClose();
     } catch (thrown) {
       setSaveError(asApiClientError(thrown).message);
@@ -464,6 +634,97 @@ export function MediaDetailPanel({
                 className="w-full bg-surface-100"
                 imageClassName="!object-contain"
               />
+            ) : null}
+
+            {/* ── What the site shows of it ─────────────────────────────────────────────── */}
+            {hasPicture(data.kind) ? (
+              <div className="mt-3 rounded-md border border-line-200 bg-surface-50 p-3">
+                <h3 className="flex items-center gap-1.5 font-display text-sm font-semibold text-ink-900">
+                  <Crop aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-500" />
+                  What the site shows of this picture
+                </h3>
+
+                {crop ? (
+                  <>
+                    <p className="mt-1 text-xs leading-relaxed text-ink-700">
+                      A part of it has been chosen — {cropKept}% of the picture
+                      {cropShape ? `, on the “${cropShape}” shape` : ", trimmed to a free shape"}.
+                      Everywhere the site draws this file, that is the part it starts from.
+                    </p>
+
+                    {cropSource ? (
+                      <div className="mt-2">
+                        {/*
+                          The stored rectangle, drawn with the SAME nested-percentage geometry
+                          `cropFrameStyle` gives the render side — so this is what the page will
+                          actually paint, not an illustration of it. A plain <img>: the source is a CDN
+                          URL rather than a media row, nothing is laid out from it, and next/image
+                          would buy a second copy of bytes the panel has already loaded above.
+                        */}
+                        <div
+                          // Inline, not a Tailwind class: an `aspect-[16/9]` assembled from stored
+                          // data would be purged by the content scanner (contract §5).
+                          style={{ aspectRatio: String(cropPreviewRatio(data.cropAspect)) }}
+                          className="relative w-full overflow-hidden rounded-sm border border-line-200 bg-surface-100"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={cropSource}
+                            alt=""
+                            aria-hidden="true"
+                            style={cropFrameStyle(crop)}
+                            className="max-w-none object-cover"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="mt-1 text-xs leading-relaxed text-ink-700">
+                    The whole picture is used, and the site trims it from the{" "}
+                    <span className="font-medium">middle</span> to fit whatever frame it lands in — a
+                    wide banner, a card, a square tile. The middle is a guess, and it is the wrong
+                    guess whenever the subject is not dead centre.
+                  </p>
+                )}
+
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={Crop}
+                    onClick={() => setFramingOpen(true)}
+                  >
+                    {crop ? "Change what is shown" : "Choose what is shown"}
+                  </Button>
+                  {crop ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={RotateCcw}
+                      onClick={() => void saveFraming(null)}
+                    >
+                      Show the whole picture again
+                    </Button>
+                  ) : null}
+                </div>
+
+                <p className="mt-2 text-xs leading-relaxed text-ink-500">
+                  This makes no new file and changes nothing about the one you uploaded — it records
+                  which part to show. Every page already using this photograph is reframed at once, and
+                  you can come back and choose differently whenever you like.
+                </p>
+
+                {framingError ? (
+                  <p
+                    role="alert"
+                    className="mt-2 flex items-start gap-1.5 rounded-md border border-error-200 bg-error-100 px-2.5 py-2 text-xs leading-relaxed text-error-700"
+                  >
+                    <TriangleAlert aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{framingError}</span>
+                  </p>
+                ) : null}
+              </div>
             ) : null}
 
             {/* ── The description ───────────────────────────────────────────────────────── */}
@@ -767,11 +1028,16 @@ export function MediaDetailPanel({
               <h3 className="font-display text-sm font-semibold text-ink-900">This file</h3>
 
               <div className="mt-2 flex flex-wrap gap-2">
+                {/*
+                  `Copy`, not `Crop`, and the difference is the whole point: the control above already
+                  crops THIS file. This one makes a second file. Two buttons with the same scissors on
+                  them would be two buttons a reader has to try to tell apart.
+                */}
                 {hasPicture(data.kind) && onCropRequest ? (
                   <Button
                     size="sm"
                     variant="secondary"
-                    icon={Crop}
+                    icon={Copy}
                     onClick={() => onCropRequest(data)}
                   >
                     Crop a copy
@@ -816,6 +1082,18 @@ export function MediaDetailPanel({
                       data.usage.length === 1 ? "one place" : `${data.usage.length} places`
                     } listed above will show the new version. The copy you uploaded first is kept.`}
               </p>
+
+              {hasPicture(data.kind) && onCropRequest ? (
+                // Said here rather than left to the button's four words, because choosing the wrong one
+                // of the two costs an upload, a second description and a duplicate in every picker.
+                <p className="mt-1.5 text-xs leading-relaxed text-ink-500">
+                  “Crop a copy” cuts the pixels and adds a <span className="font-medium">second</span>{" "}
+                  file to the library, which then needs a description of its own and does not change
+                  anything already using this one. To change what the site shows of{" "}
+                  <span className="font-medium">this</span> photograph, use “
+                  {crop ? "Change what is shown" : "Choose what is shown"}” at the top instead.
+                </p>
+              ) : null}
 
               {replacing ? (
                 <div className="mt-3">
@@ -888,6 +1166,23 @@ export function MediaDetailPanel({
             </p>
           ) : null}
         </footer>
+      ) : null}
+
+      {/*
+        The framing dialog. Mounted here, inside the panel, so it closes with the panel and cannot
+        outlive the row it is editing — the caller's own cropper (the one that makes a COPY) belongs to
+        the library screen instead, because the new file lands in that screen's list.
+      */}
+      {data && hasPicture(data.kind) ? (
+        <FramingCropper
+          open={framingOpen}
+          onClose={() => setFramingOpen(false)}
+          src={cropSource}
+          fileName={data.fileName}
+          initialRect={crop}
+          initialAspectId={data.cropAspect ?? undefined}
+          onApply={(choice) => saveFraming(choice)}
+        />
       ) : null}
     </section>
   );

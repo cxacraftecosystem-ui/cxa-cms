@@ -14,14 +14,27 @@
  *    holds the actual `File` objects. Not a toast — a toast is `aria-live="polite"`, never interrupts,
  *    and may never be read at all (Toast.tsx). The names stay on screen until they are dealt with.
  *
- * 1b. WHAT WILL ACTUALLY BE SHOWN IS OFFERED BEFORE ANYBODY DISCOVERS IT ON A PUBLISHED PAGE. Every
- *    picture that lands gets a row in the "Choose what is shown" panel, which opens
+ * 1b. WHAT JUST LANDED STAYS ON SCREEN, NAMED, WITH BOTH OF THE DECISIONS THAT BELONG TO IT.
+ *
+ *    ⚠ "I UPLOADED THE WRONG PICTURE AND I CANNOT GET RID OF IT" IS THE FAULT THIS PANEL FIXES, and
+ *    it was never a missing capability: `DELETE /api/studio/media/:id` has always been there, it has
+ *    always been a SOFT delete, and the library's own detail panel and bulk bar have always offered
+ *    it. What was missing was the offer AT THE MOMENT THE MISTAKE IS MADE — which is here, and, more
+ *    importantly, inside `MediaPicker`, where an author uploading a cover for the article they are
+ *    writing never sees the library screen at all. Sending them to another screen to undo the last
+ *    five seconds is how a wrong photograph ends up published.
+ *
+ *    So every row carries "Remove", which asks first, says how long the file can be restored for, and
+ *    repeats whatever the server reports about what was still using it. Removing is the same soft
+ *    delete as everywhere else: the row goes to the recycle bin and the bytes outlive it.
+ *
+ *    And every PICTURE also carries "Choose what is shown", which opens
  *    `components/studio/ImageCropper` — a preview of the picture in the frames the site uses, a
  *    choice of shape, and a draggable rectangle. The chosen rectangle is stored on the asset and
  *    applied at RENDER; the uploaded bytes are never altered. See that component's header, and
  *    prisma/migrations/20260816190000_media_asset_crop for the columns.
  *
- *    ⚠ IT IS OFFERED AFTER THE BYTES LAND, NOT BEFORE THEY ARE SENT, and that is a deliberate
+ *    ⚠ CROPPING IS OFFERED AFTER THE BYTES LAND, NOT BEFORE THEY ARE SENT, and that is a deliberate
  *    ordering. Cropping first would mean thirty modal dialogs standing between a reader and a thirty
  *    file drop, with the uplink idle throughout — and the crop is a display decision that can be
  *    changed at any time afterwards, so there is nothing to be gained by blocking on it. Uploading
@@ -50,7 +63,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CircleCheck, Copy, Crop, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { CircleCheck, Copy, Crop, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
 
 import { asApiClientError, del, patch, post } from "@/lib/client/fetcher";
 import {
@@ -62,9 +75,11 @@ import {
   type UploadFailure,
   type UploadProgress
 } from "@/lib/client/upload";
+import { mediaSrc } from "@/lib/media/url";
 import { cn, formatBytes } from "@/lib/utils";
-import { ImageCropper, type CropChoice } from "@/components/studio/ImageCropper";
+import { ImageCropper, isUsableCrop, type CropChoice } from "@/components/studio/ImageCropper";
 import { Button } from "@/components/ui/Button";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { FileDropzone } from "@/components/ui/FileDropzone";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -72,6 +87,7 @@ import { useToast } from "@/components/ui/ToastProvider";
 import {
   MEDIA_ENDPOINTS,
   hasPicture,
+  type MediaDeleteResponse,
   type MediaDuplicateMatch,
   type MediaDuplicateResponse,
   type StudioMediaAsset
@@ -97,6 +113,23 @@ export interface UploadQueueProps {
    * moved to the recycle bin by the time this is called, so the caller should drop it from its list.
    */
   onUseExisting?: (existing: StudioMediaAsset, discardedId: string) => void;
+  /**
+   * A file that had just been added has been moved to the recycle bin. It has ALREADY been handed to
+   * `onUploaded`, so a caller that keeps a list — or a selection — has to drop it here or go on
+   * showing a file that is no longer in the library.
+   */
+  onRemoved?: (id: string) => void;
+  /**
+   * How many days a removed file can still be restored for: `MEDIA_PURGE_AFTER_DAYS` as configured on
+   * this installation, read on the server and handed down.
+   *
+   * ⚠ NULL IS A REAL ANSWER AND IT IS THE DEFAULT. The browser cannot read the variable itself (no
+   * `NEXT_PUBLIC_` prefix, which is correct), and this component is mounted inside `MediaPicker` from
+   * a dozen editors that have no way to pass it. Where it is null the confirmation names the recycle
+   * bin and says the period is stated there, rather than inventing a number — a promise about how long
+   * you have to change your mind is the last thing that should be a guess.
+   */
+  recoveryDays?: number | null;
   /** Content types the picker will accept. Defaults to the whole upload allow-list. */
   accept?: readonly string[];
   /** Forces the stored kind — only ever needed for PANORAMA and MODEL_3D. */
@@ -141,18 +174,22 @@ function pairFailures(batch: readonly File[], failed: readonly UploadFailure[]):
 }
 
 /**
- * A picture that has landed and has not yet been given a crop.
+ * A file that has just landed, and the two decisions still open on it: remove it, and — if it is a
+ * picture — choose what is shown of it.
  *
- * The `File` is kept rather than the asset's CDN URL, and that is what makes the preview instant: the
- * bytes are already in this browser, so `URL.createObjectURL` costs nothing and there is no wait for
- * storage, no dependence on `NEXT_PUBLIC_CDN_URL` being configured, and no CORS header needed.
+ * The `File` is kept alongside the row, and that is what makes the crop preview instant: the bytes are
+ * already in this browser, so `URL.createObjectURL` costs nothing and there is no wait for storage, no
+ * dependence on `NEXT_PUBLIC_CDN_URL` being configured, and no CORS header needed. It is NULLABLE
+ * because the pairing is by name (see `pairAdded`) and can legitimately fail; the cropper then falls
+ * back to the stored address, which is slower but not wrong.
  */
-interface CropTarget {
-  assetId: string;
-  fileName: string;
-  file: File;
+interface AddedRow {
+  asset: StudioMediaAsset;
+  file: File | null;
   /** True once a crop has been chosen (or explicitly declined) for this one. */
-  settled: boolean;
+  cropSettled: boolean;
+  /** True once it has been moved to the recycle bin. The row stays, saying so — see the render. */
+  removed: boolean;
 }
 
 /**
@@ -160,11 +197,15 @@ interface CropTarget {
  *
  * Matched BY NAME AND IN ORDER, exactly as `pairFailures` does above and for the same reason: two
  * files in one drop can legitimately share a name, `uploadFiles` preserves the order it was given,
- * and the server answers with the row it created for each. Anything unmatched is dropped from the
- * crop offer rather than paired with a guess — showing a reader the wrong photograph to crop is
- * worse than not offering to crop that one.
+ * and the server answers with the row it created for each.
+ *
+ * ⚠ AN UNMATCHED ROW IS KEPT, WITH A NULL `file`, AND THAT IS A CHANGE FROM PAIRING FOR THE CROP
+ * ALONE. Cropping the wrong photograph is worse than not offering to crop it, so a guess was never
+ * acceptable — but REMOVING is addressed by asset id, which the server returned and which cannot be
+ * ambiguous. Dropping the row would mean a file the reader can see in the library, uploaded ten
+ * seconds ago, with no way to take it back from the screen they are standing on.
  */
-function pairUploads(batch: readonly File[], uploaded: readonly StudioMediaAsset[]): CropTarget[] {
+function pairAdded(batch: readonly File[], uploaded: readonly StudioMediaAsset[]): AddedRow[] {
   const byName = new Map<string, File[]>();
   for (const file of batch) {
     const list = byName.get(file.name);
@@ -172,16 +213,14 @@ function pairUploads(batch: readonly File[], uploaded: readonly StudioMediaAsset
     else byName.set(file.name, [file]);
   }
 
-  const targets: CropTarget[] = [];
-  for (const asset of uploaded) {
-    if (!hasPicture(asset.kind)) continue;
-    // SVG is filed as a DOCUMENT by the server, so `hasPicture` already excludes it — which is right,
-    // because a vector has no pixels to crop and the whole document scales.
-    const file = byName.get(asset.fileName)?.shift();
-    if (!file) continue;
-    targets.push({ assetId: asset.id, fileName: asset.fileName, file, settled: false });
-  }
-  return targets;
+  return uploaded.map((asset) => ({
+    asset,
+    // SVG is filed as a DOCUMENT by the server, so `hasPicture` excludes it — which is right, because
+    // a vector has no pixels to crop and the whole document scales.
+    file: hasPicture(asset.kind) ? (byName.get(asset.fileName)?.shift() ?? null) : null,
+    cropSettled: false,
+    removed: false
+  }));
 }
 
 export function UploadQueue({
@@ -190,12 +229,15 @@ export function UploadQueue({
   storageReady,
   onUploaded,
   onUseExisting,
+  onRemoved,
+  recoveryDays = null,
   accept = ACCEPTED_CONTENT_TYPES,
   kind,
   compact = false,
   className
 }: UploadQueueProps) {
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [failures, setFailures] = useState<FailureRow[]>([]);
@@ -203,27 +245,38 @@ export function UploadQueue({
   const [notice, setNotice] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState<string | null>(null);
 
-  const [cropTargets, setCropTargets] = useState<CropTarget[]>([]);
-  /** The `assetId` currently open in the cropper, or null when the dialog is closed. */
+  const [added, setAdded] = useState<AddedRow[]>([]);
+  /** The asset id currently open in the cropper, or null when the dialog is closed. */
   const [cropping, setCropping] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
+  /** The asset id being moved to the recycle bin, so one row's button spins and not all of them. */
+  const [removing, setRemoving] = useState<string | null>(null);
 
-  const cropTarget = cropTargets.find((target) => target.assetId === cropping) ?? null;
+  const cropTarget = added.find((row) => row.asset.id === cropping) ?? null;
 
   /**
    * The `blob:` URL for the picture being cropped, created on open and REVOKED ON CLOSE.
    *
    * ⚠ AN UNREVOKED OBJECT URL PINS THE WHOLE FILE IN MEMORY for the lifetime of the document. A drop
-   * of forty 12-megapixel photographs is comfortably a gigabyte, so creating one per target up front —
+   * of forty 12-megapixel photographs is comfortably a gigabyte, so creating one per row up front —
    * the obvious shape — turns a routine batch into a tab the browser kills. One at a time, revoked
    * the moment the dialog closes, means at most one file is held.
+   *
+   * A row whose `File` could not be matched by name falls back to the stored address. That needs
+   * storage to have a public URL and needs the derivatives to exist, so it can come back null — and
+   * the cropper already says so plainly rather than opening onto an empty box.
    */
   useEffect(() => {
     if (!cropTarget) {
       setCropSrc(null);
       return;
     }
-    const url = URL.createObjectURL(cropTarget.file);
+    const file = cropTarget.file;
+    if (!file) {
+      setCropSrc(mediaSrc(cropTarget.asset, 1600));
+      return;
+    }
+    const url = URL.createObjectURL(file);
     setCropSrc(url);
     return () => {
       URL.revokeObjectURL(url);
@@ -274,10 +327,10 @@ export function UploadQueue({
       setNotice(null);
       setFailures([]);
       setDuplicates([]);
-      // The previous batch's crop offer goes with it. Leaving it up would invite a reader to crop a
-      // photograph from a drop they finished ten minutes ago while a new one is running, and the
+      // The previous batch's rows go with it. Leaving them up would invite a reader to crop — or
+      // remove — a file from a drop they finished ten minutes ago while a new one is running, and the
       // `File` handles behind those rows are exactly what we do not want to keep alive (see below).
-      setCropTargets([]);
+      setAdded([]);
       setCropping(null);
 
       let uploaded: StudioMediaAsset[] = [];
@@ -314,9 +367,10 @@ export function UploadQueue({
       if (!mountedRef.current) return;
 
       if (uploaded.length > 0) onUploaded(uploaded);
-      // Offered, never forced: an editor who ignores this panel gets exactly today's behaviour, which
-      // is the whole picture cover-fitted into whatever frame the section chose.
-      if (uploaded.length > 0) setCropTargets(pairUploads(files, uploaded));
+      // Offered, never forced: an editor who ignores this panel gets exactly today's behaviour — the
+      // whole picture cover-fitted into whatever frame the section chose, and the file left where it
+      // landed.
+      if (uploaded.length > 0) setAdded(pairAdded(files, uploaded));
 
       const stopped = cancelled || stoppedRef.current;
 
@@ -391,6 +445,14 @@ export function UploadQueue({
       await del(MEDIA_ENDPOINTS.detail(match.uploadedId));
       if (!mountedRef.current) return;
       setDuplicates((current) => current.filter((entry) => entry.uploadedId !== match.uploadedId));
+      // The "Just added" row for the copy that has been discarded says so too. Left alone it would go
+      // on offering "Remove" for a file already in the recycle bin, which answers 404 — a reader
+      // pressing it would be told something went wrong when nothing had.
+      setAdded((current) =>
+        current.map((row) =>
+          row.asset.id === match.uploadedId ? { ...row, removed: true } : row
+        )
+      );
       onUseExisting?.(match.existing, match.uploadedId);
     } catch (thrown) {
       if (mountedRef.current) setNotice(asApiClientError(thrown).message);
@@ -402,25 +464,18 @@ export function UploadQueue({
   /**
    * Store the chosen crop against the asset.
    *
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   * ⚠ THIS NEEDS THE PATCH ROUTE AND THE SCHEMA TO CARRY THE FIVE CROP FIELDS, AND AT THE TIME OF
-   * WRITING THEY DO NOT. `PatchBody` in app/api/studio/media/[id]/route.ts accepts `altText`,
-   * `caption`, `credit`, `copyright`, `tags` and `folderId` and nothing else, and Zod strips unknown
-   * keys — so until that route is extended this call SUCCEEDS AND SILENTLY STORES NOTHING, which is
-   * the worst of the three possible outcomes and the reason it is written out here rather than left
-   * to be discovered. The columns exist (see the hand-written migration
-   * prisma/migrations/20260816190000_media_asset_crop); the schema block, the Zod fields and the
-   * render side in components/ui/MediaImage.tsx are the remaining three edits, and all three live in
-   * files this change does not own.
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   *
    * `null` clears the crop, which is what "show the whole picture" means. The five fields are always
-   * sent together — a row with three of five set is not a rectangle, and the render side treats any
-   * incomplete or out-of-range set as "no crop" (`isUsableCrop`).
+   * sent together — a row with three of five set is not a rectangle — and the API refuses every other
+   * combination rather than storing half of one. The render side treats any incomplete or
+   * out-of-range set as "no crop" (`isUsableCrop`), so the worst case is today's behaviour.
+   *
+   * ⚠ IT DOES NOT RE-ENCODE ANYTHING. Five numbers change on the row; the uploaded bytes, the
+   * derivatives and the checksum are all untouched, which is why re-cropping later costs nothing and
+   * why this is safe to offer on a file somebody else uploaded two years ago.
    */
   const saveCrop = async (assetId: string, choice: CropChoice | null) => {
     try {
-      await patch(MEDIA_ENDPOINTS.detail(assetId), {
+      const updated = await patch<StudioMediaAsset>(MEDIA_ENDPOINTS.detail(assetId), {
         cropX: choice ? choice.rect.x : null,
         cropY: choice ? choice.rect.y : null,
         cropWidth: choice ? choice.rect.width : null,
@@ -428,8 +483,14 @@ export function UploadQueue({
         cropAspect: choice ? choice.aspectId : null
       });
       if (!mountedRef.current) return;
-      setCropTargets((current) =>
-        current.map((target) => (target.assetId === assetId ? { ...target, settled: true } : target))
+      // The PATCHED row replaces the created one, so "Change the crop" reopens on the rectangle that
+      // was actually stored rather than on the whole picture. The server is the authority on what the
+      // five columns now hold — it clamps nothing, but it does refuse, and a refusal must not leave a
+      // row here claiming a crop the database does not have.
+      setAdded((current) =>
+        current.map((row) =>
+          row.asset.id === assetId ? { ...row, asset: updated, cropSettled: true } : row
+        )
       );
     } catch (thrown) {
       if (!mountedRef.current) return;
@@ -443,7 +504,116 @@ export function UploadQueue({
     }
   };
 
-  const unsettledCrops = cropTargets.filter((target) => !target.settled).length;
+  /**
+   * Move a file that has just been added to the recycle bin.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * IT ASKS FIRST, EVEN THOUGH IT IS REVERSIBLE. The fault being fixed here is an accidental upload,
+   * and answering it with a one-click destroy-adjacent button would only move the accident along one
+   * step. The question names the file, because a list of forty rows and a dialog saying "this file"
+   * is a dialog nobody can answer.
+   *
+   * ⚠ WHAT IS USING IT IS NOT KNOWN UNTIL THE SERVER ANSWERS, and the confirmation says so instead of
+   * implying nothing can break. Nothing counts references in the browser: the count spans fifteen
+   * relations and only `DELETE` computes it — which it does at delete time, so a page that started
+   * using the file since it landed is still named. That happens easily here, because this component
+   * is mounted inside `MediaPicker`: an author can upload a photograph, put it straight into the
+   * article they are writing, and then think better of the photograph. The reply's `message` already
+   * names the count and is repeated verbatim.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const removeUpload = async (row: AddedRow) => {
+    if (removing !== null || row.removed) return;
+
+    const agreed = await confirm({
+      title: `Move “${row.asset.fileName}” to the recycle bin?`,
+      body: (
+        <>
+          {/*
+            ⚠ "AN ADMINISTRATOR CAN PUT IT BACK", NOT "YOU CAN". Removing a file needs
+            `canManageMedia`, which is what everybody looking at this panel has; putting it back needs
+            `canRestoreDeleted`, which is ADMINISTRATOR only (lib/permissions.ts). Telling a media
+            manager they can undo this themselves is a promise the studio refuses to keep, and they
+            would discover that only after removing something they wanted.
+          */}
+          <p>
+            It disappears from the library straight away, and nothing is destroyed:{" "}
+            {typeof recoveryDays === "number"
+              ? `it goes to the recycle bin, where an administrator can put it back for the next ${
+                  recoveryDays === 1 ? "1 day" : `${recoveryDays} days`
+                }, after which the stored copy is removed for good.`
+              : "it goes to the recycle bin, where an administrator can put it back. Studio → Recycle bin states how long this installation keeps it for."}
+          </p>
+          <p className="mt-2">
+            If you have already put this file on a page, that page will be left without a picture. The
+            library will say which pages as soon as this is done — nothing here can work that out until
+            the file is asked about.
+          </p>
+        </>
+      ),
+      confirmLabel: "Move to recycle bin"
+    });
+    if (!agreed) return;
+
+    setRemoving(row.asset.id);
+    try {
+      const result = await del<MediaDeleteResponse>(MEDIA_ENDPOINTS.detail(row.asset.id));
+      if (!mountedRef.current) return;
+      setAdded((current) =>
+        current.map((entry) =>
+          entry.asset.id === row.asset.id ? { ...entry, removed: true } : entry
+        )
+      );
+      onRemoved?.(row.asset.id);
+
+      // The server's sentence, verbatim: it already names the file, the window and how many records
+      // have just lost their picture, and rewording it would stop it matching the audit log.
+      if (result.referenceCount > 0) {
+        // Left on screen as well as spoken. A toast is `aria-live="polite"`, never interrupts, and may
+        // never be read at all — and "four pages now have a hole in them" is not a passing remark.
+        setNotice(result.message);
+      }
+      toast({
+        title: `${row.asset.fileName} was moved to the recycle bin`,
+        description: result.message,
+        tone: result.referenceCount > 0 ? "warn" : "success"
+      });
+    } catch (thrown) {
+      if (mountedRef.current) {
+        setNotice(
+          `${row.asset.fileName} could not be removed, so it is still in the library. ${
+            asApiClientError(thrown).message
+          }`
+        );
+      }
+    } finally {
+      if (mountedRef.current) setRemoving(null);
+    }
+  };
+
+  const liveAdded = added.filter((row) => !row.removed);
+  const unsettledCrops = liveAdded.filter(
+    (row) => hasPicture(row.asset.kind) && !row.cropSettled
+  ).length;
+
+  /**
+   * The crop the dialog should open on, or null for the whole picture.
+   *
+   * `?? undefined` on each field because the columns are `number | null` and `isUsableCrop` takes a
+   * `Partial<CropRect>`, whose members are `number | undefined`. Widening the predicate instead would
+   * weaken the one test the render side relies on.
+   */
+  const cropTargetRect = cropTarget
+    ? (() => {
+        const rect = {
+          x: cropTarget.asset.cropX ?? undefined,
+          y: cropTarget.asset.cropY ?? undefined,
+          width: cropTarget.asset.cropWidth ?? undefined,
+          height: cropTarget.asset.cropHeight ?? undefined
+        };
+        return isUsableCrop(rect) ? rect : null;
+      })()
+    : null;
 
   const retryable = failures.filter((row) => row.retry !== null).length;
   const visibleRows = progress ? progress.files.slice(0, VISIBLE_PROGRESS_ROWS) : [];
@@ -657,21 +827,19 @@ export function UploadQueue({
         </div>
       ) : null}
 
-      {cropTargets.length > 0 ? (
+      {added.length > 0 ? (
         <div className="mt-3 rounded-md border border-line-200 bg-surface-50 p-3">
           <p className="flex items-start gap-1.5 text-sm font-semibold text-ink-900">
-            <Crop aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+            <CircleCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
             <span>
-              {cropTargets.length === 1
-                ? "Choose what is shown of this picture"
-                : `Choose what is shown of these ${cropTargets.length} pictures`}
+              {added.length === 1 ? "Just added" : `Just added — ${added.length} files`}
             </span>
           </p>
           <p className="mt-1 text-xs leading-relaxed text-ink-700">
-            The site fits pictures into frames of its own — a wide hero, a card, a square tile — and
-            trims whatever does not fit. Left alone it trims from the middle, which is often the wrong
-            half. Setting a crop here says which part must survive. It never changes the file, and it
-            can be changed again at any time.
+            Wrong file? Remove it here — it goes to the recycle bin, and an administrator can put it
+            back. And where the site fits a picture into a frame of its own — a wide banner, a card, a
+            square tile — it trims from the middle unless you say otherwise, which is often the wrong
+            half.
           </p>
 
           {/*
@@ -681,40 +849,78 @@ export function UploadQueue({
             the instant the row is opened.
           */}
           <ul className="mt-2.5 space-y-1.5">
-            {cropTargets.map((target) => (
+            {added.map((row) => (
               <li
-                key={target.assetId}
-                className="flex flex-wrap items-center gap-2 rounded-md bg-card px-2.5 py-2"
+                key={row.asset.id}
+                className={cn(
+                  "flex flex-wrap items-center gap-2 rounded-md px-2.5 py-2",
+                  // A removed row is kept, greyed, saying what happened. Making it vanish would be a
+                  // second thing to be uncertain about a second after the first — "did that work, or
+                  // did I remove the one below it?".
+                  row.removed ? "bg-surface-100" : "bg-card"
+                )}
               >
-                <span className="min-w-0 flex-1 break-all text-xs font-medium text-ink-900">
-                  {target.fileName}
-                </span>
-                {target.settled ? (
-                  <span className="flex shrink-0 items-center gap-1 text-xs text-ink-500">
-                    <CircleCheck aria-hidden="true" className="h-3.5 w-3.5" />
-                    Crop set
-                  </span>
-                ) : null}
-                <Button
-                  size="sm"
-                  variant={target.settled ? "ghost" : "secondary"}
-                  onClick={() => setCropping(target.assetId)}
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 break-all text-xs font-medium",
+                    row.removed ? "text-ink-500 line-through" : "text-ink-900"
+                  )}
                 >
-                  {target.settled ? "Change it" : "Choose"}
-                  {/*
-                    Every row's button would otherwise be called "Choose", and a screen reader listing
-                    the buttons on this panel would read forty identical names with nothing to tell
-                    them apart. The file name goes into the accessible name and stays out of the
-                    visible one, where it would wrap the button to three lines.
-                  */}
-                  <span className="sr-only"> what is shown of {target.fileName}</span>
-                </Button>
+                  {row.asset.fileName}
+                </span>
+
+                {row.removed ? (
+                  <span className="shrink-0 text-xs text-ink-500">
+                    In the recycle bin
+                    <span className="sr-only"> — {row.asset.fileName} was removed</span>
+                  </span>
+                ) : (
+                  <>
+                    {row.cropSettled ? (
+                      <span className="flex shrink-0 items-center gap-1 text-xs text-ink-500">
+                        <Crop aria-hidden="true" className="h-3.5 w-3.5" />
+                        Crop set
+                      </span>
+                    ) : null}
+
+                    {hasPicture(row.asset.kind) ? (
+                      <Button
+                        size="sm"
+                        variant={row.cropSettled ? "ghost" : "secondary"}
+                        onClick={() => setCropping(row.asset.id)}
+                      >
+                        {row.cropSettled ? "Change the crop" : "Choose what is shown"}
+                        {/*
+                          Every row's button would otherwise carry the same four words, and a screen
+                          reader listing the buttons on this panel would read forty identical names
+                          with nothing to tell them apart. The file name goes into the accessible name
+                          and stays out of the visible one, where it would wrap the button to three
+                          lines.
+                        */}
+                        <span className="sr-only"> of {row.asset.fileName}</span>
+                      </Button>
+                    ) : null}
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={Trash2}
+                      isLoading={removing === row.asset.id}
+                      loadingLabel="removing"
+                      disabled={removing !== null && removing !== row.asset.id}
+                      onClick={() => void removeUpload(row)}
+                    >
+                      Remove
+                      <span className="sr-only"> {row.asset.fileName} from the library</span>
+                    </Button>
+                  </>
+                )}
               </li>
             ))}
           </ul>
 
           <div className="mt-2.5">
-            <Button size="sm" variant="ghost" onClick={() => setCropTargets([])}>
+            <Button size="sm" variant="ghost" onClick={() => setAdded([])}>
               {unsettledCrops === 0
                 ? "Hide this list"
                 : unsettledCrops === 1
@@ -733,9 +939,15 @@ export function UploadQueue({
         open={cropTarget !== null}
         onClose={() => setCropping(null)}
         src={cropSrc}
-        fileName={cropTarget?.fileName ?? ""}
+        fileName={cropTarget?.asset.fileName ?? ""}
+        // Reopening a row that has already been cropped reopens ON that crop rather than on the whole
+        // picture — `saveCrop` writes the patched row back, so these carry whatever was stored. A
+        // rectangle that fails `isUsableCrop` is passed as null and the dialog opens on the whole
+        // picture, which is the same degradation the render side makes.
+        initialRect={cropTargetRect}
+        initialAspectId={cropTarget?.asset.cropAspect ?? undefined}
         onApply={(choice) => {
-          const assetId = cropTarget?.assetId;
+          const assetId = cropTarget?.asset.id;
           if (!assetId) return;
           return saveCrop(assetId, choice);
         }}

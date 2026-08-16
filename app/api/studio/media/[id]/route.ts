@@ -14,11 +14,12 @@ import {
 } from "@/lib/api";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
+import { mediaPurgeAfterDays } from "@/lib/env";
 import { canManageMedia } from "@/lib/permissions";
 import { unique } from "@/lib/utils";
 
 /**
- * One media asset: read it, change its description, or move it to the recycle bin.
+ * One media asset: read it, change its description or its crop, or move it to the recycle bin.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * `GET` ANSWERS `MediaAssetDetail` (components/studio/media/MediaGrid.tsx) and `PATCH` answers
@@ -31,11 +32,32 @@ import { unique } from "@/lib/utils";
  * the round trip** and neither may be normalised into the other. The whole accessibility backlog
  * depends on that distinction being real.
  *
+ * THE CROP IS FIVE NUMBERS ON THE ROW AND `PATCH` IS THE ONLY THING THAT WRITES THEM. They say which
+ * part of the picture the site is allowed to show, as fractions of the full image, and they are applied
+ * at RENDER — no byte is re-encoded, no derivative is regenerated, no new asset is created. Which is
+ * what makes RE-cropping an already-uploaded photograph the same operation as cropping a new one: an
+ * editor drags a rectangle, five columns change, every page already using the file picks the new
+ * framing up on its next render. See prisma/migrations/20260816190000_media_asset_crop for why a stored
+ * rectangle rather than re-encoded bytes, and `CropBody` below for what is enforced.
+ *
+ * ⚠ THERE IS DELIBERATELY NO SEPARATE `/crop` ROUTE. A crop is five scalar columns on `MediaAsset`, the
+ * same kind of thing as `altText`, and a second endpoint writing the same five columns would be a
+ * second place for the validation, the audit entry and the "is this rectangle usable" rule to drift
+ * apart. `PATCH` already builds its update key by key from what was SENT, so a crop-only body cannot
+ * disturb the description and a description-only body cannot disturb the crop.
+ *
  * `DELETE` IS A SOFT DELETE, ALWAYS. It sets `deletedAt` and nothing else: the row goes to the recycle
  * bin and the BYTES SURVIVE until the purge cron passes the recovery window
  * (`MEDIA_PURGE_AFTER_DAYS`, 30 days by default). Nothing in this file removes an object from storage,
  * and nothing in this file may be changed to — the purge job's ordering (bytes first, row second) is
  * the only safe sequence and it lives in app/api/cron/purge.
+ *
+ * BOTH `GET` AND `DELETE` CARRY `recoveryDays`, THE REAL CONFIGURED NUMBER. The studio has to be able
+ * to say "it can be restored for the next 30 days" and mean it, and the browser cannot read
+ * `MEDIA_PURGE_AFTER_DAYS` — it is a server variable with no `NEXT_PUBLIC_` prefix, which is correct.
+ * A hard-coded 30 in a component would go on saying 30 the day an administrator sets it to 7, and a
+ * confirmation that lies about how long you have to change your mind is worse than one that says
+ * nothing.
  *
  * DELETING COUNTS THE REFERENCES FIRST AND RETURNS THEM. An administrator about to remove a photograph
  * that appears on four pages must be told which four. The panel asks the same question on `GET` so it
@@ -361,7 +383,12 @@ export const GET = route(async (request: NextRequest, context: { params: Promise
     ...row
   } = asset;
 
-  return ok({ ...row, usage, usageTruncated: truncated, duplicates });
+  /**
+   * Sent with the row so the delete confirmation can name the real window BEFORE anybody agrees to
+   * anything. See the header: the browser cannot read `MEDIA_PURGE_AFTER_DAYS` itself, and a panel that
+   * guesses 30 would go on saying 30 the day an administrator sets it to 7.
+   */
+  return ok({ ...row, usage, usageTruncated: truncated, duplicates, recoveryDays: mediaPurgeAfterDays() });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -369,6 +396,21 @@ export const GET = route(async (request: NextRequest, context: { params: Promise
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 const MAX_TAGS = 30;
+
+/**
+ * A crop edge, as a fraction of the full image.
+ *
+ * FRACTIONS AND NOT PIXELS, because the same asset is served at six widths (`VARIANT_WIDTHS` in
+ * lib/media/url.ts, 320 → 2560) and a pixel rectangle is meaningful against exactly one of them.
+ */
+const CropEdge = z
+  .number()
+  .finite("A crop has to be four ordinary numbers.")
+  .min(0, "A crop cannot start outside the picture.")
+  .max(1, "A crop cannot extend past the edge of the picture.");
+
+/** The five crop keys, named once so `hasAnyCropKey` and the error sentences cannot drift apart. */
+const CROP_KEYS = ["cropX", "cropY", "cropWidth", "cropHeight", "cropAspect"] as const;
 
 const PatchBody = z.object({
   /**
@@ -385,8 +427,100 @@ const PatchBody = z.object({
     .array(z.string().trim().min(1).max(80))
     .max(MAX_TAGS, `Keep it to ${MAX_TAGS} tags or fewer — past that they stop helping anybody find things.`)
     .optional(),
-  folderId: z.string().trim().min(1).max(64).nullable().optional()
-});
+  folderId: z.string().trim().min(1).max(64).nullable().optional(),
+
+  /**
+   * ⚠ THE FIVE CROP FIELDS TRAVEL TOGETHER OR NOT AT ALL, and the check that enforces it is the
+   * `superRefine` below. Four of five is not a rectangle; three numbers and a stale `cropAspect` is a
+   * row the render side has to guess about. Sending all five as `null` is the way to say "show the
+   * whole picture again", which is a real answer and not the absence of one.
+   */
+  cropX: CropEdge.nullable().optional(),
+  cropY: CropEdge.nullable().optional(),
+  cropWidth: CropEdge.nullable().optional(),
+  cropHeight: CropEdge.nullable().optional(),
+  /**
+   * Which preset the editor was working on ("16-9", "og", "free", …). NOTHING RENDERS FROM IT — it is
+   * kept only so the cropper reopens on the shape they chose, and the four numbers above are the
+   * truth. Not validated against the preset list: that list lives in a `"use client"` module which a
+   * route handler cannot import, and an unrecognised value already degrades to "free" in the dialog.
+   */
+  cropAspect: z.string().trim().min(1).max(24).nullable().optional()
+})
+  .superRefine((body, ctx) => {
+    const present = CROP_KEYS.filter((key) => key in body);
+    if (present.length === 0) return;
+
+    if (present.length !== CROP_KEYS.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cropX"],
+        message:
+          "A crop is five values and they have to be sent together. Send all of cropX, cropY, cropWidth, cropHeight and cropAspect, or none of them."
+      });
+      return;
+    }
+
+    const { cropX, cropY, cropWidth, cropHeight, cropAspect } = body;
+    const numbers = [cropX, cropY, cropWidth, cropHeight];
+    const nulls = numbers.filter((value) => value === null).length;
+
+    // All four null is "show the whole picture". `cropAspect` has to go with them, or the dialog would
+    // reopen locked to a shape whose rectangle no longer exists.
+    if (nulls === numbers.length) {
+      if (cropAspect !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["cropAspect"],
+          message: "Clearing a crop clears the shape with it. Send cropAspect as null too."
+        });
+      }
+      return;
+    }
+
+    // `typeof` rather than a null count, because this is also what NARROWS all four to `number` for
+    // the arithmetic below — a count TypeScript cannot follow would leave four casts behind it.
+    if (
+      typeof cropX !== "number" ||
+      typeof cropY !== "number" ||
+      typeof cropWidth !== "number" ||
+      typeof cropHeight !== "number"
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cropX"],
+        message:
+          "Part of a crop is missing. Send all four of cropX, cropY, cropWidth and cropHeight, or all four as null to show the whole picture."
+      });
+      return;
+    }
+
+    /**
+     * ⚠ THE SAME TEST AS `isUsableCrop()` in components/studio/ImageCropper.tsx, written out again
+     * rather than imported: that module carries `"use client"`, and a plain function exported from a
+     * client module and imported by a route handler is a client reference, not the function — calling
+     * it on the server throws. The cropper's header records the intention to move both to
+     * `lib/media/crop.ts`, which is the edit that lets this duplication go.
+     *
+     * A hair over 1 is tolerated on the two sums because the numbers arrive from floating-point
+     * division and `0.3 + 0.7` is famously not 1. A hair is not a crop.
+     */
+    if (cropWidth <= 0 || cropHeight <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cropWidth"],
+        message: "A crop has to keep some of the picture — its width and height cannot be zero."
+      });
+      return;
+    }
+    if (cropX + cropWidth > 1.0001 || cropY + cropHeight > 1.0001) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cropWidth"],
+        message: "That crop runs off the edge of the picture. Move it back inside before saving."
+      });
+    }
+  });
 
 export const PATCH = route(async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
   assertSameOrigin(request);
@@ -424,6 +558,13 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   if ("credit" in body) data.credit = body.credit?.trim() || null;
   if ("copyright" in body) data.copyright = body.copyright?.trim() || null;
   if ("folderId" in body) data.folderId = body.folderId ?? null;
+  // All five or none — the `superRefine` above has already refused every other combination, so these
+  // five lines cannot write half a rectangle.
+  if ("cropX" in body) data.cropX = body.cropX;
+  if ("cropY" in body) data.cropY = body.cropY;
+  if ("cropWidth" in body) data.cropWidth = body.cropWidth;
+  if ("cropHeight" in body) data.cropHeight = body.cropHeight;
+  if ("cropAspect" in body) data.cropAspect = body.cropAspect;
   if (body.tags) {
     // De-duplicated case-insensitively, first spelling wins. "Bagru, bagru" is one tag, and which one
     // is stored has to be predictable or the filter list grows a near-duplicate every week.
@@ -450,6 +591,23 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
     return ok(unchanged);
   }
 
+  /**
+   * What the history entry says.
+   *
+   * A crop is not a detail: it changes what every page already using this file DRAWS, without anybody
+   * touching those pages. Filing it under the same "Details edited" as a typo fixed in a caption is how
+   * "the About page picture changed and nobody knows why" happens.
+   */
+  const cropTouched = "cropX" in body;
+  const otherTouched = Object.keys(data).some((key) => !CROP_KEYS.some((cropKey) => cropKey === key));
+  const summary = !cropTouched
+    ? "Details edited"
+    : otherTouched
+      ? "Details and the crop edited"
+      : body.cropX === null
+        ? "Crop cleared — the whole picture is shown again"
+        : "Crop changed — a different part of the picture is now shown";
+
   const updated = await mutateWithHistory<
     Prisma.MediaAssetGetPayload<{ include: { variants: typeof VARIANT_SELECT } }>
   >(
@@ -459,7 +617,7 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
       entityType: "MediaAsset",
       entityLabel: before.fileName,
       before,
-      summary: "Details edited"
+      summary
     },
     async (tx) => {
       await tx.mediaAsset.update({ where: { id }, data });
@@ -498,6 +656,7 @@ export const DELETE = route(async (request: NextRequest, context: { params: Prom
 
   const { usage, truncated } = collectUsage(asset);
   const deletedAt = new Date();
+  const recoveryDays = mediaPurgeAfterDays();
 
   await mutateWithHistory<{ id: string }>(
     auditContext(request, { id: user.id, email: user.email }),
@@ -540,12 +699,23 @@ export const DELETE = route(async (request: NextRequest, context: { params: Prom
     references: usage,
     referenceCount: usage.length,
     referencesTruncated: truncated,
+    /**
+     * How long there is to change their mind, from the same function the purge job reads. Repeated in
+     * the answer as well as in `GET` because a batch delete never opened the panel: the bulk bar knows
+     * the window only because each reply carries it.
+     */
+    recoveryDays,
     /** Said plainly, because "delete" that keeps the file is the opposite of what the word suggests. */
+    /**
+     * ⚠ "AN ADMINISTRATOR CAN PUT IT BACK", NOT "IT CAN BE RESTORED". Reaching this handler needs
+     * `canManageMedia`; the restore route needs `canRestoreDeleted`, which is ADMINISTRATOR only. A
+     * media manager told they can undo this would find out otherwise after the fact.
+     */
     message:
       usage.length === 0
-        ? `${asset.fileName} is in the recycle bin. Nothing on the site was using it, so nothing has broken.`
+        ? `${asset.fileName} is in the recycle bin, where an administrator can put it back for the next ${recoveryDays} days. Nothing on the site was using it, so nothing has broken.`
         : `${asset.fileName} is in the recycle bin, and ${
             usage.length === 1 ? "1 record that used it" : `${usage.length} records that used it`
-          }${truncated ? " (at least)" : ""} will now render without a picture. It can be restored.`
+          }${truncated ? " (at least)" : ""} will now render without a picture. An administrator can put it back for the next ${recoveryDays} days.`
   });
 });
