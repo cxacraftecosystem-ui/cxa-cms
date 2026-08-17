@@ -26,9 +26,20 @@ import { isSafeObjectKey } from "@/lib/storage/keys";
  * would go straight to a dead signature — a download that works once and then fails forever, with
  * nothing in the logs because the request never arrives.
  *
- * ⚠ **A NOTE FOR WHOEVER OWNS lib/search/index.ts.** `searchUrlFor("file", slug)` builds
- * `/api/public/files/{slug}/download`, but this route is mounted at `/api/public/files/{slug}`. One of
- * the two has to move, or every file result in search is a 404. This file cannot change the other one.
+ * **A SIBLING AT `/inline`, AND THE DIFFERENCE IS THE DISPOSITION.**
+ * `app/api/public/files/[slug]/inline/route.ts` serves the same object to be LOOKED AT — signed without
+ * `Content-Disposition`, so a browser draws it instead of saving it, and restricted to a PDF for exactly
+ * that reason. It deliberately does not count a download. The attachment disposition below stays as it
+ * is: the file store accepts `application/octet-stream` for research data precisely because everything
+ * THIS route serves is saved rather than rendered, and weakening it would make every dataset in the
+ * library renderable in place.
+ *
+ * ⚠ **A NOTE THAT USED TO BE A WARNING, KEPT BECAUSE THE TRAP IS STILL THERE.** `searchUrlFor("file",
+ * slug)` once built `/api/public/files/{slug}/download`, which matched no route, so every file result on
+ * /search was a hard 404 while the card printed the path as though it worked. lib/search/index.ts now
+ * builds `/api/public/files/{slug}` and says so at that line — but the wrong string may still be
+ * PERSISTED in `SearchDocument.url` from before the fix, so a deployment that has not run `reindexAll()`
+ * since then still 404s. Adding a segment here (as `/inline` does) does not resurrect `/download`.
  */
 
 export const dynamic = "force-dynamic";

@@ -120,9 +120,11 @@ export function searchUrlFor(entityType: SearchEntityType, slug: string): string
     case "album":
       return `/gallery/${path}`;
     case "file":
-      // No `/download` suffix. The handler is a SINGLE dynamic segment —
+      // No `/download` suffix. The counted download is the dynamic segment ITSELF —
       // `app/api/public/files/[slug]/route.ts` — so `/api/public/files/x/download` matches no route and
       // every file result on /search was a hard 404 while the card printed the path as though it worked.
+      // (There IS a nested segment now, `/inline`, which serves the same object to be framed rather than
+      // saved. It is not a download and never belongs in a search result.)
       // ⚠ A change here is only half a fix: the wrong string is already persisted in
       // `SearchDocument.url`, so `reindexAll()` must be run afterwards.
       return `/api/public/files/${path}`;

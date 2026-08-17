@@ -84,6 +84,7 @@ export const FILE_ENDPOINTS = {
   create: "/api/studio/files",
   detail: (id: string) => `/api/studio/files/${encodeURIComponent(id)}`,
   versions: (id: string) => `/api/studio/files/${encodeURIComponent(id)}/versions`,
+  preview: (id: string) => `/api/studio/files/${encodeURIComponent(id)}/preview`,
   presign: FILE_PRESIGN_PATH
 } as const;
 
@@ -131,6 +132,17 @@ export interface FileVersionRow {
   notes: string | null;
   /** ISO 8601. JSON has no date type and the fetcher does not revive them. */
   createdAt: string;
+  /**
+   * The PDF rendition's state, as three fields with no fourth holding a summary of them.
+   *
+   * `previewByteSize` set means there IS one; `previewFailedReason` set means the last attempt failed;
+   * `previewAttemptedAt` null means nobody has tried. The schema's own note explains why there is
+   * deliberately no `previewState` column — a stored state is a value that has to be written correctly in
+   * five places instead of read correctly in one.
+   */
+  previewByteSize: number | null;
+  previewAttemptedAt: string | null;
+  previewFailedReason: string | null;
 }
 
 export interface StudioFileRow {
@@ -809,6 +821,53 @@ function FileDetailPanel({
     }
   }, [category, description, expiresOn, file.id, isPublic, onSaved, toast, trimmedTitle]);
 
+  /**
+   * Ask for a PDF rendition of the latest version.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ MANUAL, NOT AUTOMATIC ON UPLOAD, and the reason is cost rather than difficulty. A conversion spends
+   * a paid quota entry at a third party. Most of what this library holds is a dataset or a corpus nobody
+   * will ever frame on a page, so converting everything on the way in would spend the allowance on
+   * documents no reader looks at — and it would do so for an author uploading, when the decision belongs
+   * to whoever publishes the page. So it is a press, next to the sentence saying what a reader currently
+   * gets.
+   *
+   * ⚠ THE ROUTE ANSWERS 200 FOR "no preview was made", so a refusal is read out of the BODY rather than
+   * caught. `made: false` covers the honest non-failures — already a PDF, a format the converter does not
+   * take, no converter configured — and each carries its own sentence. Treating those as errors would put
+   * a red banner in front of an editor whose file simply needs no conversion.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const [previewing, setPreviewing] = useState(false);
+
+  /** The version every public route serves. `versions` arrives newest-first. */
+  const latest = file.versions[0] ?? null;
+  const latestIsPdf = latest?.mimeType.toLowerCase() === "application/pdf";
+
+  const makePreview = useCallback(async () => {
+    setPreviewing(true);
+    try {
+      const answer = await post<{ made?: boolean; message?: string }>(
+        FILE_ENDPOINTS.preview(file.id),
+        {}
+      );
+      onSaved();
+      toast({
+        tone: answer.made ? "success" : "info",
+        title: answer.made ? "A PDF preview has been made" : "No preview was made",
+        description: answer.message
+      });
+    } catch (thrown) {
+      toast({
+        tone: "error",
+        title: "The preview could not be made",
+        description: asApiClientError(thrown).message
+      });
+    } finally {
+      setPreviewing(false);
+    }
+  }, [file.id, onSaved, toast]);
+
   const replace = useCallback(
     async (chosen: File[]) => {
       const upload = chosen[0];
@@ -992,6 +1051,65 @@ function FileDetailPanel({
             version.
           </span>
         </p>
+
+        {/*
+          WHAT A READER ACTUALLY SEES, said in one sentence, with the way to change it beside it.
+          It describes the LATEST version only, because that is the one every public route serves — a
+          per-row preview state would be four lines of noise about versions nobody is offered.
+        */}
+        {latest ? (
+          <div className="rounded-md border border-line-200 bg-surface-50 p-3">
+            {latestIsPdf ? (
+              <p className="text-sm leading-relaxed text-ink-700">
+                This is a PDF, so it is shown on the page wherever it is attached — a publication&apos;s
+                full text, for instance — as well as being offered as a download. Nothing to convert.
+              </p>
+            ) : latest.previewByteSize !== null ? (
+              <>
+                <p className="text-sm leading-relaxed text-ink-700">
+                  A PDF preview exists ({formatBytes(latest.previewByteSize)}), so this document is shown
+                  on the page rather than only offered as a download. The download still gives the
+                  original file.
+                </p>
+                <Button
+                  className="mt-2"
+                  variant="secondary"
+                  size="sm"
+                  isLoading={previewing}
+                  loadingLabel="converting"
+                  onClick={() => void makePreview()}
+                >
+                  Make it again
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm leading-relaxed text-ink-700">
+                  No browser can draw a {latest.fileName.split(".").pop()?.toUpperCase() || "file"} of
+                  this kind, so it is offered as a download and not shown on the page. Converting it once
+                  to a PDF changes that; the download goes on giving the original.
+                </p>
+                {latest.previewFailedReason ? (
+                  // The route's own words. An editor pressing a button twice with nothing to show for it
+                  // is the failure this sentence exists to prevent.
+                  <p className="mt-1.5 text-xs leading-relaxed text-amber-800">
+                    The last attempt did not produce one: {latest.previewFailedReason}
+                  </p>
+                ) : null}
+                <Button
+                  className="mt-2"
+                  variant="secondary"
+                  size="sm"
+                  isLoading={previewing}
+                  loadingLabel="converting"
+                  onClick={() => void makePreview()}
+                >
+                  {latest.previewAttemptedAt ? "Try again" : "Make a PDF preview"}
+                </Button>
+              </>
+            )}
+          </div>
+        ) : null}
 
         {file.versions.length === 0 ? (
           <HelpText tone="warn" icon={FileWarning}>

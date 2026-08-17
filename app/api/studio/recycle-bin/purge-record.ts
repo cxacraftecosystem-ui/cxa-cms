@@ -691,15 +691,30 @@ async function storageKeysFor(type: BinType, id: string): Promise<string[]> {
   }
 
   if (type === "FileAsset") {
-    // Each `FileVersion` is an independent upload with its own random key, so there is no shared prefix
-    // to sweep here — the version rows are the only record of them, which is precisely why the row is
-    // never deleted before its objects are.
+    /**
+     * Each `FileVersion` is an independent upload with its own random key, so there is no ONE shared
+     * prefix to sweep here — the version rows are the only record of them, which is precisely why the row
+     * is never deleted before its objects are.
+     *
+     * ⚠ A VERSION CAN OWN TWO OBJECTS, NOT ONE. `app/api/studio/files/[id]/preview/route.ts` writes a PDF
+     * rendition for a format no browser can draw, and records it as `previewObjectKey`. Collecting only
+     * `objectKey` would delete the row and leave that PDF in the bucket for ever with nothing pointing at
+     * it — the orphan the paragraph above is about. The COLUMN is the authority rather than the key
+     * convention: the preview's key is derived from the original's, so a prefix sweep would find it too,
+     * but a purge must not depend on a naming scheme it does not own.
+     */
     const file = await prisma.fileAsset.findUnique({
       where: { id },
-      select: { versions: { select: { objectKey: true } } }
+      select: { versions: { select: { objectKey: true, previewObjectKey: true } } }
     });
     if (!file) return [];
-    return [...new Set(file.versions.map((version) => version.objectKey))];
+    return [
+      ...new Set(
+        file.versions.flatMap((version) =>
+          version.previewObjectKey ? [version.objectKey, version.previewObjectKey] : [version.objectKey]
+        )
+      )
+    ];
   }
 
   return [];

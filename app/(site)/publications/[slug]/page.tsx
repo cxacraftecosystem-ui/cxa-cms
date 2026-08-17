@@ -14,6 +14,7 @@ import {
 import { PageHero } from "@/components/site/PageHero";
 import { houseProseTypeset } from "@/components/site/ProseArticle";
 import { SectionHeading } from "@/components/site/SectionHeading";
+import { DocumentFrame } from "@/components/site/DocumentFrame";
 import { TagList } from "@/components/site/TagList";
 import { LinkButton } from "@/components/ui/Button";
 import { publicationDisplayVenue, resolveBibtex } from "@/lib/citation";
@@ -22,7 +23,7 @@ import { prisma } from "@/lib/db";
 import { pageMetadata, scholarlyArticleJsonLd, serializeJsonLd } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { typesetClassName, typesetFaceClassName } from "@/lib/typography/typeset";
-import { cn, truncateWords } from "@/lib/utils";
+import { cn, formatBytes, truncateWords } from "@/lib/utils";
 
 import {
   bareDoi,
@@ -221,7 +222,24 @@ export default async function PublicationPage({
             isPublic: true,
             OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
           },
-          select: { slug: true, title: true }
+          select: {
+            slug: true,
+            title: true,
+            /**
+             * The latest version, so the page can say whether a browser can DRAW this document.
+             *
+             * `mimeType` answers it for a PDF; `previewObjectKey` answers it for a `.docx` or a `.pptx`
+             * somebody has converted (app/api/studio/files/[id]/preview/route.ts). Either one means the
+             * document is framed below; neither means it stays a download, which is still offered in
+             * both cases. `byteSize` is what the download link's own words carry, so nobody starts a
+             * 40 MB transfer on a phone by accident.
+             */
+            versions: {
+              orderBy: { version: "desc" },
+              take: 1,
+              select: { mimeType: true, byteSize: true, previewObjectKey: true, previewByteSize: true }
+            }
+          }
         })
       : Promise.resolve(null),
     relatedWhere
@@ -341,6 +359,31 @@ export default async function PublicationPage({
     path: `/publications/${publication.slug}`
   });
 
+  /**
+   * Can a browser DRAW this document, or only save it?
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ THE PDF USED TO BE A LINK AND NOTHING ELSE, which is a strange thing to offer on the page whose
+   * whole subject is one document: a reader wanting to know whether this is the paper they need had to
+   * download it to find out. It is framed now when it can be, and the LINK IS STILL RENDERED IN EVERY
+   * CASE — for a reader whose PDF viewer is switched off, for one using a screen reader (for whom a
+   * document opened in its own tab is measurably better than one nested in a page), and for anyone who
+   * wants the file rather than a look at it.
+   *
+   * TWO WAYS TO BE DRAWABLE, and they are not the same fact. A PDF is drawable as it stands. Anything
+   * else — a `.docx` full text, a `.pptx` of slides — is drawable only if somebody has made a PDF
+   * preview of it in the studio, because no browser renders those. `previewByteSize` is what the frame
+   * would actually fetch, so it is what the reader is told about; `byteSize` is the original, which is
+   * what the DOWNLOAD gives them. Reporting one number for both would understate a 4 MB deck as its
+   * 600 KB preview or the reverse.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const pdfVersion = pdf?.versions[0] ?? null;
+  const pdfFramable =
+    pdfVersion !== null &&
+    (pdfVersion.previewObjectKey !== null || pdfVersion.mimeType.toLowerCase() === "application/pdf");
+  const pdfIsConverted = pdfVersion?.previewObjectKey !== null && pdfVersion?.previewObjectKey !== undefined;
+
   return (
     <>
       <script
@@ -377,7 +420,16 @@ export default async function PublicationPage({
               // router would ask for an RSC payload from something that returns a PDF.
               <a href={`/api/public/files/${pdf.slug}`} className="field-button-secondary">
                 <FileDown aria-hidden="true" className="h-4 w-4 shrink-0" />
-                <span>Download the PDF</span>
+                {/*
+                  THE WORDS CARRY THE SIZE, so nobody starts a 40 MB transfer on a phone by accident —
+                  the rule `DownloadsSection` states for the file store. It is the ORIGINAL's size, which
+                  is what this link gives, and deliberately not the preview's: the frame below reports
+                  its own.
+                */}
+                <span>
+                  Download the full text
+                  {pdfVersion ? ` (${formatBytes(pdfVersion.byteSize)})` : ""}
+                </span>
               </a>
             ) : null}
           </>
@@ -448,6 +500,33 @@ export default async function PublicationPage({
               <div className={cn(typesetClassName(typeset), "mt-6 text-ink-700")}>
                 <p className="whitespace-pre-line">{publication.abstract.trim()}</p>
               </div>
+            </section>
+          ) : null}
+
+          {pdfFramable && pdf ? (
+            <section>
+              <SectionHeading
+                title="The full text"
+                level={2}
+                description={
+                  pdfIsConverted
+                    ? "Shown as a PDF made from the uploaded document. The original is what the download gives you."
+                    : "Shown here in full. It scrolls inside its own frame, and the download above gives you the file itself."
+                }
+              />
+              <DocumentFrame
+                className="mt-6"
+                src={`/api/public/files/${encodeURIComponent(pdf.slug)}/inline`}
+                /*
+                  ⚠ NAMED AFTER THE PUBLICATION, because the frame's title is the ONLY description a
+                  screen reader gets — an untitled frame is announced as "frame". `pdf.title` is the
+                  file's own name in the library, which is often a filename; the publication's title is
+                  what the reader came for.
+                */
+                title={`The full text of “${publication.title}”`}
+                // Taller than the default: this is the page's subject rather than one block on it.
+                height="lg"
+              />
             </section>
           ) : null}
 

@@ -533,14 +533,14 @@ model PageTemplate {
   key String @unique
 
   /// A noun phrase, as an administrator would name the thing they are about to make.
-  name String
+  name           String
   /// Two sentences: what this arrangement is for, and when to reach for it instead of a blank page.
-  description String
+  description    String
   /// Pre-filled into the title field, so the form is never a blank box with no hint of what goes in it.
   suggestedTitle String
   /// A `lucide-react` export name, as a string. A name lucide no longer exports resolves to a plain
   /// square on screen rather than throwing — lucide has renamed whole families before.
-  icon String
+  icon           String
 
   /// The ordered block specs. See the warning above: TYPES AND LABELS, NEVER PAYLOADS.
   blocks Json @default("[]")
@@ -751,6 +751,22 @@ model FileVersion {
   notes     String?
   createdAt DateTime @default(now())
 
+  /// A PDF rendition of this version, for a format no browser can draw. Null for a PDF — which needs
+  /// none, being the thing everything else is converted INTO — and null for one never converted.
+  previewObjectKey    String?   @unique
+  previewByteSize     Int?
+  /// When the last conversion attempt finished, whether it produced anything or not.
+  previewAttemptedAt  DateTime?
+  /// Why the last attempt produced nothing. Null when it succeeded, and null when none was ever made.
+  ///
+  /// ⚠ THERE IS DELIBERATELY NO `previewState` COLUMN. The state is derivable from these three and a
+  /// fourth column could contradict them: `previewObjectKey` set means there is a preview,
+  /// `previewFailedReason` set means the last attempt failed, and `previewAttemptedAt` null means nobody
+  /// has tried. A stored state is a value that has to be written correctly in five places instead of
+  /// read correctly in one, and the first time it disagreed the studio would offer to convert a document
+  /// it had already converted.
+  previewFailedReason String?
+
   file FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@unique([fileId, version])
@@ -818,7 +834,7 @@ model Person {
 
   researchInterests String[] @default([])
 
-  photoId   String?
+  photoId      String?
   /// Optional per-screen framing for the person's photograph: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -828,8 +844,8 @@ model Person {
   photoScreens Json?
   /// Manual ordering inside a `kind` group. Ties break on `name` so the order is total and stable —
   /// an unstable sort renders a different list on every request and looks like data changing.
-  sortOrder Int     @default(0)
-  isVisible Boolean @default(true)
+  sortOrder    Int     @default(0)
+  isVisible    Boolean @default(true)
 
   /// An alumnus keeps their years; a current member leaves `endedOn` null.
   startedOn DateTime?
@@ -858,18 +874,18 @@ model Person {
 // ═══════════════════════════════════════════════════════════════════════════
 
 model ResearchArea {
-  id          String  @id @default(cuid())
-  slug        String  @unique
-  title       String
-  summary     String?
-  body        Json?
+  id           String  @id @default(cuid())
+  slug         String  @unique
+  title        String
+  summary      String?
+  body         Json?
   /// Lucide icon name. Validated against the exported icon set at write time so a typo surfaces in
   /// the editor rather than as a blank square in production.
-  icon        String?
+  icon         String?
   /// Literal OKLCH/hex accent for the interactive research graph ONLY. The rest of the site has one
   /// action colour (§1.1); this is a data-encoding channel in a visualisation, not a second accent.
-  accentColor String?
-  coverId     String?
+  accentColor  String?
+  coverId      String?
   /// Optional per-screen framing for the research area's cover: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -877,7 +893,7 @@ model ResearchArea {
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
   coverScreens Json?
-  sortOrder   Int     @default(0)
+  sortOrder    Int     @default(0)
 
   status      ContentStatus @default(DRAFT)
   publishedAt DateTime?
@@ -924,7 +940,7 @@ model Project {
   /// 0–100. Clamped on write; a progress bar that can read 140% is worse than no bar.
   progress  Int       @default(0)
 
-  coverId String?
+  coverId      String?
   /// Optional per-screen framing for the project's cover: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -988,8 +1004,8 @@ model ProjectMilestone {
 }
 
 model ProjectMedia {
-  projectId String
-  assetId   String
+  projectId    String
+  assetId      String
   /// Optional per-screen framing for this gallery picture: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -997,8 +1013,8 @@ model ProjectMedia {
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
   assetScreens Json?
-  position  Int     @default(0)
-  caption   String?
+  position     Int     @default(0)
+  caption      String?
 
   project Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   asset   MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -1187,7 +1203,7 @@ model Post {
   /// the editor picks one mode per post and says which.
   mdx      String?
 
-  coverId    String?
+  coverId      String?
   /// Optional per-screen framing for the article's cover: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -1195,8 +1211,8 @@ model Post {
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
   coverScreens Json?
-  authorId   String?
-  categoryId String?
+  authorId     String?
+  categoryId   String?
 
   status      ContentStatus @default(DRAFT)
   publishedAt DateTime?
@@ -1280,7 +1296,7 @@ model CoeEvent {
   capacity             Int?
   isRegistrationOpen   Boolean   @default(false)
 
-  coverId String?
+  coverId      String?
   /// Optional per-screen framing for the event's cover: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -1340,8 +1356,8 @@ model EventSpeaker {
 }
 
 model EventMedia {
-  eventId  String
-  assetId  String
+  eventId      String
+  assetId      String
   /// Optional per-screen framing for this gallery picture: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -1349,8 +1365,8 @@ model EventMedia {
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
   assetScreens Json?
-  position Int     @default(0)
-  caption  String?
+  position     Int     @default(0)
+  caption      String?
 
   event CoeEvent   @relation(fields: [eventId], references: [id], onDelete: Cascade)
   asset MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -1467,7 +1483,7 @@ model Craft {
   /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
-  coverScreens Json?
+  coverScreens   Json?
   /// glTF/GLB storage key for the 3D artefact viewer. Absent for most crafts; the viewer is only
   /// rendered when it is present, never as an empty canvas.
   modelObjectKey String?
@@ -1500,7 +1516,7 @@ model CraftMedia {
   /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
-  assetScreens Json?
+  assetScreens     Json?
   position         Int     @default(0)
   caption          String?
   /// "before" | "after" | null — drives the restoration comparison slider. A pair is only rendered
@@ -1520,15 +1536,15 @@ model CraftMedia {
 // ═══════════════════════════════════════════════════════════════════════════
 
 model GalleryAlbum {
-  id          String    @id @default(cuid())
-  slug        String    @unique
-  title       String
-  description String?
-  category    String?
-  location    String?
-  credit      String?
-  happenedOn  DateTime?
-  coverId     String?
+  id           String    @id @default(cuid())
+  slug         String    @unique
+  title        String
+  description  String?
+  category     String?
+  location     String?
+  credit       String?
+  happenedOn   DateTime?
+  coverId      String?
   /// Optional per-screen framing for the album's cover: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -1536,7 +1552,7 @@ model GalleryAlbum {
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
   coverScreens Json?
-  sortOrder   Int       @default(0)
+  sortOrder    Int       @default(0)
 
   status      ContentStatus @default(DRAFT)
   publishedAt DateTime?
@@ -1586,13 +1602,13 @@ model GalleryItem {
 // ═══════════════════════════════════════════════════════════════════════════
 
 model Partner {
-  id        String  @id @default(cuid())
-  slug      String  @unique
-  name      String
-  url       String?
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  url         String?
   /// "ACADEMIC" | "INDUSTRY" | "GOVERNMENT" | "NGO" | "FUNDER"
-  category  String?
-  logoId    String?
+  category    String?
+  logoId      String?
   /// Optional per-screen framing for the partner's logo: which part of it, and optionally which photograph, at
   /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
   /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
@@ -1600,8 +1616,8 @@ model Partner {
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
   logoScreens Json?
-  sortOrder Int     @default(0)
-  isVisible Boolean @default(true)
+  sortOrder   Int     @default(0)
+  isVisible   Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2024,7 +2040,7 @@ model NewsletterDelivery {
   state NewsletterMailState @default(RECORDED)
 
   /// The subject line as composed. Held so the studio's outbox reads as messages rather than as ids.
-  subject String
+  subject  String
   /// Which provider handled it — null for every RECORDED row, by definition.
   provider String?
   /// What a provider said when it refused. Null unless `state` is FAILED.

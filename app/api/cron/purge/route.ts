@@ -150,13 +150,24 @@ export const GET = route(async (request: Request) => {
     // Files use the same window and the same ordering rule.
     const expiredFiles = await prisma.fileAsset.findMany({
       where: { deletedAt: { lt: cutoff } },
-      select: { id: true, title: true, versions: { select: { objectKey: true } } },
+      select: {
+        id: true,
+        title: true,
+        // ⚠ `previewObjectKey` AS WELL, OR THE PDF RENDITION IS ORPHANED FOR EVER. A converted preview is
+        // a second object belonging to a version (app/api/studio/files/[id]/preview/route.ts), and the
+        // version rows are the only record of either — so a purge that collected the original alone would
+        // drop the row and leave the preview in the bucket with nothing anywhere pointing at it, which is
+        // precisely the orphan this whole route exists to prevent.
+        versions: { select: { objectKey: true, previewObjectKey: true } }
+      },
       take: MAX_ASSETS_PER_RUN,
       orderBy: { deletedAt: "asc" }
     });
 
     for (const file of expiredFiles) {
-      const keys = file.versions.map((version) => version.objectKey);
+      const keys = file.versions.flatMap((version) =>
+        version.previewObjectKey ? [version.objectKey, version.previewObjectKey] : [version.objectKey]
+      );
       const outcome = keys.length > 0 ? await deleteObjects(keys) : { deleted: 0, failed: [] };
 
       if (outcome.failed.length > 0) {

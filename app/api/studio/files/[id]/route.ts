@@ -61,7 +61,18 @@ const VERSION_SELECT = {
     byteSize: true,
     checksum: true,
     notes: true,
-    createdAt: true
+    createdAt: true,
+    /**
+     * The PDF rendition, so the studio can say whether this document will be SHOWN on a page or only
+     * offered as a download — and, when the last attempt failed, why.
+     *
+     * ⚠ THE KEY ITSELF IS NOT SENT, only whether there is one. It is an internal storage address; the
+     * public route that serves the preview looks it up server-side, and a studio screen has no use for
+     * it. `previewByteSize` is sent because it is what the frame actually fetches.
+     */
+    previewByteSize: true,
+    previewAttemptedAt: true,
+    previewFailedReason: true
   },
   orderBy: { version: "desc" as const }
 };

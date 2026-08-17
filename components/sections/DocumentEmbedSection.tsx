@@ -65,6 +65,7 @@ import { Download, FileText, Presentation, TriangleAlert, type LucideIcon } from
 
 import { Reveal } from "@/components/motion/Reveal";
 import { SectionHeading } from "@/components/site/SectionHeading";
+import { DocumentFrame } from "@/components/site/DocumentFrame";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClasses } from "@/components/ui/Button";
 import { cdnConfigured, publicObjectUrl } from "@/lib/media/url";
@@ -75,7 +76,7 @@ import {
   type DocumentEmbedSectionData,
   type DocumentFormat
 } from "@/lib/sections/schema";
-import { cn, formatBytes } from "@/lib/utils";
+import { formatBytes } from "@/lib/utils";
 
 export interface DocumentEmbedSectionProps {
   data: DocumentEmbedSectionData;
@@ -83,25 +84,6 @@ export interface DocumentEmbedSectionProps {
   /** The batched read from `lib/sections/resolve.ts`; `resolved.media` is keyed by ASSET id. */
   resolved?: ResolvedSectionData;
 }
-
-/**
- * How tall the frame is.
- *
- * Complete literal class strings, and a pair per size — an `h-[${n}rem]` assembled from the payload
- * is purged by Tailwind and leaves an unstyled frame (contract §5).
- *
- * ⚠ EVERY SIZE IS SHORTER ON A PHONE, and that is not a detail. A frame taller than the viewport is
- * a scrolling document inside a scrolling page: a reader's flick either moves the page or moves the
- * document depending on where their thumb landed, and on the tallest setting the block would be two
- * full screens of somebody else's scrollbar. The document scrolls internally at every size, so a
- * shorter frame costs nothing but the number of lines visible at once.
- */
-const HEIGHT_CLASS: Record<DocumentEmbedSectionData["height"], string> = {
-  sm: "h-[20rem] sm:h-[26rem]",
-  md: "h-[26rem] sm:h-[40rem]",
-  lg: "h-[30rem] sm:h-[54rem]",
-  xl: "h-[34rem] sm:h-[70rem]"
-};
 
 /**
  * Everything this block says about the document, gathered once.
@@ -176,22 +158,16 @@ export function DocumentEmbedSection({ data, section, resolved }: DocumentEmbedS
               />
             ) : facts.previewable ? (
               <>
-                <div className="overflow-hidden rounded-lg border border-line-200 bg-card shadow-sm">
-                  <iframe
-                    src={href}
-                    /*
-                      THE FRAME'S ONLY DESCRIPTION, and the reason the schema makes `title`
-                      conditionally required. A screen reader announces an untitled frame as "frame".
-                      The fallback is never reached on a saved payload — it exists for the studio's
-                      recovery path, which can hand a preview an unparsed row.
-                    */
-                    title={title || `${facts.label}: ${facts.fileName}`}
-                    // See the header: not fetched until the reader is near it, in the browser, with
-                    // no JavaScript of ours and no click for anybody to have to find.
-                    loading="lazy"
-                    className={cn("w-full border-0", HEIGHT_CLASS[data.height])}
-                  />
-                </div>
+                <DocumentFrame
+                  src={href}
+                  /*
+                    THE FRAME'S ONLY DESCRIPTION, and the reason the schema makes `title` conditionally
+                    required. The fallback is never reached on a saved payload — it exists for the
+                    studio's recovery path, which can hand a preview an unparsed row.
+                  */
+                  title={title || `${facts.label}: ${facts.fileName}`}
+                  height={data.height}
+                />
 
                 {/*
                   The way through for a reader whose PDF viewer is switched off, whose extension
