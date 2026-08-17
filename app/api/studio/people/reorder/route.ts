@@ -87,7 +87,7 @@ const MAX_IDS = 400;
 const PERSON_KINDS = [
   "FACULTY",
   "SCIENTIST",
-  "RESEARCH_ASSISTANT",
+  "RESEARCHER",
   "STUDENT",
   "STAFF",
   "VISITOR",
@@ -111,7 +111,7 @@ const PERSON_KINDS = [
 const GROUP_LABELS: Record<PersonKind, string> = {
   FACULTY: "Faculty",
   SCIENTIST: "Scientists",
-  RESEARCH_ASSISTANT: "Research assistants",
+  RESEARCHER: "Researchers",
   STUDENT: "Students",
   STAFF: "Staff",
   VISITOR: "Visitors",

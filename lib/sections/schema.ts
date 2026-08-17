@@ -252,7 +252,7 @@ const PERSON_KINDS = [
   "",
   "FACULTY",
   "SCIENTIST",
-  "RESEARCH_ASSISTANT",
+  "RESEARCHER",
   "STUDENT",
   "STAFF",
   "VISITOR",

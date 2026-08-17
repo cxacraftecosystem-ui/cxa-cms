@@ -160,7 +160,7 @@ export default async function StudioPeoplePage({
     <div className="mx-auto w-full max-w-[84rem] space-y-6">
       <StudioPageHeader
         title="People"
-        description="Everybody shown on the public site: faculty, scientists, research assistants, students, staff, visitors and alumni. Drag a name to change the order they appear in within their group."
+        description="Everybody shown on the public site: faculty, scientists, researchers, students, staff, visitors and alumni. Drag a name to change the order they appear in within their group."
         meta={
           <span className="text-xs tabular-nums text-ink-500">
             {people.length === 1 ? "1 profile" : `${people.length} profiles`}

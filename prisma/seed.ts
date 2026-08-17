@@ -810,7 +810,7 @@ const SEED_PAGES: SeedPage[] = [
          */
         overrides: {
           heading: "Leadership",
-          body: "The people responsible for the Centre's research, its archive and its teaching. The full directory lists everybody, including research assistants, students and visiting fellows.",
+          body: "The people responsible for the Centre's research, its archive and its teaching. The full directory lists everybody, including researchers, students and visiting fellows.",
           mode: "latest",
           limit: 6,
           ids: [],

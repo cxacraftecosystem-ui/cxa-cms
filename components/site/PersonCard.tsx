@@ -41,7 +41,7 @@ export const PERSON_KIND_ORDER: readonly PersonKind[] = [
   "DC_HANDICRAFTS",
   "FACULTY",
   "SCIENTIST",
-  "RESEARCH_ASSISTANT",
+  "RESEARCHER",
   "STUDENT",
   "STAFF",
   "VISITOR",
@@ -52,7 +52,7 @@ export const PERSON_KIND_ORDER: readonly PersonKind[] = [
 export const PERSON_KIND_LABELS: Record<PersonKind, string> = {
   FACULTY: "Faculty",
   SCIENTIST: "Scientist",
-  RESEARCH_ASSISTANT: "Research assistant",
+  RESEARCHER: "Researcher",
   STUDENT: "Student",
   STAFF: "Staff",
   VISITOR: "Visitor",
@@ -74,7 +74,7 @@ export const PERSON_KIND_LABELS: Record<PersonKind, string> = {
 export const PERSON_KIND_GROUPS: Record<PersonKind, string> = {
   FACULTY: "Faculty",
   SCIENTIST: "Scientists",
-  RESEARCH_ASSISTANT: "Research assistants",
+  RESEARCHER: "Researchers",
   STUDENT: "Students",
   STAFF: "Staff",
   VISITOR: "Visitors",

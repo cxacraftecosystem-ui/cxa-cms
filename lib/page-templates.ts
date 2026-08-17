@@ -460,7 +460,7 @@ export const PAGE_TEMPLATES: readonly PageTemplate[] = [
          * when it has BOTH the words and the address.
          *
          * `kind` is deliberately not set. There is no speaker among the person kinds (faculty,
-         * scientist, research assistant, student, staff, visitor, alumnus), so any filter here would be
+         * scientist, researcher, student, staff, visitor, alumnus), so any filter here would be
          * a claim about the wrong column.
          */
         label: "Who is speaking",

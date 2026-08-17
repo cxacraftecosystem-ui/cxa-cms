@@ -179,8 +179,13 @@ function cleanKeywords(values: readonly string[] | undefined): string[] {
 /**
  * Turn an enum value into something a reader would actually type.
  *
- * "RESEARCH_ASSISTANT" lexes as a single token, so it matches the query "research assistant" not at
- * all. Lower-cased and de-underscored, it matches both words.
+ * "JOURNAL_ARTICLE" lexes as a single token, so it matches the query "journal article" not at all.
+ * Lower-cased and de-underscored, it matches both words.
+ *
+ * (The example used to be "RESEARCH_ASSISTANT", which was renamed to the single word "RESEARCHER" and
+ * stopped demonstrating anything. Indexed text written before that rename still carries the old words,
+ * which costs nothing: a stale document is rewritten the next time its record is saved, and until then
+ * searching the old phrase simply still finds it.)
  */
 function humaniseEnum(value: string | null | undefined): string | null {
   if (!value) return null;

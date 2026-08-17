@@ -429,11 +429,11 @@ export const PEOPLE: SeedPerson[] = [
     sortOrder: 24
   },
 
-  // ── Research assistants ──────────────────────────────────────────────────────────────────────
+  // ── Researchers ──────────────────────────────────────────────────────────────────────────────
   {
     slug: "farida-shaikh",
     name: "Farida Shaikh",
-    kind: "RESEARCH_ASSISTANT",
+    kind: "RESEARCHER",
     designation: "Research Assistant, Field Documentation",
     department: "Field Documentation",
     bio: "Shaikh compiles the workshop glossaries: the names of tools, stages, motifs and — the part she has come to think is the most valuable — faults, recorded in the language they are spoken in before anybody attempts a translation. The work turned into a research interest when she found a Lucknow embroidery workshop using four distinct words for what the standard term list treats as a single defect, each one implying a different cause and a different remedy. She now writes on the cost of premature standardisation, and on how to build an index that finds a record without flattening the words inside it.",
@@ -451,7 +451,7 @@ export const PEOPLE: SeedPerson[] = [
   {
     slug: "abhilash-nayak",
     name: "Abhilash Nayak",
-    kind: "RESEARCH_ASSISTANT",
+    kind: "RESEARCHER",
     designation: "Research Assistant, Eastern India Field Station",
     department: "Field Documentation",
     bio: "Nayak works out of the Centre's Odisha station on pattachitra and on the region's wood carving. His running argument is that the documentation of a painting tradition tends to start at the wrong point: the cloth for a pattachitra is prepared over several days with tamarind-seed paste and chalk, burnished until it will take a fine line, and that preparation takes longer and determines more than the painting does, yet it is what every photographer skips. He has been recording the preparation stages in sequence for three years and is assembling the first properly timed account of them.",
@@ -469,7 +469,7 @@ export const PEOPLE: SeedPerson[] = [
   {
     slug: "priyanka-meshram",
     name: "Priyanka Meshram",
-    kind: "RESEARCH_ASSISTANT",
+    kind: "RESEARCHER",
     designation: "Research Assistant, Painting and Wall Practices",
     department: "Transmission and Pedagogy",
     bio: "Meshram works in Palghar district on Warli painting, and on the specific question of what changes when a wall practice moves onto paper and canvas for sale. Her finding so far is a careful one: the visual grammar transfers almost intact — the circles, triangles and lines, and the rules about what may be placed next to what — while the occasion does not, so that a form which existed for particular moments in a household's year becomes something produced continuously to order. She is interested in how painters themselves describe that shift, which is rarely as a loss and rarely as a straightforward gain.",

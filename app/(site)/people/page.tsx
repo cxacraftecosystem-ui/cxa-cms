@@ -71,7 +71,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return pageMetadata({
     title: "People",
     description:
-      "The faculty, scientists, research assistants, students, staff, visitors and alumni of the Centre of Excellence, with their research interests and publications.",
+      "The faculty, scientists, researchers, students, staff, visitors and alumni of the Centre of Excellence, with their research interests and publications.",
     path: "/people"
   });
 }

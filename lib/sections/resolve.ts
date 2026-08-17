@@ -1127,7 +1127,7 @@ interface PersonFilter {
     | ""
     | "FACULTY"
     | "SCIENTIST"
-    | "RESEARCH_ASSISTANT"
+    | "RESEARCHER"
     | "STUDENT"
     | "STAFF"
     | "VISITOR"

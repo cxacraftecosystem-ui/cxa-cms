@@ -576,7 +576,7 @@ export function PeopleShowcaseForm({
             { value: "DC_HANDICRAFTS", label: "DC, Handicrafts" },
             { value: "FACULTY", label: "Faculty" },
             { value: "SCIENTIST", label: "Scientists" },
-            { value: "RESEARCH_ASSISTANT", label: "Research assistants" },
+            { value: "RESEARCHER", label: "Researchers" },
             { value: "STUDENT", label: "Students" },
             { value: "STAFF", label: "Staff" },
             { value: "VISITOR", label: "Visitors" },

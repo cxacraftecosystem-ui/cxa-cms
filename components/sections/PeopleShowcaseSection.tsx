@@ -50,7 +50,7 @@ const KIND_PLURAL: Record<PeopleShowcaseSectionData["kind"], string> = {
   "": "people",
   FACULTY: "faculty members",
   SCIENTIST: "scientists",
-  RESEARCH_ASSISTANT: "research assistants",
+  RESEARCHER: "researchers",
   STUDENT: "students",
   STAFF: "staff",
   VISITOR: "visitors",

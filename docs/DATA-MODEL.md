@@ -581,7 +581,7 @@ existed.
 | `AuditAction` | 14 values, from `CREATE` to `ROLLBACK` | `lib/audit.ts` |
 | `SectionType` | 32 values | `lib/sections/registry.ts` for the palette, `lib/sections/schema.ts` for the payloads |
 | `MediaKind` | `IMAGE` `VIDEO` `AUDIO` `DOCUMENT` `MODEL_3D` `PANORAMA` | The three upload allow-lists |
-| `PersonKind` | `FACULTY` `SCIENTIST` `RESEARCH_ASSISTANT` `STUDENT` `STAFF` `VISITOR` `ALUMNUS` | People showcase's `kind` filter |
+| `PersonKind` | `FACULTY` `SCIENTIST` `RESEARCHER` `STUDENT` `STAFF` `VISITOR` `ALUMNUS` | People showcase's `kind` filter |
 | `ProjectStatus` | `PROPOSED` `ACTIVE` `COMPLETED` `ON_HOLD` | ⚠ the project's own life cycle, **not** publication |
 | `PublicationKind` | 10 values, `JOURNAL_ARTICLE` … `REPORT` | `lib/citation.ts` decides the citation form per kind |
 | `EventMode` | `IN_PERSON` `ONLINE` `HYBRID` | |
