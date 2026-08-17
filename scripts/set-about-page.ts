@@ -471,14 +471,21 @@ async function main(): Promise<void> {
 
     /*
      * ⚠ TWO PASSES THROUGH THE NEGATIVES, AND A SINGLE PASS CANNOT WORK. `@@unique([pageId, position])` is
-     * checked at the end of each STATEMENT, so moving a block to position 0 while another still sits there
-     * is refused and kills the transaction — and every new arrangement overlaps the old one somewhere.
-     * `-1 - index` is unique per block and can never collide with a final value, which is always >= 0.
+     * a unique index, and Postgres checks one of those PER ROW the instant that row is written — so moving
+     * a block to position 0 while another still sits there is refused and kills the transaction, and every
+     * new arrangement overlaps the old one somewhere. `-1 - index` is unique per block and can never
+     * collide with a final value, which is always >= 0.
      *
-     * This is `rewriteSectionPositions()` from lib/studio/crud.ts:1358, whose header carries the full
-     * argument, deliberately reproduced rather than imported: that module opens with `import "server-only"`
-     * and pulls in the studio's whole write plumbing, and its failures are `ApiError`s — an HTTP status and
-     * a sentence written for a browser, which is not a thing a terminal can do anything with.
+     * This is `rewriteSectionPositions()` from lib/studio/crud.ts, whose header carries the full argument,
+     * deliberately reproduced rather than imported: that module opens with `import "server-only"` and pulls
+     * in the studio's whole write plumbing, and its failures are `ApiError`s — an HTTP status and a
+     * sentence written for a browser, which is not a thing a terminal can do anything with.
+     *
+     * It is still a loop here, and in the product it is not: `rewriteSectionPositions` does each pass in
+     * one statement, because a per-row loop inside an interactive transaction is what made the people
+     * board unable to save an order (app/api/studio/people/reorder/route.ts). A setup script run by hand
+     * from a terminal against a page it is itself authoring can afford the round trips; an editor pressing
+     * an arrow cannot.
      */
     if (reordered) {
       for (const [index, id] of orderedIds.entries()) {

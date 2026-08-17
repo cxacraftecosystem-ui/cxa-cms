@@ -47,10 +47,12 @@ import { unique } from "@/lib/utils";
  *
  * ⚠ THIS SHAPE IS SAFE HERE AND WOULD NOT BE ON `PageSection`. `Person.sortOrder` has NO unique constraint
  * (prisma/schema.prisma) — only an index, `@@index([kind, sortOrder])` — so a single statement may hand out
- * every number at once. `PageSection` carries `@@unique([pageId, position])`, Postgres checks a unique
- * constraint at the end of each STATEMENT, and so `rewriteSectionPositions()` in lib/studio/crud.ts has to
- * move every row through a negative range first. The difference is the constraint, and it is worth knowing
- * which model has which before copying either one.
+ * every number at once and several people may briefly hold the same one. `PageSection` carries
+ * `@@unique([pageId, position])`, Postgres checks a unique index PER ROW as the statement walks it, and a
+ * single statement that permutes the column therefore fails with 23505 — so `rewriteSectionPositions()` in
+ * lib/studio/crud.ts still has to move every row through a negative range first, in two statements rather
+ * than two per block. The difference is the index, and it is worth knowing which model has which before
+ * copying either one.
  *
  * ⚠ EVERY ID MUST BELONG TO THE GROUP BEING ORDERED. A person's group is a field on their own profile, and
  * the board says out loud that dragging cannot change it. If an id from another group were accepted, its

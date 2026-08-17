@@ -266,8 +266,13 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
            * metacharacters to escape, so a stray `%` in a path written by an older build cannot widen
            * the match into somebody else's subtree.
            *
-           * Postgres checks a unique index at the end of each STATEMENT, so moving every descendant in
-           * one is also the only ordering that cannot trip `path`'s uniqueness against itself.
+           * Moving every descendant in one statement is also what keeps `path`'s uniqueness out of the
+           * way. Postgres checks a unique index PER ROW as the statement walks it — not at the end of the
+           * statement, and not at commit — so what makes this safe is that no rewritten path can equal a
+           * path already in the table: the destination subtree is checked for a clash before this runs,
+           * and every row here shifts by the same prefix, so none of them lands on another's old address.
+           * A statement that PERMUTED a unique column would fail with 23505 however few rows it touched;
+           * see `rewriteSectionPositions()` in lib/studio/crud.ts, which is that case and needs two passes.
            *
            * Every parameter carries an explicit `::text`. Without it Postgres has to resolve `length()`
            * and `left()` against an untyped parameter, and an overload chosen by inference is not

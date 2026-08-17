@@ -1,7 +1,9 @@
 import "server-only";
 
 import { z, type ZodSchema } from "zod";
-import type { AuditAction, ContentStatus } from "@prisma/client";
+// `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` and `Prisma.join` are the
+// tagged-template helpers `rewriteSectionPositions` builds its two statements from.
+import { Prisma, type AuditAction, type ContentStatus } from "@prisma/client";
 
 import {
   ApiError,
@@ -1297,24 +1299,36 @@ function describeTransition(from: ContentStatus, to: ContentStatus): AuditAction
  * ⚠ THIS IS TWO PASSES ON PURPOSE, AND THE REASON IS THE MOST LIKELY PLACE IN THE STUDIO FOR A
  * "REORDERING SOMETIMES FAILS" BUG.
  *
- * `PageSection` carries `@@unique([pageId, position])`, and Postgres checks a unique constraint at the
- * end of each STATEMENT — not at the end of the transaction. So the obvious loop is wrong:
+ * `PageSection` carries `@@unique([pageId, position])`, which Prisma creates as a plain unique INDEX.
+ * Postgres checks one of those PER ROW, the instant that row is written — not at the end of the
+ * statement, and not at the end of the transaction. So the obvious loop is wrong:
  *
  *     A(0) B(1) C(2)   →   move C to the front
- *     UPDATE C SET position = 0    ← A is still at 0. The constraint refuses. Transaction dead.
+ *     UPDATE C SET position = 0    ← A is still at 0. The index refuses. Transaction dead.
  *
- * Any single-pass ordering has the same problem for some input, because the new arrangement always
- * overlaps the old one somewhere. Deferring the constraint is not available (it is not declared
- * DEFERRABLE, and changing that would need a migration and would weaken every other write).
+ * ⚠ AND FOR THE SAME REASON, COLLAPSING THIS INTO ONE `UPDATE … FROM (VALUES …)` DOES NOT WORK, however
+ * much it looks as though it should. Verified against Postgres 17 on a table carrying exactly this
+ * index: a single statement that permutes the column fails with 23505 `Key ("pageId", "position")
+ * already exists`, because the rows are still checked one at a time as the statement walks them. An
+ * earlier version of this comment claimed the check happened at the end of the statement; it does not,
+ * and that claim is what makes the one-statement version look safe. Deferring is not available either —
+ * a unique INDEX cannot be deferred at all in Postgres, only a unique CONSTRAINT can, and swapping one
+ * for the other would put Prisma permanently in drift.
  *
- * So: every row is first moved into a range NOTHING can occupy — the negatives — and then to its final
- * position. `-1 - index` is unique per row and can never collide with a final value, which is always
- * `>= 0`. Two passes of N statements, inside one transaction, and no intermediate state that violates
- * anything.
+ * So the negatives stay: every row is first parked in a range nothing can occupy, then brought to its
+ * final position. `-1 - rank` is unique per row and can never collide with a final value, which is
+ * always `>= 0`.
  *
- * (`updateMany` with the `pageId` in its `where`, rather than `update` by id, so an id belonging to
- * ANOTHER page cannot silently move that page's block into this one. A count of zero means the id is not
- * on this page, and that is a refusal rather than a quiet no-op.)
+ * WHAT DID CHANGE IS THE STATEMENT COUNT: two, not two per block. Each pass used to be a loop of
+ * `updateMany` calls, so a page of twenty blocks spent forty network round trips inside one interactive
+ * transaction — and Prisma closes a transaction that outlives its timeout, raising `P2028`, which
+ * reaches an editor as "Something went wrong on our side". That is exactly how the people board came to
+ * be unable to save an order at all (app/api/studio/people/reorder/route.ts). Two statements cost the
+ * same whether a page holds three blocks or three hundred.
+ *
+ * The `pageId` is in both `WHERE` clauses, so an id belonging to ANOTHER page cannot silently move that
+ * page's block into this one. The first pass's row count is the membership check: short of the whole
+ * list means an id is not on this page, and that is a refusal rather than a quiet no-op.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 /**
@@ -1360,19 +1374,34 @@ export async function rewriteSectionPositions(
   pageId: string,
   orderedIds: readonly string[]
 ): Promise<void> {
-  for (const [index, id] of orderedIds.entries()) {
-    const moved = await tx.pageSection.updateMany({
-      where: { id, pageId },
-      data: { position: -1 - index }
-    });
-    if (moved.count === 0) {
-      throw conflict(
-        "One of the blocks in that order is not on this page any more. Reload the page and try again."
-      );
-    }
+  // An empty page has nothing to renumber, and `VALUES ()` is not a statement Postgres will parse.
+  if (orderedIds.length === 0) return;
+
+  /**
+   * Rebuilt per call rather than held in a variable and used twice. A `Prisma.Sql` carries its own
+   * parameter list, and reusing one across two templates makes the placeholder numbering depend on an
+   * implementation detail of how they are flattened — cheap to avoid, expensive to debug.
+   */
+  const ranks = () =>
+    Prisma.join(orderedIds.map((id, rank) => Prisma.sql`(${id}::text, ${rank}::int)`));
+
+  const parked = await tx.$executeRaw(Prisma.sql`
+    UPDATE "page_sections" AS s
+       SET "position" = -1 - v."rank"
+      FROM (VALUES ${ranks()}) AS v("id", "rank")
+     WHERE s."id" = v."id" AND s."pageId" = ${pageId}::text
+  `);
+
+  if (parked !== orderedIds.length) {
+    throw conflict(
+      "One of the blocks in that order is not on this page any more. Reload the page and try again."
+    );
   }
 
-  for (const [index, id] of orderedIds.entries()) {
-    await tx.pageSection.updateMany({ where: { id, pageId }, data: { position: index } });
-  }
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE "page_sections" AS s
+       SET "position" = v."rank"
+      FROM (VALUES ${ranks()}) AS v("id", "rank")
+     WHERE s."id" = v."id" AND s."pageId" = ${pageId}::text
+  `);
 }

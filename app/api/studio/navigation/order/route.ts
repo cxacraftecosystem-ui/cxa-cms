@@ -1,5 +1,8 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+// `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` and `Prisma.join` are the
+// tagged-template helpers the one rearranging statement is built from. See the note on it below.
+import { Prisma } from "@prisma/client";
 import { assertSameOrigin, badRequest, conflict, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
 import { mutateWithHistory } from "@/lib/audit";
@@ -215,17 +218,54 @@ export const PATCH = route(async (request: NextRequest) => {
     },
     async (tx) => {
       /**
-       * ONE TRANSACTION, EVERY ROW. A parent's `parentId` is set in the same statement batch as its
-       * children's, so there is no instant at which the tree is inconsistent — and a failure anywhere
-       * rolls the whole arrangement back to the order that was there before.
+       * ONE STATEMENT, EVERY ROW. A parent's `parentId` lands in the same statement as its children's, so
+       * there is no instant at which the tree is inconsistent, and a failure rolls the whole arrangement
+       * back to the order that was there before.
+       *
+       * ⚠ IT USED TO BE ONE `update` PER ITEM, AND THAT IS THE SHAPE THAT BROKE THE PEOPLE BOARD.
+       * Every one of those is a network round trip, they all sit inside one interactive transaction, and
+       * Prisma closes a transaction that outlives its timeout — raising `P2028`, which is not an
+       * `ApiError`, so it reaches an editor as "Something went wrong on our side" (the whole story is in
+       * app/api/studio/people/reorder/route.ts). A thirty-item menu was thirty round trips for work that
+       * is one statement. This one costs the same at three items or three hundred.
+       *
+       * SAFE AS A SINGLE STATEMENT ONLY BECAUSE `NavigationItem` HAS NO UNIQUE INDEX ON ITS ORDER —
+       * `@@index([location, position])` and nothing more (prisma/schema.prisma), so several items may
+       * hold one number for as long as it takes Postgres to finish the statement. `PageSection` is the
+       * opposite case and `rewriteSectionPositions()` in lib/studio/crud.ts explains at length why it
+       * still needs two passes through a negative range. Read that before copying this shape anywhere.
+       *
+       * `location` is restated in the `WHERE` although the membership check above already proved it: the
+       * check and the write are separated by a transaction boundary, and restating it is what makes it
+       * impossible for a later edit to that check to turn into an item being dragged between menus.
+       *
+       * Every parameter is cast explicitly. `parentId` is nullable, and an untyped NULL in a `VALUES`
+       * list leaves Postgres to infer the column's type from the other rows — which fails outright when
+       * every parent is null, as it is for a menu with no submenus.
        */
-      for (const update of updates) {
-        await tx.navigationItem.update({
-          where: { id: update.id },
-          data: { parentId: update.parentId, position: update.position },
-          select: { id: true }
-        });
+      const rearranged = await tx.$executeRaw(Prisma.sql`
+        UPDATE "navigation_items" AS n
+           SET "parentId" = v."parentId", "position" = v."position"
+          FROM (VALUES ${Prisma.join(
+            updates.map(
+              (update) =>
+                Prisma.sql`(${update.id}::text, ${update.parentId}::text, ${update.position}::int)`
+            )
+          )}) AS v("id", "parentId", "position")
+         WHERE n."id" = v."id" AND n."location" = ${location}::text
+      `);
+
+      /**
+       * Short of the whole menu means a row moved out of this menu, or was deleted, between the checks
+       * above and this statement — somebody editing the navigation in another tab. A refusal, not a
+       * quiet partial rearrangement, and throwing rolls the statement back with it.
+       */
+      if (rearranged !== updates.length) {
+        throw conflict(
+          `The ${location} menu changed while that arrangement was being saved, so nothing has been moved. Reload the page and try again.`
+        );
       }
+
       return { id: "navigation", location, moved: updates.length };
     }
   );

@@ -485,16 +485,24 @@ export const POST = route(async (request: Request, context: RouteContext) => {
         /**
          * ⚠ THE BLOCKS ARE DELETED AND RECREATED, NEVER UPDATED IN PLACE.
          *
-         * `PageSection` carries `@@unique([pageId, position])`, and Postgres checks a unique constraint at
-         * the end of each STATEMENT rather than at the end of the transaction. So writing the restored
+         * `PageSection` carries `@@unique([pageId, position])`, which Prisma creates as a unique INDEX, and
+         * Postgres checks one of those PER ROW the instant that row is written. So writing the restored
          * blocks over the existing rows position by position collides the moment the two arrangements
          * overlap anywhere — which they nearly always do — and the transaction dies half way. (That is the
-         * same constraint `rewriteSectionPositions()` exists to work around, by parking every row in the
+         * same index `rewriteSectionPositions()` exists to work around, by parking every row in the
          * negatives first. It does not help here: the blocks being restored are not the rows that are
          * there, so there is nothing to renumber.)
          *
          * Emptying the page in ONE statement and then inserting at 0…n-1 cannot collide with anything: by
-         * the time the first insert runs, no position on this page is occupied.
+         * the time the insert runs, no position on this page is occupied.
+         *
+         * ⚠ THE INSERT IS ONE `createMany`, NOT A LOOP OF `create`. Each `create` is a network round trip,
+         * they all sit inside one interactive transaction, and Prisma closes a transaction that outlives
+         * its timeout — `P2028`, which is not an `ApiError` and so reaches an editor as "Something went
+         * wrong on our side". A long page restored over a slow link is precisely the shape that made the
+         * people board unable to save an order at all (app/api/studio/people/reorder/route.ts). Two
+         * statements now, whatever the page holds. `createMany` returns no rows, and nothing here wants
+         * them — the blocks are re-read by `reindexPage` below.
          *
          * The recreated blocks are NEW rows. Nothing references a block's id, but each block's own version
          * history is keyed by it, so a restored block starts a fresh history while the outgoing rows are
@@ -502,16 +510,16 @@ export const POST = route(async (request: Request, context: RouteContext) => {
          */
         if (plannedSections !== null) {
           await tx.pageSection.deleteMany({ where: { pageId: existing.id } });
-          for (const [index, section] of plannedSections.entries()) {
-            await tx.pageSection.create({
-              data: {
+          if (plannedSections.length > 0) {
+            await tx.pageSection.createMany({
+              data: plannedSections.map((section, index) => ({
                 pageId: existing.id,
                 type: section.type,
                 position: index,
                 label: section.label,
                 data: section.data,
                 isVisible: section.isVisible
-              }
+              }))
             });
           }
         }
