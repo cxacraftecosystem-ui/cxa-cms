@@ -45,6 +45,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { ParallaxStage } from "@/components/sections/story/ParallaxStage";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
 import { LinkButton } from "@/components/ui/Button";
+import { pictureFromMap } from "@/lib/media/screens";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { ParallaxBannerSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
@@ -140,6 +141,14 @@ export function ParallaxBannerSection({ data, section, resolved }: ParallaxBanne
   const hasPicture = Boolean(data.mediaId.trim() || data.craftImage.trim());
 
   /*
+   * The per-screen framing, which is what a band this wide is for — see the schema note on
+   * `mediaScreens`. It reaches `StoryPicture`'s UPLOADED branch only: a `craftImage` slug is a
+   * compiled-in file with no media row, so the craft branch below is untouched by it, and this resolves
+   * to null in exactly that case because the id is absent from the map.
+   */
+  const picture = pictureFromMap(data.mediaId, data.mediaScreens, resolved?.media);
+
+  /*
    * Nothing configured anywhere: no picture named and not a word written. A band with neither is not
    * an empty state worth stating — it is a block an editor added and then emptied, and drawing a
    * screen-high indigo panel to announce it would be shouting.
@@ -185,6 +194,7 @@ export function ParallaxBannerSection({ data, section, resolved }: ParallaxBanne
             mediaId={data.mediaId}
             craftSlug={data.craftImage}
             resolved={resolved}
+            picture={picture}
             // A ratio is what puts BOTH sources into `fill` + `object-cover` mode; the frame's height
             // then comes from the band, since an explicit height beats `aspect-ratio` in CSS. Without
             // it a craft photograph renders at its own intrinsic height and a 3:2 picture at 100vw is

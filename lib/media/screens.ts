@@ -300,6 +300,34 @@ export function resolvePicture(
   return [first, ...bands.slice(1)] as Picture;
 }
 
+/**
+ * `resolvePicture` against a map of already-fetched assets — the shape every section renderer has.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHY THIS EXISTS RATHER THAN EACH RENDERER DOING IT. Every block that draws a picture holds a media id
+ * and a `Record<string, MediaLike | undefined>` that `lib/sections/resolve.ts` filled in, so without this
+ * each of the ten of them would write the same four lines — including the same `assetOf` closure, which
+ * is the part that is easy to get subtly wrong. A bucket whose photograph is absent from the map must
+ * INHERIT rather than blank the picture, and a renderer that wrote `assets[id]!` or returned `undefined`
+ * instead of `null` would break that quietly, on one block, for one screen size.
+ *
+ * Deliberately takes the map rather than `ResolvedSectionData`: that type lives in a `server-only` module
+ * and every section renderer is a client component. A type-only import would erase cleanly, but taking
+ * the plain shape keeps this module's dependencies pointing one way and lets the studio's preview panels
+ * call it with a `Map`-backed record too.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export function pictureFromMap(
+  mediaId: string | null | undefined,
+  framing: ScreenFraming | null | undefined,
+  media: Record<string, MediaLike | undefined> | undefined
+): Picture | null {
+  if (!mediaId || mediaId.length === 0) return null;
+  const base = media?.[mediaId];
+  if (!base) return null;
+  return resolvePicture(base, framing, (id) => media?.[id] ?? null);
+}
+
 /** The CSS custom properties one band's rectangle needs. Keyed so the bucket is visible in DevTools. */
 function bandVars(band: PictureBand): Record<string, string> {
   const rect = band.crop;

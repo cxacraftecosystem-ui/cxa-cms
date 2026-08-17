@@ -32,8 +32,8 @@ import { Select } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { LinkDestinationField } from "@/components/studio/fields/LinkField";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker";
 import type { SectionFormProps } from "@/components/studio/sections";
@@ -155,6 +155,7 @@ export function HorizontalRailForm({
           detail: "",
           meta: "",
           mediaId: "",
+          mediaScreens: null,
           craftImage: "",
           href: ""
         })}
@@ -194,13 +195,20 @@ export function HorizontalRailForm({
               />
             </Field>
 
-            <EntityPicker
-              kind="media"
-              max={1}
+            <MediaFramingField
               label="A photograph you have uploaded"
               help={ITEM.mediaId.description}
-              ids={item.mediaId.length > 0 ? [item.mediaId] : []}
-              onChange={(next) => updateCard({ ...item, mediaId: next[0] ?? "" })}
+              framingHelp={ITEM.mediaScreens.description}
+              mediaId={item.mediaId}
+              framing={item.mediaScreens}
+              onChange={({ mediaId, framing }) =>
+                updateCard({ ...item, mediaId, mediaScreens: framing })
+              }
+              // Withheld on the arc, which draws its cards from one finished `src` each and cannot
+              // honour a per-width framing (the renderer's `arcCardsOf` carries the reasoning). The
+              // stored framing is left untouched, exactly as `pin` and the card width are, so
+              // switching back to the rail restores it.
+              offerFraming={data.presentation !== "arc"}
             />
 
             <CraftImagePicker

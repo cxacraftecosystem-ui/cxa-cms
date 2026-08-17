@@ -36,7 +36,7 @@ import { Select } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker";
 import type { SectionFormProps } from "@/components/studio/sections";
@@ -136,7 +136,16 @@ export function ProcessStepsForm({
         itemNoun="stage"
         addLabel="Add a stage"
         emptyMessage="No stages yet. Add the first thing that happens — where the material comes from is usually it."
-        createItem={() => ({ title: "", detail: "", meta: "", mediaId: "", craftImage: "" })}
+        createItem={() => ({
+          title: "",
+          detail: "",
+          meta: "",
+          mediaId: "",
+          // Null, not a framing of six empty buckets: a new stage nobody has framed must serialise
+          // exactly as one saved before this field existed (see the schema's note on the default).
+          mediaScreens: null,
+          craftImage: ""
+        })}
         isEmpty={(step) =>
           [step.title, step.detail, step.meta, step.mediaId, step.craftImage].every(
             (value) => value.trim().length === 0
@@ -180,13 +189,21 @@ export function ProcessStepsForm({
               />
             </Field>
 
-            <EntityPicker
-              kind="media"
-              max={1}
+            {/*
+              Both layouts draw this photograph as an image at every width, so the panel is offered
+              unconditionally — there is no video source here and no arrangement that parks the picture.
+              The craft picker below needs no guard either: `MediaFramingField` shows the panel only once
+              an UPLOADED photograph is chosen, and that is the only picture a framing can apply to.
+            */}
+            <MediaFramingField
               label="A photograph you have uploaded"
               help={STEP.mediaId.description}
-              ids={item.mediaId.length > 0 ? [item.mediaId] : []}
-              onChange={(next) => updateStep({ ...item, mediaId: next[0] ?? "" })}
+              framingHelp={STEP.mediaScreens.description}
+              mediaId={item.mediaId}
+              framing={item.mediaScreens}
+              onChange={({ mediaId, framing }) =>
+                updateStep({ ...item, mediaId, mediaScreens: framing })
+              }
             />
 
             <CraftImagePicker

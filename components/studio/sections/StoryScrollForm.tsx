@@ -35,8 +35,8 @@ import { Select } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { LinkDestinationField } from "@/components/studio/fields/LinkField";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker";
 import type { SectionFormProps } from "@/components/studio/sections";
@@ -153,6 +153,9 @@ export function StoryScrollForm({ data, onChange, onDirty }: SectionFormProps<St
           title: "",
           body: "",
           mediaId: "",
+          // Null, not a framing of six empty buckets: a new chapter nobody has framed must serialise
+          // exactly as one saved before this field existed (see the schema's note on the default).
+          mediaScreens: null,
           craftImage: "",
           caption: "",
           href: "",
@@ -219,13 +222,23 @@ export function StoryScrollForm({ data, onChange, onDirty }: SectionFormProps<St
                 />
               </Field>
 
-              <EntityPicker
-                kind="media"
-                max={1}
+              <MediaFramingField
                 label="A photograph you have uploaded"
                 help={CHAPTER.mediaId.description}
-                ids={item.mediaId.length > 0 ? [item.mediaId] : []}
-                onChange={(next) => updateChapter({ ...item, mediaId: next[0] ?? "" })}
+                framingHelp={CHAPTER.mediaScreens.description}
+                mediaId={item.mediaId}
+                framing={item.mediaScreens}
+                /*
+                 * Only while the ordinary chapters are what gets drawn. The cinematic telling replaces
+                 * the whole block with its own authored sequence and ignores every chapter field, so a
+                 * framing set there would be a control with no visible effect. The craft picker below
+                 * needs no such guard: `MediaFramingField` shows the panel only once an UPLOADED
+                 * photograph is chosen, and that is the only picture a framing can apply to.
+                 */
+                offerFraming={data.presentation === "chapters"}
+                onChange={({ mediaId, framing }) =>
+                  updateChapter({ ...item, mediaId, mediaScreens: framing })
+                }
               />
 
               <CraftImagePicker

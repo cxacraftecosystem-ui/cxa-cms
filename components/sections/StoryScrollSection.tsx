@@ -40,6 +40,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { CinematicScroll } from "@/components/sections/story/CinematicScroll";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
 import { StoryStage } from "@/components/sections/story/StoryStage";
+import { pictureFromMap } from "@/lib/media/screens";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { StoryScrollSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
@@ -139,6 +140,16 @@ export function StoryScrollSection({ data, section, resolved }: StoryScrollSecti
               {chapters.map((chapter, index) => {
                 const paragraphs = paragraphsOf(chapter.body);
                 const hasLink = Boolean(chapter.href && chapter.ctaLabel);
+                /*
+                 * This chapter's per-width framing, if an editor has set one. Null for a chapter drawing
+                 * a bundled craft photograph — that branch of `StoryPicture` has no media row to frame —
+                 * and null for the overwhelming majority, which is the path this block always took.
+                 *
+                 * The parallax overscan is unaffected: the framed path still receives `scale-[1.18]` on
+                 * the `<img>`, and `.cxa-crop-img`'s `transform-origin` is what keeps the enlargement
+                 * centred on the cropped rectangle rather than on the middle of the whole photograph.
+                 */
+                const picture = pictureFromMap(chapter.mediaId, chapter.mediaScreens, resolved?.media);
 
                 return (
                   <li
@@ -181,6 +192,7 @@ export function StoryScrollSection({ data, section, resolved }: StoryScrollSecti
                             mediaId={chapter.mediaId}
                             craftSlug={chapter.craftImage}
                             resolved={resolved}
+                            picture={picture}
                             aspect="4 / 5"
                             sizes="(min-width: 1024px) 36rem, 100vw"
                             caption={chapter.caption || undefined}

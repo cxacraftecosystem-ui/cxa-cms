@@ -43,8 +43,8 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { LinkField } from "@/components/studio/fields/LinkField";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker";
 import { NumberField } from "@/components/studio/sections/ShowcaseForm";
 import type { SectionFormProps } from "@/components/studio/sections";
@@ -136,13 +136,21 @@ export function ParallaxBannerForm({
         <Textarea rows={2} value={data.body} onChange={(event) => update({ body: event.target.value })} />
       </Field>
 
-      <EntityPicker
-        kind="media"
-        max={1}
+      {/*
+        NO `offerFraming` TEST HERE, AND THAT IS A DECISION RATHER THAN AN OMISSION. This band has one
+        arrangement and one picture, always drawn as an image across the full width — there is no video
+        branch and no setting that parks the photograph, so the panel is never a control with no visible
+        effect. (`speed: 0` stops the drift; it still draws the photograph.) The craft picker below needs
+        no guard either: `MediaFramingField` offers the panel only once an UPLOADED photograph is chosen,
+        and that is the only picture a framing can apply to — a bundled one has no media row to crop.
+      */}
+      <MediaFramingField
         label="A photograph you have uploaded"
         help={SHAPE.mediaId.description}
-        ids={data.mediaId.length > 0 ? [data.mediaId] : []}
-        onChange={(next) => update({ mediaId: next[0] ?? "" })}
+        framingHelp={SHAPE.mediaScreens.description}
+        mediaId={data.mediaId}
+        framing={data.mediaScreens}
+        onChange={({ mediaId, framing }) => update({ mediaId, mediaScreens: framing })}
       />
 
       <CraftImagePicker

@@ -30,9 +30,8 @@ import { Select } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { LinkField } from "@/components/studio/fields/LinkField";
-import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = heroSectionSchema.shape;
@@ -152,13 +151,22 @@ export function HeroForm({ data, onChange, onDirty }: SectionFormProps<HeroSecti
         />
       </Field>
 
-      <EntityPicker
-        kind="media"
-        max={1}
+      <MediaFramingField
         label="Background picture or video"
         help={SHAPE.backgroundMediaId.description}
-        ids={hasMedia ? [data.backgroundMediaId] : []}
-        onChange={(next) => update({ backgroundMediaId: next[0] ?? "" })}
+        framingHelp={SHAPE.backgroundMediaScreens.description}
+        mediaId={data.backgroundMediaId}
+        framing={data.backgroundMediaScreens}
+        /**
+         * Framing is offered only for a PICTURE. A video background draws the still frame from the
+         * asset's own derivatives, not through the framed path, so the control would do nothing; and
+         * framing a file the hero is not using is a decision with no visible effect, which is how an
+         * editor comes to believe the panel is broken.
+         */
+        offerFraming={data.backgroundKind === "image"}
+        onChange={({ mediaId: nextId, framing }) =>
+          update({ backgroundMediaId: nextId, backgroundMediaScreens: framing })
+        }
       />
 
       {/* Both directions of the mismatch are stated, because both are things an editor gets wrong. */}
@@ -168,22 +176,6 @@ export function HeroForm({ data, onChange, onDirty }: SectionFormProps<HeroSecti
           has been chosen, so the hero falls back to the brand gradient. That is a proper background, not
           a hole — choose a file above, or set the background to the gradient on purpose.
         </HelpText>
-      ) : null}
-
-      {/*
-        Offered only when a picture is actually being drawn. Framing a video per screen size would be a
-        control that does nothing — `MediaImage` draws the still frame, not the film — and framing a
-        picture the hero is not using is a decision with no visible effect, which is how an editor comes
-        to believe the panel is broken.
-      */}
-      {data.backgroundKind === "image" ? (
-        <ScreenFramingPanel
-          label="Framing per screen size"
-          help={SHAPE.backgroundMediaScreens.description}
-          mediaId={data.backgroundMediaId}
-          value={data.backgroundMediaScreens}
-          onChange={(next) => update({ backgroundMediaScreens: next })}
-        />
       ) : null}
 
       {!usesMedia && hasMedia ? (

@@ -41,6 +41,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { ProcessStage } from "@/components/sections/story/ProcessStage";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
 import { SectionHeading } from "@/components/site/SectionHeading";
+import { pictureFromMap } from "@/lib/media/screens";
 import { sectionLabel } from "@/lib/sections/registry";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { ProcessStep, ProcessStepsSectionData } from "@/lib/sections/schema";
@@ -203,6 +204,15 @@ export function ProcessStepsSection({ data, section, resolved }: ProcessStepsSec
     const title = stage.title.trim();
     const meta = stage.meta.trim();
     const detail = stage.detail.trim();
+    /*
+     * This stage's per-width framing, if an editor has set one. Null for a stage drawing a bundled craft
+     * photograph — that branch of `StoryPicture` has no media row to frame — and null for the
+     * overwhelming majority, which is the path this block always took.
+     *
+     * The parallax overscan is unaffected: the framed path still receives `scale-[1.18]` on the `<img>`,
+     * and `.cxa-crop-img`'s `transform-origin` keeps the enlargement centred on the cropped rectangle.
+     */
+    const picture = pictureFromMap(stage.mediaId, stage.mediaScreens, resolved?.media);
 
     return (
       <li
@@ -263,6 +273,7 @@ export function ProcessStepsSection({ data, section, resolved }: ProcessStepsSec
               mediaId={stage.mediaId}
               craftSlug={stage.craftImage}
               resolved={resolved}
+              picture={picture}
               // 3:2 for every stage, from both picture sources, so a column of stages lines up and
               // the rail's markers stay level with the tops of the cards.
               aspect="3 / 2"

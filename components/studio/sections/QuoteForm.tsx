@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = quoteSectionSchema.shape;
@@ -30,7 +30,6 @@ export function QuoteForm({ data, onChange, onDirty }: SectionFormProps<QuoteSec
     onDirty?.();
   };
 
-  const hasPortrait = data.portraitMediaId.length > 0;
   const attributed = data.attribution.trim().length > 0;
 
   return (
@@ -62,13 +61,21 @@ export function QuoteForm({ data, onChange, onDirty }: SectionFormProps<QuoteSec
         </HelpText>
       ) : null}
 
-      <EntityPicker
-        kind="media"
-        max={1}
+      {/*
+        The panel is offered whenever a portrait is chosen, because this block has no state in which the
+        picture is not drawn: `QuoteSection` renders the portrait as an image the moment one exists —
+        there is no video path and no arrangement that parks it, so unlike the hero there is nothing to
+        gate on. What the framing can usefully do here is narrow, and the schema's help says so.
+      */}
+      <MediaFramingField
         label="Portrait"
         help={SHAPE.portraitMediaId.description}
-        ids={hasPortrait ? [data.portraitMediaId] : []}
-        onChange={(next) => update({ portraitMediaId: next[0] ?? "" })}
+        framingHelp={SHAPE.portraitMediaScreens.description}
+        mediaId={data.portraitMediaId}
+        framing={data.portraitMediaScreens}
+        onChange={({ mediaId, framing }) =>
+          update({ portraitMediaId: mediaId, portraitMediaScreens: framing })
+        }
       />
 
       <Field label="Where the quotation sits" help={SHAPE.alignment.description}>

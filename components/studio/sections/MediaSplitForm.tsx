@@ -11,19 +11,38 @@
  * "WHICH SIDE" DOES NOTHING ON A PHONE, and the schema's own help text says the picture always comes
  * first there. That is worth knowing before an editor spends time alternating sides down a page and then
  * checks it on a telephone.
+ *
+ * THE FRAMING PANEL IS OFFERED FOR A PICTURE AND NOT FOR A FILM, which is why this form looks the chosen
+ * file up — see the note on the lookup below.
  */
 
-import { mediaSplitSectionSchema, type MediaSplitSectionData } from "@/lib/sections/schema";
+import {
+  isVideoObjectKey,
+  mediaSplitSectionSchema,
+  type MediaSplitSectionData
+} from "@/lib/sections/schema";
+import { useResource } from "@/lib/client/useResource";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
+import {
+  lookupResolvePath,
+  type LookupItem,
+  type LookupResponse
+} from "@/components/studio/fields/EntityPicker";
 import { LinkField } from "@/components/studio/fields/LinkField";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = mediaSplitSectionSchema.shape;
+
+/** A response is a cast, not a proof — the same guard `DocumentEmbedForm` makes on the same shape. */
+function firstItem(response: LookupResponse | null): LookupItem | null {
+  if (response === null || !Array.isArray(response.items)) return null;
+  return response.items[0] ?? null;
+}
 
 /** `cta()` wraps each button in `.default({})`; the default comes off before the shape is readable. */
 const PRIMARY_CTA = SHAPE.primaryCta.removeDefault().shape;
@@ -37,15 +56,39 @@ export function MediaSplitForm({ data, onChange, onDirty }: SectionFormProps<Med
 
   const hasMedia = data.mediaId.length > 0;
 
+  /**
+   * The chosen file, looked up so that the form knows which of the two things this block will draw.
+   *
+   * ⚠ THE BLOCK DECIDES BY THE FILE ITSELF, not by any setting an editor made — `MediaSplitSection`
+   * gives a video the browser's own player and everything else a `MediaImage` — so the framing panel
+   * cannot be gated without asking what was chosen. `EntityPicker` resolves the id for its own list but
+   * hands back only the id, so this is one further small authenticated read per chosen file, for the
+   * reason `DocumentEmbedForm` sets out at length above its own lookup.
+   *
+   * Suspended while nothing is chosen: `lookupResolvePath` answers null for an empty list, and
+   * `useResource` treats null as "do not ask".
+   */
+  const lookup = useResource<LookupResponse>(lookupResolvePath("media", hasMedia ? [data.mediaId] : []));
+  /**
+   * A film, as far as we can tell YET — and the direction of that "yet" is deliberate. While the lookup
+   * is in flight, and for a file that has since been deleted, this is false and the panel is offered: a
+   * picture is the common case, so it gets no control flickering in and out, and a framing already
+   * stored never becomes uneditable because a lookup failed. The cost is that a video shows the panel
+   * for the moment before its name arrives.
+   */
+  const isVideo = isVideoObjectKey(firstItem(lookup.data)?.media?.objectKey ?? "");
+
   return (
     <div className="space-y-5">
-      <EntityPicker
-        kind="media"
-        max={1}
+      <MediaFramingField
         label="The picture or video"
         help={SHAPE.mediaId.description}
-        ids={hasMedia ? [data.mediaId] : []}
-        onChange={(next) => update({ mediaId: next[0] ?? "" })}
+        framingHelp={SHAPE.mediaScreens.description}
+        mediaId={data.mediaId}
+        framing={data.mediaScreens}
+        // Framing a film would be a control with no visible effect — see the schema's note on the field.
+        offerFraming={!isVideo}
+        onChange={({ mediaId, framing }) => update({ mediaId, mediaScreens: framing })}
       />
 
       {!hasMedia ? (

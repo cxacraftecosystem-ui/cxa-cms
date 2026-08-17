@@ -19,7 +19,7 @@ import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
@@ -78,7 +78,7 @@ export function TimelineForm({ data, onChange, onDirty }: SectionFormProps<Timel
         itemNoun="entry"
         addLabel="Add an entry"
         emptyMessage="No entries yet. A timeline needs at least two to read as one."
-        createItem={() => ({ year: "", title: "", body: "", mediaId: "" })}
+        createItem={() => ({ year: "", title: "", body: "", mediaId: "", mediaScreens: null })}
         isEmpty={(entry) =>
           [entry.year, entry.title, entry.body, entry.mediaId].every(
             (field) => field.trim().length === 0
@@ -115,13 +115,13 @@ export function TimelineForm({ data, onChange, onDirty }: SectionFormProps<Timel
               />
             </Field>
 
-            <EntityPicker
-              kind="media"
-              max={1}
+            <MediaFramingField
               label="Picture for this entry"
               help={ENTRY.mediaId.description}
-              ids={item.mediaId.length > 0 ? [item.mediaId] : []}
-              onChange={(next) => updateEntry({ ...item, mediaId: next[0] ?? "" })}
+              framingHelp={ENTRY.mediaScreens.description}
+              mediaId={item.mediaId}
+              framing={item.mediaScreens}
+              onChange={({ mediaId, framing }) => updateEntry({ ...item, mediaId, mediaScreens: framing })}
             />
           </>
         )}

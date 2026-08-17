@@ -931,9 +931,15 @@ async function resolveSectionDataOrThrow(
         }
         break;
       }
-      case "MEDIA_SPLIT":
-        rememberMedia((parsed.data as MediaSplitSectionData).mediaId);
+      case "MEDIA_SPLIT": {
+        const data = parsed.data as MediaSplitSectionData;
+        rememberMedia(data.mediaId);
+        // The alternates a per-screen framing names. See the note on HERO above: a bucket whose
+        // photograph is missing from the map INHERITS rather than erroring, so an unfetched row would
+        // quietly draw the phone picture on a desktop. They join the same `IN (…)` at no extra query.
+        for (const id of screenFramingMediaIds(data.mediaScreens)) rememberMedia(id);
         break;
+      }
       /*
        * Mirrors HERO above: the id is fetched only when the arrangement actually shows a picture.
        * The three text-alone arrangements ignore both picture fields (the schema says so), so a
@@ -949,12 +955,22 @@ async function resolveSectionDataOrThrow(
           data.layout === "center-media-between"
         ) {
           rememberMedia(data.mediaId);
+          // The framing's alternate photographs, inside the same arrangement test for the same reason:
+          // see the note on HERO above for why a missing row inherits rather than erroring, and why
+          // these cost no extra query.
+          for (const id of screenFramingMediaIds(data.mediaScreens)) rememberMedia(id);
         }
         break;
       }
-      case "QUOTE":
-        rememberMedia((parsed.data as QuoteSectionData).portraitMediaId);
+      case "QUOTE": {
+        const data = parsed.data as QuoteSectionData;
+        rememberMedia(data.portraitMediaId);
+        // The alternates a per-screen framing names. See the note on HERO: a bucket whose photograph is
+        // missing from the map INHERITS, so an unfetched row would quietly draw the wrong portrait
+        // rather than erroring. They join the same `IN (…)` at no extra query.
+        for (const id of screenFramingMediaIds(data.portraitMediaScreens)) rememberMedia(id);
         break;
+      }
       /*
        * The document a DOCUMENT_EMBED block puts on the page. It is a `MediaAsset` like every other
        * id collected here — see the block's schema for why it is not a `FileAsset` — so it costs one
@@ -968,6 +984,10 @@ async function resolveSectionDataOrThrow(
       case "TIMELINE":
         for (const entry of (parsed.data as TimelineSectionData).entries) {
           rememberMedia(entry.mediaId);
+          // The alternates a per-screen framing names. See the note on HERO: a bucket whose photograph
+          // is missing from the map INHERITS, so an unfetched row would draw the wrong picture rather
+          // than erroring. They join the same `IN (…)` at no extra query.
+          for (const id of screenFramingMediaIds(entry.mediaScreens)) rememberMedia(id);
         }
         break;
 
@@ -984,19 +1004,37 @@ async function resolveSectionDataOrThrow(
       case "STORY_SCROLL":
         for (const chapter of (parsed.data as StoryScrollSectionData).chapters) {
           rememberMedia(chapter.mediaId);
+          // The alternate photographs this chapter's framing names — uploaded assets, so they belong
+          // here as the note above requires. See HERO for why leaving them out fails silently: a
+          // photograph missing from the map inherits rather than erroring.
+          for (const id of screenFramingMediaIds(chapter.mediaScreens)) rememberMedia(id);
         }
         break;
-      case "PARALLAX_BANNER":
-        rememberMedia((parsed.data as ParallaxBannerSectionData).mediaId);
+      case "PARALLAX_BANNER": {
+        const data = parsed.data as ParallaxBannerSectionData;
+        rememberMedia(data.mediaId);
+        // The alternates the band's framing names, on the same terms as HERO above: a bucket whose
+        // photograph is missing from the map INHERITS, so an unfetched row draws the phone picture across
+        // a desktop-wide band rather than erroring. Same `IN (…)`, no extra query.
+        for (const id of screenFramingMediaIds(data.mediaScreens)) rememberMedia(id);
         break;
+      }
       case "HORIZONTAL_RAIL":
         for (const item of (parsed.data as HorizontalRailSectionData).items) {
           rememberMedia(item.mediaId);
+          // The alternates a per-screen framing names, on the same terms as HERO and TIMELINE above:
+          // a bucket whose photograph is missing from the map INHERITS, so an unfetched row draws the
+          // phone picture on a desktop rather than erroring. Same `IN (…)`, no extra query.
+          for (const id of screenFramingMediaIds(item.mediaScreens)) rememberMedia(id);
         }
         break;
       case "PROCESS_STEPS":
         for (const step of (parsed.data as ProcessStepsSectionData).steps) {
           rememberMedia(step.mediaId);
+          // The alternates this stage's framing names, on the same terms as HERO and TIMELINE above: a
+          // bucket whose photograph is missing from the map INHERITS, so an unfetched row would draw the
+          // phone picture on a desktop rather than erroring. Same `IN (…)`, no extra query.
+          for (const id of screenFramingMediaIds(step.mediaScreens)) rememberMedia(id);
         }
         break;
 

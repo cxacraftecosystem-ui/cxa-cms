@@ -27,6 +27,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { TimelineSpine } from "@/components/sections/timeline/TimelineSpine";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { MediaImage } from "@/components/ui/MediaImage";
+import { pictureFromMap } from "@/lib/media/screens";
 import { sectionLabel } from "@/lib/sections/registry";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { TimelineSectionData } from "@/lib/sections/schema";
@@ -67,6 +68,7 @@ export function TimelineSection({ data, section, resolved }: TimelineSectionProp
     <ol className={cn(horizontal && "flex gap-8")}>
       {entries.map((entry, index) => {
         const asset = entry.mediaId ? resolved?.media[entry.mediaId] : undefined;
+        const picture = pictureFromMap(entry.mediaId, entry.mediaScreens, resolved?.media);
 
         return (
           <Reveal
@@ -102,6 +104,7 @@ export function TimelineSection({ data, section, resolved }: TimelineSectionProp
             {asset ? (
               <MediaImage
                 media={asset}
+                picture={picture}
                 rounded="md"
                 aspect="4 / 3"
                 sizes="(min-width: 1024px) 24rem, 100vw"

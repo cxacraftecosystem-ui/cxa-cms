@@ -516,6 +516,18 @@ export const richTextSectionSchema = z.object({
   mediaId: mediaId(
     "A picture you have uploaded, shown by the arrangements that include one. Preferred over the one below."
   ),
+  /*
+   * ⚠ IT FRAMES THE UPLOADED PICTURE ONLY, WHICH IS WHY IT SITS BESIDE `mediaId` AND NOT BESIDE THE PAIR.
+   * `craftImage` below is a slug into the compiled-in manifest with no `MediaAsset` row behind it, so
+   * there is nothing to store a rectangle against and `StoryPicture`'s craft branch never sees this.
+   * Like the arrangement's own comment above, it is deliberately not cross-validated against `layout`:
+   * the three text-alone arrangements ignore it exactly as they ignore the two picture fields, and
+   * `resolve.ts` only fetches its alternates on the arrangements that draw one. See HERO's
+   * `backgroundMediaScreens` for why `null` is the resting state rather than a full framing.
+   */
+  mediaScreens: screenFraming(
+    "Optional. Frame the uploaded picture differently at each screen size, or show a different photograph on narrow screens. Anything left alone inherits from the next smaller size. It has no effect on the arrangements that are text alone, or on one of the site's own craft photographs."
+  ),
   craftImage: craftImageSlug(
     "One of the craft photographs that ship with the site. Used only when you have not chosen an uploaded picture above."
   ),
@@ -876,6 +888,16 @@ export const gallerySectionSchema = showcase({
 
 export const mediaSplitSectionSchema = z.object({
   mediaId: mediaId("The picture or video for this block."),
+  /**
+   * ⚠ THE FIELD ABOVE MAY HOLD A VIDEO, AND A FRAMING IS ONLY EVER ABOUT A PHOTOGRAPH. A film is drawn
+   * by the browser's own player, which no rectangle of ours touches, so `MediaSplitForm` offers the
+   * panel only once the chosen file is a picture — and both sides reach that verdict through
+   * `isVideoObjectKey` below rather than each testing the file for itself. See HERO's
+   * `backgroundMediaScreens` for why per-screen framing exists at all.
+   */
+  mediaScreens: screenFraming(
+    "Optional. Frame this picture differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size. It does nothing for a video."
+  ),
   side: z
     .enum(["left", "right"])
     .default("left")
@@ -889,6 +911,28 @@ export const mediaSplitSectionSchema = z.object({
   primaryCta: cta("main"),
   secondaryCta: cta("second")
 });
+
+/**
+ * Is a chosen file a film rather than a photograph?
+ *
+ * EXPORTED FOR THE SAME REASON AS `documentFormat` FURTHER DOWN. `MediaSplitSection` reaches this
+ * verdict to choose between the browser's video player and `MediaImage`; `MediaSplitForm` has to reach
+ * the SAME one to decide whether framing per screen size is a control with any visible effect. Two
+ * copies of the list would disagree the first time either learned about a container, and an editor
+ * would be offered six rows of framing for a film.
+ *
+ * It lives HERE rather than in the renderer because this module is isomorphic (rule 1) and the renderer
+ * is not: a `"use client"` form importing that component tree to read one regular expression would
+ * drag the whole of it into the studio bundle.
+ *
+ * ⚠ THE OBJECT KEY IS THE ONLY SIGNAL AVAILABLE — `MediaLike` carries no asset kind. It matters: a
+ * video pushed through the image optimiser answers 400 and draws a broken frame with no clue why.
+ */
+const VIDEO_OBJECT_KEY = /\.(mp4|webm|ogv|mov|m4v)(\?|$)/i;
+
+export function isVideoObjectKey(objectKey: string): boolean {
+  return VIDEO_OBJECT_KEY.test(objectKey);
+}
 
 /**
  * A chronology.
@@ -916,7 +960,17 @@ export const timelineSectionSchema = z.object({
         ),
         title: text(120, "What happened."),
         body: text(400, "The detail. Two or three sentences. Optional."),
-        mediaId: mediaId("A picture for this entry. Optional.")
+        mediaId: mediaId("A picture for this entry. Optional."),
+        /**
+         * ⚠ THE FRAMING LIVES INSIDE THE ROW, WHICH IS WHAT MAKES A REPEATER SAFE HERE. A per-entry
+         * override keyed on anything OUTSIDE the row — an index, a generated key — would follow the
+         * wrong entry the moment somebody dragged one, because `RepeaterField` keys rows by a key it
+         * never persists. Stored as a sibling of the `mediaId` it belongs to, it travels with the entry
+         * through every reorder, and two entries showing the same photograph stay independent.
+         */
+        mediaScreens: screenFraming(
+          "Optional. Frame this entry's picture differently at each screen size. Anything left alone inherits from the next smaller size."
+        )
       })
     )
     .max(40, "Forty entries is the most one timeline holds. Split a longer history across two blocks.")
@@ -945,6 +999,16 @@ export const quoteSectionSchema = z.object({
   attribution: text(80, "Who said it."),
   role: text(120, "Their position, such as “Director, Centre of Excellence”."),
   portraitMediaId: mediaId("A portrait of the person. Optional."),
+  /**
+   * ⚠ THE FRAME HERE NEVER CHANGES SHAPE, WHICH IS WHY THE HELP TEXT IS DELIBERATELY MODEST. The hero's
+   * note above explains what a framing buys: a frame that runs from 0.5:1 to 2.5:1 cannot be served by
+   * one rectangle. `QuoteSection` draws this portrait as a fixed 56px 1:1 circle at every width, so
+   * there is no changing frame to answer — the only honest uses left are a tighter crop on small
+   * screens, where 56px of a wide group shot is nobody's face, and a different photograph.
+   */
+  portraitMediaScreens: screenFraming(
+    "Optional. The portrait is drawn as the same small circle at every screen size, so this is only for choosing a tighter crop or a different photograph at some widths — not for a frame that changes shape. Anything left alone inherits from the next smaller size, and the smallest falls back to the picture's own crop."
+  ),
   alignment: alignment("center", "Where the quotation sits in the column.")
 });
 
@@ -1702,6 +1766,18 @@ export const storyScrollSectionSchema = z.object({
           "The chapter itself. Two or three short paragraphs read best; leave a blank line between them."
         ),
         mediaId: mediaId("A photograph you have uploaded. Preferred over the one below."),
+        /**
+         * ⚠ INSIDE THE ROW, for the reason `timelineSectionSchema`'s entry sets out — an override kept
+         * anywhere outside the chapter follows the wrong chapter the moment somebody drags one.
+         *
+         * ⚠ AND IT FRAMES THE UPLOADED PHOTOGRAPH ONLY. A `craftImage` slug resolves to a compiled-in
+         * file with no `MediaAsset` row and no crop columns (see `craftImageSlug` above), so a chapter
+         * drawing the bundled picture has nothing for a rectangle to be expressed against. The help text
+         * says so, because the alternative is an editor framing a picture that never changes.
+         */
+        mediaScreens: screenFraming(
+          "Optional. Frame this chapter's photograph differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size. It applies to a photograph you have uploaded, not to one that ships with the site."
+        ),
         craftImage: craftImageSlug(
           "One of the craft photographs that ship with the site. Used only when you have not chosen an uploaded photograph above."
         ),
@@ -1733,6 +1809,21 @@ export const parallaxBannerSectionSchema = z.object({
   heading: text(120, "The line across the photograph. Short — it sits over a picture."),
   body: text(240, "A sentence under it. Optional, and shorter is better here than anywhere else."),
   mediaId: mediaId("A photograph you have uploaded. Preferred over the one below."),
+  /**
+   * ⚠ THIS BAND IS FULL-BLEED, SO IT IS THE HERO'S PROBLEM ALL OVER AGAIN. See
+   * `backgroundMediaScreens` above for the argument. The photograph spans the window while the band's
+   * height comes from `height` below, so one rectangle has to serve a frame that is roughly square on a
+   * phone — taller than it is wide at the full-screen height — and several times wider than it is tall on
+   * a desktop.
+   *
+   * ⚠ AND IT FRAMES THE UPLOADED PHOTOGRAPH ONLY. `craftImage` below is a slug into the compiled-in
+   * manifest with no `MediaAsset` row behind it, so there is nothing to express a rectangle against and
+   * `StoryPicture`'s craft branch never sees this. The help text says so, because an editor who has
+   * chosen a bundled photograph would otherwise be framing something that never changes.
+   */
+  mediaScreens: screenFraming(
+    "Optional. Frame the band's photograph differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size. It applies to a photograph you have uploaded, not to one that ships with the site."
+  ),
   craftImage: craftImageSlug(
     "One of the craft photographs that ship with the site. Used only when you have not chosen an uploaded photograph above."
   ),
@@ -1812,6 +1903,18 @@ export const horizontalRailSectionSchema = z.object({
         detail: text(280, "A line or two about it. Optional."),
         meta: text(60, "A small line under the title — a place, a date, a material. Optional."),
         mediaId: mediaId("A photograph you have uploaded. Preferred over the one below."),
+        /**
+         * ⚠ INSIDE THE ROW, for the reason TIMELINE's own note gives: `RepeaterField` keys rows by a
+         * key it never persists, so a framing held anywhere outside the row would follow the wrong
+         * card the moment somebody dragged one.
+         *
+         * ⚠ AND IT FRAMES THE UPLOADED ASSET ONLY. `craftImage` below is a slug into the compiled-in
+         * manifest — there is no media row to crop and no `MediaAsset` for a bucket to name an
+         * alternate against, so a card drawn from a craft photograph is framed by nothing here.
+         */
+        mediaScreens: screenFraming(
+          "Optional. Frame this card's uploaded photograph differently at each screen size. Anything left alone inherits from the next smaller size. It applies to the rail; the arc sizes its own cards and ignores it."
+        ),
         craftImage: craftImageSlug(
           "One of the craft photographs that ship with the site. Used only when you have not chosen an uploaded photograph above."
         ),
@@ -1858,6 +1961,18 @@ export const processStepsSectionSchema = z.object({
         detail: text(600, "What it involves, in complete sentences."),
         meta: text(60, "How long it takes, or who does it. A small line under the title. Optional."),
         mediaId: mediaId("A photograph you have uploaded. Preferred over the one below."),
+        /**
+         * ⚠ INSIDE THE ROW, for the reason `timelineSectionSchema`'s entry states: `RepeaterField` keys
+         * rows by a key it never persists, so a framing held outside the row would follow the wrong
+         * stage the moment somebody dragged one.
+         *
+         * ⚠ AND IT FRAMES THE UPLOADED PHOTOGRAPH ONLY. `craftImage` below is a slug into the
+         * compiled-in manifest with no `MediaAsset` row behind it, so a stage drawing the bundled
+         * picture has nothing for a rectangle to be expressed against.
+         */
+        mediaScreens: screenFraming(
+          "Optional. Frame this stage's photograph differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size. It applies to a photograph you have uploaded, not to one that ships with the site."
+        ),
         craftImage: craftImageSlug(
           "One of the craft photographs that ship with the site. Used only when you have not chosen an uploaded photograph above."
         )

@@ -21,6 +21,7 @@ import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
 import { MediaImage } from "@/components/ui/MediaImage";
+import { pictureFromMap } from "@/lib/media/screens";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { QuoteSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,15 @@ export function QuoteSection({ data, section, resolved }: QuoteSectionProps) {
   if (!data.quote) return null;
 
   const portrait = data.portraitMediaId ? resolved?.media[data.portraitMediaId] : undefined;
+  /**
+   * The portrait's framing, per screen width. Resolved here rather than inside `MediaImage` because the
+   * alternate photographs live in the page's own media map — see the fuller note in `HeroSection`.
+   *
+   * The circle below is 56px at every width, so a framing here is somebody asking for a tighter crop or
+   * a different picture at some sizes, not for a frame that changes shape. With no framing this is a
+   * single band and `MediaImage` draws exactly what it drew before the field existed.
+   */
+  const picture = pictureFromMap(data.portraitMediaId, data.portraitMediaScreens, resolved?.media);
   const hasCaption = Boolean(portrait) || data.attribution.length > 0 || data.role.length > 0;
 
   return (
@@ -68,6 +78,7 @@ export function QuoteSection({ data, section, resolved }: QuoteSectionProps) {
                 {portrait ? (
                   <MediaImage
                     media={portrait}
+                    picture={picture}
                     aspect={1}
                     rounded="full"
                     sizes="56px"

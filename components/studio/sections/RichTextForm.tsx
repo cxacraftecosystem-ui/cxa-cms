@@ -164,7 +164,7 @@ import { Select } from "@/components/ui/Select";
 import { HelpText } from "@/components/studio/HelpText";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
-import { EntityPicker } from "@/components/studio/fields/EntityPicker";
+import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
@@ -411,13 +411,23 @@ export function RichTextForm({
       */}
       {wantsPicture ? (
         <>
-          <EntityPicker
-            kind="media"
-            max={1}
+          <MediaFramingField
             label="Picture"
             help={SHAPE.mediaId.description}
-            ids={data.mediaId.trim() ? [data.mediaId.trim()] : []}
-            onChange={(next) => update({ mediaId: next[0] ?? "" })}
+            framingHelp={SHAPE.mediaScreens.description}
+            mediaId={data.mediaId}
+            framing={data.mediaScreens}
+            /*
+              The same test the renderer and `resolve.ts` apply, stated rather than inherited from the
+              branch this sits in: a framing is only ever drawn by an arrangement that shows the
+              picture, so if this field is ever lifted out of `wantsPicture` the panel still withholds
+              itself instead of offering a control with no visible effect. The craft half needs no test
+              — the panel appears only once an uploaded id exists, and an uploaded id wins.
+            */
+            offerFraming={wantsPicture}
+            onChange={({ mediaId: nextId, framing }) =>
+              update({ mediaId: nextId, mediaScreens: framing })
+            }
           />
 
           <CraftImagePicker

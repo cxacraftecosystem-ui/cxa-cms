@@ -84,6 +84,7 @@ import { RichText } from "@/components/RichText";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
 import { houseTypeset } from "@/components/site/ProseArticle";
 import { SectionHeading } from "@/components/site/SectionHeading";
+import { pictureFromMap } from "@/lib/media/screens";
 import { isEmptyRichText, isShortRichText, parseRichText } from "@/lib/richtext";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { RichTextSectionData } from "@/lib/sections/schema";
@@ -129,6 +130,18 @@ export async function RichTextSection({ data, section, resolved }: RichTextSecti
   // fields entirely, exactly as their help text promises.
   const pictureChosen =
     withPicture && (data.mediaId.trim().length > 0 || data.craftImage.trim().length > 0);
+
+  /**
+   * The per-screen framing, resolved once for whichever with-picture arrangement runs below.
+   *
+   * Inside the same `withPicture` test `resolve.ts` uses for the ids, so a framing left behind by a
+   * switch to a text-alone arrangement resolves to nothing rather than to a picture the map happens to
+   * hold for another block. It reaches `StoryPicture`'s uploaded branch only — a `craftImage` slug is a
+   * compiled-in file with no media row and nothing to frame, which is that prop's own note.
+   */
+  const picture = withPicture
+    ? pictureFromMap(data.mediaId, data.mediaScreens, resolved?.media)
+    : null;
 
   // Before the read, not after: a block with nothing in it must not cost a query.
   if (!hasBody && !hasHeading && !pictureChosen) return null;
@@ -219,6 +232,7 @@ export async function RichTextSection({ data, section, resolved }: RichTextSecti
                 mediaId={data.mediaId}
                 craftSlug={data.craftImage}
                 resolved={resolved}
+                picture={picture}
                 sizes="(min-width: 1024px) 42rem, 100vw"
                 showRegion={false}
                 emptyLabel="The picture chosen for this passage is no longer available."
@@ -255,6 +269,7 @@ export async function RichTextSection({ data, section, resolved }: RichTextSecti
                 mediaId={data.mediaId}
                 craftSlug={data.craftImage}
                 resolved={resolved}
+                picture={picture}
                 sizes="(min-width: 1024px) 48rem, 100vw"
                 showRegion={false}
                 emptyLabel="The picture chosen for this passage is no longer available."

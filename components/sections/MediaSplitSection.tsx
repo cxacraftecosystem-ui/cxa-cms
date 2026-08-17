@@ -19,9 +19,10 @@ import type { PageSection } from "@prisma/client";
 import { Reveal } from "@/components/motion/Reveal";
 import { LinkButton } from "@/components/ui/Button";
 import { MediaImage } from "@/components/ui/MediaImage";
+import { pictureFromMap } from "@/lib/media/screens";
 import { publicObjectUrl } from "@/lib/media/url";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
-import type { MediaSplitSectionData } from "@/lib/sections/schema";
+import { isVideoObjectKey, type MediaSplitSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
 
 export interface MediaSplitSectionProps {
@@ -31,12 +32,6 @@ export interface MediaSplitSectionProps {
   resolved?: ResolvedSectionData;
 }
 
-/**
- * `MediaLike` carries no asset kind, so the object key is the only signal available here. It matters:
- * a video pushed through the image optimiser answers 400 and draws a broken frame with no clue why.
- */
-const VIDEO_KEY = /\.(mp4|webm|ogv|mov|m4v)(\?|$)/i;
-
 export function MediaSplitSection({ data, section, resolved }: MediaSplitSectionProps) {
   const asset = data.mediaId ? resolved?.media[data.mediaId] : undefined;
   const primary = data.primaryCta.label && data.primaryCta.href ? data.primaryCta : null;
@@ -44,7 +39,15 @@ export function MediaSplitSection({ data, section, resolved }: MediaSplitSection
 
   if (!asset && !data.heading && !data.body && !primary && !secondary) return null;
 
-  const videoSrc = asset && VIDEO_KEY.test(asset.objectKey) ? publicObjectUrl(asset.objectKey) : null;
+  // `isVideoObjectKey` is read off the schema module so that the studio's form can offer the framing
+  // panel on exactly the branch that draws a picture — see its note there.
+  const videoSrc = asset && isVideoObjectKey(asset.objectKey) ? publicObjectUrl(asset.objectKey) : null;
+  /**
+   * The per-screen framing, resolved. It reaches only the image branch: a film is drawn by the
+   * browser's own player and no rectangle of ours applies to it. `pictureFromMap` has already folded in
+   * the asset's own stored crop, so nothing here re-reads those columns.
+   */
+  const picture = pictureFromMap(data.mediaId, data.mediaScreens, resolved?.media);
   const mediaSide = data.side;
 
   return (
@@ -67,6 +70,7 @@ export function MediaSplitSection({ data, section, resolved }: MediaSplitSection
                 ) : (
                   <MediaImage
                     media={asset}
+                    picture={picture}
                     rounded="lg"
                     sizes="(min-width: 1024px) 42rem, 100vw"
                     className="w-full border border-line-200 shadow-md"

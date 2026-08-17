@@ -51,6 +51,7 @@ import { SectionHeading } from "@/components/site/SectionHeading";
 import { hashUnit } from "@/components/craft/motifs";
 import { craftImage, type CraftImage } from "@/lib/media/craft-imagery";
 import { CRAFT_CATEGORY_SHEETS, craftSheet, type CraftSheet } from "@/lib/media/craft-sheets";
+import { pictureFromMap } from "@/lib/media/screens";
 import { mediaAlt, mediaSrc } from "@/lib/media/url";
 import { sectionLabel } from "@/lib/sections/registry";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
@@ -160,6 +161,10 @@ function arcCardsOf(
   const credits: CraftImage[] = [];
 
   for (const item of items) {
+    // ⚠ `mediaScreens` IS NOT HONOURED HERE, and that is why `HorizontalRailForm` withholds the
+    // framing panel while the arc is chosen. The fan takes one finished `src` per card so it can stay
+    // a dumb client leaf (see the note above), and a framing is a `<style>` block of per-width
+    // rectangles — a control with no visible effect is how an editor comes to believe it is broken.
     const asset = item.mediaId.trim() ? resolved?.media[item.mediaId.trim()] : undefined;
     const slug = item.craftImage.trim();
 
@@ -390,6 +395,14 @@ function RailCard({
   const detail = item.detail.trim();
   const href = item.href.trim();
   const wantsPicture = item.mediaId.length > 0 || item.craftImage.length > 0;
+  /**
+   * The card's own per-screen framing. A card is 15rem on a phone and up to 30rem from `sm` upward,
+   * which is two rather different frames for one photograph.
+   *
+   * It reaches `StoryPicture`'s UPLOADED branch only: a `craftImage` slug has no media row to frame, so
+   * this resolves to null for a craft card and that branch draws exactly as it always did.
+   */
+  const picture = pictureFromMap(item.mediaId, item.mediaScreens, resolved?.media);
 
   /**
    * A link needs words. An `::after` overlay hung on an anchor with no text is a card-sized target
@@ -432,6 +445,7 @@ function RailCard({
             mediaId={item.mediaId}
             craftSlug={item.craftImage}
             resolved={resolved}
+            picture={picture}
             // One shape for every card, so the titles below them line up along the rail whatever
             // proportions the photographs arrived in.
             aspect="4 / 3"

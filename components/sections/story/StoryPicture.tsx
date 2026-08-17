@@ -38,6 +38,7 @@ import { ImageOff } from "lucide-react";
 import { CraftPhoto } from "@/components/site/CraftPhoto";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { craftImage } from "@/lib/media/craft-imagery";
+import type { Picture } from "@/lib/media/screens";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,16 @@ export interface StoryPictureProps {
   craftSlug: string;
   /** The batched read. `resolved.media` is keyed by asset id. */
   resolved: ResolvedSectionData | undefined;
+  /**
+   * Per-width framing for the UPLOADED asset, already resolved (`pictureFromMap`), forwarded to
+   * `MediaImage`.
+   *
+   * ⚠ THE CRAFT BRANCH IGNORES IT, AND THAT IS THE SAME ASYMMETRY `creditOverlay` HAS. A framing is a
+   * set of rectangles on one `MediaAsset`, plus possibly alternate assets to go with it; a manifest
+   * slug is a compiled-in file with no media row, so there is nothing for a bucket to name and nothing
+   * to crop. Omit it and this renders exactly as it did before per-screen framing existed.
+   */
+  picture?: Picture | null;
   /** A CSS `aspect-ratio`. Both sources crop to it, so a row of pictures lines up. */
   aspect?: string;
   sizes: string;
@@ -97,6 +108,7 @@ export function StoryPicture({
   mediaId,
   craftSlug,
   resolved,
+  picture,
   aspect,
   sizes,
   priority = false,
@@ -115,6 +127,7 @@ export function StoryPicture({
       <figure className={cn("m-0", className)}>
         <MediaImage
           media={asset}
+          picture={picture}
           alt={alt}
           aspect={aspect ?? "none"}
           sizes={sizes}
