@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { cropOrigin, isUsableCrop, pct, storedCrop, type CropColumns, type CropRect } from "./crop";
+import { cropOrigin, isUsableCrop, pct, storedCrop, type CropRect } from "./crop";
 import type { MediaLike } from "./url";
 
 /**
@@ -103,12 +103,24 @@ export function screenBucketLabel(id: ScreenBucketId): string {
  * is right for an asset and wrong for a bucket; the panel that edits a bucket therefore has to keep the
  * two apart. `isUsableCrop(FULL_CROP)` is already true, so the render side needs no special case.
  *
- * Extends `CropColumns` structurally so the same four field names travel from Prisma, through this, to
- * `storedCrop` — one name for one number, everywhere.
+ * The four crop field names are deliberately the same as Prisma's columns, so one number keeps one name
+ * from the database through this type to `storedCrop`.
  */
-export interface ScreenOverride extends CropColumns {
+export interface ScreenOverride {
   /** A DIFFERENT photograph for this bucket, by media id. Null inherits the one below. */
   mediaId: string | null;
+  /**
+   * ⚠ THE FOUR ARE REQUIRED HERE, THOUGH `CropColumns` DECLARES THEM OPTIONAL, and this does not extend
+   * it for exactly that reason. Optional is right for a Prisma row, where a `select` may legitimately not
+   * have asked for them — but a stored override always carries all six keys (see `emptyScreenFraming`),
+   * and inheriting the optionality would make `number | null | undefined` where the Zod schema's output
+   * is `number | null`, so the parsed payload would not be assignable to this type. Required members are
+   * still structurally acceptable to `storedCrop`, which is the only thing that reads them.
+   */
+  cropX: number | null;
+  cropY: number | null;
+  cropWidth: number | null;
+  cropHeight: number | null;
   /** The preset the bucket was cropped on, so the dialog reopens on that shape. Never rendered from. */
   cropAspect: string | null;
 }

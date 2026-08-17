@@ -25,9 +25,11 @@
 import resolveConfig from "tailwindcss/resolveConfig";
 
 import tailwindConfig from "../tailwind.config";
+import { screenFramingSchema } from "../lib/sections/schema";
 import { FULL_CROP, cropFrameStyle, cropImageStyle, storedCrop, type CropRect } from "../lib/media/crop";
 import {
   SCREEN_BUCKETS,
+  SCREEN_BUCKET_IDS,
   cropVarsFor,
   emptyScreenFraming,
   isEmptyScreenFraming,
@@ -362,6 +364,64 @@ function bandAt(picture: Picture, width: number) {
   // honest if asked: one rule, no query.
   const single = pictureCss(resolvePicture(CROPPED, null)!, "cxa-pic-x");
   check(!single.includes("@media"), "a single band needs no query", single);
+}
+
+// ── 8. The stored schema and the bucket table are the same six keys ─────────
+{
+  /**
+   * ⚠ THIS IS THE ASSERTION THE SCHEMA'S OWN COMMENT PROMISES. `screenFramingSchema` in
+   * lib/sections/schema.ts writes its six keys out as literals, because `z.object` needs a literal shape
+   * to infer six known keys rather than an index signature — and an index signature would let a typo in
+   * a bucket name compile. Written-out literals are only safe while something checks them against the
+   * table they mirror, and a bucket added to `SCREEN_BUCKETS` without a key here would be a bucket an
+   * editor could set and Zod would silently strip on the next read.
+   */
+  const schemaKeys = Object.keys(screenFramingSchema.shape);
+  check(
+    same(schemaKeys, [...SCREEN_BUCKET_IDS]),
+    "the stored schema has exactly the bucket ids, in order",
+    `schema has [${schemaKeys.join(", ")}], buckets are [${SCREEN_BUCKET_IDS.join(", ")}]`
+  );
+
+  // A payload written before the field existed must parse, and must mean "nobody has framed this".
+  const parsedAbsent = screenFramingSchema.nullable().default(null).parse(undefined);
+  check(parsedAbsent === null, "an absent framing parses as null", String(parsedAbsent));
+  check(resolvePicture(CROPPED, parsedAbsent)?.length === 1, "and resolves to one band", "an absent framing changed the render");
+
+  // A bucket sent with only some of its keys must fill the rest with null rather than refusing.
+  const partial = screenFramingSchema.parse({
+    base: { cropX: 0.1, cropY: 0.1, cropWidth: 0.5, cropHeight: 0.5 },
+    sm: {},
+    md: {},
+    lg: {},
+    xl: {},
+    "2xl": {}
+  });
+  check(partial.base.mediaId === null, "a missing mediaId defaults to null", String(partial.base.mediaId));
+  check(partial.md.cropX === null, "an untouched bucket is all nulls", String(partial.md.cropX));
+  /**
+   * ONE band, not two: the crop is on `base`, and nothing above it differs, so there is nothing to emit
+   * a second rule for. What proves the parse survived is the rectangle itself.
+   */
+  const parsedPicture = resolvePicture(PLAIN, partial);
+  check(parsedPicture?.length === 1, "a crop on base alone stays one band", `got ${parsedPicture?.length}`);
+  check(
+    same(parsedPicture?.[0].crop, { x: 0.1, y: 0.1, width: 0.5, height: 0.5 }),
+    "and carries the rectangle the schema parsed",
+    JSON.stringify(parsedPicture?.[0].crop)
+  );
+  check(parsedPicture?.[0].cropFrom === "base", "attributed to the bucket that set it", String(parsedPicture?.[0].cropFrom));
+
+  // An out-of-range rectangle is refused at the boundary, with the render side as the second line.
+  const refused = screenFramingSchema.safeParse({
+    base: { cropX: 1.4, cropY: 0, cropWidth: 0.5, cropHeight: 0.5 },
+    sm: {},
+    md: {},
+    lg: {},
+    xl: {},
+    "2xl": {}
+  });
+  check(!refused.success, "a fraction above 1 is refused by the schema", "the schema accepted cropX 1.4");
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────

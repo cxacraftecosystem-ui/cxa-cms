@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
 import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { LinkField } from "@/components/studio/fields/LinkField";
+import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = heroSectionSchema.shape;
@@ -167,6 +168,22 @@ export function HeroForm({ data, onChange, onDirty }: SectionFormProps<HeroSecti
           has been chosen, so the hero falls back to the brand gradient. That is a proper background, not
           a hole — choose a file above, or set the background to the gradient on purpose.
         </HelpText>
+      ) : null}
+
+      {/*
+        Offered only when a picture is actually being drawn. Framing a video per screen size would be a
+        control that does nothing — `MediaImage` draws the still frame, not the film — and framing a
+        picture the hero is not using is a decision with no visible effect, which is how an editor comes
+        to believe the panel is broken.
+      */}
+      {data.backgroundKind === "image" ? (
+        <ScreenFramingPanel
+          label="Framing per screen size"
+          help={SHAPE.backgroundMediaScreens.description}
+          mediaId={data.backgroundMediaId}
+          value={data.backgroundMediaScreens}
+          onChange={(next) => update({ backgroundMediaScreens: next })}
+        />
       ) : null}
 
       {!usesMedia && hasMedia ? (

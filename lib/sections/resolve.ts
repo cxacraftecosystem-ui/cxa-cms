@@ -5,6 +5,7 @@ import type { PageSection, Prisma } from "@prisma/client";
 import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
+import { screenFramingMediaIds } from "@/lib/media/screens";
 import { getSettingCached } from "@/lib/settings/service";
 import {
   CENSUS_METRICS,
@@ -917,6 +918,16 @@ async function resolveSectionDataOrThrow(
         const data = parsed.data as HeroSectionData;
         if (data.backgroundKind === "image" || data.backgroundKind === "video") {
           rememberMedia(data.backgroundMediaId);
+          /**
+           * The alternate photographs a per-screen framing names, fetched WITH the page.
+           *
+           * ⚠ WITHOUT THIS THE FEATURE FAILS SILENTLY RATHER THAN LOUDLY. `resolvePicture` looks an
+           * alternate up through the `media` map, and a bucket whose photograph is missing INHERITS —
+           * so an unfetched row does not error, it just quietly draws the phone picture on a desktop.
+           * Adding the ids to the same census the background id goes through costs no extra query: they
+           * all end up in one `IN (…)`.
+           */
+          for (const id of screenFramingMediaIds(data.backgroundMediaScreens)) rememberMedia(id);
         }
         break;
       }

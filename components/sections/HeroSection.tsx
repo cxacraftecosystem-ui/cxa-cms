@@ -111,6 +111,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { StoryInvite } from "@/components/site/story/StoryInvite";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { craftSheet, type CraftSheet } from "@/lib/media/craft-sheets";
+import { resolvePicture } from "@/lib/media/screens";
 import { pickVariant, publicObjectUrl } from "@/lib/media/url";
 import type { MediaRow, ResolvedSectionData } from "@/lib/sections/resolve";
 import type { HeroSectionData } from "@/lib/sections/schema";
@@ -439,6 +440,22 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
   const [pointerFine, setPointerFine] = useState(false);
 
   const asset = data.backgroundMediaId ? resolved?.media[data.backgroundMediaId] : undefined;
+
+  /**
+   * The hero's framing, per screen width.
+   *
+   * ⚠ RESOLVED HERE AND NOT INSIDE `MediaImage`, because the alternate photographs live in the page's
+   * own media map. `resolvePicture` needs a way to turn a bucket's `mediaId` into a row, and this
+   * component is the first place that has one — `lib/sections/resolve.ts` fetched them alongside the
+   * background id. A bucket naming a photograph the map does not hold inherits rather than blanking, so
+   * a stale id costs the reader nothing.
+   *
+   * With no framing this returns a single band and `MediaImage` renders exactly as it did before the
+   * field existed, which is what every hero on the site currently relies on.
+   */
+  const picture = asset
+    ? resolvePicture(asset, data.backgroundMediaScreens, (id) => resolved?.media[id] ?? null)
+    : null;
   const backdrop = resolveBackdrop(data.backgroundKind, asset);
   /** The editor has given us a picture, so the Centre's own photography stands down. */
   const editorial = backdrop === "image" || backdrop === "video";
@@ -696,6 +713,7 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
             {backdrop === "image" && asset ? (
               <MediaImage
                 media={asset}
+                picture={picture}
                 alt=""
                 aspect="none"
                 rounded="none"

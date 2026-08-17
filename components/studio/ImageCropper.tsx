@@ -278,6 +278,27 @@ export interface ImageCropperProps {
    * before they press it rather than discover from somebody else's page afterwards.
    */
   note?: ReactNode;
+  /**
+   * Treat a whole-image rectangle as a real ANSWER rather than as an absence.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ THE TWO MEANINGS OF `null` DIVERGE THE MOMENT A CROP CAN BE PER-SCREEN, and this flag is where
+   * they part company.
+   *
+   * For a FILE, `null` means "nobody has chosen" and the whole picture is the same statement — so the
+   * three original callers collapse `0/0/1/1` to `null` and store five nulls, which is exactly right:
+   * an asset with no crop and an asset cropped to its own edges are indistinguishable.
+   *
+   * For a per-screen BUCKET they are not the same statement at all. `null` there means INHERIT from the
+   * next smaller size, and "show all of it on desktop" is a deliberate override that has to survive.
+   * Collapsing it would silently hand the bucket back to the phone's tight crop — the editor sets it,
+   * the preview springs back, and nothing says why.
+   *
+   * Defaults to false, so `MediaPicker`, `MediaDetailPanel` and `UploadQueue` keep behaving exactly as
+   * they do. `isUsableCrop(FULL_CROP)` is already true, so the render side needs no new case either.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  wholeImageIsAChoice?: boolean;
   /** The chosen crop. `null` means "show the whole picture" — the reset button returns that. */
   onApply: (choice: CropChoice | null) => void | Promise<void>;
 }
@@ -290,6 +311,7 @@ export function ImageCropper({
   initialRect,
   initialAspectId,
   note,
+  wholeImageIsAChoice = false,
   onApply
 }: ImageCropperProps) {
   const reduceMotion = useReducedMotionPreference();
@@ -513,7 +535,10 @@ export function ImageCropper({
       // rectangle, and the render side can no longer distinguish "nobody has decided" from "somebody
       // decided the whole picture" — which is the same three-state distinction `altText` makes and
       // for the same reason.
-      await onApply(isWholeImage(rect) ? null : { rect, aspectId });
+      // See `wholeImageIsAChoice`: for a file the whole picture and "no crop" are one statement; for a
+      // per-screen bucket they are not, because null there means inherit.
+      const collapse = !wholeImageIsAChoice && isWholeImage(rect);
+      await onApply(collapse ? null : { rect, aspectId });
       onClose();
     } finally {
       setBusy(false);
