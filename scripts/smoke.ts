@@ -732,6 +732,101 @@ async function main(): Promise<void> {
       }
     }
 
+    /**
+     * ── 7b. RE-ORDERING A GROUP OF PEOPLE ────────────────────────────────────
+     *
+     * ⚠ THIS BLOCK EXISTS BECAUSE THE PEOPLE BOARD SHIPPED UNABLE TO SAVE AN ORDER, and every check
+     * in the repository was green while it did. `tsc` was happy, `route-check` proved the path
+     * resolved, and the handler answered 500 on every single call: it renumbered a group one profile
+     * at a time, each one a round trip, all inside one interactive transaction, and the transaction
+     * ran out of time before the loop ran out of people. The only thing that could have caught it is
+     * asking the running application to actually move somebody.
+     *
+     * SO THE ASSERTION THAT MATTERS IS THE FIRST ONE: **not a 500.** A re-order may legitimately be
+     * refused — 409 when the roster moved underneath the request, 403 for a tier that may not — and
+     * every one of those refusals is a sentence somebody can act on. A 500 is the one answer that
+     * means nobody can do anything at all.
+     *
+     * SELF-RESTORING. The group is read, reversed, saved, and put straight back, so a run leaves the
+     * roster exactly as it found it. `finally` is not enough on its own here — there is no fixture to
+     * delete, only somebody's curated order to hand back — so the restore is asserted too.
+     */
+    {
+      const group = "FACULTY" as const;
+      const before = await prisma.person.findMany({
+        where: { kind: group, deletedAt: null },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: { id: true }
+      });
+      const original = before.map((row) => row.id);
+
+      if (original.length < 2) {
+        // Nothing to prove with fewer than two names, and inventing a second profile would leave a
+        // person-shaped fixture in a table that real people are in.
+        check(true, "reorder skipped (fewer than two faculty)", "");
+      } else {
+        const reversed = [...original].reverse();
+
+        const moved = await request("/api/studio/people/reorder", {
+          method: "POST",
+          jar: admin,
+          body: { kind: group, ids: reversed }
+        });
+        check(
+          moved.status !== 500,
+          "reorder is not a server error",
+          `POST /api/studio/people/reorder answered 500: ${moved.text.slice(0, 200)}`
+        );
+        check(moved.status === 200, "reorder saved", `expected 200, got ${moved.status}`);
+
+        const stored = await prisma.person.findMany({
+          where: { kind: group, deletedAt: null },
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          select: { id: true }
+        });
+        check(
+          stored.map((row) => row.id).join() === reversed.join(),
+          "reorder actually moved the rows",
+          "the endpoint answered 200 but the stored order did not change"
+        );
+
+        // The order is a change like any other, so it leaves a trail. `entityId` is the GROUP: no one
+        // profile is what changed.
+        const trail = await prisma.auditLog.count({ where: { entityType: "People", entityId: group } });
+        check(trail > 0, "reorder left an audit entry", "the re-order wrote no audit trail");
+
+        // A partial list is a refusal with an explanation, never a fault.
+        const partial = await request("/api/studio/people/reorder", {
+          method: "POST",
+          jar: admin,
+          body: { kind: group, ids: reversed.slice(0, 1) }
+        });
+        check(
+          partial.status === 409,
+          "an incomplete order is refused",
+          `expected 409, got ${partial.status}`
+        );
+
+        const restored = await request("/api/studio/people/reorder", {
+          method: "POST",
+          jar: admin,
+          body: { kind: group, ids: original }
+        });
+        check(restored.status === 200, "reorder restored", `expected 200, got ${restored.status}`);
+
+        const after = await prisma.person.findMany({
+          where: { kind: group, deletedAt: null },
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          select: { id: true }
+        });
+        check(
+          after.map((row) => row.id).join() === original.join(),
+          "the roster was handed back as it was found",
+          "the smoke run left the faculty in a different order than it started in"
+        );
+      }
+    }
+
     // ── 8. Sign out ─────────────────────────────────────────────────────────
     {
       const { status } = await request("/api/auth/logout", { method: "POST", jar: admin });

@@ -1,5 +1,7 @@
 import { z } from "zod";
-import type { PersonKind } from "@prisma/client";
+// `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` and `Prisma.join` are the
+// tagged-template helpers the one statement below is built from. See the note on that statement.
+import { Prisma, type PersonKind } from "@prisma/client";
 
 import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
@@ -24,14 +26,31 @@ import { unique } from "@/lib/utils";
  * somebody drags twice and the saved order would be neither of the two the reader saw. `PeopleBoard` sends
  * the complete list of the group and the write is one transaction: it either commits or it does not.
  *
- * ⚠ A STRAIGHT SEQUENTIAL WRITE IS SAFE HERE, AND THAT IS NOT TRUE EVERYWHERE IN THIS CODEBASE.
- * `Person.sortOrder` has NO unique constraint (prisma/schema.prisma) — only an index, `@@index([kind,
- * sortOrder])` — so two people may hold the same number for as long as it takes to write the next statement.
- * `PageSection` is the opposite case: it carries `@@unique([pageId, position])`, Postgres checks a unique
+ * ⚠ THE WHOLE GROUP IS RENUMBERED BY ONE STATEMENT, AND THAT IS A BUG FIX, NOT A MICRO-OPTIMISATION.
+ * This handler used to loop, issuing one `updateMany` per profile. Every one of those is a network round
+ * trip, they all sit inside a single interactive transaction, and Prisma closes an interactive transaction
+ * that outlives its timeout — raising `P2028`, which is not an `ApiError`, so `toErrorResponse` could only
+ * answer "Something went wrong on our side". A group of a dozen people on a small shared Postgres was
+ * already enough to spend that budget, and the failure grew with the roster: the more faculty a Centre
+ * added, the more certain it became that their order could never be saved again. One statement is a fixed
+ * cost no matter how long the list is.
+ *
+ * It also makes a HALF-APPLIED ORDER impossible by construction rather than by trusting a rollback: one
+ * `UPDATE` either renumbers the group or renumbers nobody.
+ *
+ * `FROM (VALUES …)` is what carries the positions. Every parameter is cast explicitly — `::text` and
+ * `::int` on each pair, `::"PersonKind"` on the group — because an overload Postgres picks by inference is
+ * not something a statement that rewrites a whole group should depend on. `kind` and `deletedAt IS NULL`
+ * are restated in the `WHERE` although the checks above already proved both: the check and the write are
+ * separated by a transaction boundary, and restating them is what makes it impossible for a later edit to
+ * that check to turn into a silent cross-group move.
+ *
+ * ⚠ THIS SHAPE IS SAFE HERE AND WOULD NOT BE ON `PageSection`. `Person.sortOrder` has NO unique constraint
+ * (prisma/schema.prisma) — only an index, `@@index([kind, sortOrder])` — so a single statement may hand out
+ * every number at once. `PageSection` carries `@@unique([pageId, position])`, Postgres checks a unique
  * constraint at the end of each STATEMENT, and so `rewriteSectionPositions()` in lib/studio/crud.ts has to
- * move every row through a negative range first. Copying that two-pass dance here would be twice the
- * statements for no reason; copying THIS loop into a page-section reorder would break it. The difference is
- * the constraint, and it is worth knowing which model has which.
+ * move every row through a negative range first. The difference is the constraint, and it is worth knowing
+ * which model has which before copying either one.
  *
  * ⚠ EVERY ID MUST BELONG TO THE GROUP BEING ORDERED. A person's group is a field on their own profile, and
  * the board says out loud that dragging cannot change it. If an id from another group were accepted, its
@@ -225,24 +244,31 @@ export const POST = route(async (request: Request) => {
       revise: false
     },
     async (tx) => {
-      for (const [index, id] of ids.entries()) {
-        /**
-         * `updateMany` with the KIND in its `where`, not `update` by id.
-         *
-         * The membership check above already proved every id is in this group; restating it in the statement
-         * is what makes it impossible for a later change to that check to turn into a silent cross-group move.
-         * A count of zero means the row changed hands between the check and the write, which is a refusal
-         * rather than a quiet no-op — and it rolls the whole re-order back.
-         */
-        const moved = await tx.person.updateMany({
-          where: { id, kind, deletedAt: null },
-          data: { sortOrder: index }
-        });
-        if (moved.count === 0) {
-          throw conflict(
-            "One of these profiles was changed by somebody else while the order was being saved. Reload the page and try the move again — nothing has been moved."
-          );
-        }
+      /**
+       * `"updatedAt" = NOW()` is set by hand because raw SQL bypasses Prisma's `@updatedAt`. It is set at
+       * all so this keeps the behaviour the per-row `updateMany` loop had — a re-order has always touched
+       * the timestamp, and quietly stopping would change what "last edited" means on every profile screen.
+       */
+      const renumbered = await tx.$executeRaw(Prisma.sql`
+        UPDATE "people" AS p
+           SET "sortOrder" = v."sortOrder", "updatedAt" = NOW()
+          FROM (VALUES ${Prisma.join(
+            ids.map((id, index) => Prisma.sql`(${id}::text, ${index}::int)`)
+          )}) AS v("id", "sortOrder")
+         WHERE p."id" = v."id"
+           AND p."kind" = ${kind}::"PersonKind"
+           AND p."deletedAt" IS NULL
+      `);
+
+      /**
+       * Anything short of the whole group means a row changed hands between the checks above and this
+       * statement — moved to another group, or sent to the recycle bin, in another tab. That is a refusal
+       * rather than a quiet partial write, and throwing rolls the statement back with it.
+       */
+      if (renumbered !== ids.length) {
+        throw conflict(
+          "One of these profiles was changed by somebody else while the order was being saved. Reload the page and try the move again — nothing has been moved."
+        );
       }
 
       return { id: kind, kind, order: ids };

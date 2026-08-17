@@ -29,7 +29,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ContentStatus, PersonKind } from "@prisma/client";
@@ -112,6 +112,17 @@ const ENDPOINT = {
   reorder: "/api/studio/people/reorder"
 } as const;
 
+/**
+ * One arrangement waiting to be saved: the order to send, and the board it came from.
+ *
+ * The rows travel WITH the ids because they are what the board goes back to if a later save fails —
+ * remembering only the ids would mean rebuilding the arrangement from a `rows` that has since moved on.
+ */
+interface OrderAttempt {
+  ids: string[];
+  rows: readonly PersonRow[];
+}
+
 const RETENTION_DAYS = 30;
 
 export function PeopleBoard({
@@ -135,8 +146,35 @@ export function PeopleBoard({
    * later.
    */
   const [rows, setRows] = useState<readonly PersonRow[]>(people);
+
+  /**
+   * The last arrangement the SERVER agreed to, and what a failed save snaps back to.
+   *
+   * ⚠ NOT the `people` prop, which is what this used to snap back to. A save that succeeds asks for a
+   * `router.refresh()`, and that payload takes a round trip to land — until it does, the prop still
+   * holds the order from BEFORE that save. Reverting to it after a LATER move failed therefore rewound
+   * the board past the failure and undid a move that had actually been committed, which reads as the
+   * board losing work at random.
+   */
+  const confirmedRows = useRef<readonly PersonRow[]>(people);
+
+  /**
+   * One request in flight per group, and one slot holding that group's LATEST order.
+   *
+   * Every request carries the COMPLETE order of its group, so an older one is not merely redundant, it
+   * is wrong: an editor pressing "move down" four times used to fire four overlapping POSTs that
+   * contended for the same rows, and whichever landed last decided the order. Joining the running
+   * request is how that is prevented. Same shape as `PageBuilder`'s `orderBusy`/`orderPending`.
+   */
+  const orderBusy = useRef(new Set<PersonKind>());
+  const orderPending = useRef(new Map<PersonKind, OrderAttempt>());
+
   useEffect(() => {
+    // A refresh landing mid-drag must not rewind the board: anything queued is NEWER than this payload,
+    // and the save that is running will ask for another refresh when it finishes.
+    if (orderBusy.current.size > 0 || orderPending.current.size > 0) return;
     setRows(people);
+    confirmedRows.current = people;
   }, [people]);
 
   const [announcement, setAnnouncement] = useState("");
@@ -151,46 +189,85 @@ export function PeopleBoard({
     [rows]
   );
 
-  const saveOrder = useCallback(
-    async (kind: PersonKind, ids: string[]) => {
+  const pushOrder = useCallback(
+    async (kind: PersonKind, attempt: OrderAttempt) => {
+      if (orderBusy.current.has(kind)) {
+        orderPending.current.set(kind, attempt);
+        return;
+      }
+
+      orderBusy.current.add(kind);
       setSavingKind(kind);
       try {
-        await post(ENDPOINT.reorder, { kind, ids });
-        // The list, the public pages and the `sortOrder` numbers are all server-rendered from this.
-        router.refresh();
-      } catch (thrown) {
-        // Snap back to what the server last said, so the screen never keeps an order the database
-        // refused. Silently keeping it would be worse than the failure.
-        setRows(people);
-        toast({
-          tone: "error",
-          title: `The order of ${PERSON_KIND_GROUPS[kind].toLowerCase()} has not been saved`,
-          description: asApiClientError(thrown).message
-        });
+        let queued: OrderAttempt | undefined = attempt;
+        let saved = false;
+
+        while (queued) {
+          orderPending.current.delete(kind);
+          try {
+            await post(ENDPOINT.reorder, { kind, ids: queued.ids });
+            confirmedRows.current = queued.rows;
+            saved = true;
+          } catch (thrown) {
+            // Snap back to what the server last agreed to, so the screen never keeps an order the
+            // database refused. Silently keeping it would be worse than the failure. Anything still
+            // queued is dropped with it — it was built on top of the arrangement being thrown away.
+            orderPending.current.delete(kind);
+            setRows(confirmedRows.current);
+            toast({
+              tone: "error",
+              title: `The order of ${PERSON_KIND_GROUPS[kind].toLowerCase()} has not been saved`,
+              description: asApiClientError(thrown).message
+            });
+            return;
+          }
+          queued = orderPending.current.get(kind);
+        }
+
+        // Once, at the end, rather than after each request in the run: the list, the public pages and
+        // the `sortOrder` numbers are all server-rendered from this, and one payload carries them all.
+        if (saved) router.refresh();
       } finally {
+        orderBusy.current.delete(kind);
         setSavingKind(null);
       }
     },
-    [people, router, toast]
+    [router, toast]
   );
 
   const move = useCallback(
     (kind: PersonKind, from: number, to: number) => {
       const members = rows.filter((row) => row.kind === kind);
-      if (from === to || to < 0 || to >= members.length) return;
+      if (from === to) return;
+      /**
+       * ⚠ BOTH ENDS ARE BOUNDED, AND `from` IS THE ONE THAT USED NOT TO BE.
+       *
+       * `onDragEnd` derives both indexes with `indexOf`, which answers -1 for an id that is no longer
+       * in the group — and `arrayMove(list, -1, to)` does not refuse that, it quietly moves the LAST
+       * person instead and then saves it. A wrong move that persists is worse than no move at all.
+       */
+      if (from < 0 || from >= members.length) return;
+      if (to < 0 || to >= members.length) return;
 
       const reordered = arrayMove([...members], from, to);
       const moved = members[from];
-      setRows((current) => [...current.filter((row) => row.kind !== kind), ...reordered]);
+
+      /**
+       * The group is rewritten IN PLACE. Appending it to the tail — which is what this used to do —
+       * still renders correctly, because `groups` re-derives the sections from `PERSON_KIND_ORDER`
+       * rather than from this array's shape. But it leaves `rows` in an order the server never had,
+       * and this array is what `confirmedRows` remembers and what a failed save is compared against.
+       */
+      const queue = [...reordered];
+      const nextRows = rows.map((row) => (row.kind === kind ? (queue.shift() ?? row) : row));
+
+      setRows(nextRows);
       setAnnouncement(
         `${moved?.name ?? "That person"} moved from position ${from + 1} to position ${to + 1} of ${members.length} in ${PERSON_KIND_GROUPS[kind]}.`
       );
-      void saveOrder(
-        kind,
-        reordered.map((row) => row.id)
-      );
+      void pushOrder(kind, { ids: reordered.map((row) => row.id), rows: nextRows });
     },
-    [rows, saveOrder]
+    [rows, pushOrder]
   );
 
   const askAndDelete = useCallback(
