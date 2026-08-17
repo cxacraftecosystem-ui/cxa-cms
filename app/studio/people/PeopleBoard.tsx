@@ -63,6 +63,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { asApiClientError, del, patch, post } from "@/lib/client/fetcher";
+import type { Picture } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
@@ -90,6 +91,15 @@ export interface PersonRow {
   projectCount: number;
   publicationCount: number;
   photo: MediaLike | null;
+  /**
+   * The portrait's per-screen framing, resolved on the SERVER.
+   *
+   * It arrives resolved because the alternate photographs a framing names are ids in a JSONB column that
+   * no relation joins, so only the page's own query can fetch them (lib/media/framing.ts) — and this board
+   * runs in the browser. The avatar is small, which is not a reason to leave the framing behind: an editor
+   * looking at this list at a given width should see what the site draws at that width.
+   */
+  picture: Picture | null;
 }
 
 export interface PeopleBoardProps {
@@ -519,6 +529,7 @@ function PersonBoardRow({
 
       <MediaImage
         media={person.photo}
+        picture={person.picture}
         // Decorative: the name is right beside it.
         alt=""
         aspect={1}

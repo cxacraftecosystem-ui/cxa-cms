@@ -32,6 +32,7 @@ import type { ContentStatus } from "@prisma/client";
 import { ImagePlus, Palette, Trash2 } from "lucide-react";
 
 import { del, patch, post } from "@/lib/client/fetcher";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { MediaImage } from "@/components/ui/MediaImage";
@@ -48,6 +49,7 @@ import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useA
 import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { IconPicker } from "@/components/studio/fields/IconPicker";
+import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
@@ -89,6 +91,12 @@ export interface ResearchAreaFormValue {
   /** A literal hex or `oklch(…)` value. Used by the research diagram ONLY. */
   accentColor: string;
   cover: EditorMedia | null;
+  /**
+   * How the cover is framed at each screen width — optionally a different rectangle, optionally a
+   * different photograph. Null is the resting state and means nobody has framed it, which is what almost
+   * every area stores; never an empty framing (see `emptyScreenFraming` in lib/media/screens.ts).
+   */
+  coverScreens: ScreenFraming | null;
   /** Held as text — see the header. */
   sortOrder: string;
   status: ContentStatus;
@@ -149,6 +157,9 @@ function toPayload(value: ResearchAreaFormValue) {
     icon: orNull(value.icon),
     accentColor: orNull(value.accentColor),
     coverId: value.cover?.id ?? null,
+    // Sent beside the picture it frames. The route accepts it as `.nullable().optional()`, so null here
+    // means "the editor cleared the framing" rather than "leave the column alone".
+    coverScreens: value.coverScreens,
     sortOrder: toIntOrNull(value.sortOrder) ?? 0,
     status: value.status,
     createRedirect: value.createRedirect
@@ -326,11 +337,22 @@ export function ResearchAreaEditor({
       if (picker === "body") {
         settleBody(first);
       } else if (first) {
-        update({ cover: toEditorMedia(first) });
+        /**
+         * ⚠ A DIFFERENT PHOTOGRAPH CLEARS THE FRAMING. A framing is a set of rectangles expressed as
+         * fractions of ONE picture, plus any alternates chosen to go with it; swap the picture underneath
+         * and every rectangle frames whatever happens to sit at those coordinates — a doorway instead of a
+         * face. `MediaFramingField` states this rule once for the block editors; this screen picks its
+         * cover through the media dialog rather than an `EntityPicker`, so it has to state it here.
+         */
+        setValue((current) => ({
+          ...current,
+          cover: toEditorMedia(first),
+          coverScreens: current.cover?.id === first.id ? current.coverScreens : null
+        }));
       }
       setPicker(null);
     },
-    [picker, settleBody, update]
+    [picker, settleBody]
   );
 
   // ── Delete ───────────────────────────────────────────────────────────────────────────────────
@@ -449,7 +471,9 @@ export function ResearchAreaEditor({
                     variant="ghost"
                     size="sm"
                     icon={Trash2}
-                    onClick={() => update({ cover: null })}
+                    // The framing goes with the picture: rectangles measured on a photograph that is no
+                    // longer here would be applied to whatever replaced it.
+                    onClick={() => update({ cover: null, coverScreens: null })}
                   >
                     Remove the picture
                   </Button>
@@ -467,6 +491,27 @@ export function ResearchAreaEditor({
               Choose a picture
             </Button>
           )}
+
+          {/*
+            Offered only once there is a picture, because framing nothing is a control with nothing to act
+            on — the same condition `MediaFramingField` applies on the section forms. There is no second
+            condition to apply here, unlike the hero's: the cover is always drawn as an image, full-bleed
+            behind the title of this area's page.
+
+            The panel alone rather than `MediaFramingField`, which pairs it with an `EntityPicker` — this
+            screen picks its cover through the media dialog above. The rule that component exists to hold,
+            that a change of picture clears the framing, is stated at `onPicked` instead.
+          */}
+          {value.cover ? (
+            <div className="mt-3">
+              <ScreenFramingPanel
+                label="Framing per screen size"
+                mediaId={value.cover.id}
+                value={value.coverScreens}
+                onChange={(coverScreens) => update({ coverScreens })}
+              />
+            </div>
+          ) : null}
         </FieldBlock>
 
         <Field

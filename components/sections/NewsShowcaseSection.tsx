@@ -28,6 +28,7 @@ import { CardGrid } from "@/components/site/CardGrid";
 import { EntityCard } from "@/components/site/EntityCard";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { pictureFromMap, type Picture, type ScreenFraming } from "@/lib/media/screens";
 import { pickShowcase, type PostRow, type ResolvedSectionData } from "@/lib/sections/resolve";
 import type { NewsShowcaseSectionData } from "@/lib/sections/schema";
 import { truncateWords } from "@/lib/utils";
@@ -63,6 +64,24 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
  */
 function publishedOn(post: PostRow): Date | null {
   return post.publishedAt ?? post.publishAt ?? null;
+}
+
+/**
+ * One cover, framed per screen size where an editor has framed it.
+ *
+ * `attachNewsFraming` in lib/sections/resolve.ts puts both the cover and every alternate a framing names
+ * into `resolved.media`, so this is the same one-line lookup the hero makes. On the `rows` path — a studio
+ * preview, a bespoke page — there is no map and the cover simply draws unframed.
+ *
+ * The column is `Json?`, so its shape is a claim rather than a proof. That is safe because the resolver
+ * reads a framing defensively, which is what makes a hand-edited row degrade to no framing.
+ */
+function coverPicture(post: PostRow, resolved: ResolvedSectionData | undefined): Picture | null {
+  return pictureFromMap(
+    post.coverId,
+    post.coverScreens as unknown as ScreenFraming | null,
+    resolved?.media
+  );
 }
 
 function PostMeta({ post }: { post: PostRow }) {
@@ -138,6 +157,7 @@ export function NewsShowcaseSection({
                 <EntityCard
                   href={`/news/${lead.slug}`}
                   media={lead.cover}
+                  picture={coverPicture(lead, resolved)}
                   variant="cover"
                   aspect="16 / 9"
                   sizes="(min-width: 1024px) 50vw, 100vw"
@@ -161,6 +181,7 @@ export function NewsShowcaseSection({
                     <EntityCard
                       href={`/news/${post.slug}`}
                       media={post.cover}
+                      picture={coverPicture(post, resolved)}
                       variant="compact"
                       eyebrow={post.category?.name ?? undefined}
                       title={post.title}
@@ -200,6 +221,7 @@ export function NewsShowcaseSection({
                   key={post.id}
                   href={`/news/${post.slug}`}
                   media={post.cover}
+                  picture={coverPicture(post, resolved)}
                   variant="cover"
                   eyebrow={post.category?.name ?? undefined}
                   title={post.title}

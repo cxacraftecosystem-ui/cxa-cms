@@ -35,7 +35,9 @@
  * — see components/site/EventDateBlock.tsx.)
  *
  * A Server Component, and it must stay one: `ArticleCard` renders `MediaImage`, and a client version
- * would push `next/image` and every card's layout into the browser bundle of four listing pages.
+ * would push `next/image` and every card's layout into the browser bundle of four listing pages. It also
+ * READS now — `articleCardAssets` fetches the photographs a per-screen framing names — so the transitively
+ * `server-only` import below turns a `"use client"` here into a build error rather than a runtime one.
  */
 
 import type { ReactNode } from "react";
@@ -45,6 +47,8 @@ import { Clock } from "lucide-react";
 
 import { EntityCard } from "@/components/site/EntityCard";
 import { MediaImage } from "@/components/ui/MediaImage";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import type { MediaLike } from "@/lib/media/url";
 import { parseRichText, richTextToPlainText } from "@/lib/richtext";
@@ -73,11 +77,60 @@ export const articleCardSelect = {
   readingMinutes: true,
   body: true,
   mdx: true,
+  /**
+   * The cover, its per-screen framing, and its ID — and the id is the part that looks redundant.
+   *
+   * `pictureFromMap` resolves the BASE photograph out of the media map by id, exactly like a bucket that
+   * names an alternate (lib/media/screens.ts), so a row carrying the relation but not the id could not be
+   * framed at all. Selecting the framing beside the picture it belongs to is the whole rule the header of
+   * scripts/media-select-check.ts exists to state.
+   */
+  coverId: true,
+  coverScreens: true,
   cover: { select: ARTICLE_MEDIA_SELECT },
   category: { select: { slug: true, name: true } }
 } satisfies Prisma.PostSelect;
 
 export type ArticleCardPost = Prisma.PostGetPayload<{ select: typeof articleCardSelect }>;
+
+/**
+ * The stored framing, typed.
+ *
+ * Prisma answers a JSONB column as `JsonValue` and the shape belongs to lib/media/screens.ts, so the cast
+ * is where the two meet. Nothing downstream trusts it: `resolvePicture` reads each bucket defensively and
+ * an unusable rectangle degrades to "no crop", so a hand-edited row is a plain photograph rather than a
+ * broken frame.
+ *
+ * Takes the column rather than the card row, because the article page selects a wider shape than the card
+ * does and both need this one answer.
+ */
+export function articleCoverFraming(post: {
+  coverScreens: Prisma.JsonValue;
+}): ScreenFraming | null {
+  return (post.coverScreens ?? null) as unknown as ScreenFraming | null;
+}
+
+/**
+ * Every photograph a page of these cards needs to draw its covers framed, in ONE query.
+ *
+ * It lives beside the select for the same reason the select lives beside the card: four routes render this
+ * list, and the alternates a framing names are arbitrary ids in a JSONB column that no relation joins — so
+ * a route that fetched the covers and not the alternates would silently draw the phone picture at every
+ * width. `framingAssets` issues no query at all when nothing on the page is framed (see its header), which
+ * is why this is called unconditionally rather than guarded per route.
+ *
+ * The covers themselves are folded in afterwards because `pictureFromMap` looks the base photograph up by
+ * id like any other band.
+ */
+export async function articleCardAssets(
+  posts: readonly ArticleCardPost[]
+): Promise<Record<string, MediaLike | undefined>> {
+  const alternates = await framingAssets(...posts.map(articleCoverFraming));
+  return posts.reduce(
+    (into, post) => withBaseAsset(into, post.coverId, post.cover),
+    alternates
+  );
+}
 
 /**
  * Newest first — the order every newsroom listing uses.
@@ -285,6 +338,11 @@ export type ArticleCardVariant = "lead" | "grid" | "compact";
 
 export interface ArticleCardProps {
   post: ArticleCardPost;
+  /**
+   * The page's one batched read from `articleCardAssets` — the covers plus every alternate a framing
+   * names. Omitted, the cover draws exactly as it did before per-screen framing existed.
+   */
+  assets?: Record<string, MediaLike | undefined>;
   /** `lead` is the wide opening card; `grid` the standard one; `compact` a thumbnail row. */
   variant?: ArticleCardVariant;
   /** Default 3 — a card under a section's `<h2>`. Levels never skip (contract §11). */
@@ -309,6 +367,7 @@ const EXCERPT_CHARS: Record<ArticleCardVariant, number> = {
  */
 export function ArticleCard({
   post,
+  assets,
   variant = "grid",
   headingLevel = 3,
   priority = false
@@ -326,10 +385,15 @@ export function ArticleCard({
         : (post.subtitle?.trim() ?? undefined)
       : undefined;
 
+  // A single band when nobody has framed this cover, which `MediaImage` ignores — so an unframed card is
+  // the markup it always was.
+  const picture = pictureFromMap(post.coverId, articleCoverFraming(post), assets);
+
   return (
     <EntityCard
       href={`/news/${post.slug}`}
       media={post.cover}
+      picture={picture}
       variant={variant === "compact" ? "compact" : "cover"}
       aspect={variant === "lead" ? "16 / 9" : undefined}
       sizes={

@@ -25,7 +25,7 @@
 import resolveConfig from "tailwindcss/resolveConfig";
 
 import tailwindConfig from "../tailwind.config";
-import { screenFramingSchema } from "../lib/sections/schema";
+import { bucketKeysAgree, screenFramingSchema, screenFramingSchemaKeys } from "../lib/media/framing-schema";
 import { FULL_CROP, cropFrameStyle, cropImageStyle, storedCrop, type CropRect } from "../lib/media/crop";
 import {
   SCREEN_BUCKETS,
@@ -376,12 +376,14 @@ function bandAt(picture: Picture, width: number) {
    * table they mirror, and a bucket added to `SCREEN_BUCKETS` without a key here would be a bucket an
    * editor could set and Zod would silently strip on the next read.
    */
-  const schemaKeys = Object.keys(screenFramingSchema.shape);
+  const schemaKeys = screenFramingSchemaKeys();
   check(
     same(schemaKeys, [...SCREEN_BUCKET_IDS]),
     "the stored schema has exactly the bucket ids, in order",
     `schema has [${schemaKeys.join(", ")}], buckets are [${SCREEN_BUCKET_IDS.join(", ")}]`
   );
+  // The module's own predicate, so a caller that trusts it is trusting something asserted.
+  check(bucketKeysAgree(), "bucketKeysAgree() agrees", "the helper disagreed with its own schema");
 
   // A payload written before the field existed must parse, and must mean "nobody has framed this".
   const parsedAbsent = screenFramingSchema.nullable().default(null).parse(undefined);

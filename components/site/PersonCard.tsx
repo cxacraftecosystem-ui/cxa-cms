@@ -20,6 +20,7 @@ import type { PersonKind } from "@prisma/client";
 
 import { EntityCard, type EntityCardHeadingLevel } from "@/components/site/EntityCard";
 import { TagList } from "@/components/site/TagList";
+import type { Picture } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
 
 /**
@@ -134,6 +135,15 @@ const INTEREST_LIMIT = 3;
 export interface PersonCardProps {
   person: PersonCardPerson;
   /**
+   * The portrait's per-screen framing, already resolved.
+   *
+   * A PROP rather than a column on `PersonCardPerson`, because resolving one needs the alternate
+   * photographs the framing names — arbitrary ids in `Person.photoScreens` that no relation joins, so
+   * only the query that fetched the row can fetch them (lib/media/framing.ts). Omitted, or resolved from
+   * a person nobody has framed, the card renders exactly as it did before the column existed.
+   */
+  picture?: Picture | null;
+  /**
    * Show the kind as the card's eyebrow. Off by default: a roster grouped by kind already says it in
    * the heading above, and repeating it on every card reads as a rendering bug.
    */
@@ -173,6 +183,7 @@ export function personInitials(name: string): string {
 
 export function PersonCard({
   person,
+  picture,
   showKind = false,
   showInterests = true,
   headingLevel = 3,
@@ -189,6 +200,7 @@ export function PersonCard({
     <EntityCard
       href={`/people/${person.slug}`}
       media={person.photo ?? null}
+      picture={picture ?? null}
       /*
        * ⚠ MANY PEOPLE GENUINELY HAVE NO PORTRAIT, AND THAT IS NOT A FAULT TO REPORT.
        *

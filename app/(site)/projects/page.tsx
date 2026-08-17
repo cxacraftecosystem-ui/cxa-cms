@@ -58,7 +58,10 @@ import { LinkButton } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
+import type { MediaLike } from "@/lib/media/url";
 import { pageMetadata } from "@/lib/seo";
 import { truncateWords, unique } from "@/lib/utils";
 import { prerenderSafe } from "@/lib/prerender";
@@ -116,10 +119,32 @@ const projectCardSelect = {
   endedOn: true,
   isFeatured: true,
   cover: { select: MEDIA_IMAGE_SELECT },
+  /**
+   * The cover's id and its per-screen framing, fetched WITH the cover.
+   *
+   * `coverId` as well as the joined row because `pictureFromMap` looks the base photograph up by id like
+   * any other — see `withBaseAsset` in lib/media/framing.ts. Omitting `coverScreens` would leave a
+   * project somebody has framed rendering unframed, silently and only on this page, which is the failure
+   * the header of scripts/media-select-check.ts describes.
+   */
+  coverId: true,
+  coverScreens: true,
   researchArea: { select: { slug: true, title: true } }
 } satisfies Prisma.ProjectSelect;
 
 type ProjectCardRow = Prisma.ProjectGetPayload<{ select: typeof projectCardSelect }>;
+
+/**
+ * The stored framing, out of its JSONB column.
+ *
+ * A cast rather than a parse. `Prisma.JsonValue` carries no shape, and the render side is built to
+ * tolerate that: every bucket is read through optional access and `storedCrop`, so a hand-edited row
+ * degrades to "nothing framed" rather than drawing a broken frame (lib/media/screens.ts). The Zod schema
+ * at the studio's write boundary is what keeps a row this site wrote honest.
+ */
+function coverFraming(value: Prisma.JsonValue | null | undefined): ScreenFraming | null {
+  return (value ?? null) as unknown as ScreenFraming | null;
+}
 
 /**
  * The first value of a repeated parameter.
@@ -272,6 +297,18 @@ export default async function ProjectsIndexPage({ searchParams }: ProjectsPagePr
     [0, []]
   );
 
+  /**
+   * The alternate photographs the covers' framings name.
+   *
+   * A framing may say "on a phone, use this other picture entirely", and those ids sit in a JSONB column
+   * that no relation can join — so they are fetched here, once for the whole page. Called
+   * unconditionally because it costs NO query when nothing is framed, which is nearly always; guarding it
+   * per project is how one project ends up guarded wrongly (lib/media/framing.ts).
+   */
+  const framingMedia = await framingAssets(
+    ...projects.map((project) => coverFraming(project.coverScreens))
+  );
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   /** A stale bookmark, not an empty result set. See the header. */
   const pastTheEnd = total > 0 && projects.length === 0 && page > totalPages;
@@ -404,7 +441,7 @@ export default async function ProjectsIndexPage({ searchParams }: ProjectsPagePr
               }}
             >
               {projects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
+                <ProjectCard key={project.id} project={project} framingMedia={framingMedia} />
               ))}
             </CardGrid>
 
@@ -462,7 +499,17 @@ function periodOf(project: ProjectCardRow): string | null {
   return to;
 }
 
-function ProjectCard({ project }: { project: ProjectCardRow }) {
+function ProjectCard({
+  project,
+  framingMedia
+}: {
+  project: ProjectCardRow;
+  /**
+   * The page's alternate photographs, keyed by asset id — NOT the cover itself, which arrives on the row.
+   * Empty unless somebody has framed a cover, which is nearly always.
+   */
+  framingMedia: Record<string, MediaLike | undefined>;
+}) {
   const stage = STAGE[project.state];
   const period = periodOf(project);
   const summary = project.tagline?.trim() || project.summary?.trim() || "";
@@ -471,6 +518,15 @@ function ProjectCard({ project }: { project: ProjectCardRow }) {
     <EntityCard
       href={`/projects/${project.slug}`}
       media={project.cover}
+      /* Resolved here because this is the only place holding both the cover and the alternates it may
+         name. `pictureFromMap` owns the lookup rather than a closure written out here: a bucket whose
+         photograph is missing from the map must INHERIT rather than blank the cover. With nothing framed
+         it returns a single band, which `MediaImage` ignores. */
+      picture={pictureFromMap(
+        project.coverId,
+        coverFraming(project.coverScreens),
+        withBaseAsset(framingMedia, project.coverId, project.cover)
+      )}
       eyebrow={project.researchArea?.title ?? undefined}
       title={project.title}
       headingLevel={2}

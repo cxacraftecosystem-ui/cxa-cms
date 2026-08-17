@@ -98,7 +98,8 @@ export function ScreenFramingPanel({ label, help, mediaId, value, onChange }: Sc
    */
   const setCount = SCREEN_BUCKETS.filter((bucket) => {
     const entry = value?.[bucket.id];
-    return Boolean(entry && (entry.mediaId !== null || storedCrop(entry) !== null));
+    // `!= null` catches undefined too — see the note on `setHere` below for how one gets in here.
+    return Boolean(entry && (entry.mediaId != null || storedCrop(entry) !== null));
   }).length;
 
   /**
@@ -217,7 +218,18 @@ export function ScreenFramingPanel({ label, help, mediaId, value, onChange }: Sc
         {SCREEN_BUCKETS.map((bucket) => {
           const band = bands?.get(bucket.id) ?? null;
           const override = framing[bucket.id];
-          const setHere = override.cropX !== null || override.mediaId !== null;
+          /**
+           * ⚠ `storedCrop`, NOT `cropX !== null` — the rule `setCount` above states at length, which this
+           * line used to break. Two things went wrong with the looser test:
+           *
+           *   • A bucket holding THREE of the four crop numbers counted as set here and empty there, so a
+           *     row offered a Clear button for a rectangle the renderer discards as unusable.
+           *   • `lib/audit.ts`'s `redact()` maps every null to `undefined` and `JSON.stringify` then drops
+           *     the key, so a framing arriving back through an audit rollback or a revision has `undefined`
+           *     members. `undefined !== null` is true, so ALL SIX rows read "Framed for this size" while
+           *     the collapsed heading above them read "Not set — one picture at every size".
+           */
+          const setHere = override.mediaId != null || storedCrop(override) !== null;
           const inheritedFrom = band && band.cropFrom !== bucket.id ? band.cropFrom : null;
           const photographFrom = band && band.mediaFrom !== bucket.id ? band.mediaFrom : null;
           const src = band ? mediaSrc(band.media, 640) : null;

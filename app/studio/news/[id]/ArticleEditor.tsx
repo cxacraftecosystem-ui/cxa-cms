@@ -51,6 +51,7 @@ import {
 import type { ContentStatus } from "@prisma/client";
 
 import { asApiClientError, patch, post } from "@/lib/client/fetcher";
+import type { ScreenFraming } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
 import { canEditOthersContent, canPublish as canPublishPredicate, type PermissionSubject } from "@/lib/permissions";
 import {
@@ -80,6 +81,7 @@ import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useA
 import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker } from "@/components/studio/fields/EntityPicker";
+import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
@@ -124,6 +126,17 @@ export interface ArticleValue {
   /** MDX source, or `""` when the article uses the formatted editor. */
   mdx: string;
   coverId: string | null;
+  /**
+   * The cover's per-screen framing, or null — the resting state, and it stays null until somebody frames
+   * something.
+   *
+   * ⚠ CLEARED WHENEVER `coverId` CHANGES, at both places below that can change it, for the reason
+   * `MediaFramingField` exists to enforce once: a framing is rectangles expressed as fractions of ONE
+   * photograph, and carried onto another they frame whatever happens to sit at those coordinates. That
+   * component wraps an `EntityPicker`; this screen picks its cover through the `MediaPicker` dialog, so
+   * the rule is honoured by hand here exactly as the events editor honours it.
+   */
+  coverScreens: ScreenFraming | null;
   authorId: string | null;
   categoryId: string | null;
   /** Tag NAMES, not ids — see the note on the tag field. */
@@ -918,7 +931,8 @@ export function ArticleEditor({
                   icon={X}
                   onClick={() => {
                     setCover(null);
-                    setValue((current) => ({ ...current, coverId: null }));
+                    // The framing goes with the photograph it was drawn on — see `coverScreens`.
+                    setValue((current) => ({ ...current, coverId: null, coverScreens: null }));
                   }}
                 >
                   Take it off
@@ -930,6 +944,26 @@ export function ArticleEditor({
               Descriptions for screen readers are written once, in the media library, and follow the
               picture everywhere it is used.
             </HelpText>
+
+            {/*
+              Offered only once there is a photograph to frame — framing nothing is a control with nothing
+              to act on. `MediaFramingField` is this picker and panel as one component and is deliberately
+              not used here, for the reason the events editor gives at length: it wraps an `EntityPicker`,
+              and this screen chooses its cover through the dialog above so an editor sees the picture at
+              size first.
+
+              Nothing to gate the panel on the way HeroForm gates a video background: the picker offers
+              images only, and every surface that shows this cover — the article's own hero, the newsroom
+              cards, the homepage showcase — draws it as an image.
+            */}
+            {cover !== null && value.coverId !== null ? (
+              <ScreenFramingPanel
+                label="Framing per screen size"
+                mediaId={value.coverId}
+                value={value.coverScreens}
+                onChange={(next) => setValue((current) => ({ ...current, coverScreens: next }))}
+              />
+            ) : null}
           </FormSection>
 
           <FormSection
@@ -1077,7 +1111,13 @@ export function ArticleEditor({
 
           if (pickerTarget === "cover") {
             setCover(chosen);
-            setValue((current) => ({ ...current, coverId: chosen.id }));
+            // A different photograph invalidates every rectangle drawn on the old one, so the framing goes
+            // with it — the rule `MediaFramingField` enforces for the blocks (see `coverScreens`).
+            setValue((current) => ({
+              ...current,
+              coverId: chosen.id,
+              coverScreens: chosen.id === current.coverId ? current.coverScreens : null
+            }));
           } else {
             // `StudioMediaAsset` already has every field `EditorMediaSelection` asks for, so it goes
             // straight through — no URL is ever handed to the document (see the picture node).

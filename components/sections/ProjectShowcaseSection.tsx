@@ -12,6 +12,22 @@
  * says "On hold".
  *
  * A Server Component; `Reveal` inside `CardGrid` is the only client piece.
+ *
+ * ⚠ IT QUERIES NOTHING, AND IT USED TO. An earlier version called `framingAssets` here to fetch the
+ * alternate photographs a cover's framing can name, on the argument that those ids arrive in a JSONB column
+ * no relation joins — true of the ids, and not a reason to read them from a renderer. `SectionRenderer.tsx`
+ * states the rule it broke: "NO RENDERER QUERIES … a renderer receives plain rows and stays pure and
+ * testable", and every one of the six sibling showcases obeys it. The cost was a round trip PER BLOCK, so a
+ * page with three project showcases paid three where the siblings pay none.
+ *
+ * `attachProjectFraming` in lib/sections/resolve.ts is where that read belongs and now lives — the same
+ * second pass the people, news, craft, event, album and partner showcases already had. Everything this
+ * renderer needs is in `resolved.media` by the time it is called.
+ *
+ * It stays `async` with nothing to await, which is deliberate rather than left over: `SECTION_RENDERERS`
+ * types every entry the same way, and a Server Component returning a value instead of a promise is
+ * indistinguishable to React. Making this one alone synchronous would buy nothing and would make the next
+ * reader wonder which of the two shapes is the intended one.
  */
 
 import Link from "next/link";
@@ -34,6 +50,8 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type Picture, type ScreenFraming } from "@/lib/media/screens";
 import { pickShowcase, type ProjectRow, type ResolvedSectionData } from "@/lib/sections/resolve";
 import type { ProjectShowcaseSectionData } from "@/lib/sections/schema";
 import { truncateWords } from "@/lib/utils";
@@ -70,6 +88,18 @@ function yearOf(value: Date | null): string | null {
   return Number.isFinite(year) ? String(year) : null;
 }
 
+/**
+ * A cover's stored framing, out of its JSONB column.
+ *
+ * A cast rather than a parse. `Prisma.JsonValue` carries no shape, and the render side is built to
+ * tolerate that: every bucket is read through optional access and `storedCrop`, so a hand-edited row
+ * degrades to "nothing framed" rather than drawing a broken frame (lib/media/screens.ts). The studio's
+ * route is what keeps a row this site wrote honest, with `screenFramingField()`.
+ */
+function coverFraming(value: ProjectRow["coverScreens"]): ScreenFraming | null {
+  return (value ?? null) as unknown as ScreenFraming | null;
+}
+
 function periodOf(project: ProjectRow): string | null {
   const from = yearOf(project.startedOn);
   const to = yearOf(project.endedOn);
@@ -78,7 +108,7 @@ function periodOf(project: ProjectRow): string | null {
   return to;
 }
 
-export function ProjectShowcaseSection({
+export async function ProjectShowcaseSection({
   data,
   section,
   resolved,
@@ -91,6 +121,31 @@ export function ProjectShowcaseSection({
     total: givenTotal,
     droppedIds: givenDropped
   });
+
+  /**
+   * Every cover's framing, resolved once, keyed by project.
+   *
+   * Keyed rather than positional because the two layouts below iterate `rows` separately and only one of
+   * them carries an index — a second `map` producing pictures in a parallel array is one reordering away
+   * from a project wearing another project's crop.
+   *
+   * `withBaseAsset` puts the record's OWN cover into the map beside the alternates, because
+   * `pictureFromMap` looks the base photograph up by id exactly like a bucket that names a different one.
+   * The page's `resolved.media` is folded in too: a cover an editor also used in a block on this page is
+   * already there, and merging costs nothing.
+   */
+  const pictures = new Map<string, Picture | null>(
+    // The tuple is annotated because `map` would otherwise widen it to an ARRAY of the union, which the
+    // `Map` constructor does not accept.
+    rows.map((project): [string, Picture | null] => [
+      project.id,
+      pictureFromMap(
+        project.coverId,
+        coverFraming(project.coverScreens),
+        withBaseAsset(resolved?.media ?? {}, project.coverId, project.cover)
+      )
+    ])
+  );
 
   const heading = data.heading.trim();
   const eyebrow = data.eyebrow.trim();
@@ -137,7 +192,11 @@ export function ProjectShowcaseSection({
                 {rows.map((project, index) => (
                   <li key={project.id}>
                     <Reveal delay={Math.min(index, 8) * 0.05}>
-                      <ProjectCard project={project} dense />
+                      <ProjectCard
+                        project={project}
+                        picture={pictures.get(project.id) ?? null}
+                        dense
+                      />
                     </Reveal>
                   </li>
                 ))}
@@ -146,7 +205,11 @@ export function ProjectShowcaseSection({
           ) : (
             <CardGrid columns={3} stagger empty={empty}>
               {rows.map((project) => (
-                <ProjectCard key={project.id} project={project} />
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  picture={pictures.get(project.id) ?? null}
+                />
               ))}
             </CardGrid>
           )}
@@ -167,7 +230,16 @@ export function ProjectShowcaseSection({
   );
 }
 
-function ProjectCard({ project, dense = false }: { project: ProjectRow; dense?: boolean }) {
+function ProjectCard({
+  project,
+  picture,
+  dense = false
+}: {
+  project: ProjectRow;
+  /** Already resolved by the section above — see the note there for why it is not computed per card. */
+  picture?: Picture | null;
+  dense?: boolean;
+}) {
   const stage = STAGE[project.state];
   const period = periodOf(project);
   const summary = project.tagline?.trim() || project.summary?.trim() || "";
@@ -176,6 +248,7 @@ function ProjectCard({ project, dense = false }: { project: ProjectRow; dense?: 
     <EntityCard
       href={`/projects/${project.slug}`}
       media={project.cover}
+      picture={picture ?? null}
       variant={dense ? "compact" : "cover"}
       eyebrow={project.researchArea?.title ?? undefined}
       title={project.title}

@@ -45,16 +45,18 @@
 import { useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MapPin } from "lucide-react";
+import { MapPin, Trash2 } from "lucide-react";
 
-import { asApiClientError, patch } from "@/lib/client/fetcher";
+import { asApiClientError, del, patch } from "@/lib/client/fetcher";
 import { Button } from "@/components/ui/Button";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/ToastProvider";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
+import { RowActions, type RowAction } from "@/components/studio/RowActions";
 import {
   LAT_MAX,
   LAT_MIN,
@@ -63,6 +65,7 @@ import {
   RegionMapPicker,
   type PlacedRegion
 } from "@/components/studio/RegionMapPicker";
+import { MapPointPicker, mapPickerAvailable } from "@/components/studio/fields/MapPointPicker";
 
 /** Where this region's own published crafts land on the homepage map today. */
 export type RegionAnchor =
@@ -79,6 +82,16 @@ export interface RegionRowData {
   parentName: string | null;
   /** Published crafts filed DIRECTLY under this region — the number the homepage map rolls up. */
   craftCount: number;
+  /**
+   * Live crafts filed directly under it, DRAFTS INCLUDED — a different question from `craftCount`.
+   *
+   * `craftCount` is what the map pins; this is what a removal would un-file. A region can perfectly well
+   * have nothing published and four drafts, so a delete offered against the published number would be a
+   * menu that disagrees with the route it calls.
+   */
+  liveCraftCount: number;
+  /** Regions sitting directly under this one. They would be promoted to the top of the tree, not deleted. */
+  childCount: number;
   /** Held as text, "" for unset — so a half-typed "26." survives being typed. */
   latitude: string;
   longitude: string;
@@ -108,6 +121,23 @@ function toFloatOrNull(text: string): number | null {
 /** "1 published craft" / "14 published crafts". Written out — a plural is not a suffix rule. */
 function crafts(count: number): string {
   return count === 1 ? "1 published craft" : `${count} published crafts`;
+}
+
+/**
+ * "1 craft" / "4 crafts" — the LIVE set, drafts included.
+ *
+ * ⚠ SEPARATE FROM `crafts()` ABOVE ON PURPOSE, and the two must not be merged. That one says "published",
+ * because it describes what the map pins. This one describes what a removal would un-file, which includes
+ * every draft — printing "1 published craft" in a sentence about drafts would be a false statement in the
+ * one place it does the most damage.
+ */
+function liveCrafts(count: number): string {
+  return count === 1 ? "1 craft" : `${count} crafts`;
+}
+
+/** "1 region" / "3 regions", for the same reason. */
+function regions(count: number): string {
+  return count === 1 ? "1 region" : `${count} regions`;
 }
 
 function anchorPhrase(region: RegionRowData): string {
@@ -142,6 +172,7 @@ function RegionRow({
   placed: readonly PlacedRegion[];
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const { toast } = useToast();
   const pickerId = useId();
 
@@ -150,6 +181,8 @@ function RegionRow({
   const [saved, setSaved] = useState({ latitude: region.latitude, longitude: region.longitude });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Told once by the picker when the megabyte of MapLibre could not be fetched. */
+  const [mapFailed, setMapFailed] = useState(false);
 
   const { latitude, longitude } = value;
   const lat = toFloatOrNull(latitude);
@@ -198,6 +231,76 @@ function RegionRow({
       setBusy(false);
     }
   };
+
+  /**
+   * Remove the region entirely.
+   *
+   * ⚠ OFFERED BECAUSE A REGION CAN NOW BE TYPED IN, AND SO TYPED IN WRONGLY. A name, a level and a parent are
+   * fixed once recorded (the route edits coordinates and nothing else, and says why), so without a delete a
+   * cluster recorded as a state would sit in the tree and in every craft's picker for good. This is the only
+   * correction there is.
+   *
+   * The two blocking conditions are checked HERE ONLY SO THE MENU CAN EXPLAIN ITSELF — the route refuses
+   * both regardless, and its refusal is the one that counts. Both numbers come from the server with the
+   * list, so the sentence below is a real count rather than a promise to find out.
+   */
+  const blockedBy =
+    region.childCount > 0
+      ? `${regions(region.childCount)} ${region.childCount === 1 ? "sits" : "sit"} under it and would be promoted to the top of the tree.`
+      : region.liveCraftCount > 0
+        ? `${liveCrafts(region.liveCraftCount)} ${region.liveCraftCount === 1 ? "is" : "are"} filed under it — drafts included — and would be left with no region.`
+        : null;
+
+  const runDelete = async () => {
+    const agreed = await confirm({
+      title: `Remove “${region.name}” from the gazetteer?`,
+      body: (
+        <p>
+          Nothing is filed under it, so no craft and no other region changes. Unlike a craft, a region does
+          not go to the recycle bin — it is removed for good, and its name, level and parent cannot be
+          recovered from the studio.
+        </p>
+      ),
+      confirmLabel: "Remove it",
+      cancelLabel: "Keep it",
+      tone: "danger"
+    });
+    if (!agreed) return;
+
+    try {
+      const answer = await del<{ message?: string }>(
+        `/api/studio/crafts/regions/${encodeURIComponent(region.id)}`
+      );
+      toast({
+        tone: "success",
+        title: `“${region.name}” has been removed`,
+        // The route's own sentence, which names any recycled crafts that have just lost their filing —
+        // rows nobody can see from this screen.
+        description: answer.message
+      });
+      router.refresh();
+    } catch (thrown) {
+      toast({
+        tone: "error",
+        title: "It has not been removed",
+        description: asApiClientError(thrown).message
+      });
+    }
+  };
+
+  const actions: RowAction[] = [
+    {
+      id: "delete",
+      label: blockedBy === null ? "Remove this region" : "Cannot be removed yet",
+      icon: Trash2,
+      tone: "danger",
+      // Not a permission — there is nothing an administrator could raise. It is a consequence, and the
+      // description states which one (contract §10).
+      disabled: blockedBy !== null,
+      description: blockedBy ?? "Nothing is filed under it, so no craft and no other region changes.",
+      onSelect: () => void runDelete()
+    }
+  ];
 
   return (
     <li className="py-4">
@@ -296,25 +399,70 @@ function RegionRow({
               Save<span className="sr-only"> {region.name}’s coordinates</span>
             </Button>
           </div>
+
+          {/* Aligned with Save, so the row's two verbs sit on one line rather than one above the other. */}
+          <div className="pt-[3.25rem]">
+            <RowActions subject={region.name} actions={actions} />
+          </div>
         </div>
       </div>
 
       {isOpen ? (
-        <RegionMapPicker
-          id={pickerId}
-          className="mt-4"
-          regionName={region.name}
-          // Parsed, not validated: a value the fields are already refusing still moves the pin, so
-          // the reader can SEE that 260.9 is off the country rather than only being told so.
-          latitude={lat}
-          longitude={lng}
-          others={placed.filter((other) => other.id !== region.id)}
-          // A pick is two numbers at once — writing them one at a time would flash a half-moved pin
-          // and, worse, briefly leave a legal pair the fields would mark as out of range.
-          onPick={(nextLatitude, nextLongitude) =>
-            onChange({ latitude: String(nextLatitude), longitude: String(nextLongitude) })
-          }
-        />
+        /**
+         * ⚠ TWO PICKERS, AND WHICH ONE APPEARS DEPENDS ON WHETHER THERE IS A MAP KEY.
+         *
+         * `MapPointPicker` draws real MapTiler tiles and carries a PLACE SEARCH — type "Barpali", the
+         * camera goes there, and the pin is still placed by hand. That search is the thing this screen was
+         * missing: without it, placing a cluster in rural Odisha meant panning two thousand kilometres
+         * across a map of the whole country to find a village that could have been named in eight
+         * keystrokes.
+         *
+         * `RegionMapPicker` — the hand-drawn India outline — stays as the fallback for a build with no key,
+         * which is a legitimate deployment. It is not merely a lesser option: it is the only one of the two
+         * that draws the SIBLING regions (`others`), so it shows where this place sits relative to the ones
+         * already placed. The tiled map shows the actual terrain and can find a place by name; the outline
+         * shows the set. A build with a key gets the search, and loses the sibling pins — which is the right
+         * way round, because the row's own sentence above already states this region's fate on the map.
+         */
+        mapPickerAvailable() ? (
+          <div id={pickerId} className="mt-4">
+            <MapPointPicker
+              lat={lat}
+              lon={lng}
+              ariaLabel={`Map for placing “${region.name}”. Click where the region is.`}
+              // A pick is two numbers at once — writing them one at a time would flash a half-moved pin
+              // and, worse, briefly leave a legal pair the fields would mark as out of range. The picker
+              // hands back strings already fixed to seven decimals, so nothing is re-formatted here.
+              onPick={(nextLatitude, nextLongitude) =>
+                onChange({ latitude: nextLatitude, longitude: nextLongitude })
+              }
+              onFailure={() => setMapFailed(true)}
+            />
+            {mapFailed ? (
+              <p className="mt-2 text-xs leading-5 text-amber-800">
+                The map could not be loaded — it is a large download and the connection may have dropped.
+                Close and reopen this row to try again; the two boxes above set the same value and need no
+                map at all.
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <RegionMapPicker
+            id={pickerId}
+            className="mt-4"
+            regionName={region.name}
+            // Parsed, not validated: a value the fields are already refusing still moves the pin, so
+            // the reader can SEE that 260.9 is off the country rather than only being told so.
+            latitude={lat}
+            longitude={lng}
+            others={placed.filter((other) => other.id !== region.id)}
+            // A pick is two numbers at once — writing them one at a time would flash a half-moved pin
+            // and, worse, briefly leave a legal pair the fields would mark as out of range.
+            onPick={(nextLatitude, nextLongitude) =>
+              onChange({ latitude: String(nextLatitude), longitude: String(nextLongitude) })
+            }
+          />
+        )
       ) : null}
 
       {error ? (
@@ -428,10 +576,17 @@ function RegionList({ regions, truncated, limit }: RegionMapManagerProps) {
 export function RegionMapManager({ regions, truncated, limit }: RegionMapManagerProps) {
   if (regions.length === 0) {
     return (
+      /*
+        ⚠ THIS USED TO SAY REGIONS COULD NOT BE CREATED HERE — "they are seeded alongside the corpus rather
+        than created here" — which was true of a seeded deployment and a dead end for every other one: the
+        craft editor's region picker was empty, its help said the work happened elsewhere, and there was no
+        elsewhere. `RegionCreateForm` in the header above is that elsewhere now, so the empty state points
+        at it instead of explaining why the screen can do nothing.
+      */
       <EmptyState
         icon={MapPin}
-        title="There are no regions yet"
-        description="Regions arrive with the craft corpus — they are seeded alongside it rather than created here. Once regions exist, this is where each one is given the coordinates that put it on the homepage map."
+        title="No region has been recorded yet"
+        description="A region is a place a craft comes from — a state, a district, or a cluster of workshops — and it is what puts a craft on the homepage map. Use “Add a region” above to record the first one; it arrives without a pin, and this is where you then click where it is. Regions seeded with a craft corpus appear here too."
       />
     );
   }

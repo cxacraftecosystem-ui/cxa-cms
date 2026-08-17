@@ -819,6 +819,13 @@ model Person {
   researchInterests String[] @default([])
 
   photoId   String?
+  /// Optional per-screen framing for the person's photograph: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  photoScreens Json?
   /// Manual ordering inside a `kind` group. Ties break on `name` so the order is total and stable —
   /// an unstable sort renders a different list on every request and looks like data changing.
   sortOrder Int     @default(0)
@@ -863,6 +870,13 @@ model ResearchArea {
   /// action colour (§1.1); this is a data-encoding channel in a visualisation, not a second accent.
   accentColor String?
   coverId     String?
+  /// Optional per-screen framing for the research area's cover: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  coverScreens Json?
   sortOrder   Int     @default(0)
 
   status      ContentStatus @default(DRAFT)
@@ -911,6 +925,13 @@ model Project {
   progress  Int       @default(0)
 
   coverId String?
+  /// Optional per-screen framing for the project's cover: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  coverScreens Json?
 
   status      ContentStatus @default(DRAFT)
   publishedAt DateTime?
@@ -969,6 +990,13 @@ model ProjectMilestone {
 model ProjectMedia {
   projectId String
   assetId   String
+  /// Optional per-screen framing for this gallery picture: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  assetScreens Json?
   position  Int     @default(0)
   caption   String?
 
@@ -1160,6 +1188,13 @@ model Post {
   mdx      String?
 
   coverId    String?
+  /// Optional per-screen framing for the article's cover: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  coverScreens Json?
   authorId   String?
   categoryId String?
 
@@ -1246,6 +1281,13 @@ model CoeEvent {
   isRegistrationOpen   Boolean   @default(false)
 
   coverId String?
+  /// Optional per-screen framing for the event's cover: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  coverScreens Json?
 
   status      ContentStatus @default(DRAFT)
   publishedAt DateTime?
@@ -1300,6 +1342,13 @@ model EventSpeaker {
 model EventMedia {
   eventId  String
   assetId  String
+  /// Optional per-screen framing for this gallery picture: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  assetScreens Json?
   position Int     @default(0)
   caption  String?
 
@@ -1412,6 +1461,13 @@ model Craft {
   longitude Float?
 
   coverId        String?
+  /// Optional per-screen framing for the craft's cover: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  coverScreens Json?
   /// glTF/GLB storage key for the 3D artefact viewer. Absent for most crafts; the viewer is only
   /// rendered when it is present, never as an empty canvas.
   modelObjectKey String?
@@ -1438,6 +1494,13 @@ model Craft {
 model CraftMedia {
   craftId          String
   assetId          String
+  /// Optional per-screen framing for this gallery picture: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  assetScreens Json?
   position         Int     @default(0)
   caption          String?
   /// "before" | "after" | null — drives the restoration comparison slider. A pair is only rendered
@@ -1466,6 +1529,13 @@ model GalleryAlbum {
   credit      String?
   happenedOn  DateTime?
   coverId     String?
+  /// Optional per-screen framing for the album's cover: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  coverScreens Json?
   sortOrder   Int       @default(0)
 
   status      ContentStatus @default(DRAFT)
@@ -1488,6 +1558,13 @@ model GalleryItem {
   id           String  @id @default(cuid())
   albumId      String
   assetId      String
+  /// Optional per-screen framing for this gallery picture: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  assetScreens Json?
   position     Int     @default(0)
   caption      String?
   /// "image" | "video" | "panorama" | "tour" — how this item is PRESENTED, which is not always what
@@ -1516,6 +1593,13 @@ model Partner {
   /// "ACADEMIC" | "INDUSTRY" | "GOVERNMENT" | "NGO" | "FUNDER"
   category  String?
   logoId    String?
+  /// Optional per-screen framing for the partner's logo: which part of it, and optionally which photograph, at
+  /// each of the six screen widths. Null means nobody has framed it — the overwhelmingly common case,
+  /// which renders exactly as it always has. The shape and the mobile-first cascade are owned by
+  /// lib/media/screens.ts and validated by Zod at the API boundary; Postgres checks nothing here, for
+  /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
+  /// crop" at render rather than surface to an editor as "something went wrong".
+  logoScreens Json?
   sortOrder Int     @default(0)
   isVisible Boolean @default(true)
 

@@ -76,6 +76,8 @@ import { MediaImage } from "@/components/ui/MediaImage";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { eventCalendarHref } from "@/lib/ical";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_FIGURE_SELECT, MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ogImageUrl } from "@/lib/media/url";
 import { mailerConfigured } from "@/lib/newsletter/delivery";
@@ -122,7 +124,12 @@ const eventSelect = {
   isRegistrationOpen: true,
   publishedAt: true,
   updatedAt: true,
+  coverId: true,
   cover: { select: MEDIA_SELECT },
+  // The per-screen framing rides in the same select as the relation it frames. A query that fetched one
+  // without the other is exactly how a stored crop came to be rendered by nothing — see the header of
+  // scripts/media-select-check.ts.
+  coverScreens: true,
   agenda: {
     // `position` is what the editor arranged; `startsAt` only breaks ties, so a programme with no times
     // still keeps the order somebody dragged it into.
@@ -148,6 +155,11 @@ const eventSelect = {
           status: true,
           isVisible: true,
           deletedAt: true,
+          // The portrait's id and framing ride along with the relation, exactly as the cover's do above:
+          // a speaker somebody has framed would otherwise draw unframed on this page while their own
+          // profile drew them correctly, which is the divergence media-select-check exists to prevent.
+          photoId: true,
+          photoScreens: true,
           photo: { select: MEDIA_SELECT }
         }
       }
@@ -158,6 +170,12 @@ const eventSelect = {
     select: {
       assetId: true,
       caption: true,
+      /**
+       * This ROW's per-screen framing, in the same select as the photograph it frames. On the row rather
+       * than the file because the same photograph is framed one way in this gallery and another in an
+       * album; `assetId` above is what resolves it, exactly as `coverId` resolves the banner's.
+       */
+      assetScreens: true,
       asset: { select: MEDIA_FIGURE_SELECT }
     }
   },
@@ -166,6 +184,18 @@ const eventSelect = {
     select: { tag: { select: { slug: true, name: true } } }
   }
 } satisfies Prisma.CoeEventSelect;
+
+/**
+ * The stored framing, typed.
+ *
+ * Prisma answers a JSONB column as `JsonValue`, and the shape belongs to lib/media/screens.ts — so the
+ * cast is where the two meet. Nothing downstream trusts it: `resolvePicture` reads each bucket
+ * defensively and an unusable rectangle degrades to "no crop", which is what makes a hand-edited row a
+ * plain photograph rather than a broken frame.
+ */
+function coverFraming(row: { coverScreens: Prisma.JsonValue | null }): ScreenFraming | null {
+  return (row.coverScreens ?? null) as unknown as ScreenFraming | null;
+}
 
 /** Registrations that occupy a place. A cancelled one has given its seat back; a waitlisted one never
  *  had it. Counting either would close an event that still has room. */
@@ -261,6 +291,43 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   const path = `/events/${event.slug}`;
 
   /**
+   * The cover, framed per screen width.
+   *
+   * `framingAssets` is called UNCONDITIONALLY and costs no query when nothing is framed — its header
+   * explains why guarding it at each call site is how one site ends up guarded wrongly. `withBaseAsset`
+   * adds the event's own cover to the same map, because `pictureFromMap` looks the base photograph up by
+   * id like any other. With no framing this is a single band and `PageHero` draws the banner exactly as
+   * it did before the column existed.
+   */
+  const coverScreens = coverFraming(event);
+
+  /**
+   * The speakers' portraits, framed on the same terms as the cover.
+   *
+   * Wired even though these are 56px avatars: the framing belongs to the PERSON, and a portrait framed so
+   * that a face is centred on a phone is framed for every surface that draws it. A speaker whose profile
+   * is unpublished is still listed (see the select), and still framed — the framing is a property of the
+   * photograph, not of whether the name links anywhere.
+   */
+  const speakerFramings = event.speakers.map(
+    (entry) => (entry.person.photoScreens ?? null) as unknown as ScreenFraming | null
+  );
+
+  /**
+   * ⚠ ONE QUERY FOR THE COVER AND THE PROGRAMME, NOT TWO. `framingAssets` is variadic so a page can ask
+   * once; two awaited calls in a row were two SERIAL round trips, and separate maps bought nothing — an
+   * asset id is unique, so one map answers every lookup and `withBaseAsset` still folds each picture's own
+   * base in where it is used. Free when nothing is framed, which is nearly every event.
+   */
+  const framingMedia = await framingAssets(coverScreens, ...speakerFramings);
+
+  const cover = pictureFromMap(
+    event.coverId,
+    coverScreens,
+    withBaseAsset(framingMedia, event.coverId, event.cover)
+  );
+
+  /**
    * Does this event take registrations at all?
    *
    * A "Registration is closed" panel on a public lecture that never took bookings is noise dressed as
@@ -325,6 +392,29 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     registrationState = "open";
     if (event.capacity !== null) placesLeft = Math.max(0, event.capacity - taken);
   }
+
+  /**
+   * The gallery's framings, in ONE query for the whole wall.
+   *
+   * The same shape as the speakers' portraits above, and for the same reasons — see there. Every picture
+   * fetched is drawn, so nothing's alternates are fetched for nothing.
+   *
+   * ⚠ THE FRAMING IS DELIBERATELY NOT PUT INTO THE LIGHTBOX ITEMS BELOW, though the tiles use it. The
+   * viewer draws the whole photograph at its OWN proportions (`aspect={ratio}` plus `!object-contain` in
+   * MediaLightbox.tsx), so there is no per-width frame for a rectangle to fit — and a crop drawn for a 4:3
+   * tile would trim the picture a reader has just asked to see in full.
+   */
+  const galleryFramings = event.media.map(
+    (item) => (item.assetScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const galleryFramingMedia = await framingAssets(...galleryFramings);
+  const galleryPictures = event.media.map((item, index) =>
+    pictureFromMap(
+      item.assetId,
+      galleryFramings[index] ?? null,
+      withBaseAsset(galleryFramingMedia, item.assetId, item.asset)
+    )
+  );
 
   const gallery: LightboxItem[] = event.media.map((item) => ({
     id: item.assetId,
@@ -448,6 +538,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         title={event.title}
         description={event.subtitle ?? undefined}
         media={event.cover}
+        picture={cover}
         breadcrumbs={[
           { name: "Home", href: "/" },
           { name: "Events", href: "/events" },
@@ -588,7 +679,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                 <SectionHeading level={2} title="Speakers" />
 
                 <ul className="mt-6 grid gap-6 sm:grid-cols-2">
-                  {event.speakers.map((entry) => {
+                  {event.speakers.map((entry, index) => {
                     const person = entry.person;
                     // Linkable only when the profile is genuinely public. See the select for why an
                     // unpublished speaker is still named.
@@ -603,6 +694,13 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         {person.photo ? (
                           <MediaImage
                             media={person.photo}
+                            /* One band when nobody framed this portrait, and `MediaImage` then takes the
+                               path it took before the column existed. */
+                            picture={pictureFromMap(
+                              person.photoId,
+                              speakerFramings[index],
+                              withBaseAsset(framingMedia, person.photoId, person.photo)
+                            )}
                             // Decorative: the name is spelled out immediately beside it, and
                             // "photograph of Anita Rao, Anita Rao" is one announcement too many.
                             alt=""
@@ -679,6 +777,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                           <div className="group relative overflow-hidden rounded-md bg-surface-100">
                             <MediaImage
                               media={item}
+                              /* One band when nobody framed this row, and `MediaImage` then renders what
+                                 it rendered before the column existed. */
+                              picture={galleryPictures[index] ?? null}
                               aspect="4 / 3"
                               rounded="none"
                               sizes="(min-width: 768px) 20vw, 45vw"

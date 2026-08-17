@@ -4,6 +4,8 @@ import { Plus } from "lucide-react";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
@@ -115,6 +117,11 @@ export default async function StudioPeoplePage({
       isVisible: true,
       sortOrder: true,
       status: true,
+      // The portrait's id and its framing beside the photograph. `photoId` because a framing resolves the
+      // base photograph BY ID (lib/media/screens.ts), and `photoScreens` because a list that fetched the
+      // picture without its framing would show this editor's own portrait unframed on this screen alone.
+      photoId: true,
+      photoScreens: true,
       photo: { select: MEDIA_IMAGE_SELECT },
       _count: {
         select: {
@@ -126,7 +133,25 @@ export default async function StudioPeoplePage({
   });
 
   const truncated = rows.length > PEOPLE_LIMIT;
-  const people: PersonRow[] = rows.slice(0, PEOPLE_LIMIT).map((row) => ({
+  const shown = rows.slice(0, PEOPLE_LIMIT);
+
+  /**
+   * The alternate photographs the shown portraits' framings name, in ONE query.
+   *
+   * Only the rows the board draws: the query above takes one more than the cap so the truncation can be
+   * stated honestly, and fetching alternates for a row nobody sees would be a query for nothing. Otherwise
+   * unconditional, because it costs NO query at all when nobody has framed a portrait, which is the common
+   * case — guarding it per row is how one row ends up guarded wrongly (lib/media/framing.ts).
+   *
+   * The cast is deliberate: `Prisma.JsonValue` carries no shape, this studio's own route validates the
+   * value with `screenFramingField()` on the way in, and the resolver reads every bucket defensively.
+   */
+  const framings = shown.map(
+    (row) => (row.photoScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const framingMedia = await framingAssets(...framings);
+
+  const people: PersonRow[] = shown.map((row, index) => ({
     id: row.id,
     name: row.name,
     slug: row.slug,
@@ -138,7 +163,14 @@ export default async function StudioPeoplePage({
     status: row.status,
     projectCount: row._count.projects,
     publicationCount: row._count.publications,
-    photo: row.photo
+    photo: row.photo,
+    // One band when nobody framed this portrait, which `MediaImage` ignores — so an unframed avatar draws
+    // exactly as it did before the column existed.
+    picture: pictureFromMap(
+      row.photoId,
+      framings[index],
+      withBaseAsset(framingMedia, row.photoId, row.photo)
+    )
   }));
 
   const narrowed = query.length > 0 || status !== null;

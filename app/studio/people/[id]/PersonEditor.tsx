@@ -28,6 +28,7 @@ import type { ContentStatus, PersonKind } from "@prisma/client";
 import { ImagePlus, Trash2 } from "lucide-react";
 
 import { del, patch, post } from "@/lib/client/fetcher";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { unique } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { DateField } from "@/components/ui/DateField";
@@ -48,6 +49,7 @@ import { StatusControl, statusProblems } from "@/components/studio/StatusControl
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
+import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
@@ -92,6 +94,14 @@ export interface PersonFormValue {
   orcid: string;
   github: string;
   photo: EditorMedia | null;
+  /**
+   * The portrait's per-screen framing, or null — which is the resting state and stays it.
+   *
+   * ⚠ NULL RATHER THAN AN EMPTY FRAMING, and `useAutosave` is why: it decides "has this changed?" by
+   * comparing `JSON.stringify` snapshots, so a form that opened with six empty buckets in here would be
+   * dirty on arrival and would save a decision nobody made.
+   */
+  photoScreens: ScreenFraming | null;
   startedOn: string;
   endedOn: string;
   sortOrder: string;
@@ -183,6 +193,9 @@ function toPayload(value: PersonFormValue) {
     orcid: orNull(value.orcid),
     github: orNull(value.github),
     photoId: value.photo?.id ?? null,
+    // Sent beside the id it belongs to. A form that sent the picture without the framing would be a panel
+    // an editor can fill in and nothing can store.
+    photoScreens: value.photoScreens,
     startedOn: orNull(value.startedOn),
     endedOn: orNull(value.endedOn),
     sortOrder: toIntOrZero(value.sortOrder),
@@ -308,11 +321,25 @@ export function PersonEditor({
       if (picker === "body") {
         settleBody(first);
       } else if (first) {
-        update({ photo: toEditorMedia(first) });
+        const photo = toEditorMedia(first);
+        /**
+         * ⚠ A DIFFERENT PHOTOGRAPH CLEARS THE FRAMING, and this is the rule `MediaFramingField` exists to
+         * make impossible to forget (its header carries the full argument). A framing is a set of
+         * rectangles expressed as fractions of ONE photograph; swap the photograph underneath and every
+         * one of them frames whatever happens to sit at those coordinates — a doorway instead of a face.
+         *
+         * Written against the CURRENT value rather than through `update`, so the comparison cannot be made
+         * against a stale render's photograph.
+         */
+        setValue((current) => ({
+          ...current,
+          photo,
+          photoScreens: current.photo?.id === photo.id ? current.photoScreens : null
+        }));
       }
       setPicker(null);
     },
-    [picker, settleBody, update]
+    [picker, settleBody]
   );
 
   const remove = useCallback(async () => {
@@ -453,7 +480,9 @@ export function PersonEditor({
                     variant="ghost"
                     size="sm"
                     icon={Trash2}
-                    onClick={() => update({ photo: null })}
+                    // The framing goes with the photograph: rectangles for a picture that is no longer
+                    // chosen would come back the moment somebody picked a different one.
+                    onClick={() => update({ photo: null, photoScreens: null })}
                   >
                     Remove the photograph
                   </Button>
@@ -473,6 +502,29 @@ export function PersonEditor({
             </Button>
           )}
         </FieldBlock>
+
+        {/*
+          ⚠ THE PANEL ON ITS OWN, NOT `MediaFramingField`, AND THAT IS DELIBERATE. That component pairs the
+          panel with an `EntityPicker`, which can only choose from what is already in the library; this
+          screen picks through `MediaPicker`, which also UPLOADS, names the file and warns when a portrait
+          has no description. Swapping it for the packaged control would take all of that away to gain a
+          picker this form already has. What the packaged control also owns — clearing the framing when the
+          photograph changes — is applied by hand in `onPicked` and on "Remove the photograph"; its header
+          is the argument for why that rule matters.
+
+          Offered only once a photograph exists, because framing nothing is a control with nothing to act
+          on. There is no gate beyond that: every surface that draws a person draws this as an IMAGE (the
+          4:5 portrait on their page and on cards, a 1:1 avatar beside a talk), so the panel always has a
+          visible effect — unlike the hero, where a video background makes `offerFraming` false.
+        */}
+        {value.photo ? (
+          <ScreenFramingPanel
+            label="Framing per screen size"
+            mediaId={value.photo.id}
+            value={value.photoScreens}
+            onChange={(photoScreens) => update({ photoScreens })}
+          />
+        ) : null}
       </FormSection>
 
       <FormSection

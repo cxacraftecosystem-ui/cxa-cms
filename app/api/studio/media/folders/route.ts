@@ -7,10 +7,10 @@ import {
   clientIp,
   conflict,
   ok,
-  parseJson,
   route,
   userAgent
 } from "@/lib/api";
+import { parseStudioJson } from "@/lib/studio/crud";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageMedia } from "@/lib/permissions";
@@ -119,7 +119,7 @@ export const POST = route(async (request: NextRequest) => {
     "Creating a folder needs media manager access or higher. An administrator can raise yours."
   );
 
-  const body = await parseJson(request, CreateBody);
+  const body = await parseStudioJson(request, CreateBody);
   const parentId = body.parentId ?? null;
 
   let parentPath = "";

@@ -14,7 +14,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
-    "check": "npm run typecheck && npm run lint && npm run route-check && npm run media-select-check && npm run screens-check && npm run media-render-check && npm run font-check && npm run theme-check",
+    "check": "npm run typecheck && npm run lint && npm run route-check && npm run media-select-check && npm run screens-check && npm run media-render-check && npm run framing-select-check && npm run font-check && npm run theme-check",
     "build-craft-sheets": "tsx scripts/build-craft-sheets.ts",
     "fetch-fonts": "tsx scripts/fetch-fonts.ts",
     "font-check": "tsx scripts/font-check.ts",
@@ -24,7 +24,8 @@
     "theme-check": "tsx scripts/theme-check.ts",
     "media-select-check": "tsx scripts/media-select-check.ts",
     "screens-check": "tsx scripts/screens-check.ts",
-    "media-render-check": "tsx --tsconfig tsconfig.scripts.json scripts/media-render-check.ts"
+    "media-render-check": "tsx --tsconfig tsconfig.scripts.json scripts/media-render-check.ts",
+    "framing-select-check": "tsx --tsconfig tsconfig.scripts.json scripts/framing-select-check.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

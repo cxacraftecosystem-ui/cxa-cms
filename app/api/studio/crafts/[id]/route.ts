@@ -10,7 +10,6 @@ import {
   forbidden,
   notFound,
   ok,
-  parseJson,
   route,
   userAgent
 } from "@/lib/api";
@@ -21,6 +20,7 @@ import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { indexDocument, removeDocument, searchDocFromCraft, searchUrlFor } from "@/lib/search/index";
 import { isSafeObjectKey } from "@/lib/storage/keys";
+import { parseStudioJson, screenFramingField } from "@/lib/studio/crud";
 import { unique } from "@/lib/utils";
 
 /**
@@ -109,12 +109,23 @@ const PatchBody = z.object({
     .nullable()
     .optional(),
   coverId: idField.nullable().optional(),
+  /**
+   * The cover's per-screen framing. `.nullable().optional()` is two statements and both are needed: absent
+   * leaves the column alone, null clears it — see `screenFramingColumn` for why collapsing them would make
+   * an editor unable to unset a framing.
+   */
+  coverScreens: screenFramingField(),
   media: z
     .array(
       z.object({
         assetId: idField,
         caption: z.string().trim().max(600).nullable().optional(),
-        restorationPhase: z.enum(["before", "after"]).nullable().optional()
+        restorationPhase: z.enum(["before", "after"]).nullable().optional(),
+        /**
+         * The row's per-screen framing, accepted beside the id it frames. Without it here the panel in the
+         * editor would be a control that saves successfully and changes nothing — see `coverScreens` above.
+         */
+        assetScreens: screenFramingField()
       })
     )
     .max(MAX_MEDIA, `A craft can hold up to ${MAX_MEDIA} pictures.`)
@@ -237,6 +248,9 @@ async function replaceCraftMedia(tx: TxClient, craftId: string, body: CraftInput
         assetId: entry.assetId,
         caption: entry.caption?.trim() || null,
         restorationPhase: entry.restorationPhase ?? null,
+        // The list is replaced whole on every save, so this row is a create either way and the framing has
+        // to come with it or a save would be how an editor loses one.
+        assetScreens: jsonColumn(entry.assetScreens),
         position
       }))
     });
@@ -306,6 +320,8 @@ export const GET = route(async (request: NextRequest, context: { params: Promise
           assetId: true,
           caption: true,
           restorationPhase: true,
+          // The framing rides in the same select as the picture it frames, wherever the row is read.
+          assetScreens: true,
           position: true,
           asset: EDITOR_MEDIA_SELECT
         }
@@ -330,7 +346,7 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   );
 
   const { id } = await context.params;
-  const body = await parseJson(request, PatchBody);
+  const body = await parseStudioJson(request, PatchBody);
 
   const before = await prisma.craft.findFirst({ where: { id, deletedAt: null } });
   if (!before) throw notFound("That craft");
@@ -383,6 +399,7 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   if ("latitude" in body) data.latitude = body.latitude ?? null;
   if ("longitude" in body) data.longitude = body.longitude ?? null;
   if ("coverId" in body) data.coverId = body.coverId ?? null;
+  if ("coverScreens" in body) data.coverScreens = jsonColumn(body.coverScreens);
   if ("modelObjectKey" in body) data.modelObjectKey = body.modelObjectKey?.trim() || null;
   if (body.isFeatured !== undefined) data.isFeatured = body.isFeatured;
 

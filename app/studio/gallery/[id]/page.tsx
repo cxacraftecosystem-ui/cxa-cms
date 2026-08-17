@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
 import { AlbumEditor, type AlbumDraft, type AlbumItemDraft } from "./AlbumEditor";
@@ -78,6 +79,7 @@ function toItemDraft(row: {
   caption: string | null;
   presentation: string;
   tourEntry: string | null;
+  assetScreens: Prisma.JsonValue | null;
   asset: ItemAsset;
 }): AlbumItemDraft {
   return {
@@ -86,6 +88,8 @@ function toItemDraft(row: {
     key: row.id,
     assetId: row.assetId,
     caption: row.caption ?? "",
+    // A cast rather than a parse, safe for the reason given on `coverScreens` in the draft below.
+    assetScreens: (row.assetScreens ?? null) as unknown as ScreenFraming | null,
     // `presentation` is a free-text column with a default of "image" (schema). An unrecognised value is
     // normalised in the editor rather than here, so the one list of allowed words lives in one file.
     presentation: row.presentation,
@@ -133,6 +137,9 @@ export default async function StudioAlbumPage({ params }: { params: Promise<{ id
             credit: true,
             happenedOn: true,
             coverId: true,
+            // The cover's per-screen framing, so the panel in the editor opens on what is stored rather
+            // than on nothing. Without it every save would post `null` back and quietly clear the framing.
+            coverScreens: true,
             sortOrder: true,
             status: true,
             publishedAt: true,
@@ -145,6 +152,10 @@ export default async function StudioAlbumPage({ params }: { params: Promise<{ id
                 caption: true,
                 presentation: true,
                 tourEntry: true,
+                // Each row's own per-screen framing, so its panel opens on what is stored. Without it every
+                // save would post `null` back and quietly clear a framing the editor never touched — the
+                // same reason `coverScreens` is selected above.
+                assetScreens: true,
                 asset: { select: itemAssetSelect }
               }
             }
@@ -179,6 +190,13 @@ export default async function StudioAlbumPage({ params }: { params: Promise<{ id
     credit: album?.credit ?? "",
     happenedOn,
     coverId: album?.coverId ?? null,
+    /**
+     * A cast rather than a parse, and the render side is what makes that safe: every member of every
+     * bucket is read through optional access and `storedCrop`, so a hand-edited row degrades to "nothing
+     * framed" rather than drawing a broken frame (lib/media/screens.ts). The Zod schema on
+     * `/api/studio/gallery/[id]` is what keeps a row this studio wrote honest.
+     */
+    coverScreens: (album?.coverScreens ?? null) as unknown as ScreenFraming | null,
     sortOrder: album?.sortOrder ?? 0,
     status: album?.status ?? "DRAFT",
     publishedAt: album?.publishedAt ? album.publishedAt.toISOString() : null,

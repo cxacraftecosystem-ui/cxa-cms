@@ -36,6 +36,7 @@ import { ResultSummary } from "@/components/site/ResultSummary";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { searchTypeLabel } from "@/lib/search/index";
 import type { SearchOutcome, SearchResult } from "@/lib/search/query";
+import type { Picture } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,14 @@ export interface SearchSuggestionItem {
   /** A date, a status — one short line under the title. */
   meta: string | null;
   media: MediaLike | null;
+  /**
+   * The suggestion's per-screen framing, already resolved by the page that built the item.
+   *
+   * Optional and resolved UPSTREAM because the alternate photographs a framing names live in a JSONB
+   * column no relation can join, so only the page holding the query can fetch them. Omitted, or a single
+   * band, and `MediaImage` renders exactly as it did before per-screen framing existed.
+   */
+  picture?: Picture | null;
 }
 
 export interface SearchSuggestionGroup {
@@ -313,6 +322,7 @@ export function SearchResults({
                 key={item.id}
                 href={item.href}
                 media={item.media}
+                picture={item.picture ?? null}
                 headingLevel={3}
                 title={item.title}
                 description={item.summary ?? undefined}

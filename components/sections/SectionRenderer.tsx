@@ -133,6 +133,17 @@ interface ShowcaseCounts {
 }
 
 /**
+ * The showcase blocks that are handed the whole batched read as well as their rows.
+ *
+ * ⚠ STATED IN THE TYPE RATHER THAN LEFT TO THE `EXTRAS` TABLE, because the prop is OPTIONAL on the
+ * renderer and an optional prop that stops arriving fails silently: a craft card would go back to drawing
+ * its cover unframed, on one surface, with nothing red anywhere. A record's per-screen framing names its
+ * alternate photographs as ids in a JSONB column, so they reach the card through `resolved.media` and
+ * nowhere else (`attachCraftFraming` in lib/sections/resolve.ts).
+ */
+type ShowcaseWithMedia = "CRAFT_EXPLORER" | "PARTNER_LOGOS";
+
+/**
  * The props beyond `data` and `section`, per block type.
  *
  * Three shapes, because there are genuinely three kinds of block: one that pulls a list of records,
@@ -140,9 +151,15 @@ interface ShowcaseCounts {
  * manual ids can name rows in two different tables (see `galleryRowsFor`).
  */
 type ExtraPropsOf<T extends SectionType> = T extends keyof ShowcaseRowOf
-  ? { rows: ShowcaseRowOf[T][] } & ShowcaseCounts
+  ? { rows: ShowcaseRowOf[T][] } &
+      ShowcaseCounts &
+      (T extends ShowcaseWithMedia ? { resolved: ResolvedSectionData } : object)
   : T extends "GALLERY"
-    ? { albums: AlbumRow[]; images: GalleryImageRow[] } & ShowcaseCounts
+    ? // `resolved` for the same reason `ShowcaseWithMedia` states above: an album card can be framed per
+      // screen size, and the alternate photographs a framing names reach it through `resolved.media` and
+      // nowhere else (`attachAlbumFraming` in lib/sections/resolve.ts). Required, not optional, so it
+      // cannot quietly stop arriving.
+      { albums: AlbumRow[]; images: GalleryImageRow[]; resolved: ResolvedSectionData } & ShowcaseCounts
     : T extends "CONTACT_FORM"
       ? { contact: ContactSettings | null }
       : { resolved: ResolvedSectionData };
@@ -247,10 +264,24 @@ const EXTRAS: Partial<Record<SectionType, (context: ExtrasContext) => object>> =
   PUBLICATION_LIST: ({ resolved, sectionId }) => showcaseFor(resolved.publications, sectionId),
   NEWS_SHOWCASE: ({ resolved, sectionId }) => showcaseFor(resolved.news, sectionId),
   EVENT_SHOWCASE: ({ resolved, sectionId }) => showcaseFor(resolved.events, sectionId),
-  PARTNER_LOGOS: ({ resolved, sectionId }) => showcaseFor(resolved.partners, sectionId),
+  // The rows, plus the batched read the logos resolve their framing out of — see `ShowcaseWithMedia`
+  // above. The ids in `Partner.logoScreens` join no relation, so `resolved.media` is the only way an
+  // alternate mark reaches the wall (`attachPartnerFraming` in lib/sections/resolve.ts).
+  PARTNER_LOGOS: ({ resolved, sectionId }) => ({
+    ...showcaseFor(resolved.partners, sectionId),
+    resolved
+  }),
   DOWNLOADS: ({ resolved, sectionId }) => showcaseFor(resolved.files, sectionId),
-  CRAFT_EXPLORER: ({ resolved, sectionId }) => showcaseFor(resolved.crafts, sectionId),
-  GALLERY: ({ resolved, sectionId }) => galleryRowsFor(resolved, sectionId),
+  // The rows, plus the batched read the craft cards resolve their framing out of — see `ShowcaseWithMedia`
+  // above. The ids in `Craft.coverScreens` join no relation, so `resolved.media` is the only way they
+  // reach a card.
+  CRAFT_EXPLORER: ({ resolved, sectionId }) => ({
+    ...showcaseFor(resolved.crafts, sectionId),
+    resolved
+  }),
+  // The rows, plus the batched read the album cards resolve their framing out of — see the GALLERY branch
+  // of `ExtraPropsOf`. Handing the object over costs nothing; it is already built, and the rows still win.
+  GALLERY: ({ resolved, sectionId }) => ({ ...galleryRowsFor(resolved, sectionId), resolved }),
   CONTACT_FORM: ({ contact }) => ({ contact })
 };
 

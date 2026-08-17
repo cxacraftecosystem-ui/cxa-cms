@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
@@ -54,6 +55,9 @@ function blankValue(): PersonFormValue {
     orcid: "",
     github: "",
     photo: null,
+    // Null, never an empty framing: six empty buckets would be written into the column on the next save
+    // for a decision nobody made (lib/media/framing-schema.ts).
+    photoScreens: null,
     startedOn: "",
     endedOn: "",
     sortOrder: "0",
@@ -106,6 +110,10 @@ export default async function StudioPersonPage({
           isVisible: true,
           status: true,
           publishedAt: true,
+          // The portrait's per-screen framing, so the panel opens on what is actually stored. Fetched with
+          // the photograph it frames — a form handed the picture and not the framing would show an empty
+          // panel over a framed portrait and invite an editor to set it again.
+          photoScreens: true,
           // `fileName` on top of the shared fragment: the media picker shows it beside the thumbnail.
           photo: { select: { ...MEDIA_IMAGE_SELECT_WITH_ID, fileName: true } },
           _count: { select: { projects: true, publications: true, events: true } }
@@ -137,6 +145,14 @@ export default async function StudioPersonPage({
         orcid: person.orcid ?? "",
         github: person.github ?? "",
         photo,
+        /**
+         * The stored framing, typed.
+         *
+         * A cast rather than a parse: Prisma answers a JSONB column as `JsonValue`, and nothing
+         * downstream trusts the shape — the panel reads each bucket through `storedCrop` and the API
+         * validates the value with `screenFramingField()` on the way back in.
+         */
+        photoScreens: (person.photoScreens ?? null) as unknown as ScreenFraming | null,
         startedOn: toDateInput(person.startedOn),
         endedOn: toDateInput(person.endedOn),
         sortOrder: String(person.sortOrder),

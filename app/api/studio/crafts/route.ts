@@ -9,7 +9,6 @@ import {
   conflict,
   forbidden,
   ok,
-  parseJson,
   parseQuery,
   route,
   userAgent
@@ -19,6 +18,7 @@ import { requireCapability } from "@/lib/auth/current-user";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { indexDocument, searchDocFromCraft } from "@/lib/search/index";
 import { isSafeObjectKey } from "@/lib/storage/keys";
+import { parseStudioJson, screenFramingField } from "@/lib/studio/crud";
 import { unique } from "@/lib/utils";
 
 /**
@@ -110,13 +110,23 @@ const CraftBody = z.object({
     .nullable()
     .optional(),
   coverId: idField.nullable().optional(),
+  /**
+   * The cover's per-screen framing. Nothing is required and null is the resting state — a form that never
+   * opened the panel sends null, and the column stays null.
+   */
+  coverScreens: screenFramingField(),
   media: z
     .array(
       z.object({
         assetId: idField,
         caption: z.string().trim().max(600).nullable().optional(),
         /** `null` for an ordinary photograph. The renderer compares against these two words exactly. */
-        restorationPhase: z.enum(["before", "after"]).nullable().optional()
+        restorationPhase: z.enum(["before", "after"]).nullable().optional(),
+        /**
+         * The row's per-screen framing, accepted beside the id it frames. Without it here the panel in the
+         * editor would be a control that saves successfully and changes nothing — see `coverScreens` above.
+         */
+        assetScreens: screenFramingField()
       })
     )
     .max(MAX_MEDIA, `A craft can hold up to ${MAX_MEDIA} pictures.`)
@@ -263,6 +273,8 @@ async function replaceCraftMedia(tx: TxClient, craftId: string, body: CraftInput
         caption: entry.caption?.trim() || null,
         // `null`, never "": the column is nullable and the renderer compares against the words exactly.
         restorationPhase: entry.restorationPhase ?? null,
+        // Beside the id it frames, so a craft created with a row already framed keeps it.
+        assetScreens: jsonColumn(entry.assetScreens),
         position
       }))
     });
@@ -368,7 +380,7 @@ export const POST = route(async (request: NextRequest) => {
     "Creating a craft needs researcher access or higher. An administrator can raise yours."
   );
 
-  const body = await parseJson(request, CraftBody);
+  const body = await parseStudioJson(request, CraftBody);
 
   if (!body.name) throw badRequest("The craft needs a name before it can be created.");
   if (!body.slug) throw badRequest("The craft needs a web address before it can be created.");
@@ -422,6 +434,7 @@ export const POST = route(async (request: NextRequest) => {
           latitude: body.latitude ?? null,
           longitude: body.longitude ?? null,
           coverId: body.coverId ?? null,
+          coverScreens: jsonColumn(body.coverScreens),
           modelObjectKey: body.modelObjectKey?.trim() || null,
           isFeatured: body.isFeatured ?? false,
           status,

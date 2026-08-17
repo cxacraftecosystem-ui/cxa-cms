@@ -36,6 +36,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
+import type { Picture } from "@/lib/media/screens";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -59,6 +60,13 @@ export interface StudioPostRow {
   categoryName: string | null;
   authorName: string | null;
   cover: MediaLike | null;
+  /**
+   * The cover resolved for every screen width, or null when nobody framed it.
+   *
+   * Resolved on the SERVER and handed down, not derived here: resolving needs the alternate assets a
+   * framing names, and only the fetching query can get them.
+   */
+  picture: Picture | null;
   /** `Post.readingMinutes`. `null` when no save has worked one out yet — said in words, never as a 0. */
   readingMinutes: number | null;
   /** Which of the two mutually exclusive body fields this article uses. */
@@ -160,6 +168,7 @@ export function NewsTable({
         // photograph as well would read every row twice.
         <MediaImage
           media={row.cover}
+          picture={row.picture}
           alt=""
           aspect="16 / 10"
           rounded="sm"

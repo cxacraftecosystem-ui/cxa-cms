@@ -23,6 +23,7 @@ import { Reveal } from "@/components/motion";
 import {
   ARTICLE_LIST_ORDER,
   ArticleCard,
+  articleCardAssets,
   articleCardSelect
 } from "@/components/site/ArticleMeta";
 import { CardGrid } from "@/components/site/CardGrid";
@@ -103,6 +104,10 @@ export default async function NewsTagPage({
     prisma.coeEvent.count({ where: { ...liveStatusWhere(), tags: { some: { tag: { slug } } } } })
   ]);
 
+  // The photographs this page's covers need to be framed, in one query. No query at all when nothing
+  // here is framed, which is why it is unguarded — see `articleCardAssets`.
+  const cardAssets = await articleCardAssets(rows);
+
   const pastTheEnd = total > 0 && rows.length === 0;
   const base = `/news/tag/${tag.slug}`;
 
@@ -175,7 +180,7 @@ export default async function NewsTagPage({
 
             <CardGrid columns={3} stagger>
               {rows.map((post) => (
-                <ArticleCard key={post.id} post={post} headingLevel={3} />
+                <ArticleCard key={post.id} post={post} assets={cardAssets} headingLevel={3} />
               ))}
             </CardGrid>
 

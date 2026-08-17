@@ -53,6 +53,8 @@ import {
 } from "@/components/site/SearchResults";
 import { liveStatusWhere, livePublishableWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { searchUrlFor } from "@/lib/search/index";
 import { search } from "@/lib/search/query";
@@ -150,7 +152,11 @@ async function loadSuggestions(): Promise<SearchSuggestionGroup[]> {
         subtitle: true,
         excerpt: true,
         publishedAt: true,
-        cover: { select: MEDIA_SELECT }
+        cover: { select: MEDIA_SELECT },
+        // The cover's id and its per-screen framing, for the same reason they are on the project select
+        // below: without them a framed article would draw unframed in these suggestions alone.
+        coverId: true,
+        coverScreens: true
       }
     }),
     prisma.project.findMany({
@@ -165,12 +171,36 @@ async function loadSuggestions(): Promise<SearchSuggestionGroup[]> {
         tagline: true,
         summary: true,
         state: true,
-        cover: { select: MEDIA_SELECT }
+        cover: { select: MEDIA_SELECT },
+        // The cover's id and its per-screen framing. `coverId` as well as the joined row because
+        // `pictureFromMap` looks the base photograph up by id like any other (lib/media/framing.ts);
+        // without `coverScreens` a framed project would draw unframed in these suggestions alone.
+        coverId: true,
+        coverScreens: true
       }
     })
   ]);
 
-  const newsItems: SearchSuggestionItem[] = posts.map((post) => ({
+  /**
+   * The alternate photographs the covers' framings name, for both rows of suggestions.
+   *
+   * Those ids sit in a JSONB column no relation can join, so they are fetched here for the whole row of
+   * suggestions. Called unconditionally because it costs NO query when nothing is framed, which is nearly
+   * always (lib/media/framing.ts). The cast is deliberate: `Prisma.JsonValue` carries no shape, the
+   * studio's route validates it with `screenFramingField()` on the way in, and the resolver reads every
+   * bucket defensively.
+   */
+  const projectFramings = projects.map(
+    (project) => (project.coverScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const postFramings = posts.map(
+    (post) => (post.coverScreens ?? null) as unknown as ScreenFraming | null
+  );
+  // Both rows' alternates in ONE query — `framingAssets` is variadic precisely so a page pays once, and
+  // it still issues nothing when neither row is framed.
+  const suggestionFramingMedia = await framingAssets(...projectFramings, ...postFramings);
+
+  const newsItems: SearchSuggestionItem[] = posts.map((post, index) => ({
     id: post.id,
     title: post.title,
     href: searchUrlFor("post", post.slug),
@@ -182,10 +212,17 @@ async function loadSuggestions(): Promise<SearchSuggestionGroup[]> {
         ? truncateWords(post.subtitle, 140)
         : null,
     meta: post.publishedAt ? formatDate(post.publishedAt) : null,
-    media: post.cover
+    media: post.cover,
+    // Resolved here for the reason stated on the project card below: this is the only place holding both
+    // the cover and the alternates its framing may name.
+    picture: pictureFromMap(
+      post.coverId,
+      postFramings[index],
+      withBaseAsset(suggestionFramingMedia, post.coverId, post.cover)
+    )
   }));
 
-  const projectItems: SearchSuggestionItem[] = projects.map((project) => ({
+  const projectItems: SearchSuggestionItem[] = projects.map((project, index) => ({
     id: project.id,
     title: project.title,
     href: searchUrlFor("project", project.slug),
@@ -195,7 +232,15 @@ async function loadSuggestions(): Promise<SearchSuggestionGroup[]> {
         ? truncateWords(project.summary, 140)
         : null,
     meta: humaniseState(project.state),
-    media: project.cover
+    media: project.cover,
+    /* Resolved here because this is the only place holding both the cover and the alternates it may name.
+       A bucket whose photograph is missing from the map INHERITS rather than blanking the cover, which is
+       the rule `pictureFromMap` owns so no call site writes its own `assetOf`. */
+    picture: pictureFromMap(
+      project.coverId,
+      projectFramings[index],
+      withBaseAsset(suggestionFramingMedia, project.coverId, project.cover)
+    )
   }));
 
   const groups: SearchSuggestionGroup[] = [];

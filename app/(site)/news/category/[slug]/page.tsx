@@ -28,6 +28,7 @@ import { Reveal } from "@/components/motion";
 import {
   ARTICLE_LIST_ORDER,
   ArticleCard,
+  articleCardAssets,
   articleCardSelect
 } from "@/components/site/ArticleMeta";
 import { CardGrid } from "@/components/site/CardGrid";
@@ -121,6 +122,10 @@ export default async function NewsCategoryPage({
     })
   ]);
 
+  // The photographs this page's covers need to be framed, in one query. No query at all when nothing
+  // here is framed, which is why it is unguarded — see `articleCardAssets`.
+  const cardAssets = await articleCardAssets(rows);
+
   // A stale `?page=` past the end of the archive. Its remedy is page one, which is not the remedy for
   // an archive that is genuinely empty — so the two say different things.
   const pastTheEnd = total > 0 && rows.length === 0;
@@ -181,7 +186,7 @@ export default async function NewsCategoryPage({
 
             <CardGrid columns={3} stagger>
               {rows.map((post) => (
-                <ArticleCard key={post.id} post={post} headingLevel={3} />
+                <ArticleCard key={post.id} post={post} assets={cardAssets} headingLevel={3} />
               ))}
             </CardGrid>
 

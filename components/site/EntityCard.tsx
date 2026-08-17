@@ -41,6 +41,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { MediaImage } from "@/components/ui/MediaImage";
+import type { Picture } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
 import { cn, stableHash } from "@/lib/utils";
 import { Heading } from "@/components/ui/Heading";
@@ -52,6 +53,15 @@ export interface EntityCardProps {
   /** Where the card goes. One destination per card — that is the whole design. */
   href: string;
   media?: MediaLike | null;
+  /**
+   * `media`'s per-screen framing, already resolved by the caller that fetched it.
+   *
+   * Handed straight to `MediaImage`, which ignores a single-band picture — so a card whose record
+   * nobody has framed renders exactly as it did before. It is resolved by the CALLER because the
+   * alternate photographs a framing names are ids in a JSONB column no relation joins, and only the
+   * query that fetched the row can fetch them (lib/media/framing.ts).
+   */
+  picture?: Picture | null;
   /**
    * Drawn in the media slot INSTEAD of the "no image" placeholder when `media` is null.
    *
@@ -134,6 +144,7 @@ const LIFT_INTERACTIVE = "[&_a]:relative [&_button]:relative";
 export function EntityCard({
   href,
   media,
+  picture,
   eyebrow,
   title,
   description,
@@ -170,6 +181,7 @@ export function EntityCard({
   ) : showMedia ? (
     <MediaImage
       media={media}
+      picture={picture}
       aspect={aspect ?? spec.aspect ?? "16 / 10"}
       rounded={spec.row ? "sm" : "none"}
       priority={priority}

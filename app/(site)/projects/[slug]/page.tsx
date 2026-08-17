@@ -82,6 +82,8 @@ import { MediaImage } from "@/components/ui/MediaImage";
 import { publicationDisplayVenue } from "@/lib/citation";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { publicObjectUrl } from "@/lib/media/url";
 import { parseRichText, richTextExcerpt } from "@/lib/richtext";
@@ -231,6 +233,16 @@ const loadProject = cache(async (slug: string) => {
       publishedAt: true,
       updatedAt: true,
       cover: { select: mediaSelect },
+      /**
+       * The cover's id and its per-screen framing.
+       *
+       * `coverId` as well as the joined row because `pictureFromMap` looks the base photograph up by id
+       * like any other — see `withBaseAsset` in lib/media/framing.ts. This hero is the surface the whole
+       * feature exists for: `PageHero`'s dark tone draws the cover full-bleed, so one rectangle has to
+       * serve a frame running from roughly 0.5:1 on a phone to 2.5:1 on a wide desktop.
+       */
+      coverId: true,
+      coverScreens: true,
       // The id as well as the relation: the related block filters other projects by it, and a filter
       // written as `researchArea: { slug }` would join the areas table again to reach a column this
       // row already carries.
@@ -249,6 +261,11 @@ const loadProject = cache(async (slug: string) => {
               slug: true,
               name: true,
               designation: true,
+              // The portrait's id and framing, for the same reason the cover's are selected above: the
+              // team cards draw these photographs as 4:5 portraits, and a select that omits the framing
+              // renders them unframed on this page alone — silently, which is the whole failure mode.
+              photoId: true,
+              photoScreens: true,
               photo: { select: mediaSelect }
             }
           }
@@ -267,6 +284,14 @@ const loadProject = cache(async (slug: string) => {
         take: MEDIA_LIMIT,
         select: {
           caption: true,
+          /**
+           * This ROW's per-screen framing, in the same select as the photograph it frames — the pairing
+           * rule the header of scripts/media-select-check.ts exists to enforce. It is on the join row
+           * rather than on the file because the same photograph is framed one way in this gallery and
+           * another in an album. The base id comes from `asset.id` below, which this select already asks
+           * for, so there is no second copy of it here.
+           */
+          assetScreens: true,
           asset: {
             select: {
               id: true,
@@ -343,6 +368,11 @@ const loadProject = cache(async (slug: string) => {
               name: true,
               url: true,
               category: true,
+              // The logo's id and framing, for the same reason the portrait's are selected above: this
+              // wall draws the marks as 3:2 images, and a select that omits the framing renders them
+              // unframed on this page alone — silently, which is the whole failure mode.
+              logoId: true,
+              logoScreens: true,
               logo: { select: mediaSelect }
             }
           }
@@ -414,6 +444,52 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   const stage = STAGE[project.state];
   const started = formatDate(project.startedOn);
   const ended = formatDate(project.endedOn);
+
+  /**
+   * The cover, framed per screen width.
+   *
+   * ⚠ RESOLVED HERE RATHER THAN IN THE CACHED LOADER, so `generateMetadata` — which shares that loader —
+   * does not pay for a second query to produce a share card that has no breakpoints. `framingAssets`
+   * fetches only the alternate photographs a framing NAMES, and costs no query at all when nothing is
+   * framed, which is the overwhelmingly common case (lib/media/framing.ts).
+   *
+   * The cast is deliberate: `Prisma.JsonValue` carries no shape, the studio's route validates it with
+   * `screenFramingField()` on the way in, and the resolver reads every bucket defensively — a
+   * hand-edited row degrades to "nothing framed" rather than drawing a broken frame.
+   */
+  const framing = (project.coverScreens ?? null) as unknown as ScreenFraming | null;
+
+  /**
+   * The team's portraits and the partner logos, framed on the same terms as the cover.
+   *
+   * Every member and every partner fetched is DRAWN — `TEAM_LIMIT` and `PARTNER_LIMIT` are applied in the
+   * query above — so there is no face and no mark here whose alternates would be fetched for nothing. On a
+   * logo the override that earns its keep is a different PHOTOGRAPH rather than a rectangle: the marks below
+   * are `!object-contain`, so a crop would deface one instead of reframing it.
+   */
+  const memberFramings = project.members.map(
+    (member) => (member.person.photoScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const partnerFramings = project.partners.map(
+    (row) => (row.partner.logoScreens ?? null) as unknown as ScreenFraming | null
+  );
+
+  /**
+   * ⚠ ONE QUERY FOR ALL THREE, NOT THREE QUERIES. `framingAssets` is variadic precisely so a page can ask
+   * once; three awaited calls in a row were three SERIAL round trips on a record where several things are
+   * framed, and the maps were only ever kept apart for tidiness — an asset id is unique, so one map answers
+   * every lookup and `withBaseAsset` still folds each picture's OWN base in at the point of use.
+   *
+   * Still free when nothing is framed: with no alternate named anywhere the call issues no query at all
+   * (lib/media/framing.ts), which is the overwhelmingly common case.
+   */
+  const framingMedia = await framingAssets(framing, ...memberFramings, ...partnerFramings);
+
+  const coverPicture = pictureFromMap(
+    project.coverId,
+    framing,
+    withBaseAsset(framingMedia, project.coverId, project.cover)
+  );
 
   /**
    * The rest of the graph this project sits in, in ONE query: the other projects published in its
@@ -503,6 +579,33 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   const otherAttachments = project.media.length - gallery.length - videos.length;
   const mediaHidden = Math.max(0, project._count.media - project.media.length);
 
+  /**
+   * The gallery's framings, in ONE query for the whole wall.
+   *
+   * Only the rows this page DRAWS as pictures — `videos` are played through a `<video>` element and the
+   * "other attachments" are counted rather than shown, so fetching their alternates would be a query for
+   * rows nothing reads. `framingAssets` costs no query at all when nothing is framed, which is nearly every
+   * project (lib/media/framing.ts), and with no framing each picture resolves to a single band that
+   * `MediaImage` ignores — the tiles then render exactly as they did before the column existed.
+   */
+  const galleryFramings = gallery.map(
+    (row) => (row.assetScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const galleryFramingMedia = await framingAssets(...galleryFramings);
+  const galleryPictures = gallery.map((row, index) =>
+    pictureFromMap(
+      row.asset.id,
+      galleryFramings[index] ?? null,
+      withBaseAsset(galleryFramingMedia, row.asset.id, row.asset)
+    )
+  );
+
+  /**
+   * ⚠ THE FRAMING IS DELIBERATELY NOT CARRIED INTO THE VIEWER, though the tiles above use it. The lightbox
+   * draws the whole photograph at its OWN proportions (`aspect={ratio}` plus `!object-contain` in
+   * MediaLightbox.tsx), so there is no per-width frame for a rectangle to fit — and a crop drawn for a 4:3
+   * tile would trim the picture a reader has just asked to see in full.
+   */
   const lightboxItems: LightboxItem[] = gallery.map((row) => ({
     id: row.asset.id,
     objectKey: row.asset.objectKey,
@@ -572,6 +675,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
         title={project.title}
         description={project.tagline?.trim() || project.summary?.trim() || undefined}
         media={project.cover}
+        picture={coverPicture}
         breadcrumbs={[
           { name: "Home", href: "/" },
           { name: "Projects", href: "/projects" },
@@ -689,11 +793,18 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
               "People appear here once they are added to the project in the studio and their own page is published."
           }}
         >
-          {project.members.map((member) => (
+          {project.members.map((member, index) => (
             <EntityCard
               key={member.person.id}
               href={`/people/${member.person.slug}`}
               media={member.person.photo}
+              /* One band when nobody framed this portrait, which `MediaImage` ignores — so an unframed
+                 team row renders exactly as it did before the column existed. */
+              picture={pictureFromMap(
+                member.person.photoId,
+                memberFramings[index],
+                withBaseAsset(framingMedia, member.person.photoId, member.person.photo)
+              )}
               variant="portrait"
               // The role ON THIS PROJECT, which is not the same thing as their designation at the
               // Centre — "Principal investigator" is a job on a grant, not a job title.
@@ -741,6 +852,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                     <div className="group relative overflow-hidden rounded-md bg-surface-100">
                       <MediaImage
                         media={row.asset}
+                        picture={galleryPictures[index] ?? null}
                         aspect="4 / 3"
                         rounded="none"
                         sizes="(min-width: 768px) 28vw, 46vw"
@@ -986,6 +1098,11 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 <>
                   <MediaImage
                     media={partner.logo}
+                    picture={pictureFromMap(
+                      partner.logoId,
+                      (partner.logoScreens ?? null) as unknown as ScreenFraming | null,
+                      withBaseAsset(framingMedia, partner.logoId, partner.logo)
+                    )}
                     alt={partner.logo ? partner.name : ""}
                     aspect="3 / 2"
                     rounded="sm"

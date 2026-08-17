@@ -46,6 +46,7 @@ import { ClipboardList, Image as ImageIcon, MapPin, Plus, X } from "lucide-react
 import type { ContentStatus, EventMode } from "@prisma/client";
 
 import { asApiClientError, patch, post } from "@/lib/client/fetcher";
+import type { ScreenFraming } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
 import { canPublish as canPublishPredicate, type PermissionSubject } from "@/lib/permissions";
 import type { RichTextDoc } from "@/lib/richtext";
@@ -71,6 +72,7 @@ import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
+import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
@@ -196,6 +198,44 @@ export interface AgendaItemValue {
   endsAt: string | null;
 }
 
+/** One gallery picture's framing, naming the photograph it belongs to. See `galleryScreens`. */
+export interface GalleryFramingValue {
+  assetId: string;
+  screens: ScreenFraming | null;
+}
+
+/**
+ * One entry per chosen picture, in the PICKER'S order.
+ *
+ * Rebuilt from the id list rather than patched, and the order matters twice: `useAutosave` decides "has
+ * this changed?" by comparing serialised snapshots, so entries that arrived in a different order each time
+ * would mark a clean form dirty (see `emptyScreenFraming` for the same argument about keys). Naming the
+ * asset in each entry is what lets the list be rebuilt at all — a re-order moves the entries and leaves
+ * every framing on the photograph it was drawn for. A picture taken out loses its framing with the row.
+ */
+function syncGalleryFramings(
+  current: readonly GalleryFramingValue[],
+  ids: readonly string[]
+): GalleryFramingValue[] {
+  // `as const` so each pair infers as a tuple rather than an array of the union of its two members.
+  const byAsset = new Map(current.map((entry) => [entry.assetId, entry.screens] as const));
+  return ids.map((assetId) => ({ assetId, screens: byAsset.get(assetId) ?? null }));
+}
+
+function framingFor(entries: readonly GalleryFramingValue[], assetId: string): ScreenFraming | null {
+  return entries.find((entry) => entry.assetId === assetId)?.screens ?? null;
+}
+
+/** One entry replaced, in place, so the serialised order is untouched. */
+function withGalleryFraming(
+  entries: readonly GalleryFramingValue[],
+  assetId: string,
+  screens: ScreenFraming | null
+): GalleryFramingValue[] {
+  if (!entries.some((entry) => entry.assetId === assetId)) return [...entries, { assetId, screens }];
+  return entries.map((entry) => (entry.assetId === assetId ? { assetId, screens } : entry));
+}
+
 export interface EventValue {
   title: string;
   slug: string;
@@ -217,7 +257,27 @@ export interface EventValue {
   capacity: number | null;
   isRegistrationOpen: boolean;
   coverId: string | null;
+  /**
+   * The cover's per-screen framing, or null — which is the resting state and stays it.
+   *
+   * ⚠ IT IS CLEARED WHENEVER `coverId` CHANGES, at both places below that can change it. A framing is a
+   * set of rectangles expressed as fractions of ONE photograph; carried onto another they frame whatever
+   * happens to sit at those coordinates. `MediaFramingField` owns that rule for the blocks that pick a
+   * picture through `EntityPicker`; this screen picks its cover through a `MediaPicker` dialog, so the rule
+   * is honoured here instead.
+   */
+  coverScreens: ScreenFraming | null;
   galleryIds: string[];
+  /**
+   * One entry per gallery picture: how that PLACEMENT is framed at each screen width, or null — the resting
+   * state, and what nearly every row carries.
+   *
+   * ⚠ EACH ENTRY NAMES ITS PICTURE, and is deliberately not a second array running in step with
+   * `galleryIds`. The framing belongs to a photograph in this gallery, so matching the two lists by index is
+   * what would frame the wrong picture the first time somebody re-orders them. `syncGalleryFramings` below
+   * keeps the set of entries equal to the set of chosen ids.
+   */
+  galleryScreens: GalleryFramingValue[];
   speakerIds: string[];
   /** Tag NAMES, as in the newsroom editor: a tag that does not exist yet is created on save. */
   tags: string[];
@@ -904,13 +964,35 @@ export function EventEditor({
                   icon={X}
                   onClick={() => {
                     setCover(null);
-                    setValue((current) => ({ ...current, coverId: null }));
+                    // The framing goes with the photograph it was drawn on — see `coverScreens`.
+                    setValue((current) => ({ ...current, coverId: null, coverScreens: null }));
                   }}
                 >
                   Take it off
                 </Button>
               ) : null}
             </div>
+
+            {/*
+              The panel, offered only once there is a photograph to frame — framing nothing is a control
+              with nothing to act on. `MediaFramingField` is the same picker and panel as one component,
+              and it is deliberately NOT used here: it wraps an `EntityPicker`, and this screen chooses its
+              cover through the `MediaPicker` dialog above so that an editor sees the picture at size
+              before committing to it. The rule that component exists to enforce — a change of photograph
+              clears the framing — is honoured at both call sites instead.
+
+              An event's cover is always drawn as an image (the picker only offers images, and the page,
+              the cards and the share card all draw it), so there is nothing to gate the panel on the way
+              HeroForm gates a video background.
+            */}
+            {cover !== null && value.coverId !== null ? (
+              <ScreenFramingPanel
+                label="Framing per screen size"
+                mediaId={value.coverId}
+                value={value.coverScreens}
+                onChange={(next) => setValue((current) => ({ ...current, coverScreens: next }))}
+              />
+            ) : null}
           </FormSection>
 
           <FormSection
@@ -922,10 +1004,54 @@ export function EventEditor({
               label="Gallery"
               help={`Up to ${GALLERY_MAX}, in the order they should be shown.`}
               ids={value.galleryIds}
-              onChange={(next) => setValue((current) => ({ ...current, galleryIds: next }))}
+              onChange={(next) =>
+                setValue((current) => ({
+                  ...current,
+                  galleryIds: next,
+                  // A picture added starts unframed and a picture taken out loses its framing with the row
+                  // it lived on — see `syncGalleryFramings`.
+                  galleryScreens: syncGalleryFramings(current.galleryScreens, next)
+                }))
+              }
               max={GALLERY_MAX}
               footnote="Captions and descriptions are written once in the media library and follow each picture wherever it is used."
             />
+
+            {/*
+              ONE PANEL PER PICTURE, UNDERNEATH THE PICKER, because the picker has no per-row slot to put
+              one in: it is an id chooser, and the framing belongs to `EventMedia.assetScreens` — this
+              event's own row for that photograph, not the file. The panels are in the picker's order and
+              numbered to match the list above, and each is shut until somebody opens it (its own header
+              explains why a supplementary control must not look like six things needing filling in).
+
+              The help sentence is stated ONCE, above the list, rather than repeated forty times.
+            */}
+            {value.galleryIds.length > 0 ? (
+              <div className="space-y-3">
+                <HelpText>
+                  Optionally frame a picture differently at each screen size, or use a different photograph
+                  on narrow screens. Anything left alone inherits from the next smaller size, and the
+                  smallest falls back to the picture&rsquo;s own crop. This applies to the gallery tile at
+                  the foot of the event&rsquo;s page; opening a picture full screen always shows the whole
+                  photograph.
+                </HelpText>
+
+                {value.galleryIds.map((assetId, index) => (
+                  <ScreenFramingPanel
+                    key={assetId}
+                    label={`Framing per screen size — picture ${index + 1}`}
+                    mediaId={assetId}
+                    value={framingFor(value.galleryScreens, assetId)}
+                    onChange={(next) =>
+                      setValue((current) => ({
+                        ...current,
+                        galleryScreens: withGalleryFraming(current.galleryScreens, assetId, next)
+                      }))
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
           </FormSection>
 
           <FormSection title="Tags" description="Cross-cutting labels, shared with the newsroom.">
@@ -1044,7 +1170,13 @@ export function EventEditor({
           const chosen = assets[0];
           if (!chosen) return;
           setCover(chosen);
-          setValue((current) => ({ ...current, coverId: chosen.id }));
+          // A different photograph invalidates every rectangle drawn on the old one, so the framing goes
+          // with it — the rule `MediaFramingField` enforces for the blocks (see `coverScreens`).
+          setValue((current) => ({
+            ...current,
+            coverId: chosen.id,
+            coverScreens: chosen.id === current.coverId ? current.coverScreens : null
+          }));
           setPickerOpen(false);
         }}
         kind="IMAGE"

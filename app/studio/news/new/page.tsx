@@ -70,6 +70,8 @@ export default async function StudioNewArticlePage() {
     body: null,
     mdx: "",
     coverId: null,
+    // Null is the resting state for a framing, and a new article has no cover to frame yet.
+    coverScreens: null,
     authorId: user.id,
     categoryId: null,
     tags: [],

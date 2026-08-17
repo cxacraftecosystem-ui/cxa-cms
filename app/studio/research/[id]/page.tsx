@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
@@ -54,6 +55,9 @@ function blankValue(): ResearchAreaFormValue {
     icon: "",
     accentColor: "",
     cover: null,
+    // Null, never an empty framing: six untouched buckets would be a decision nobody made, and the
+    // autosave compares serialised snapshots (see `emptyScreenFraming` in lib/media/screens.ts).
+    coverScreens: null,
     // Text, not a number: the editor holds every numeric field as typed so a half-typed value — an
     // empty box, a lone minus sign — survives the keystroke it was typed in.
     sortOrder: "0",
@@ -98,6 +102,9 @@ export default async function StudioResearchAreaPage({
           // The shared image columns — variants smallest first, so `pickVariant` can walk up — plus
           // `fileName`, which the preview thumbnail prints beside the picture.
           cover: { select: { ...MEDIA_IMAGE_SELECT_WITH_ID, fileName: true } },
+          // The framing beside the picture it frames, so the panel reopens on what is stored rather than
+          // on six empty buckets.
+          coverScreens: true,
           _count: {
             select: {
               projects: { where: { deletedAt: null } },
@@ -136,6 +143,9 @@ export default async function StudioResearchAreaPage({
         icon: area.icon ?? "",
         accentColor: area.accentColor ?? "",
         cover,
+        // A cast, not a parse: `Prisma.JsonValue` carries no shape, the route validates what goes in, and
+        // the panel reads every bucket defensively (lib/media/screens.ts).
+        coverScreens: (area.coverScreens ?? null) as unknown as ScreenFraming | null,
         sortOrder: String(area.sortOrder),
         status: area.status,
         // An ISO string, because that is what crosses the wire and what StatusControl reads.

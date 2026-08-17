@@ -137,7 +137,32 @@ export function MediaImage({
   crop: applyCrop = true,
   picture
 }: MediaImageProps) {
-  const crop = applyCrop ? storedCrop(media) : null;
+  /**
+   * BAND ZERO IS THE AUTHORITY WHENEVER A FRAMING WAS RESOLVED, on every path and not just the
+   * multi-band one.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ A FRAMING THAT NAMES AN ALTERNATE IN THE `base` BUCKET COLLAPSES TO ONE BAND, because every
+   * narrower-to-wider bucket then resolves to the same asset and the same rectangle — and `sameBand`
+   * exists precisely to collapse that. One band means the multi-band branch below does not run, so
+   * before this the ordinary path drew the `media` PROP and the alternate was ignored completely: an
+   * editor choosing "all sizes → this other photograph" saw the panel preview change, saved
+   * successfully, and the site kept the old picture for ever with nothing anywhere to explain it.
+   *
+   * Reading band zero here fixes that without touching the guarantee `media-render-check` holds
+   * hardest: for an EMPTY framing `resolvePicture` returns one band whose media is the base and whose
+   * crop is `storedCrop(base)` — exactly the two values this used to compute — so an unframed picture
+   * still renders byte-identically.
+   *
+   * ⚠ `crop={false}` STANDS DOWN THE WHOLE MECHANISM, bands included. It means "show me the entire
+   * file" — the studio's own preview of an asset — and a per-screen rectangle is still a rectangle. The
+   * chosen ASSET is honoured, its cropping is not, which is the only reading of that prop that leaves
+   * the preview able to do its job.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const frame = picture?.[0] ?? null;
+  const shown = frame ? frame.media : media;
+  const crop = applyCrop ? (frame ? frame.crop : storedCrop(media)) : null;
 
   /**
    * A CROP NEEDS A BIGGER SOURCE THAN THE FRAME DOES, and asking for the frame's width would quietly
@@ -151,18 +176,21 @@ export function MediaImage({
    * enough, and `mediaSrc` now prefers the original over a derivative narrower than it.
    */
   const sourceWidth = crop ? Math.round(targetWidth / crop.width) : targetWidth;
-  const src = mediaSrc(media, sourceWidth);
-  const alt = altOverride ?? mediaAlt(media);
-  const ratio = resolveAspect(aspect, media);
+  const src = mediaSrc(shown, sourceWidth);
+  const alt = altOverride ?? mediaAlt(shown);
+  const ratio = resolveAspect(aspect, shown);
   // Inline, not a Tailwind class: an arbitrary `aspect-[3/2]` assembled from data would be purged.
   const frameStyle = ratio ? { aspectRatio: ratio } : undefined;
   const radiusClass = RADIUS_CLASSES[rounded];
 
   if (!src) {
-    const label = media ? "Image unavailable" : "No image";
+    // `shown`, not `media`: when a framing names an alternate it is THAT asset that could not be
+    // addressed, and "No image" for a placement that does have one sends the reader looking in the
+    // wrong place.
+    const label = shown ? "Image unavailable" : "No image";
     // The specific cause, for whoever has to fix it. `configurationWarnings()` says the same thing in
     // Settings → Diagnostics; this is the copy that appears where the hole actually is.
-    const title = media
+    const title = shown
       ? cdnConfigured()
         ? "This asset has no stored variants yet, so there is nothing to display."
         : "No CDN or public storage base URL is configured, so stored images cannot be addressed."
@@ -246,32 +274,115 @@ export function MediaImage({
    * the server and in the browser (no hydration mismatch) and two placements resolving to the same bands
    * share one rule.
    */
-  const bands = picture && picture.length > 1 ? picture : null;
+  const bands = applyCrop && picture && picture.length > 1 ? picture : null;
   const bandClass = bands ? pictureClass(bands) : null;
 
   if (bands && bandClass) {
     const first = bands[0];
-    const bandSrc = mediaSrc(first.media, first.crop ? Math.round(targetWidth / first.crop.width) : targetWidth);
+
+    /**
+     * ⚠ EVERYTHING BELOW READS `first.media`, NOT THE `media` PROP, and the two are not always the same
+     * photograph. When the `base` bucket names an alternate, `resolvePicture` puts THAT asset in band
+     * zero — so deriving the alt text or the reserved aspect ratio from the prop describes a picture that
+     * is not on screen: a screen reader announcing the wrong subject, and a frame reserving the wrong
+     * shape until the real file lands.
+     */
+    const bandAlt = altOverride ?? mediaAlt(first.media);
+    const bandRatio = resolveAspect(aspect, first.media);
+    const bandFrameStyle = bandRatio ? { aspectRatio: bandRatio } : undefined;
+
+    /** A band's own source width: its crop, not the base's — see `sourceWidth` above for the reasoning. */
+    const widthFor = (band: (typeof bands)[number]) =>
+      band.crop ? Math.round(targetWidth / band.crop.width) : targetWidth;
+
+    const bandSrc = mediaSrc(first.media, widthFor(first));
+
+    /**
+     * A DIFFERENT PHOTOGRAPH PER SCREEN, which is the half of this feature the CSS cannot express.
+     *
+     * ══════════════════════════════════════════════════════════════════════════════════════════════
+     * ⚠ WITHOUT THIS THE ALTERNATES WERE STORED, VALIDATED, FETCHED, PREVIEWED — AND SILENTLY NOT
+     * DRAWN. `pictureCss` emits one rule per band, so the CROP changed at every breakpoint; but the
+     * markup carried a single `src` taken from band zero, so the wide-screen photograph never arrived.
+     * That is not merely a missing feature: `resolvePicture` restarts the crop from the alternate's own
+     * stored rectangle, so above the breakpoint the browser applied the ALTERNATE'S rectangle to the
+     * BASE's pixels — a doorway where a face should be. Two halves of one mechanism, and shipping only
+     * the CSS half was worse than shipping neither.
+     *
+     * `<source media=…>` is the standard answer and the only one the browser resolves BEFORE it fetches:
+     * `srcSet` with `sizes` chooses a WIDTH of one picture, never a different picture, and swapping `src`
+     * from JavaScript would download the wrong file first and need a client component to do it.
+     *
+     * ⚠ WIDEST FIRST, BECAUSE `<source>` IS FIRST-MATCH-WINS AND THE QUERIES ARE `min-width`. The bands
+     * arrive narrowest-first (the cascade order `pictureCss` needs, where a later rule wins). Emitted in
+     * that order, `min-width: 640px` would match at 1280px and beat the `lg` band that was meant to. The
+     * reversal is what makes the two orderings agree, and it is why this cannot simply reuse the band
+     * array as it comes.
+     *
+     * ⚠ AND EVERY BAND WITH A QUERY GETS A SOURCE, not only the ones naming a different asset. A framing
+     * that goes A → B → back to A needs the third band to say A out loud: drop it as "same as the
+     * fallback" and B's `min-width: 640px` still matches at 1024px, so B is served where A was asked for.
+     *
+     * The fallback stays a `next/image`, so a framing that only CROPS emits no `<source>` at all and this
+     * whole branch renders exactly the markup it did before — the guarantee `media-render-check` holds.
+     * The alternates are served as direct CDN derivative URLs rather than through the optimiser, with a
+     * 2x candidate where one exists: the optimiser cannot be addressed from a `<source>` without
+     * hand-building its private query string, and a wrong-but-clever URL there fails as a broken picture.
+     * ══════════════════════════════════════════════════════════════════════════════════════════════
+     */
+    const hasAlternates = bands.some((band) => band.media.objectKey !== first.media.objectKey);
+    const sources = !hasAlternates
+      ? []
+      : bands
+          .filter((band) => band.mediaQuery !== null)
+          .reverse()
+          .flatMap((band) => {
+            const width = widthFor(band);
+            const one = mediaSrc(band.media, width);
+            if (!one || band.mediaQuery === null) return [];
+            const two = mediaSrc(band.media, width * 2);
+            return [
+              {
+                bucket: band.bucket,
+                mediaQuery: band.mediaQuery,
+                srcSet: two && two !== one ? `${one} 1x, ${two} 2x` : one
+              }
+            ];
+          });
+
     if (bandSrc) {
+      const image = (
+        <Image
+          src={bandSrc}
+          alt={bandAlt}
+          fill
+          sizes={sizes}
+          priority={priority}
+          unoptimized={/\.svg(\?|$)/i.test(bandSrc)}
+          placeholder={first.media.blurDataUrl ? "blur" : "empty"}
+          blurDataURL={first.media.blurDataUrl ?? undefined}
+          className={cn("cxa-crop-img object-cover", imageClassName)}
+        />
+      );
+
       return (
-        <div style={frameStyle} className={cn("relative overflow-hidden", radiusClass, className)}>
+        <div style={bandFrameStyle} className={cn("relative overflow-hidden", radiusClass, className)}>
           {/*
             Values are percentages computed from four numbers and the selector is a hash of them, so no
             stored text reaches inside this element. See the note on `pictureCss`.
           */}
           <style>{pictureCss(bands, bandClass)}</style>
           <span className={cn("cxa-crop", bandClass)}>
-            <Image
-              src={bandSrc}
-              alt={alt}
-              fill
-              sizes={sizes}
-              priority={priority}
-              unoptimized={/\.svg(\?|$)/i.test(bandSrc)}
-              placeholder={first.media.blurDataUrl ? "blur" : "empty"}
-              blurDataURL={first.media.blurDataUrl ?? undefined}
-              className={cn("cxa-crop-img object-cover", imageClassName)}
-            />
+            {sources.length > 0 ? (
+              <picture>
+                {sources.map((source) => (
+                  <source key={source.bucket} media={source.mediaQuery} srcSet={source.srcSet} />
+                ))}
+                {image}
+              </picture>
+            ) : (
+              image
+            )}
           </span>
         </div>
       );

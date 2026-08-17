@@ -10,7 +10,6 @@ import {
   forbidden,
   notFound,
   ok,
-  parseJson,
   route,
   userAgent
 } from "@/lib/api";
@@ -20,6 +19,7 @@ import { isLive } from "@/lib/content";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { indexDocument, removeDocument, searchDocFromProject, searchUrlFor } from "@/lib/search/index";
+import { parseStudioJson, screenFramingField } from "@/lib/studio/crud";
 import { clamp } from "@/lib/utils";
 
 /**
@@ -87,6 +87,12 @@ const PatchBody = z.object({
   endedOn: z.coerce.date().nullable().optional(),
   progress: z.number().int().nullable().optional(),
   coverId: idField.nullable().optional(),
+  /**
+   * Per-screen framing for the cover. `.nullable().optional()` — the two are different statements and
+   * both are needed: absent means "the form did not send it, leave the column alone", null means "the
+   * editor cleared it". See `screenFramingField` in lib/studio/crud.ts.
+   */
+  coverScreens: screenFramingField(),
   members: z
     .array(z.object({ personId: idField, role: z.string().trim().max(160).nullable().optional() }))
     .max(MAX_MEMBERS, `A project can name up to ${MAX_MEMBERS} people.`)
@@ -103,7 +109,17 @@ const PatchBody = z.object({
     .max(MAX_MILESTONES, `A project can have up to ${MAX_MILESTONES} milestones.`)
     .optional(),
   media: z
-    .array(z.object({ assetId: idField, caption: z.string().trim().max(600).nullable().optional() }))
+    .array(
+      z.object({
+        assetId: idField,
+        caption: z.string().trim().max(600).nullable().optional(),
+        /**
+         * The row's per-screen framing, accepted beside the id it frames. Without it here the panel in the
+         * editor would be a control that saves successfully and changes nothing — see `coverScreens` above.
+         */
+        assetScreens: screenFramingField()
+      })
+    )
     .max(MAX_GALLERY, `A project gallery can hold up to ${MAX_GALLERY} pictures.`)
     .optional(),
   fileIds: z.array(idField).max(MAX_LINKS).optional(),
@@ -291,6 +307,9 @@ async function replaceProjectSets(tx: TxClient, projectId: string, body: Project
           projectId,
           assetId: entry.assetId,
           caption: entry.caption?.trim() || null,
+          // The list is replaced whole on every save, so this row is a create either way and the framing
+          // has to come with it or a save would be how an editor loses one.
+          assetScreens: jsonColumn(entry.assetScreens),
           position
         }))
       });
@@ -413,7 +432,14 @@ export const GET = route(async (request: NextRequest, context: { params: Promise
       milestones: { orderBy: { position: "asc" } },
       media: {
         orderBy: { position: "asc" },
-        select: { assetId: true, caption: true, position: true, asset: EDITOR_MEDIA_SELECT }
+        // The framing rides in the same select as the picture it frames, wherever the row is read.
+        select: {
+          assetId: true,
+          caption: true,
+          assetScreens: true,
+          position: true,
+          asset: EDITOR_MEDIA_SELECT
+        }
       },
       files: {
         orderBy: { position: "asc" },
@@ -445,7 +471,7 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   );
 
   const { id } = await context.params;
-  const body = await parseJson(request, PatchBody);
+  const body = await parseStudioJson(request, PatchBody);
 
   const before = await prisma.project.findFirst({ where: { id, deletedAt: null } });
   if (!before) throw notFound("That project");
@@ -493,6 +519,9 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   // Clamped on the server as well as in the editor: a bar that can read 140% is worse than no bar.
   if ("progress" in body) data.progress = clamp(body.progress ?? 0, 0, 100);
   if ("coverId" in body) data.coverId = body.coverId ?? null;
+  // Written through beside the picture it frames. A framing the route accepted and then dropped would be
+  // a control in the studio that silently does nothing.
+  if ("coverScreens" in body) data.coverScreens = jsonColumn(body.coverScreens);
   if (body.isFeatured !== undefined) data.isFeatured = body.isFeatured;
   if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder;
 

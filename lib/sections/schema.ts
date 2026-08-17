@@ -1,4 +1,6 @@
 import { z } from "zod";
+
+import { screenFramingPayload } from "@/lib/media/framing-schema";
 import type { SectionType } from "@prisma/client";
 
 import { blockTypesetSchema } from "@/lib/typography/typeset";
@@ -114,49 +116,12 @@ function mediaId(help: string) {
 }
 
 /**
- * Per-screen framing for one picture: which part of it, and optionally which photograph, at each width.
- *
- * ══════════════════════════════════════════════════════════════════════════════════════════════
- * ⚠ `.nullable().default(null)`, NOT `.default(emptyScreenFraming)`, AND THE DIFFERENCE IS STORED BYTES.
- * Every HERO row in the database was saved before this field existed. Defaulting to a full framing would
- * mean the next autosave of every one of them wrote six empty objects into `PageSection.data` — payload
- * for a decision nobody has made. `null` is the honest representation of "nobody has framed this", it is
- * what `resolvePicture` already treats as "use the asset's own crop", and the panel builds the six
- * buckets the first time an editor actually sets one.
- *
- * ⚠ THE SIX KEYS ARE WRITTEN OUT RATHER THAN GENERATED FROM `SCREEN_BUCKETS`. `z.object` needs a literal
- * shape to infer a useful type from, and building it with `Object.fromEntries` plus a cast would give
- * `SectionPayloads["HERO"]` an index signature instead of six known keys — so a typo in a bucket name
- * would compile. `screens-check` asserts these are exactly `SCREEN_BUCKET_IDS`, which is what keeps the
- * two in step; adding a bucket is then a failing assertion rather than a field that silently never saves.
- *
- * The bounds are the same ones `isUsableCrop` enforces at render (lib/media/crop.ts). Stating them here
- * as well is not duplication for its own sake: this is where an editor can be TOLD, and the render side's
- * test is what stops a hand-edited row drawing a broken frame. A rectangle outside these bounds degrades
- * to "no crop for this bucket", never to an empty picture.
- * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * Per-screen framing for one picture. The Zod object itself lives in lib/media/framing-schema.ts,
+ * because `lib/studio/crud.ts` validates the same shape for the twelve RECORD columns and cannot import
+ * this module — it is `server-only` and this one is imported by studio client components. One schema both
+ * can reach beats two kept in step by a check script.
  */
-const screenOverrideSchema = z.object({
-  mediaId: z.string().trim().max(40, "That does not look like a media reference.").nullable().default(null),
-  cropX: z.number().min(0).max(1).nullable().default(null),
-  cropY: z.number().min(0).max(1).nullable().default(null),
-  cropWidth: z.number().min(0).max(1).nullable().default(null),
-  cropHeight: z.number().min(0).max(1).nullable().default(null),
-  cropAspect: z.string().trim().max(20).nullable().default(null)
-});
-
-export const screenFramingSchema = z.object({
-  base: screenOverrideSchema,
-  sm: screenOverrideSchema,
-  md: screenOverrideSchema,
-  lg: screenOverrideSchema,
-  xl: screenOverrideSchema,
-  "2xl": screenOverrideSchema
-});
-
-function screenFraming(help: string) {
-  return screenFramingSchema.nullable().default(null).describe(help);
-}
+const screenFraming = screenFramingPayload;
 
 /** A hand-picked list of record ids. The cap is stated in the message, because a silent cap is a lie. */
 function idList(max: number, help: string) {

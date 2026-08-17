@@ -26,6 +26,7 @@ import {
   publishTransition,
   requiredText,
   resolveTagIds,
+  screenFramingField,
   slugSchema,
   statusSchema,
   syncSearchDocument
@@ -72,6 +73,11 @@ const articleBodySchema = z.object({
   body: z.unknown().optional(),
   mdx: optionalText(200_000),
   coverId: optionalId(),
+  /**
+   * The cover's per-screen framing. Accepted here because a form that sends a field the route strips is a
+   * control that silently does nothing — which is the whole of the bug the single crop shipped with.
+   */
+  coverScreens: screenFramingField(),
   authorId: optionalId(),
   categoryId: optionalId(),
   tags: z
@@ -101,6 +107,9 @@ const POST_SELECT = {
   body: true,
   mdx: true,
   coverId: true,
+  // Selected beside the cover it frames, so the editor reads back what it saved and a revision holds the
+  // framing as well as the photograph.
+  coverScreens: true,
   authorId: true,
   categoryId: true,
   isFeatured: true,
@@ -266,6 +275,20 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
             ...(body.subtitle !== undefined ? { subtitle: body.subtitle } : {}),
             ...(body.excerpt !== undefined ? { excerpt: body.excerpt } : {}),
             ...(body.coverId !== undefined ? { coverId: body.coverId } : {}),
+            /*
+             * The framing, written like the picture id beside it — a field the route accepted and did not
+             * write is the same silent no-op as one it stripped. `Prisma.JsonNull` rather than `null`,
+             * because on a Json column `null` means "ignore this field" and the framing would never clear
+             * (contract §14).
+             */
+            ...(body.coverScreens !== undefined
+              ? {
+                  coverScreens:
+                    body.coverScreens === null
+                      ? Prisma.JsonNull
+                      : (body.coverScreens as unknown as Prisma.InputJsonValue)
+                }
+              : {}),
             ...(body.authorId !== undefined ? { authorId: body.authorId } : {}),
             ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
             ...(body.isFeatured !== undefined ? { isFeatured: body.isFeatured } : {}),

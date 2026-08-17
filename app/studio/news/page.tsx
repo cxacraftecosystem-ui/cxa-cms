@@ -7,7 +7,9 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { siteUrl } from "@/lib/env";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { canAuthor, canEditRecord, canManageContent, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import { CENTRE_TIME_ZONE, centreZoneName } from "@/components/site/EventDateBlock";
@@ -153,6 +155,11 @@ export default async function StudioNewsPage({
         mdx: true,
         author: { select: { name: true } },
         category: { select: { name: true } },
+        // The cover's id and its framing beside the photograph. `coverId` because a framing resolves the
+        // base picture BY ID (lib/media/screens.ts), and `coverScreens` because a list that fetched the
+        // picture without its framing would show every framed cover unframed on this screen alone.
+        coverId: true,
+        coverScreens: true,
         cover: { select: MEDIA_IMAGE_SELECT }
       }
     }),
@@ -190,7 +197,18 @@ export default async function StudioNewsPage({
   const now = new Date();
   const mayPublish = canPublish(user);
 
-  const rows: StudioPostRow[] = postRows.map((row) => {
+  /**
+   * The alternate covers the shown framings name, in ONE query.
+   *
+   * Unconditional, because it costs NO query at all when nobody has framed a cover, which is the common
+   * case — guarding it per row is how one row ends up guarded wrongly (lib/media/framing.ts). The cast is
+   * deliberate: `Prisma.JsonValue` carries no shape, this studio's own route validates the value with
+   * `screenFramingField()` on the way in, and the resolver reads every bucket defensively.
+   */
+  const framings = postRows.map((row) => (row.coverScreens ?? null) as unknown as ScreenFraming | null);
+  const framingMedia = await framingAssets(...framings);
+
+  const rows: StudioPostRow[] = postRows.map((row, index) => {
     const live = isLive(row, now);
     return {
       id: row.id,
@@ -203,6 +221,13 @@ export default async function StudioNewsPage({
       categoryName: row.category?.name ?? null,
       authorName: row.author?.name ?? null,
       cover: row.cover,
+      // One band when nobody framed this cover, which `MediaImage` ignores — so an unframed thumbnail
+      // draws exactly as it did before the column existed.
+      picture: pictureFromMap(
+        row.coverId,
+        framings[index],
+        withBaseAsset(framingMedia, row.coverId, row.cover)
+      ),
       readingMinutes: row.readingMinutes,
       writingMode: (row.mdx ?? "").trim().length > 0 ? "mdx" : "formatted",
       publishedLabel: row.publishedAt ? dateFormatter.format(row.publishedAt) : null,

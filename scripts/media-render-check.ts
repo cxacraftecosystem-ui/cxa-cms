@@ -152,6 +152,107 @@ async function main(): Promise<void> {
     );
   }
 
+  /**
+   * ── 4b. A DIFFERENT PHOTOGRAPH PER SCREEN, which is what section 3 does NOT cover ──────────
+   *
+   * ⚠ THIS SECTION EXISTS BECAUSE ITS ABSENCE LET A REAL BUG SHIP. Section 3 sets `mediaId: null` — a
+   * CROP-only framing — so every assertion in this file passed while the alternate-photograph half of the
+   * feature drew nothing at all: `pictureCss` changed the rectangle at each breakpoint and the markup
+   * carried one `src` from band zero. Worse than a missing feature, because `resolvePicture` restarts the
+   * crop from the alternate's own stored rectangle, so above the breakpoint the ALTERNATE'S rectangle was
+   * applied to the BASE's pixels. A fixture that never names a second asset cannot see any of that.
+   */
+  {
+    /** A visibly different asset: another key, and its own stored crop, which is what made it dangerous. */
+    const ALTERNATE: MediaLike = {
+      ...PLAIN,
+      objectKey: "probe/wide.svg",
+      altText: "The wide subject",
+      cropX: 0.5,
+      cropY: 0.5,
+      cropWidth: 0.5,
+      cropHeight: 0.5
+    };
+
+    const framing = setBucket(emptyScreenFraming(), "lg", {
+      mediaId: "alt-1",
+      cropX: null,
+      cropY: null,
+      cropWidth: null,
+      cropHeight: null,
+      cropAspect: null
+    });
+    const picture = resolvePicture(CROPPED, framing, (id) => (id === "alt-1" ? ALTERNATE : null));
+    check(picture?.length === 2, "an alternate resolves to two bands", `got ${picture?.length}`);
+    check(
+      picture?.[1]?.media.objectKey === ALTERNATE.objectKey,
+      "and the wide band carries the alternate",
+      String(picture?.[1]?.media.objectKey)
+    );
+
+    const html = render({ media: CROPPED, picture });
+    check(html.includes("<picture>"), "an alternate emits a <picture>", html);
+    check(html.includes("probe/wide.svg"), "and the alternate's own file reaches the markup", html);
+    check(
+      /<source[^>]*media="\(min-width: 1024px\)"/.test(html),
+      "behind the band's own media query",
+      html
+    );
+    // The fallback is the BASE, and it must still be a next/image so nothing loses the optimiser.
+    check(html.includes('data-nimg="fill"'), "the fallback is still next/image", html);
+    check(html.includes("probe/subject.svg"), "and it is still the base photograph", html);
+    // ⚠ Widest first: `<source>` is first-match-wins over `min-width`, the opposite of the cascade.
+    const firstSource = html.indexOf("<source");
+    const fallbackImg = html.indexOf("<img");
+    check(firstSource !== -1 && firstSource < fallbackImg, "every source precedes the fallback", html);
+
+    /**
+     * ⚠ A → B → A NEEDS THREE SOURCES, NOT ONE. Dropping the third band as "same as the fallback" leaves
+     * B's `min-width: 640px` matching at 1024px, so B is served exactly where A was asked for.
+     */
+    const roundTrip = setBucket(
+      setBucket(emptyScreenFraming(), "sm", {
+        mediaId: "alt-1",
+        cropX: null,
+        cropY: null,
+        cropWidth: null,
+        cropHeight: null,
+        cropAspect: null
+      }),
+      "lg",
+      { mediaId: "base-1", cropX: null, cropY: null, cropWidth: null, cropHeight: null, cropAspect: null }
+    );
+    const backAgain = resolvePicture(CROPPED, roundTrip, (id) =>
+      id === "alt-1" ? ALTERNATE : id === "base-1" ? CROPPED : null
+    );
+    const roundTripHtml = render({ media: CROPPED, picture: backAgain });
+    const sourceCount = (roundTripHtml.match(/<source/g) ?? []).length;
+    check(sourceCount >= 2, "a return to the base still emits its own source", `got ${sourceCount}`);
+    check(
+      roundTripHtml.indexOf('media="(min-width: 1024px)"') <
+        roundTripHtml.indexOf('media="(min-width: 640px)"'),
+      "and the wider query is still listed first",
+      roundTripHtml
+    );
+
+    /** The alt text and the frame must describe band zero, not the prop, when the two differ. */
+    const baseSwapped = setBucket(emptyScreenFraming(), "base", {
+      mediaId: "alt-1",
+      cropX: null,
+      cropY: null,
+      cropWidth: null,
+      cropHeight: null,
+      cropAspect: null
+    });
+    const swapped = resolvePicture(CROPPED, baseSwapped, (id) => (id === "alt-1" ? ALTERNATE : null));
+    const swappedHtml = render({ media: CROPPED, picture: swapped, alt: undefined });
+    check(
+      swappedHtml.includes("The wide subject"),
+      "a base-bucket alternate supplies its own alt text",
+      swappedHtml
+    );
+  }
+
   // ── 5. The placeholder is untouched by any of this ────────────────────────
   {
     const html = render({ media: null });

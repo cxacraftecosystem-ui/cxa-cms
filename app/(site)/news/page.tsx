@@ -36,6 +36,7 @@ import { Reveal } from "@/components/motion";
 import {
   ARTICLE_LIST_ORDER,
   ArticleCard,
+  articleCardAssets,
   articleCardSelect
 } from "@/components/site/ArticleMeta";
 import { CardGrid } from "@/components/site/CardGrid";
@@ -303,6 +304,15 @@ export default async function NewsIndexPage({
   const leadIsFeatured = lead !== undefined && featured !== null;
   const rest = lead && !leadIsFeatured ? rows.slice(1) : rows;
 
+  /**
+   * The photographs the covers on this page need to be framed, in one query for the whole page.
+   *
+   * Only the cards that will actually be DRAWN are handed over — the lead plus the grid — because on a
+   * page where the lead came from the list itself `rows[0]` is rendered once, not twice. `articleCardAssets`
+   * issues no query when nothing here is framed, so this is unguarded and costs nothing in the common case.
+   */
+  const cardAssets = await articleCardAssets(lead ? [lead, ...rest] : rest);
+
   // A `?page=` past the end. Distinguished from "no matches" because the remedy is different: one
   // needs the filters cleared, the other needs page one.
   const pastTheEnd = total > 0 && rows.length === 0;
@@ -376,7 +386,13 @@ export default async function NewsIndexPage({
                 />
                 <div className="mt-6">
                   {/* The one card above the fold, so the one `priority` image on the page. */}
-                  <ArticleCard post={lead} variant="lead" headingLevel={3} priority />
+                  <ArticleCard
+                    post={lead}
+                    assets={cardAssets}
+                    variant="lead"
+                    headingLevel={3}
+                    priority
+                  />
                 </div>
               </section>
             ) : null}
@@ -393,7 +409,7 @@ export default async function NewsIndexPage({
                 <div className={lead ? "mt-6" : undefined}>
                   <CardGrid columns={3} stagger>
                     {rest.map((post) => (
-                      <ArticleCard key={post.id} post={post} headingLevel={3} />
+                      <ArticleCard key={post.id} post={post} assets={cardAssets} headingLevel={3} />
                     ))}
                   </CardGrid>
                 </div>

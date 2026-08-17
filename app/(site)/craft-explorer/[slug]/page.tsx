@@ -52,6 +52,8 @@ import { TagList } from "@/components/site/TagList";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type Picture, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_FIGURE_SELECT } from "@/lib/media/select";
 import { mediaAlt } from "@/lib/media/url";
 import { isEmptyRichText, parseRichText } from "@/lib/richtext";
@@ -106,6 +108,13 @@ const loadCraft = cache(async (slug: string) =>
           position: true,
           caption: true,
           restorationPhase: true,
+          /**
+           * This ROW's per-screen framing, in the same select as the photograph it frames — the pairing
+           * the header of scripts/media-select-check.ts exists to enforce. On the row rather than the file
+           * because the same photograph is framed one way in this gallery and another in an album. The
+           * base id comes from `asset.id`, which `MEDIA_SELECT` already carries.
+           */
+          assetScreens: true,
           asset: { select: MEDIA_SELECT }
         }
       }
@@ -160,6 +169,17 @@ interface Placement {
   caption: string | null;
   phase: "before" | "after" | null;
   item: LightboxItem;
+  /**
+   * The row's framing, resolved. Null where nobody framed it, which is nearly every picture.
+   *
+   * ⚠ IT IS USED ON THE GALLERY TILE AND NOWHERE ELSE, and the two omissions are deliberate. The LIGHTBOX
+   * draws the whole photograph at its own proportions (`!object-contain` in MediaLightbox.tsx), so there is
+   * no per-width frame for a rectangle to fit. And a restoration PAIR is two photographs registered against
+   * each other in one frame whose shape is the "after"'s — re-framing one half per width would slide the
+   * seam across the subject, so `BeforeAfterSlider` is handed the plain rows and the editor is not offered
+   * the panel for a paired picture (CraftEditor).
+   */
+  picture: Picture | null;
 }
 
 /**
@@ -244,10 +264,28 @@ export default async function CraftPage({ params }: CraftPageProps) {
   const craft = await loadCraft(slug);
   if (!craft) notFound();
 
-  const placements: Placement[] = craft.media.map((placement) => ({
+  /**
+   * The gallery's framings, in ONE query for the whole page.
+   *
+   * `framingAssets` costs no query when nothing is framed, which is nearly every craft, so it is called
+   * without a guard (lib/media/framing.ts). It is asked for the cover's framing at the same time — one
+   * round trip for the page rather than one for the cover and another for the pictures.
+   */
+  const mediaFramings = craft.media.map(
+    (placement) => (placement.assetScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const coverFraming = (craft.coverScreens ?? null) as unknown as ScreenFraming | null;
+  const framingMedia = await framingAssets(coverFraming, ...mediaFramings);
+
+  const placements: Placement[] = craft.media.map((placement, index) => ({
     id: placement.asset.id,
     caption: placement.caption ?? placement.asset.caption,
     phase: phaseOf(placement.restorationPhase),
+    picture: pictureFromMap(
+      placement.asset.id,
+      mediaFramings[index] ?? null,
+      withBaseAsset(framingMedia, placement.asset.id, placement.asset)
+    ),
     item: {
       id: placement.asset.id,
       objectKey: placement.asset.objectKey,
@@ -272,6 +310,23 @@ export default async function CraftPage({ params }: CraftPageProps) {
   const { pairs, singles } = splitPhases(placements);
 
   const hasBody = !isEmptyRichText(parseRichText(craft.body));
+
+  /**
+   * The cover, framed per screen width.
+   *
+   * The column is `Json?`, so the shape is a claim rather than a proof: the studio route validates it with
+   * `screenFramingField()` on the way in, and `resolvePicture` reads every bucket defensively — an
+   * out-of-range rectangle degrades to "no crop" rather than drawing a broken frame.
+   *
+   * The alternates come out of `framingMedia` above, which asked for the cover's and the gallery's in one
+   * query — `framingAssets` costs nothing at all when nothing is framed (lib/media/framing.ts). With no
+   * framing `pictureFromMap` returns a single band and the hero draws what it always drew.
+   */
+  const coverPicture = pictureFromMap(
+    craft.coverId,
+    coverFraming,
+    withBaseAsset(framingMedia, craft.coverId, craft.cover)
+  );
 
   /**
    * "Related" is the four connections an editor actually RECORDED — the region, the school, a shared
@@ -436,6 +491,7 @@ export default async function CraftPage({ params }: CraftPageProps) {
         }
         description={craft.summary}
         media={craft.cover}
+        picture={coverPicture}
         breadcrumbs={[
           { name: "Home", href: "/" },
           { name: "Craft Explorer", href: EXPLORER_PATH },
@@ -619,6 +675,7 @@ export default async function CraftPage({ params }: CraftPageProps) {
                           <div className="relative">
                             <MediaImage
                               media={placement.item}
+                              picture={placement.picture}
                               aspect="4 / 3"
                               rounded="lg"
                               sizes="(min-width: 1024px) 22rem, (min-width: 640px) 45vw, 92vw"

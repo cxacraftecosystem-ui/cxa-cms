@@ -8,6 +8,7 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ROLES_DESCENDING, canAuthor, canEditRecord, hasRank } from "@/lib/permissions";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -59,6 +60,9 @@ const loadPost = cache(async (id: string) => {
       body: true,
       mdx: true,
       coverId: true,
+      // The framing is fetched with the cover it frames: the panel opens on what is stored, and a form
+      // handed nothing would silently offer to overwrite a framing already in force.
+      coverScreens: true,
       authorId: true,
       categoryId: true,
       status: true,
@@ -154,6 +158,9 @@ export default async function StudioArticlePage({
     body: post.body as unknown,
     mdx: post.mdx ?? "",
     coverId: post.coverId,
+    // Prisma answers a JSONB column as `JsonValue`; the shape belongs to lib/media/screens.ts, and the
+    // route validates it with the same Zod schema on the way back in.
+    coverScreens: (post.coverScreens ?? null) as unknown as ScreenFraming | null,
     authorId: post.authorId,
     categoryId: post.categoryId,
     tags: post.tags.map((entry) => entry.tag.name),

@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
@@ -75,6 +76,7 @@ function blankValue(): CraftFormValue {
     latitude: "",
     longitude: "",
     cover: null,
+    coverScreens: null,
     media: [],
     modelObjectKey: "",
     isFeatured: false,
@@ -125,8 +127,16 @@ export default async function StudioCraftPage({
             status: true,
             publishedAt: true,
             cover: { select: MEDIA_SELECT },
+            coverScreens: true,
             media: {
-              select: { caption: true, restorationPhase: true, asset: { select: MEDIA_SELECT } },
+              // Each row's own framing beside its picture, for the same reason `coverScreens` is above:
+              // the panel has to open on what is stored, or the next save posts null back and clears it.
+              select: {
+                caption: true,
+                restorationPhase: true,
+                assetScreens: true,
+                asset: { select: MEDIA_SELECT }
+              },
               orderBy: { position: "asc" }
             }
           }
@@ -170,10 +180,18 @@ export default async function StudioCraftPage({
         latitude: craft.latitude === null ? "" : String(craft.latitude),
         longitude: craft.longitude === null ? "" : String(craft.longitude),
         cover,
+        /**
+         * The column is `Json?`, so the shape is a claim rather than a proof: the route validates it with
+         * `screenFramingField()` on the way in, and the editor's framing panel reads every bucket
+         * defensively — a rectangle it cannot use shows as "not set" rather than as a broken row.
+         */
+        coverScreens: (craft.coverScreens ?? null) as unknown as ScreenFraming | null,
         media: craft.media.map((entry) => ({
           asset: { ...entry.asset, variants: entry.asset.variants },
           caption: entry.caption ?? "",
-          phase: toPhase(entry.restorationPhase)
+          phase: toPhase(entry.restorationPhase),
+          // A cast rather than a parse, on the same terms as `coverScreens` above it.
+          assetScreens: (entry.assetScreens ?? null) as unknown as ScreenFraming | null
         })),
         modelObjectKey: craft.modelObjectKey ?? "",
         isFeatured: craft.isFeatured,

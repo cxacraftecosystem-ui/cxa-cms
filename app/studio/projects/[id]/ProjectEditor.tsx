@@ -55,10 +55,12 @@ import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker, lookupResolvePath, type LookupItem, type LookupResponse } from "@/components/studio/fields/EntityPicker";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
+import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
+import type { ScreenFraming } from "@/lib/media/screens";
 
 /** Just enough of a media row to preview it and remember which one it is. Satisfies `MediaLike`. */
 export interface EditorMedia {
@@ -97,6 +99,13 @@ export interface ProjectMilestoneValue {
 export interface ProjectGalleryValue {
   asset: EditorMedia;
   caption: string;
+  /**
+   * How THIS PICTURE IN THIS GALLERY is framed at each screen width, or null — the resting state, and what
+   * nearly every row carries. It belongs to the row rather than to the file, so the same photograph can be
+   * framed one way here and another in a gallery album. A row never changes its picture (a different
+   * photograph is a different row), so unlike `coverScreens` there is nothing to clear it against.
+   */
+  assetScreens: ScreenFraming | null;
 }
 
 export interface ProjectFaqValue {
@@ -122,6 +131,12 @@ export interface ProjectFormValue {
   /** Held as text; 0–100 once converted. Zero means "not tracked". */
   progress: string;
   cover: EditorMedia | null;
+  /**
+   * How the cover is framed at each screen width — optionally a different rectangle, optionally a
+   * different photograph. Null is the resting state and means nobody has framed it, which is what almost
+   * every project stores; never an empty framing (see `emptyScreenFraming` in lib/media/screens.ts).
+   */
+  coverScreens: ScreenFraming | null;
   members: ProjectMemberValue[];
   milestones: ProjectMilestoneValue[];
   gallery: ProjectGalleryValue[];
@@ -236,6 +251,9 @@ function toPayload(value: ProjectFormValue) {
     // Clamped here as well as on the server: a bar that can read 140% is worse than no bar (schema).
     progress: clamp(toIntOrZero(value.progress), 0, 100),
     coverId: value.cover?.id ?? null,
+    // Sent beside the picture it frames. The route accepts it as `.nullable().optional()`, so null here
+    // means "the editor cleared the framing" rather than "leave the column alone".
+    coverScreens: value.coverScreens,
     members: value.members.map((member, position) => ({
       personId: member.personId,
       role: orNull(member.role),
@@ -253,6 +271,9 @@ function toPayload(value: ProjectFormValue) {
     media: value.gallery.map((entry, position) => ({
       assetId: entry.asset.id,
       caption: orNull(entry.caption),
+      // Beside the id it frames, on every save. The route accepts it as `.nullable().optional()`, so null
+      // here means "this row's panel was cleared" rather than "leave the column alone".
+      assetScreens: entry.assetScreens,
       position
     })),
     fileIds: value.fileIds,
@@ -413,17 +434,30 @@ export function ProjectEditor({
           const already = new Set(current.gallery.map((entry) => entry.asset.id));
           const additions = assets
             .filter((asset) => !already.has(asset.id))
-            .map((asset) => ({ asset: toEditorMedia(asset), caption: "" }));
+            // A new row starts unframed — null, never an empty framing (`emptyScreenFraming`'s header
+            // explains why six blank buckets would mark a clean form dirty).
+            .map((asset) => ({ asset: toEditorMedia(asset), caption: "", assetScreens: null }));
           // The cap is enforced here as well as stated below it, so a picker with forty selections
           // cannot smuggle in more than the list holds.
           return { ...current, gallery: [...current.gallery, ...additions].slice(0, MAX_GALLERY) };
         });
       } else if (first) {
-        update({ cover: toEditorMedia(first) });
+        /**
+         * ⚠ A DIFFERENT PHOTOGRAPH CLEARS THE FRAMING. A framing is a set of rectangles expressed as
+         * fractions of ONE picture, plus any alternates chosen to go with it; swap the picture underneath
+         * and every rectangle now frames whatever happens to sit at those coordinates — a doorway instead
+         * of a face. `MediaFramingField` makes this rule once for the block editors; this screen picks its
+         * cover through the media dialog rather than an `EntityPicker`, so it has to state it here.
+         */
+        setValue((current) => ({
+          ...current,
+          cover: toEditorMedia(first),
+          coverScreens: current.cover?.id === first.id ? current.coverScreens : null
+        }));
       }
       setPicker(null);
     },
-    [picker, settleBody, update]
+    [picker, settleBody]
   );
 
   // ── Team ─────────────────────────────────────────────────────────────────────────────────────
@@ -899,7 +933,9 @@ export function ProjectEditor({
                     variant="ghost"
                     size="sm"
                     icon={Trash2}
-                    onClick={() => update({ cover: null })}
+                    // The framing goes with the picture: rectangles measured on a photograph that is no
+                    // longer here would be applied to whatever replaced it.
+                    onClick={() => update({ cover: null, coverScreens: null })}
                   >
                     Remove the picture
                   </Button>
@@ -917,6 +953,27 @@ export function ProjectEditor({
               Choose a picture
             </Button>
           )}
+
+          {/*
+            Offered only once there is a picture, because framing nothing is a control with nothing to act
+            on — the same condition `MediaFramingField` applies on the section forms. There is no second
+            condition to apply here, unlike the hero's: a project's cover is ALWAYS drawn as an image, both
+            full-bleed behind the title on its own page and as a card in four listings.
+
+            The panel alone rather than `MediaFramingField`, which pairs the panel with an `EntityPicker` —
+            this screen picks its cover through the media dialog above. The rule that component exists to
+            hold, that a change of picture clears the framing, is therefore stated at `onPicked` instead.
+          */}
+          {value.cover ? (
+            <div className="mt-3">
+              <ScreenFramingPanel
+                label="Framing per screen size"
+                mediaId={value.cover.id}
+                value={value.coverScreens}
+                onChange={(next) => update({ coverScreens: next })}
+              />
+            </div>
+          ) : null}
         </FieldBlock>
 
         <Switch
@@ -1134,6 +1191,10 @@ function GalleryEditor({
     onChange(items.map((entry, position) => (position === index ? { ...entry, caption } : entry)));
   };
 
+  const setFraming = (index: number, assetScreens: ScreenFraming | null) => {
+    onChange(items.map((entry, position) => (position === index ? { ...entry, assetScreens } : entry)));
+  };
+
   const missingDescriptions = items.filter((entry) => entry.asset.altText === null).length;
 
   return (
@@ -1197,6 +1258,28 @@ function GalleryEditor({
                     the same thing — add a description in the media library.
                   </HelpText>
                 ) : null}
+
+                {/*
+                  THIS ROW'S FRAMING, which is a different column from the cover's panel in the rail:
+                  `ProjectMedia.assetScreens` frames the photograph as it appears in THIS gallery, and the
+                  label says so because a picture can be both.
+
+                  Not `MediaFramingField`: that pairs a picker with the panel, and a row's photograph is
+                  not swappable — a different picture is a different row (add it and take this one out).
+                  So there is nothing here for the rule that component holds to act on.
+
+                  Ungated, and the picker below is why: it is `kind="IMAGE"`, so every row this editor can
+                  make is drawn as a picture. (The public page plays a VIDEO attachment through a `<video>`
+                  element instead — a legacy row of that kind would be framed to no effect, which is the
+                  one case this panel cannot see from here.)
+                */}
+                <ScreenFramingPanel
+                  label="Framing per screen size, in this gallery"
+                  help="Optional. Frame this picture differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size, and the smallest falls back to the picture's own crop. It applies to the gallery tile on the project's page; opening a picture full screen always shows the whole photograph."
+                  mediaId={entry.asset.id}
+                  value={entry.assetScreens}
+                  onChange={(next) => setFraming(index, next)}
+                />
               </div>
 
               <div className="flex shrink-0 items-center">

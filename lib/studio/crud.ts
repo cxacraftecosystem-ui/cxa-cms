@@ -212,6 +212,40 @@ export function fieldProblem(field: string, message: string): ApiError {
 //     rather than "not null AND not the empty string" repeated at every call site.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Per-screen framing, for the twelve records that carry a picture in a column rather than in a block.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ ONE SCHEMA, GENUINELY ONE — the twelve record columns AND the nine section fields. This is a
+ * re-export, and `lib/sections/schema.ts` imports `screenFramingPayload` from that same
+ * `lib/media/framing-schema.ts`; there is no second copy anywhere. An earlier note here claimed the two
+ * "cannot simply be shared" because this module sits beside `server-only` code — that was the state before
+ * the schema was extracted, and it is worth correcting rather than deleting: the reason the shared module
+ * exists at all is that it is deliberately free of `server-only` and of `zod`-in-`screens.ts`, so a studio
+ * CLIENT component and a route handler can both reach it.
+ *
+ * The two exports differ only in how an ABSENT key is read, which is the difference between a column and a
+ * payload: `screenFramingColumn` is `.nullable().optional()` (see below), while `screenFramingPayload` is
+ * `.nullable().default(null)` because a section's `data` blob is written whole. `bucketKeysAgree()` checks
+ * the shape against `SCREEN_BUCKET_IDS` and `scripts/screens-check.ts` asserts it, so a bucket added to
+ * `SCREEN_BUCKETS` without a key here is a failing assertion rather than a field that silently never saves.
+ *
+ * "Twelve" counts COLUMNS, not files: fourteen route files carry this field across twenty-two call sites,
+ * a collection route and a detail route for each of the seven records that own one.
+ *
+ * ⚠ `.nullable().optional()`, WHICH IS TWO DIFFERENT STATEMENTS AND BOTH ARE NEEDED. `optional` means "the
+ * form did not send this field, leave the column alone" — every PATCH in this studio is partial. `nullable`
+ * means "the editor cleared it, write NULL". Collapsing them would make clearing a framing impossible,
+ * which is the same distinction the header of this section draws about an empty picker: `""` and absent
+ * are different answers and a partial update has to be able to express both.
+ *
+ * The bounds match `isUsableCrop` in lib/media/crop.ts. Stating them here is not duplication for its own
+ * sake — this is the layer that can answer a SENTENCE, and the render side's test is what stops a
+ * hand-edited row drawing a broken frame rather than degrading to no crop.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export { screenFramingColumn as screenFramingField } from "@/lib/media/framing-schema";
+
 /** Text that must be there. The message names what is missing, because "Required" does not. */
 export function requiredText(max: number, missing: string) {
   return z

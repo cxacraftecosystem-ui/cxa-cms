@@ -4,6 +4,7 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { canManageResearch } from "@/lib/permissions";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
+import { RegionCreateForm } from "./RegionCreateForm";
 import { RegionMapManager, type RegionAnchor, type RegionRowData } from "./RegionMapManager";
 
 /**
@@ -21,6 +22,12 @@ import { RegionMapManager, type RegionAnchor, type RegionRowData } from "./Regio
  * nearest PLACED ancestor (components/sections/IndiaMapSection.tsx), and each row here states its
  * region's fate in the same terms, computed by the SAME walk over the same tree: on the map, counting
  * under a named parent, or reported as not yet placed.
+ *
+ * AND A REGION CAN BE RECORDED HERE NOW, which the paragraph above predates: "seeded and then read-only"
+ * left an editor documenting a craft from an unlisted place with no move to make. `RegionCreateForm.tsx`
+ * (and `app/api/studio/crafts/regions/route.ts` behind it) closes that, and its header says why a new region
+ * is deliberately created WITHOUT coordinates — this screen is where a region gets placed, so requiring a
+ * pin at creation time would reintroduce the same hole one step earlier.
  *
  * AND IT HAS A MAP ON IT NOW. Every row opens `components/studio/RegionMapPicker.tsx` — the same
  * outline at the same `VIEW_BOX`, through the same projection, as the picture on the homepage — so a
@@ -77,8 +84,43 @@ export default async function StudioCraftRegionsPage() {
     take: REGION_LIMIT + 1
   });
 
+  /**
+   * Live crafts per region, in one round trip.
+   *
+   * ⚠ A SECOND COUNT, AND NOT A DUPLICATE OF THE ONE ABOVE. The `_count` in the select is PUBLISHED crafts,
+   * because that is the number the homepage map pins and the number each row prints. What a DELETE would
+   * un-file is every live craft, drafts included — so a row that says "nothing published here" can still be
+   * one the removal is refused for. Two different questions need two different numbers, and offering a
+   * delete against the published count would be a menu that disagrees with the route it calls
+   * (app/api/studio/crafts/regions/[id]/route.ts counts exactly this set).
+   *
+   * `groupBy` rather than a filtered `_count` beside the first: Prisma takes one `_count` block per query,
+   * and two filters on the same relation cannot live in it.
+   */
+  const liveCraftRows = await prisma.craft.groupBy({
+    by: ["regionId"],
+    where: { deletedAt: null, regionId: { not: null } },
+    _count: { _all: true }
+  });
+  const liveCrafts = new Map<string, number>(
+    liveCraftRows.flatMap((row) => (row.regionId === null ? [] : [[row.regionId, row._count._all]]))
+  );
+
   const truncated = rows.length > REGION_LIMIT;
   const regions = rows.slice(0, REGION_LIMIT);
+
+  /**
+   * How many regions sit directly under each one.
+   *
+   * Counted over the FETCHED rows, which is exact whenever the list is not truncated and is stated on
+   * screen when it is. It matters because `parentId` is `onDelete: SetNull`: deleting a state would promote
+   * its districts to the top of the tree rather than refusing, so the row has to know before it offers.
+   */
+  const childCounts = new Map<string, number>();
+  for (const region of regions) {
+    if (region.parentId === null) continue;
+    childCounts.set(region.parentId, (childCounts.get(region.parentId) ?? 0) + 1);
+  }
 
   type Row = (typeof regions)[number];
   const byId = new Map<string, Row>(regions.map((region) => [region.id, region]));
@@ -108,6 +150,8 @@ export default async function StudioCraftRegionsPage() {
     level: region.level,
     parentName: region.parentId === null ? null : (byId.get(region.parentId)?.name ?? null),
     craftCount: region._count.crafts,
+    liveCraftCount: liveCrafts.get(region.id) ?? 0,
+    childCount: childCounts.get(region.id) ?? 0,
     // Text, so the inputs can hold a half-typed value; "" is "not set".
     latitude: region.latitude === null ? "" : String(region.latitude),
     longitude: region.longitude === null ? "" : String(region.longitude),
@@ -124,7 +168,21 @@ export default async function StudioCraftRegionsPage() {
         title="Regions on the map"
         back={{ href: "/studio/crafts", label: "Craft archive" }}
         breadcrumb={[{ label: "Craft archive", href: "/studio/crafts" }, { label: "Regions on the map" }]}
-        description="The homepage map pins every region that has coordinates. Give a region its own by opening its map and clicking where the place is, or by typing the two numbers. A region without them is not lost — its crafts count under the nearest parent region that has coordinates, and if no parent has any, the map says so out loud."
+        description="The homepage map pins every region that has coordinates. Give a region its own by opening its map and clicking where the place is, or by typing the two numbers. A region without them is not lost — its crafts count under the nearest parent region that has coordinates, and if no parent has any, the map says so out loud. A place the list does not name yet can be added; it arrives unplaced and is placed here like any other."
+        actions={
+          /*
+            The form shares this page's own predicate (`canManageResearch`), the same one
+            app/api/studio/crafts/regions/route.ts requires, so the control needs no gate of its own —
+            nobody who can stand here is refused by it (contract §1.7).
+          */
+          <RegionCreateForm
+            parents={regions.map((region) => ({
+              id: region.id,
+              name: region.name,
+              level: region.level
+            }))}
+          />
+        }
         meta={
           <span className="text-xs tabular-nums text-ink-500">
             {placed} of {regions.length === 1 ? "1 region" : `${regions.length} regions`} on the map

@@ -11,14 +11,13 @@ import {
   conflict,
   notFound,
   ok,
-  parseJson,
   route,
   userAgent
 } from "@/lib/api";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageMedia } from "@/lib/permissions";
-import { isUniqueViolation } from "@/lib/studio/crud";
+import { isUniqueViolation, parseStudioJson } from "@/lib/studio/crud";
 import { slugify } from "@/lib/utils";
 
 /**
@@ -115,7 +114,7 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   );
 
   const { id } = await context.params;
-  const body = await parseJson(request, PatchBody);
+  const body = await parseStudioJson(request, PatchBody);
 
   const folder = await prisma.mediaFolder.findUnique({
     where: { id },

@@ -80,6 +80,8 @@ import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
@@ -382,6 +384,10 @@ export default async function CraftExplorerPage({ searchParams }: CraftExplorerP
               longitude: true,
               region: { select: { name: true } },
               school: { select: { name: true } },
+              // `coverId` beside the row itself, because the framing resolver looks the base photograph
+              // up by id in the same map it looks an alternate up in — see `pictureFromMap`.
+              coverId: true,
+              coverScreens: true,
               cover: { select: MEDIA_IMAGE_SELECT }
             }
           }),
@@ -398,7 +404,20 @@ export default async function CraftExplorerPage({ searchParams }: CraftExplorerP
     [0, [], 0, 0]
   );
 
-  const crafts: CraftRowData[] = rows.map((row) => ({
+  /**
+   * The framings, and the alternate photographs they name.
+   *
+   * The column is `Json?`, so the shape is a claim rather than a proof: the studio route validates it
+   * with `screenFramingField()` on the way in, and `resolvePicture` reads every bucket defensively —
+   * an out-of-range rectangle degrades to "no crop" instead of drawing a broken frame.
+   *
+   * ONE query for the whole list, and NO query at all when nobody has framed anything, which is the
+   * common case and the reason this is not guarded by a condition (see lib/media/framing.ts).
+   */
+  const framings = rows.map((row) => (row.coverScreens ?? null) as unknown as ScreenFraming | null);
+  const alternates = await framingAssets(...framings);
+
+  const crafts: CraftRowData[] = rows.map((row, index) => ({
     id: row.id,
     slug: row.slug,
     name: row.name,
@@ -412,7 +431,12 @@ export default async function CraftExplorerPage({ searchParams }: CraftExplorerP
     materials: row.materials,
     latitude: row.latitude,
     longitude: row.longitude,
-    cover: row.cover
+    cover: row.cover,
+    picture: pictureFromMap(
+      row.coverId,
+      framings[index],
+      withBaseAsset(alternates, row.coverId, row.cover)
+    )
   }));
 
   const truncated = matched > crafts.length;

@@ -5,7 +5,7 @@ import type { PageSection, Prisma } from "@prisma/client";
 import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
-import { screenFramingMediaIds } from "@/lib/media/screens";
+import { screenFramingMediaIds, type ScreenFraming } from "@/lib/media/screens";
 import { getSettingCached } from "@/lib/settings/service";
 import {
   CENSUS_METRICS,
@@ -209,7 +209,18 @@ const researchAreaSelect = {
   icon: true,
   accentColor: true,
   sortOrder: true,
-  cover: { select: mediaSelect }
+  cover: { select: mediaSelect },
+  /**
+   * The cover's id and its per-screen framing, carried for the reason they are on `projectSelect` below.
+   *
+   * ⚠ AND DELIBERATELY WITHOUT AN `attachResearchFraming` BESIDE THEM. `ResearchShowcaseSection` draws
+   * the area's lucide ICON, not its cover — so a pass that fetched the alternates a framing names would
+   * issue a query for rows nothing on the page reads. The columns ride along so that a card which one day
+   * does draw the cover starts from a row that already carries the framing; the pass to go with it belongs
+   * beside `attachPersonFraming` at that point.
+   */
+  coverId: true,
+  coverScreens: true
 } satisfies Prisma.ResearchAreaSelect;
 
 export type ResearchAreaRow = Prisma.ResearchAreaGetPayload<{ select: typeof researchAreaSelect }>;
@@ -225,6 +236,16 @@ const projectSelect = {
   startedOn: true,
   endedOn: true,
   cover: { select: mediaSelect },
+  /**
+   * The cover's id and its per-screen framing.
+   *
+   * `coverId` as well as the joined row because the framing resolver looks the BASE photograph up by id
+   * in the same map it looks an alternate up in (`pictureFromMap`). `coverScreens` because a select that
+   * omits it renders a framed cover unframed — silently, and on this surface only, which is the failure
+   * the header of scripts/media-select-check.ts describes at length.
+   */
+  coverId: true,
+  coverScreens: true,
   researchArea: { select: { slug: true, title: true } }
 } satisfies Prisma.ProjectSelect;
 
@@ -237,6 +258,15 @@ const personSelect = {
   kind: true,
   designation: true,
   department: true,
+  /**
+   * The portrait, its per-screen framing, and — the part that looks redundant and is not — its ID.
+   *
+   * `pictureFromMap` resolves the BASE photograph out of the media map by id, exactly like a band that
+   * names an alternate (screens.ts), so a row carrying the relation but not the id cannot be framed at
+   * all. `attachPersonFraming` below is what puts both the portrait and its alternates into that map.
+   */
+  photoId: true,
+  photoScreens: true,
   photo: { select: mediaSelect }
 } satisfies Prisma.PersonSelect;
 
@@ -296,6 +326,13 @@ const postSelect = {
   publishedAt: true,
   publishAt: true,
   readingMinutes: true,
+  /**
+   * The cover, its per-screen framing, and its id — the same trio, for the same reason, as the portrait
+   * on `personSelect` above. `attachNewsFraming` is what puts the cover and its alternates into the
+   * media map `pictureFromMap` reads.
+   */
+  coverId: true,
+  coverScreens: true,
   cover: { select: mediaSelect },
   category: { select: { slug: true, name: true } }
 } satisfies Prisma.PostSelect;
@@ -315,6 +352,13 @@ const eventSelect = {
   endsAt: true,
   registrationUrl: true,
   isRegistrationOpen: true,
+  /**
+   * The cover, its id and its per-screen framing — the same trio, for the same reason, as `postSelect`
+   * above. `attachEventFraming` is what puts the cover and its alternates into the media map
+   * `pictureFromMap` reads.
+   */
+  coverId: true,
+  coverScreens: true,
   cover: { select: mediaSelect }
 } satisfies Prisma.CoeEventSelect;
 
@@ -326,6 +370,16 @@ const partnerSelect = {
   name: true,
   url: true,
   category: true,
+  /**
+   * The logo, its id and its per-screen framing — the same trio, for the same reason, as the cover on
+   * `postSelect` above. `attachPartnerFraming` is what puts the logo and its alternates into the media
+   * map `pictureFromMap` reads.
+   *
+   * A logo is drawn `object-contain` and must not be trimmed, so the useful half here is the ALTERNATE
+   * PHOTOGRAPH: a full wordmark on a wide screen, a compact monogram in a 3:2 slot two columns wide.
+   */
+  logoId: true,
+  logoScreens: true,
   logo: { select: mediaSelect }
 } satisfies Prisma.PartnerSelect;
 
@@ -364,6 +418,17 @@ const albumSelect = {
   location: true,
   happenedOn: true,
   cover: { select: mediaSelect },
+  /**
+   * The cover's id and its per-screen framing, fetched WITH the cover.
+   *
+   * `coverId` as well as the joined row because a framing is resolved by ID — `pictureFromMap` looks the
+   * base photograph up in the same map as the alternates (lib/media/screens.ts). Selecting the framing
+   * beside the picture it belongs to is the rule the header of scripts/media-select-check.ts exists to
+   * enforce: a query that fetches one and not the other renders an album an editor has framed unframed,
+   * silently, on whichever surface reads this row.
+   */
+  coverId: true,
+  coverScreens: true,
   _count: { select: { items: true } }
 } satisfies Prisma.GalleryAlbumSelect;
 
@@ -378,6 +443,16 @@ const galleryItemSelect = {
   caption: true,
   presentation: true,
   position: true,
+  /**
+   * The picture's id and this ROW's per-screen framing, fetched with the photograph they belong to.
+   *
+   * `assetId` as well as the joined row because a framing resolves by ID — `pictureFromMap` looks the base
+   * photograph up in the same map as the alternates (screens.ts), and `id` above is the GalleryItem's own.
+   * The framing belongs to the PLACEMENT rather than to the file: the same photograph is framed one way in
+   * an album and another on a project page, which is why the column is on the join row.
+   */
+  assetId: true,
+  assetScreens: true,
   // `credit` beyond the shared media select: a lightbox names the photographer under the picture,
   // and an uncredited photograph in an archive is a rights problem as much as a courtesy one.
   asset: { select: { ...mediaSelect, caption: true, credit: true } },
@@ -395,6 +470,15 @@ type GalleryItemPayload = Prisma.GalleryItemGetPayload<{ select: typeof galleryI
  */
 export interface GalleryImageRow extends MediaRow {
   id: string;
+  /**
+   * The PHOTOGRAPH's id, which `id` above is not — that one is the join row's.
+   *
+   * Both are needed: the row id is what a manual curation stores, and the asset id is what resolves the
+   * framing below against `resolved.media` (see `attachGalleryImageFraming`).
+   */
+  assetId: string;
+  /** This placement's per-screen framing, as stored. `Json?`, so a renderer casts — see `coverPicture`. */
+  assetScreens: Prisma.JsonValue | null;
   caption: string | null;
   credit: string | null;
   /** How the item is PRESENTED — "image" | "video" | "panorama" | "tour" — which is not always what
@@ -417,6 +501,15 @@ const craftSelect = {
   techniques: true,
   latitude: true,
   longitude: true,
+  /**
+   * The cover, its per-screen framing, and — the part that looks redundant and is not — its ID.
+   *
+   * `pictureFromMap` resolves the BASE photograph out of the media map by id, exactly like a band that
+   * names an alternate (screens.ts), so a row carrying the relation but not the id cannot be framed at
+   * all. `attachCraftFraming` below is what puts both the cover and its alternates into that map.
+   */
+  coverId: true,
+  coverScreens: true,
   cover: { select: mediaSelect },
   region: { select: { slug: true, name: true, level: true } },
   school: { select: { slug: true, name: true } }
@@ -1097,6 +1190,27 @@ async function resolveSectionDataOrThrow(
   // pass. One extra query for the whole page is the price of that schema decision.
   await attachPublicationPdfs(out.publications, now);
 
+  // A second round trip on the same terms and for the same kind of reason: a portrait's per-screen
+  // framing names its alternates as ids in a JSONB column, which no relation can join and which nothing
+  // knew about until the person rows came back. It issues no query unless somebody has framed a portrait.
+  await attachPersonFraming(out.people, out.media);
+  // Article covers, on the identical terms — see `attachNewsFraming`.
+  await attachNewsFraming(out.news, out.media);
+  // Craft covers, on the identical terms — see `attachCraftFraming`.
+  await attachCraftFraming(out.crafts, out.media);
+  // Event covers, likewise.
+  await attachEventFraming(out.events, out.media);
+  // Album covers, likewise — the gallery block's "Albums" source draws one card per album.
+  await attachAlbumFraming(out.albums, out.media);
+  // And the gallery block's other source, the pictures themselves — see `attachGalleryImageFraming` for
+  // why a flattened row still has to be put into the map.
+  await attachGalleryImageFraming(out.galleryImages, out.media);
+  // Project covers, likewise. This was the one showcase without a pass, so its renderer queried for
+  // itself — see `attachProjectFraming`.
+  await attachProjectFraming(out.projects, out.media);
+  // Partner logos, likewise — the logo wall draws one mark per partner.
+  await attachPartnerFraming(out.partners, out.media);
+
   return out;
 }
 
@@ -1217,6 +1331,56 @@ function personSource(): EntitySource<PersonFilter, PersonRow, PersonRow> {
   };
 }
 
+/**
+ * Put every rendered portrait — and every alternate its framing names — into the page's media map.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHY A PERSON NEEDS THIS AND A HERO DOES NOT. A block's own picture is an id in its payload, so its
+ * framing's alternates join the census above at no extra query (see the note on HERO). A portrait arrives
+ * through a RELATION instead, and the ids a framing names sit in `Person.photoScreens` — a JSONB column no
+ * relation joins, and one nothing on the page has seen until the person rows come back. So this runs after
+ * the batch, exactly like `attachPublicationPdfs` and for the same schema-shaped reason.
+ *
+ * The portrait itself is written in for FREE: the relation already fetched it, and `pictureFromMap` looks
+ * the base photograph up by id like any other band, so a map without it resolves every person to null.
+ *
+ * ⚠ IT COSTS NOTHING WHEN NOBODY HAS FRAMED ANYTHING, which is the overwhelmingly common case — no
+ * alternate ids means no query at all, and the map still gains the portraits. A bucket naming a
+ * soft-deleted or unfetchable asset INHERITS rather than blanking the picture (screens.ts), so the reader
+ * gets the portrait rather than a hole.
+ *
+ * ⚠ IT SPELLS `mediaSelect` RATHER THAN CALLING `framingAssets`. `out.media` promises `MediaRow`, which is
+ * `MEDIA_IMAGE_SELECT` plus the `fileName` and `byteSize` the document block reads; the rows
+ * `lib/media/framing.ts` returns are narrower, so writing them here would be the same silent loss of
+ * columns that lib/media/select.ts exists to prevent.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+async function attachPersonFraming(
+  showcases: Map<string, ResolvedShowcase<PersonRow>>,
+  media: Record<string, MediaRow | undefined>
+): Promise<void> {
+  const wanted = new Set<string>();
+
+  for (const showcase of showcases.values()) {
+    for (const row of showcase.rows) {
+      if (row.photoId && row.photo) media[row.photoId] = row.photo;
+      // The column is `Json?`, so this shape is a claim rather than a proof — which is safe because
+      // `screenFramingMediaIds` reads a framing defensively and ignores anything that is not an id.
+      for (const id of screenFramingMediaIds(row.photoScreens as unknown as ScreenFraming | null)) {
+        if (!media[id]) wanted.add(id);
+      }
+    }
+  }
+
+  if (wanted.size === 0) return;
+
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: [...wanted] }, deletedAt: null },
+    select: { id: true, ...mediaSelect }
+  });
+  for (const row of rows) media[row.id] = row;
+}
+
 /** Mirrors `PUBLICATION_KINDS` in ./schema.ts — see the warning there about nothing checking the mirror. */
 interface PublicationFilter {
   kind:
@@ -1333,6 +1497,109 @@ function postSource(now: Date): EntitySource<EmptyFilter, PostRow, PostRow> {
       }),
     hydrate: identity
   };
+}
+
+/**
+ * The same second pass as `attachPersonFraming`, for article covers.
+ *
+ * The whole argument is over there and is not repeated: a cover arrives through a relation and its
+ * framing's alternates are ids in a JSONB column, so neither could join the payload census. The cover
+ * itself goes in free — the relation already fetched it — and no alternates means no query.
+ */
+async function attachNewsFraming(
+  showcases: Map<string, ResolvedShowcase<PostRow>>,
+  media: Record<string, MediaRow | undefined>
+): Promise<void> {
+  const wanted = new Set<string>();
+
+  for (const showcase of showcases.values()) {
+    for (const row of showcase.rows) {
+      if (row.coverId && row.cover) media[row.coverId] = row.cover;
+      for (const id of screenFramingMediaIds(row.coverScreens as unknown as ScreenFraming | null)) {
+        if (!media[id]) wanted.add(id);
+      }
+    }
+  }
+
+  if (wanted.size === 0) return;
+
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: [...wanted] }, deletedAt: null },
+    select: { id: true, ...mediaSelect }
+  });
+  for (const row of rows) media[row.id] = row;
+}
+
+/**
+ * The same second pass again, for project covers.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ THIS PASS DID NOT EXIST, AND ITS ABSENCE MOVED THE QUERY INTO THE RENDERER.
+ * `components/sections/ProjectShowcaseSection.tsx` called `framingAssets` itself — the one showcase of the
+ * seven that did — which contradicts the rule stated at the top of
+ * `components/sections/SectionRenderer.tsx`: "NO RENDERER QUERIES … a renderer receives plain rows and
+ * stays pure and testable." The cost was not theoretical: a page holding N `PROJECT_SHOWCASE` blocks paid N
+ * round trips where every sibling block type pays one, and the renderer became untestable without a
+ * database.
+ *
+ * The argument for the pass is `attachPersonFraming`'s and is not repeated: a cover arrives through a
+ * relation and the alternates its framing names are ids in a JSONB column, so neither can join the payload
+ * census. The cover itself goes into the map free, and no alternates means no query at all.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+async function attachProjectFraming(
+  showcases: Map<string, ResolvedShowcase<ProjectRow>>,
+  media: Record<string, MediaRow | undefined>
+): Promise<void> {
+  const wanted = new Set<string>();
+
+  for (const showcase of showcases.values()) {
+    for (const row of showcase.rows) {
+      if (row.coverId && row.cover) media[row.coverId] = row.cover;
+      for (const id of screenFramingMediaIds(row.coverScreens as unknown as ScreenFraming | null)) {
+        if (!media[id]) wanted.add(id);
+      }
+    }
+  }
+
+  if (wanted.size === 0) return;
+
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: [...wanted] }, deletedAt: null },
+    select: { id: true, ...mediaSelect }
+  });
+  for (const row of rows) media[row.id] = row;
+}
+
+/**
+ * The same second pass again, for event covers.
+ *
+ * The argument is `attachPersonFraming`'s and is not repeated: a cover arrives through a relation and the
+ * alternates its framing names are ids in a JSONB column, so neither could join the payload census. The
+ * cover itself goes in free, and no alternates means no query.
+ */
+async function attachEventFraming(
+  showcases: Map<string, ResolvedShowcase<EventRow>>,
+  media: Record<string, MediaRow | undefined>
+): Promise<void> {
+  const wanted = new Set<string>();
+
+  for (const showcase of showcases.values()) {
+    for (const row of showcase.rows) {
+      if (row.coverId && row.cover) media[row.coverId] = row.cover;
+      for (const id of screenFramingMediaIds(row.coverScreens as unknown as ScreenFraming | null)) {
+        if (!media[id]) wanted.add(id);
+      }
+    }
+  }
+
+  if (wanted.size === 0) return;
+
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: [...wanted] }, deletedAt: null },
+    select: { id: true, ...mediaSelect }
+  });
+  for (const row of rows) media[row.id] = row;
 }
 
 interface EventFilter {
@@ -1498,6 +1765,39 @@ function partnerSource(): EntitySource<EmptyFilter, PartnerRow, PartnerRow> {
   };
 }
 
+/**
+ * The same second pass as `attachPersonFraming`, for partner logos.
+ *
+ * The argument is over there and is not repeated: a logo arrives through a RELATION and the alternate
+ * photographs its framing names are ids in `Partner.logoScreens`, a JSONB column no relation joins — so
+ * neither could ride the payload census. The logo itself goes in free, and no alternates means no query.
+ */
+async function attachPartnerFraming(
+  showcases: Map<string, ResolvedShowcase<PartnerRow>>,
+  media: Record<string, MediaRow | undefined>
+): Promise<void> {
+  const wanted = new Set<string>();
+
+  for (const showcase of showcases.values()) {
+    for (const row of showcase.rows) {
+      if (row.logoId && row.logo) media[row.logoId] = row.logo;
+      // The column is `Json?`, so this shape is a claim rather than a proof — safe because
+      // `screenFramingMediaIds` reads a framing defensively and ignores anything that is not an id.
+      for (const id of screenFramingMediaIds(row.logoScreens as unknown as ScreenFraming | null)) {
+        if (!media[id]) wanted.add(id);
+      }
+    }
+  }
+
+  if (wanted.size === 0) return;
+
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: [...wanted] }, deletedAt: null },
+    select: { id: true, ...mediaSelect }
+  });
+  for (const row of rows) media[row.id] = row;
+}
+
 interface FileFilter {
   /** `""` is every category. */
   category: string;
@@ -1550,6 +1850,74 @@ function albumSource(): EntitySource<EmptyFilter, AlbumPayload, AlbumRow> {
   };
 }
 
+/**
+ * The same second pass as `attachPersonFraming`, for album covers.
+ *
+ * The argument is over there and is not repeated: a cover arrives through a RELATION and the alternate
+ * photographs its framing names are ids in `GalleryAlbum.coverScreens`, a JSONB column no relation joins —
+ * so neither could ride the payload census. The cover itself goes in free, and no alternates means no
+ * query at all, which is the case for nearly every album.
+ */
+async function attachAlbumFraming(
+  showcases: Map<string, ResolvedShowcase<AlbumRow>>,
+  media: Record<string, MediaRow | undefined>
+): Promise<void> {
+  const wanted = new Set<string>();
+
+  for (const showcase of showcases.values()) {
+    for (const row of showcase.rows) {
+      if (row.coverId && row.cover) media[row.coverId] = row.cover;
+      // The column is `Json?`, so this shape is a claim rather than a proof — safe because
+      // `screenFramingMediaIds` reads a framing defensively and ignores anything that is not an id.
+      for (const id of screenFramingMediaIds(row.coverScreens as unknown as ScreenFraming | null)) {
+        if (!media[id]) wanted.add(id);
+      }
+    }
+  }
+
+  if (wanted.size === 0) return;
+
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: [...wanted] }, deletedAt: null },
+    select: { id: true, ...mediaSelect }
+  });
+  for (const row of rows) media[row.id] = row;
+}
+
+/**
+ * The same second pass again, for the gallery ROWS themselves.
+ *
+ * ⚠ THE BASE PHOTOGRAPH IS THE ROW. `GalleryImageRow` is flattened onto its asset, so unlike an album cover
+ * there is nothing to fetch for it — it is put into the map under `assetId` because `pictureFromMap` looks
+ * the base up by id like any other band, and a wall whose base was missing from the map would draw nothing.
+ * The alternates a framing names are ids in `GalleryItem.assetScreens`, which no relation joins, so they
+ * need the query below — and only when somebody has actually chosen one.
+ */
+async function attachGalleryImageFraming(
+  showcases: Map<string, ResolvedShowcase<GalleryImageRow>>,
+  media: Record<string, MediaRow | undefined>
+): Promise<void> {
+  const wanted = new Set<string>();
+
+  for (const showcase of showcases.values()) {
+    for (const row of showcase.rows) {
+      media[row.assetId] = row;
+      // A claim rather than a proof, and safe for the reason `attachAlbumFraming` gives.
+      for (const id of screenFramingMediaIds(row.assetScreens as unknown as ScreenFraming | null)) {
+        if (!media[id]) wanted.add(id);
+      }
+    }
+  }
+
+  if (wanted.size === 0) return;
+
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: [...wanted] }, deletedAt: null },
+    select: { id: true, ...mediaSelect }
+  });
+  for (const row of rows) media[row.id] = row;
+}
+
 function galleryImageSource(): EntitySource<EmptyFilter, GalleryItemPayload, GalleryImageRow> {
   // A picture is public because its ALBUM is: `GalleryItem` carries no status of its own, so the
   // filter has to reach through the relation or every draft album's photographs would be readable.
@@ -1595,6 +1963,10 @@ function galleryImageSource(): EntitySource<EmptyFilter, GalleryItemPayload, Gal
       cropHeight: raw.asset.cropHeight,
       variants: raw.asset.variants,
       id: raw.id,
+      // The framing rides across the flattening beside the crop, and for the same reason: a column
+      // selected but not carried here is a column the renderer never sees.
+      assetId: raw.assetId,
+      assetScreens: raw.assetScreens,
       caption: raw.caption ?? raw.asset.caption,
       credit: raw.asset.credit,
       presentation: raw.presentation,
@@ -1636,6 +2008,40 @@ function craftSource(): EntitySource<CraftFilter, CraftRow, CraftRow> {
       prisma.craft.findMany({ where: { ...liveStatusWhere(), id: { in: ids } }, select: craftSelect }),
     hydrate: identity
   };
+}
+
+/**
+ * Put every rendered craft cover — and every alternate its framing names — into the page's media map.
+ *
+ * The same job, on the same terms and for the same schema-shaped reason, as `attachPersonFraming` above:
+ * a cover arrives through a RELATION, and the ids its framing names sit in `Craft.coverScreens`, a JSONB
+ * column no relation joins. Its header carries the full argument, including why the cover itself has to be
+ * written in as well and why this spells `mediaSelect` instead of calling `framingAssets`.
+ */
+async function attachCraftFraming(
+  showcases: Map<string, ResolvedShowcase<CraftRow>>,
+  media: Record<string, MediaRow | undefined>
+): Promise<void> {
+  const wanted = new Set<string>();
+
+  for (const showcase of showcases.values()) {
+    for (const row of showcase.rows) {
+      if (row.coverId && row.cover) media[row.coverId] = row.cover;
+      // The column is `Json?`, so this shape is a claim rather than a proof — safe because
+      // `screenFramingMediaIds` reads a framing defensively and ignores anything that is not an id.
+      for (const id of screenFramingMediaIds(row.coverScreens as unknown as ScreenFraming | null)) {
+        if (!media[id]) wanted.add(id);
+      }
+    }
+  }
+
+  if (wanted.size === 0) return;
+
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: [...wanted] }, deletedAt: null },
+    select: { id: true, ...mediaSelect }
+  });
+  for (const row of rows) media[row.id] = row;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

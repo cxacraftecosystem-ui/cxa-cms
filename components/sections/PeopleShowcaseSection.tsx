@@ -25,7 +25,13 @@ import { CardGrid } from "@/components/site/CardGrid";
 import { EntityCard } from "@/components/site/EntityCard";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { pickShowcase, type PersonRow, type ResolvedSectionData } from "@/lib/sections/resolve";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
+import {
+  pickShowcase,
+  type MediaRow,
+  type PersonRow,
+  type ResolvedSectionData
+} from "@/lib/sections/resolve";
 import type { PeopleShowcaseSectionData } from "@/lib/sections/schema";
 
 export interface PeopleShowcaseSectionProps {
@@ -127,7 +133,12 @@ export function PeopleShowcaseSection({
               {rows.map((person, index) => (
                 <li key={person.id} className="w-56 shrink-0 snap-start sm:w-64">
                   <Reveal delay={Math.min(index, 8) * 0.05} className="h-full">
-                    <PersonCard person={person} showRole={data.showRole} sizes="16rem" />
+                    <PersonCard
+                      person={person}
+                      media={resolved?.media}
+                      showRole={data.showRole}
+                      sizes="16rem"
+                    />
                   </Reveal>
                 </li>
               ))}
@@ -139,7 +150,12 @@ export function PeopleShowcaseSection({
           <div className={showsHeader ? "mt-12" : undefined}>
             <CardGrid columns={4} stagger empty={empty}>
               {rows.map((person) => (
-                <PersonCard key={person.id} person={person} showRole={data.showRole} />
+                <PersonCard
+                  key={person.id}
+                  person={person}
+                  media={resolved?.media}
+                  showRole={data.showRole}
+                />
               ))}
             </CardGrid>
           </div>
@@ -170,10 +186,17 @@ export function PeopleShowcaseSection({
 
 function PersonCard({
   person,
+  media,
   showRole,
   sizes
 }: {
   person: PersonRow;
+  /**
+   * The page's media map, which carries the portrait AND every alternate a framing names —
+   * `attachPersonFraming` in lib/sections/resolve.ts puts both there. Absent on the `rows` path (a
+   * studio preview, a bespoke page), where the portrait then draws unframed rather than not at all.
+   */
+  media?: Record<string, MediaRow | undefined>;
   showRole: boolean;
   sizes?: string;
 }) {
@@ -181,6 +204,13 @@ function PersonCard({
     <EntityCard
       href={`/people/${person.slug}`}
       media={person.photo}
+      /* The column is `Json?`, so its shape is a claim rather than a proof — safe because the resolver
+         reads a framing defensively, which is what makes a hand-edited row degrade to no framing. */
+      picture={pictureFromMap(
+        person.photoId,
+        (person.photoScreens ?? null) as unknown as ScreenFraming | null,
+        media
+      )}
       variant="portrait"
       aspect={PORTRAIT_ASPECT}
       sizes={sizes}

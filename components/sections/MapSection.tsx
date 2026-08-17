@@ -151,8 +151,8 @@ export function MapCanvas({
       let maplibre: typeof import("maplibre-gl");
       try {
         // Started before the library so the two chunks download in parallel, and awaited after it so
-        // the stylesheet is in the document before the first control is drawn.
-        // @ts-expect-error — a stylesheet has no type declaration; the bundler resolves it, TypeScript cannot.
+        // the stylesheet is in the document before the first control is drawn. The import is typed by
+        // types/css-side-effect.d.ts, which is why it needs no suppression.
         const stylesheet: Promise<unknown> = import("maplibre-gl/dist/maplibre-gl.css");
         maplibre = await import("maplibre-gl");
         await stylesheet;

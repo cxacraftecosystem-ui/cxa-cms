@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 
-import { assertSameOrigin, ok, route } from "@/lib/api";
+import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
@@ -19,6 +19,13 @@ import { buildAuditContext, fieldProblem, found, parseStudioJson } from "@/lib/s
  * ancestor, and this route is the other half of the fix: the screen where an editor decides which
  * regions ARE placed. Only the coordinates are editable here; a region's name, level and parent are
  * the corpus's structure and still change only with the corpus.
+ *
+ * ⚠ REGIONS CAN NOW BE CREATED, which the paragraph above predates: app/api/studio/crafts/regions/route.ts
+ * closes that hole and explains at length why "seeded and then read-only" left the product with no way to
+ * record a craft from a place the corpus never listed. What has NOT changed is the sentence above about
+ * names, levels and parents — those are still fixed once recorded. The DELETE at the foot of this file is
+ * the other consequence of creation: a region typed in by hand is a region that can be typed in WRONGLY,
+ * and without a delete a mistake would sit in the tree and in every craft's picker for good.
  *
  * ⚠ THE RANGE IS INDIA'S BOX, NOT THE WORLD'S. The map draws the official outline of India and
  * nothing else, so a pin at 51°N is not a typo tolerated for later — it is a pin the map can never
@@ -147,4 +154,119 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
       : `“${existing.name}” is on the homepage map now, at ${at}. Its published crafts pin there, along with those of any child region that has no coordinates of its own.`;
 
   return ok({ region: updated, changed: true, message });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// DELETE — only when nothing hangs off it
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** "1 craft" / "9 crafts", and the same for regions. English plurals are not a suffix rule. */
+function count(noun: "craft" | "region", n: number): string {
+  return n === 1 ? `1 ${noun}` : `${n} ${noun}s`;
+}
+
+/**
+ * Remove a region.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ TWO THINGS BLOCK IT, AND BOTH ARE `onDelete: SetNull` RATHER THAN A CASCADE — which is precisely why
+ * a delete here needs guarding rather than trusting the database. Postgres would happily accept both, and
+ * the damage would be silent:
+ *
+ *   • `Craft.regionId` — every craft filed under this region would be left un-filed, reading "No region
+ *     recorded" with nothing anywhere saying which region it used to be.
+ *   • `CraftRegion.parentId` (the "RegionTree" self-relation) — every CHILD region would be promoted to the
+ *     top of the tree. A district whose state vanished does not become a nation; it becomes a row the
+ *     homepage map's roll-up walk climbs one step and then stops, so its crafts would quietly stop counting
+ *     under the state they belong to.
+ *
+ * So both are counted and both are refused with the number in the sentence. A region nothing points at is
+ * removed outright: like a school and unlike a craft, it has no `deletedAt` column and no recycle bin, so
+ * the audit entry is the only surviving record — which is why `before` carries the whole row.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export const DELETE = route(async (request: Request, context: RouteContext) => {
+  assertSameOrigin(request);
+
+  const user = await requireCapability(
+    canManageResearch,
+    "Removing a region needs researcher access or higher. An administrator can raise yours."
+  );
+
+  const { id } = await context.params;
+
+  const existing = found(
+    await prisma.craftRegion.findUnique({
+      where: { id },
+      select: {
+        ...REGION_SELECT,
+        parentId: true,
+        _count: {
+          select: {
+            // Live crafts only — a recycled one is not on the site and is counted separately below.
+            crafts: { where: { deletedAt: null } },
+            children: true
+          }
+        }
+      }
+    }),
+    "That region"
+  );
+
+  if (existing._count.children > 0) {
+    throw conflict(
+      `“${existing.name}” cannot be removed while ${count("region", existing._count.children)} ${existing._count.children === 1 ? "sits" : "sit"} under it — ${existing._count.children === 1 ? "it" : "they"} would be promoted to the top of the tree and ${existing._count.children === 1 ? "its" : "their"} crafts would stop counting under this one on the map. Remove or re-file ${existing._count.children === 1 ? "it" : "them"} first.`
+    );
+  }
+
+  if (existing._count.crafts > 0) {
+    throw conflict(
+      `“${existing.name}” cannot be removed while ${count("craft", existing._count.crafts)} ${existing._count.crafts === 1 ? "is" : "are"} filed under it — ${existing._count.crafts === 1 ? "it" : "they"} would be left with no region at all. Open ${existing._count.crafts === 1 ? "that craft" : "those crafts"} and change “Where it comes from”, then remove this region.`
+    );
+  }
+
+  /**
+   * Recycled crafts, counted but NOT blocking: none of them is on the site, so nothing a reader sees
+   * changes. Restoring one afterwards would find its region cleared, and nobody can see these rows from
+   * the regions screen — which is exactly why the answer states the number.
+   */
+  const recycled = await prisma.craft.count({
+    where: { regionId: id, deletedAt: { not: null } }
+  });
+
+  await mutateWithHistory<{ id: string }>(
+    buildAuditContext(request, user),
+    {
+      action: "DELETE",
+      entityType: "CraftRegion",
+      entityLabel: existing.name,
+      before: {
+        name: existing.name,
+        slug: existing.slug,
+        level: existing.level,
+        parentId: existing.parentId,
+        latitude: existing.latitude,
+        longitude: existing.longitude,
+        craftsInRecycleBin: recycled
+      },
+      revise: false
+    },
+    async (tx) => {
+      await tx.craftRegion.delete({ where: { id } });
+      // Nothing to re-index: no live craft pointed at it.
+      return { id };
+    }
+  );
+
+  return ok({
+    deleted: true,
+    name: existing.name,
+    slug: existing.slug,
+    craftsInRecycleBin: recycled,
+    message:
+      `“${existing.name}” has been removed from the gazetteer.` +
+      (recycled > 0
+        ? ` ${count("craft", recycled)} in the recycle bin ${recycled === 1 ? "was" : "were"} filed under it, so restoring ${recycled === 1 ? "it" : "them"} will need a region choosing again.`
+        : "")
+  });
 });

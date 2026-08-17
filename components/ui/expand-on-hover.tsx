@@ -72,6 +72,8 @@ import { motion } from "framer-motion";
 import { Images } from "lucide-react";
 
 import { DURATION, EASE_OUT, useReducedMotionPreference } from "@/components/motion";
+import { MediaImage } from "@/components/ui/MediaImage";
+import type { Picture } from "@/lib/media/screens";
 
 export interface ExpandOnHoverItem {
   href: string;
@@ -79,6 +81,21 @@ export interface ExpandOnHoverItem {
   imageSrc: string | null;
   /** Stored alt text; `""` marks the cover decorative, and the link's own label does the naming. */
   alt: string;
+  /**
+   * Per-screen framing for the cover, already resolved by the caller (`pictureFromMap`).
+   *
+   * ⚠ IT IS THE ONE THING THIS ISLAND TAKES THAT IS NOT A FINISHED STRING, and the exception is
+   * deliberate: a card runs from a 4rem sliver to a 24rem square, so a rectangle framed for one width is
+   * wrong at the other — which is the whole reason per-screen framing exists (lib/media/screens.ts). The
+   * geometry has to change at a breakpoint, and a URL cannot express that.
+   *
+   * Nothing else moves — but "one band" is NOT the same as "no crop", and reading it that way was a bug.
+   * One band means nobody overrode anything per SCREEN; the band still carries the asset's own stored
+   * rectangle, which `resolvePicture` folds in as the base of the cascade. So the card takes the `imageSrc`
+   * path only when there is no crop of either kind, which is what keeps a genuinely unframed, uncropped
+   * album byte-identical without dropping a crop an editor did set.
+   */
+  picture?: Picture | null;
   title: string;
   /** One short line under the title — "March 2026 · 84 pictures". Plain text; it is also read
    *  into the link's accessible name, where markup would be noise. */
@@ -229,7 +246,41 @@ export function ExpandOnHover({ items, className }: ExpandOnHoverProps) {
                 }}
                 className="relative block h-full overflow-hidden rounded-lg border border-line-200 bg-surface-100"
               >
-                {item.imageSrc ? (
+                {item.picture && (item.picture.length > 1 || item.picture[0].crop) ? (
+                  /*
+                    THE CROPPED OR FRAMED COVER. `MediaImage` owns the per-width geometry — one `<style>`
+                    block of custom properties per band, which is the only way a crop can change at a
+                    breakpoint (see its own header).
+
+                    ⚠ `|| item.picture[0].crop` IS NOT BELT-AND-BRACES; WITHOUT IT A CROP WAS IGNORED HERE.
+                    The test used to be `length > 1` alone, on the reasoning that one band means "nobody
+                    overrode anything". One band means nobody overrode anything PER SCREEN — the band still
+                    carries the asset's OWN stored rectangle, because `resolvePicture` folds `storedCrop`
+                    in as the base of the cascade. So an album whose FILE an editor had cropped drew
+                    uncropped on this shelf while a per-screen framing drew cropped: two albums side by
+                    side obeying different rules, and the cropped one silently losing the decision.
+
+                    An album with no crop and no framing still takes the plain `<Image>` branch below, so
+                    that case stays byte-identical.
+
+                    ⚠ THE `absolute inset-0` GOES ON A WRAPPER, NOT THROUGH `className`. `MediaImage`
+                    renders a `position: relative` frame, and `.relative` is defined AFTER `.absolute` in
+                    Tailwind's own output — so an `absolute` passed in loses on source order and the layer
+                    would sit in flow inside a link that has no height of its own. `aspect="none"` because
+                    the card's height is the shelf's, not the photograph's.
+                  */
+                  <span className="absolute inset-0 block">
+                    <MediaImage
+                      media={item.picture[0].media}
+                      picture={item.picture}
+                      alt={item.alt}
+                      aspect="none"
+                      rounded="none"
+                      sizes="(min-width: 1024px) 384px, 256px"
+                      className="h-full w-full"
+                    />
+                  </span>
+                ) : item.imageSrc ? (
                   // `fill` + `object-cover`: the cover re-crops live as the width animates, which
                   // is the reference behaviour — a collapsed card shows a sliver OF the picture.
                   <Image

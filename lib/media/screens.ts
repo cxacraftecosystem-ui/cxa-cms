@@ -311,10 +311,15 @@ export function resolvePicture(
  * INHERIT rather than blank the picture, and a renderer that wrote `assets[id]!` or returned `undefined`
  * instead of `null` would break that quietly, on one block, for one screen size.
  *
- * Deliberately takes the map rather than `ResolvedSectionData`: that type lives in a `server-only` module
- * and every section renderer is a client component. A type-only import would erase cleanly, but taking
- * the plain shape keeps this module's dependencies pointing one way and lets the studio's preview panels
- * call it with a `Map`-backed record too.
+ * Deliberately takes the map rather than `ResolvedSectionData`, and the reason is dependency direction
+ * rather than the client boundary. `ResolvedSectionData` lives in a `server-only` module; a type-only
+ * import would erase cleanly, so the boundary is not what forbids it. What taking the plain shape buys is
+ * that this module depends on nothing above it — so the studio's preview panels, which are genuinely
+ * client components and have no `ResolvedSectionData` to hand, can call it with a `Map`-backed record.
+ *
+ * ⚠ THE OLD NOTE HERE SAID "every section renderer is a client component", WHICH IS NOT TRUE: 6 of the 34
+ * files in components/sections/ carry `"use client"` and the rest are Server Components — one of which
+ * imports the `server-only` framing module directly. The decision above stands; that was never its reason.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 export function pictureFromMap(

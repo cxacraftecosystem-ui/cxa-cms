@@ -43,7 +43,8 @@ import {
 } from "@/components/site/MediaLightbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
-import type { AlbumRow, GalleryImageRow } from "@/lib/sections/resolve";
+import { pictureFromMap, type Picture, type ScreenFraming } from "@/lib/media/screens";
+import type { AlbumRow, GalleryImageRow, ResolvedSectionData } from "@/lib/sections/resolve";
 import type { GallerySectionData } from "@/lib/sections/schema";
 import { cn, truncateWords } from "@/lib/utils";
 
@@ -56,6 +57,17 @@ export interface GallerySectionProps {
    */
   albums: AlbumRow[];
   images: GalleryImageRow[];
+  /**
+   * The same batched read the rows came from, for the per-screen framing of both — the album covers and
+   * the pictures themselves.
+   *
+   * A framing may name a DIFFERENT photograph at some widths, and those ids sit in a JSONB column
+   * (`GalleryAlbum.coverScreens`, `GalleryItem.assetScreens`) where no relation joins them —
+   * `attachAlbumFraming` and `attachGalleryImageFraming` put them into `resolved.media`, which is the only
+   * place this block can find them. Optional so a preview that has resolved nothing still renders, with
+   * every picture drawn unframed.
+   */
+  resolved?: ResolvedSectionData;
   /** How many rows match the block's criteria in total, ignoring `limit`. */
   total?: number;
   /** Hand-picked ids that no longer resolve. */
@@ -104,11 +116,49 @@ function formatAlbumDate(value: Date | null): string | null {
   return ALBUM_DATE.format(value);
 }
 
+/**
+ * One album cover, framed per screen size where an editor has framed it.
+ *
+ * `attachAlbumFraming` in lib/sections/resolve.ts puts both the cover and every alternate a framing names
+ * into `resolved.media`, so this is the same one-line lookup the hero makes. With no map — a studio
+ * preview — the cover simply draws unframed, which is what it did before any of this existed.
+ *
+ * The column is `Json?`, so its shape is a claim rather than a proof. That is safe because the resolver
+ * reads a framing defensively, which is what makes a hand-edited row degrade to no framing rather than to
+ * a broken frame (lib/media/screens.ts).
+ */
+function coverPicture(album: AlbumRow, resolved: ResolvedSectionData | undefined): Picture | null {
+  return pictureFromMap(
+    album.coverId,
+    album.coverScreens as unknown as ScreenFraming | null,
+    resolved?.media
+  );
+}
+
+/**
+ * One picture on the wall, framed per screen size where an editor has framed it.
+ *
+ * The framing belongs to the ROW rather than to the photograph, so the same picture can be framed one way
+ * in this album and another elsewhere. `attachGalleryImageFraming` puts the row itself into
+ * `resolved.media` under its asset id, which is what lets this be the same one-line lookup as the cover's.
+ */
+function imagePicture(
+  image: GalleryImageRow,
+  resolved: ResolvedSectionData | undefined
+): Picture | null {
+  return pictureFromMap(
+    image.assetId,
+    image.assetScreens as unknown as ScreenFraming | null,
+    resolved?.media
+  );
+}
+
 export function GallerySection({
   data,
   section,
   albums,
   images,
+  resolved,
   total,
   droppedIds = 0
 }: GallerySectionProps) {
@@ -161,10 +211,16 @@ export function GallerySection({
             }
           />
         ) : showingAlbums ? (
-          <AlbumGrid albums={albums} columns={columns} headingLevel={cardHeadingLevel} />
+          <AlbumGrid
+            albums={albums}
+            resolved={resolved}
+            columns={columns}
+            headingLevel={cardHeadingLevel}
+          />
         ) : (
           <PictureWall
             images={images}
+            resolved={resolved}
             layout={data.layout}
             columns={columns}
             lightbox={data.lightbox}
@@ -186,10 +242,12 @@ export function GallerySection({
 
 function AlbumGrid({
   albums,
+  resolved,
   columns,
   headingLevel
 }: {
   albums: readonly AlbumRow[];
+  resolved: ResolvedSectionData | undefined;
   columns: 2 | 3 | 4;
   headingLevel: 2 | 3;
 }) {
@@ -202,6 +260,7 @@ function AlbumGrid({
             <EntityCard
               href={`/gallery/${album.slug}`}
               media={album.cover}
+              picture={coverPicture(album, resolved)}
               eyebrow={album.category ?? undefined}
               title={album.title}
               headingLevel={headingLevel}
@@ -226,12 +285,14 @@ function AlbumGrid({
 
 function PictureWall({
   images,
+  resolved,
   layout,
   columns,
   lightbox,
   label
 }: {
   images: readonly GalleryImageRow[];
+  resolved: ResolvedSectionData | undefined;
   layout: GallerySectionData["layout"];
   columns: 2 | 3 | 4;
   lightbox: boolean;
@@ -255,6 +316,9 @@ function PictureWall({
         <div className={cn("group relative overflow-hidden rounded-md", lightbox && "bg-surface-100")}>
           <MediaImage
             media={item}
+            /* One band when nobody framed this row, and `MediaImage` then renders exactly what it
+               rendered before the column existed. */
+            picture={imagePicture(item, resolved)}
             // Masonry keeps each picture's own proportions; grid and carousel crop everything to one
             // shape so the rows line up. That is the whole difference between the layouts.
             aspect={layout === "masonry" ? undefined : "4 / 3"}

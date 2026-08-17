@@ -40,7 +40,8 @@ import { EntityCard } from "@/components/site/EntityCard";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { TagList } from "@/components/site/TagList";
 import { EmptyState } from "@/components/ui/EmptyState";
-import type { CraftRow } from "@/lib/sections/resolve";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
+import type { CraftRow, MediaRow, ResolvedSectionData } from "@/lib/sections/resolve";
 import type { CraftExplorerSectionData } from "@/lib/sections/schema";
 import { cn, truncateWords } from "@/lib/utils";
 
@@ -62,6 +63,13 @@ export interface CraftExplorerSectionProps {
   section: PageSection;
   /** Resolved in one batched pass by `lib/sections/resolve.ts`. Never fetched here. */
   rows: CraftRow[];
+  /**
+   * The same batched read the rows came from, for its media map alone: it carries each cover AND every
+   * alternate photograph a per-screen framing names, which `attachCraftFraming` put there. Optional
+   * because a studio preview or a bespoke page may hand over rows on their own — a cover then draws
+   * unframed rather than not at all.
+   */
+  resolved?: ResolvedSectionData;
   /** How many crafts match the block's criteria in total, ignoring `limit`. */
   total?: number;
   /** Hand-picked ids that no longer resolve. */
@@ -141,6 +149,7 @@ export function CraftExplorerSection({
   data,
   section,
   rows,
+  resolved,
   total,
   droppedIds = 0
 }: CraftExplorerSectionProps) {
@@ -261,7 +270,7 @@ export function CraftExplorerSection({
                 headingLevel={cardHeadingLevel}
               />
             ) : (
-              <CraftGrid crafts={rows} headingLevel={cardHeadingLevel} />
+              <CraftGrid crafts={rows} media={resolved?.media} headingLevel={cardHeadingLevel} />
             )}
           </>
         )}
@@ -329,9 +338,12 @@ function RegionLinks({
 
 function CraftGrid({
   crafts,
+  media,
   headingLevel
 }: {
   crafts: readonly CraftRow[];
+  /** The page's media map, carrying each cover and the alternates its framing names. See the props above. */
+  media?: Record<string, MediaRow | undefined>;
   headingLevel: 2 | 3;
 }) {
   return (
@@ -341,6 +353,14 @@ function CraftGrid({
           <EntityCard
             href={`${EXPLORER_PATH}/${craft.slug}`}
             media={craft.cover}
+            /* The column is `Json?`, so its shape is a claim rather than a proof — safe because the
+               resolver reads a framing defensively, which is what makes a hand-edited row degrade to no
+               framing rather than to a broken frame. */
+            picture={pictureFromMap(
+              craft.coverId,
+              craft.coverScreens as unknown as ScreenFraming | null,
+              media
+            )}
             /*
               ⚠ SIXTEEN OF THE FORTY-TWO CRAFTS HAVE NO PHOTOGRAPH, AND WITHOUT THIS THEY SHOWED
               `MediaImage`'s grey "No image" DIAGNOSTIC — on the archive's own front page. See

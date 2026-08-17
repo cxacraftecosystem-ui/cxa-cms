@@ -9,7 +9,6 @@ import {
   conflict,
   forbidden,
   ok,
-  parseJson,
   parseQuery,
   route,
   userAgent
@@ -18,6 +17,7 @@ import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { indexDocument, searchDocFromPerson } from "@/lib/search/index";
+import { parseStudioJson, screenFramingField } from "@/lib/studio/crud";
 import { unique } from "@/lib/utils";
 
 /**
@@ -122,6 +122,12 @@ const PersonBody = z.object({
   /** A username or a full address — the profile page copes with either, so both are accepted. */
   github: z.string().trim().max(200).nullable().optional(),
   photoId: z.string().trim().min(1).max(64).nullable().optional(),
+  /**
+   * The portrait's per-screen framing. One schema for all twelve record columns — see
+   * `screenFramingField` in lib/studio/crud.ts for why it is `.nullable().optional()` and not one or the
+   * other. Accepted here as well as on `PATCH` so a profile created with a framed portrait keeps it.
+   */
+  photoScreens: screenFramingField(),
   startedOn: z.coerce.date().nullable().optional(),
   endedOn: z.coerce.date().nullable().optional(),
   sortOrder: z.number().int().min(-9999).max(9999).optional(),
@@ -252,7 +258,7 @@ export const POST = route(async (request: NextRequest) => {
     "Creating a profile needs editor access or higher. An administrator can raise yours."
   );
 
-  const body = await parseJson(request, PersonBody);
+  const body = await parseStudioJson(request, PersonBody);
 
   // Required on create even though the schema is partial for `PATCH`'s sake, so the two paths cannot drift
   // on a field's rules.
@@ -318,6 +324,9 @@ export const POST = route(async (request: NextRequest) => {
           orcid: body.orcid?.trim() || null,
           github: body.github?.trim() || null,
           photoId: body.photoId ?? null,
+          // Written through beside the id it frames. A `Json` column takes `Prisma.JsonNull` rather than a
+          // bare null (contract §14), which is what `jsonColumn` is for.
+          photoScreens: jsonColumn(body.photoScreens),
           startedOn: body.startedOn ?? null,
           endedOn: body.endedOn ?? null,
           sortOrder: body.sortOrder ?? 0,

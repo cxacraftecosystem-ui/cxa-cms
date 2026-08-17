@@ -8,10 +8,10 @@ import {
   clientIp,
   notFound,
   ok,
-  parseJson,
   route,
   userAgent
 } from "@/lib/api";
+import { parseStudioJson } from "@/lib/studio/crud";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { mediaPurgeAfterDays } from "@/lib/env";
@@ -531,7 +531,7 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   );
 
   const { id } = await context.params;
-  const body = await parseJson(request, PatchBody);
+  const body = await parseStudioJson(request, PatchBody);
 
   const before = await prisma.mediaAsset.findFirst({ where: { id, deletedAt: null } });
   if (!before) throw notFound("That file");

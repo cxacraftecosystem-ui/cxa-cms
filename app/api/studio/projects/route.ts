@@ -9,7 +9,6 @@ import {
   conflict,
   forbidden,
   ok,
-  parseJson,
   parseQuery,
   route,
   userAgent
@@ -18,6 +17,7 @@ import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { indexDocument, searchDocFromProject } from "@/lib/search/index";
+import { parseStudioJson, screenFramingField } from "@/lib/studio/crud";
 import { clamp } from "@/lib/utils";
 
 /**
@@ -96,6 +96,11 @@ const ProjectBody = z.object({
   /** Clamped rather than refused: a bar that can read 140% is worse than no bar (schema). */
   progress: z.number().int().nullable().optional(),
   coverId: idField.nullable().optional(),
+  /**
+   * Per-screen framing for the cover. `.nullable().optional()` — absent means "not sent, leave it alone",
+   * null means "cleared". See `screenFramingField` in lib/studio/crud.ts.
+   */
+  coverScreens: screenFramingField(),
   members: z
     .array(z.object({ personId: idField, role: z.string().trim().max(160).nullable().optional() }))
     .max(MAX_MEMBERS, `A project can name up to ${MAX_MEMBERS} people.`)
@@ -112,7 +117,17 @@ const ProjectBody = z.object({
     .max(MAX_MILESTONES, `A project can have up to ${MAX_MILESTONES} milestones.`)
     .optional(),
   media: z
-    .array(z.object({ assetId: idField, caption: z.string().trim().max(600).nullable().optional() }))
+    .array(
+      z.object({
+        assetId: idField,
+        caption: z.string().trim().max(600).nullable().optional(),
+        /**
+         * The row's per-screen framing, accepted beside the id it frames. Without it here the panel in the
+         * editor would be a control that saves successfully and changes nothing — see `coverScreens` above.
+         */
+        assetScreens: screenFramingField()
+      })
+    )
     .max(MAX_GALLERY, `A project gallery can hold up to ${MAX_GALLERY} pictures.`)
     .optional(),
   fileIds: z.array(idField).max(MAX_LINKS).optional(),
@@ -320,6 +335,8 @@ async function replaceProjectSets(
           projectId,
           assetId: entry.assetId,
           caption: entry.caption?.trim() || null,
+          // Beside the id it frames, so a project created with a row already framed keeps it.
+          assetScreens: jsonColumn(entry.assetScreens),
           position
         }))
       });
@@ -474,7 +491,7 @@ export const POST = route(async (request: NextRequest) => {
     "Creating a project needs researcher access or higher. An administrator can raise yours."
   );
 
-  const body = await parseJson(request, ProjectBody);
+  const body = await parseStudioJson(request, ProjectBody);
 
   // Required on create even though the schema is partial for `PATCH`'s sake. Spelled out rather than
   // split into two schemas, so the two paths cannot drift on a field's rules.
@@ -530,6 +547,9 @@ export const POST = route(async (request: NextRequest) => {
           endedOn: body.endedOn ?? null,
           progress: clamp(body.progress ?? 0, 0, 100),
           coverId: body.coverId ?? null,
+          // Written beside the picture it frames: a framing the route accepted and then dropped would be
+          // a control in the studio that silently does nothing.
+          coverScreens: jsonColumn(body.coverScreens),
           isFeatured: body.isFeatured ?? false,
           sortOrder: body.sortOrder ?? 0,
           status,

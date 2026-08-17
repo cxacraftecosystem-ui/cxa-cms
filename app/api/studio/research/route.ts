@@ -9,7 +9,6 @@ import {
   conflict,
   forbidden,
   ok,
-  parseJson,
   parseQuery,
   route,
   userAgent
@@ -18,6 +17,7 @@ import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { indexDocument, searchDocFromResearchArea } from "@/lib/search/index";
+import { parseStudioJson, screenFramingField } from "@/lib/studio/crud";
 
 /**
  * Research areas: the list, and creating one.
@@ -120,6 +120,11 @@ const AreaBody = z.object({
   icon: iconField.optional(),
   accentColor: accentField.optional(),
   coverId: z.string().trim().min(1).max(64).nullable().optional(),
+  /**
+   * Per-screen framing for the cover. `.nullable().optional()` — absent means "not sent, leave it alone",
+   * null means "cleared". See `screenFramingField` in lib/studio/crud.ts.
+   */
+  coverScreens: screenFramingField(),
   sortOrder: z.number().int().min(-9999).max(9999).optional(),
   status: z.enum(["DRAFT", "IN_REVIEW", "SCHEDULED", "PUBLISHED", "ARCHIVED"]).optional(),
   /** Only meaningful on a rename; accepted here so the editor can send one payload shape. */
@@ -244,7 +249,7 @@ export const POST = route(async (request: NextRequest) => {
     "Creating a research area needs researcher access or higher. An administrator can raise yours."
   );
 
-  const body = await parseJson(request, AreaBody);
+  const body = await parseStudioJson(request, AreaBody);
   const status = body.status ?? "DRAFT";
 
   // The same predicate `StatusControl` uses to decide what to offer. Checked here because this is the
@@ -295,6 +300,9 @@ export const POST = route(async (request: NextRequest) => {
           icon: body.icon ?? null,
           accentColor: body.accentColor ?? null,
           coverId: body.coverId ?? null,
+          // Written beside the picture it frames: a framing the route accepted and then dropped would be
+          // a control in the studio that silently does nothing.
+          coverScreens: jsonColumn(body.coverScreens),
           sortOrder: body.sortOrder ?? 0,
           status,
           // Stamped by the SERVER, never taken from the form: "when did this first go public" is a fact

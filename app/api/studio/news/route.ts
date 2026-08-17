@@ -29,6 +29,7 @@ import {
   requiredText,
   resolveTagIds,
   resolveSort,
+  screenFramingField,
   slugFromTitle,
   slugSchema,
   statusSchema,
@@ -99,6 +100,12 @@ const articleBodySchema = z.object({
   /** MDX source, or "" when the article uses the formatted editor. */
   mdx: optionalText(200_000),
   coverId: optionalId(),
+  /**
+   * The cover's per-screen framing. Accepted on creation as well as on the PATCH, because the editor is the
+   * same form either way — a route that stripped it here would take a framing an editor set before their
+   * first save and drop it without saying so.
+   */
+  coverScreens: screenFramingField(),
   authorId: optionalId(),
   categoryId: optionalId(),
   tags: z
@@ -132,6 +139,8 @@ const POST_SELECT = {
   body: true,
   mdx: true,
   coverId: true,
+  // Selected beside the cover it frames, so the created row answers with the framing it was given.
+  coverScreens: true,
   authorId: true,
   categoryId: true,
   isFeatured: true,
@@ -220,6 +229,10 @@ export const GET = route(async (request: Request) => {
         deletedAt: true,
         author: { select: { id: true, name: true, email: true } },
         category: { select: { id: true, name: true, slug: true } },
+        // Beside the picture, so a caller of this list can resolve the framing rather than
+        // drawing every framed cover unframed. `coverId` is the key `pictureFromMap` resolves by.
+        coverId: true,
+        coverScreens: true,
         cover: { select: MEDIA_IMAGE_SELECT_WITH_ID },
         tags: { select: { tag: { select: { id: true, name: true, slug: true } } } }
       }
@@ -315,6 +328,14 @@ export const POST = route(async (request: Request) => {
             body: doc === null ? Prisma.JsonNull : (doc as unknown as Prisma.InputJsonValue),
             mdx: body.mdx,
             coverId: body.coverId,
+            /*
+             * Absent and cleared are the same answer on a CREATE — there is no stored framing to leave
+             * alone — and both mean SQL NULL. `Prisma.JsonNull` rather than a bare `null`, because on a
+             * Json column `null` means "ignore this field" (contract §14).
+             */
+            coverScreens: body.coverScreens
+              ? (body.coverScreens as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
             authorId,
             categoryId: body.categoryId,
             isFeatured: body.isFeatured,

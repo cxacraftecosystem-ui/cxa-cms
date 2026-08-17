@@ -43,7 +43,9 @@ import {
   ARTICLE_MEDIA_SELECT,
   ArticleCard,
   ArticleMeta,
+  articleCardAssets,
   articleCardSelect,
+  articleCoverFraming,
   articlePublishedOn,
   articleReadingMinutes
 } from "@/components/site/ArticleMeta";
@@ -58,6 +60,8 @@ import { ArticleViewBeacon } from "@/components/site/EventRegistration";
 import { LinkButton } from "@/components/ui/Button";
 import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap } from "@/lib/media/screens";
 import { ogImageUrl } from "@/lib/media/url";
 import {
   parseRichText,
@@ -107,6 +111,13 @@ function postSelect(now: Date) {
     publishedAt: true,
     publishAt: true,
     updatedAt: true,
+    /**
+     * The cover, its framing, and its id — `pictureFromMap` resolves the base photograph out of the media
+     * map by id like any other bucket, so the relation alone cannot be framed. Same trio as
+     * `articleCardSelect`.
+     */
+    coverId: true,
+    coverScreens: true,
     cover: { select: ARTICLE_MEDIA_SELECT },
     author: { select: { name: true, title: true, avatar: { select: ARTICLE_MEDIA_SELECT } } },
     category: { select: { slug: true, name: true } },
@@ -274,6 +285,24 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
     : 0;
   const relatedHeld = relatedIsEditorial ? Math.max(0, editorialPicks.length - RELATED_SHOWN) : 0;
 
+  /**
+   * The cover, framed per screen size — the hero draws it as a 21:9 banner, which is exactly the frame a
+   * single stored rectangle cannot be right for at every width.
+   *
+   * `framingAssets` is called UNCONDITIONALLY because it costs no query when nothing is framed; its header
+   * explains why guarding it at each call site is how one site ends up guarded wrongly. `withBaseAsset` adds
+   * the cover itself, which `pictureFromMap` looks up by id like any other band.
+   */
+  const coverFraming = articleCoverFraming(post);
+  const coverPicture = pictureFromMap(
+    post.coverId,
+    coverFraming,
+    withBaseAsset(await framingAssets(coverFraming), post.coverId, post.cover)
+  );
+
+  // The "read next" rail's own covers, on the same terms and in one query for the whole rail.
+  const relatedAssets = await articleCardAssets(related);
+
   const tags = post.tags.map((link) => ({
     label: link.tag.name,
     href: `/news/tag/${link.tag.slug}`
@@ -307,6 +336,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         title={post.title}
         description={post.subtitle ?? undefined}
         media={post.cover}
+        picture={coverPicture}
         breadcrumbs={[
           { name: "Home", href: "/" },
           { name: "News", href: "/news" },
@@ -463,7 +493,12 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
             <div className="mt-8">
               <CardGrid columns={3} stagger>
                 {related.map((entry) => (
-                  <ArticleCard key={entry.id} post={entry} headingLevel={3} />
+                  <ArticleCard
+                    key={entry.id}
+                    post={entry}
+                    assets={relatedAssets}
+                    headingLevel={3}
+                  />
                 ))}
               </CardGrid>
             </div>

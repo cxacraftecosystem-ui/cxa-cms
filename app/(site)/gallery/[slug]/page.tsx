@@ -49,6 +49,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_FIGURE_SELECT, MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { absoluteUrl, pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
@@ -81,12 +83,29 @@ const albumSelect = {
   publishedAt: true,
   updatedAt: true,
   cover: { select: MEDIA_IMAGE_SELECT },
+  /**
+   * The cover's per-screen framing, fetched with the cover it belongs to.
+   *
+   * ⚠ NOTHING ON THIS PAGE DRAWS THE COVER — the hero deliberately carries no image (see the `PageHero`
+   * below), and the tiles are the album's own items. The column is selected anyway because the query that
+   * fetches a picture and the query that fetches its framing must never be allowed to drift apart: a
+   * cover drawn here later without it would render unframed, silently, on this page alone.
+   */
+  coverScreens: true,
   items: {
     orderBy: { position: "asc" },
     select: {
       id: true,
       caption: true,
       presentation: true,
+      /**
+       * The picture's id and THIS ROW's per-screen framing, in the same select as the photograph they
+       * frame. `assetId` because a framing resolves by id (`pictureFromMap`) and `id` above is the row's
+       * own; the framing is on the row rather than on the file because the same photograph is framed one
+       * way in this album and another on a project page.
+       */
+      assetId: true,
+      assetScreens: true,
       // The figure variant: `caption` and `credit` are printed under each photograph here.
       asset: { select: MEDIA_FIGURE_SELECT }
     }
@@ -161,6 +180,10 @@ export async function generateMetadata({
       publishedAt: true,
       updatedAt: true,
       cover: { select: MEDIA_IMAGE_SELECT },
+      // Carried for the same reason as in `albumSelect` above. A share card is one fixed-size image with
+      // no screen to vary by, so no band of the framing can apply to it — but a select that fetches a
+      // picture and leaves its framing behind is the shape of the bug, wherever the row ends up going.
+      coverScreens: true,
       _count: { select: { items: true } }
     }
   });
@@ -223,6 +246,11 @@ export default async function GalleryAlbumPage({
    * corresponding entry here — including the panoramas and tours, which open as their still frame.
    * Filtering those out of one list and not the other would open the wrong picture, which is the sort of
    * bug that looks like a broken thumbnail rather than a broken index.
+   *
+   * ⚠ AND THE PER-SCREEN FRAMING IS DELIBERATELY NOT CARRIED IN HERE, though the tiles below use it. The
+   * viewer draws the whole photograph at its OWN proportions (`aspect={ratio}` plus `!object-contain` in
+   * MediaLightbox.tsx), so there is no per-width frame for a rectangle to fit — and a crop drawn for a
+   * 4:3 tile would trim the picture a reader has just asked to see in full.
    */
   const items: LightboxItem[] = album.items.map((item) => ({
     id: item.id,
@@ -242,6 +270,30 @@ export default async function GalleryAlbumPage({
     caption: item.caption ?? item.asset.caption,
     credit: item.asset.credit
   }));
+
+  /**
+   * The tiles' framings, and ONE query for the whole album.
+   *
+   * ⚠ THE PANORAMAS AND TOURS ARE FRAMED TOO, because this grid draws every item as a still picture
+   * whatever its `presentation` says — the chip beside it is what tells a reader it is more than that. A
+   * framing skipped for those would be a control that worked on some tiles and not others.
+   *
+   * `framingAssets` costs no query when nothing is framed, which is nearly every album, so it is called
+   * without a guard (lib/media/framing.ts). The base photograph goes into the same map because
+   * `pictureFromMap` looks it up by id like any other band, and with no framing at all each picture
+   * resolves to a single band — which `MediaImage` ignores, drawing exactly what it drew before.
+   */
+  const itemFramings = album.items.map(
+    (item) => (item.assetScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const itemFramingMedia = await framingAssets(...itemFramings);
+  const itemPictures = album.items.map((item, index) =>
+    pictureFromMap(
+      item.assetId,
+      itemFramings[index] ?? null,
+      withBaseAsset(itemFramingMedia, item.assetId, item.asset)
+    )
+  );
 
   const interactiveKinds = album.items
     .map((item) => presentationOf(item.presentation))
@@ -337,6 +389,7 @@ export default async function GalleryAlbumPage({
                         <div className="group relative overflow-hidden rounded-md bg-surface-100">
                           <MediaImage
                             media={item.asset}
+                            picture={itemPictures[index] ?? null}
                             aspect="4 / 3"
                             rounded="none"
                             sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"

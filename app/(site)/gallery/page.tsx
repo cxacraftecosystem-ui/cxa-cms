@@ -19,9 +19,10 @@
  *
  * A Server Component reading Prisma directly. The client pieces are `FilterBar` (with its own
  * Suspense boundary) and the album shelves themselves — `ExpandOnHover` is a hover interaction and
- * cannot be anything else. The shelf receives FINISHED strings only: cover URLs resolved through
- * `mediaSrc` here on the server, titles, and a composed meta line, so the island ships no media
- * plumbing and every album's accessible name is settled before hydration. With no JavaScript the
+ * cannot be anything else. The shelf receives FINISHED values: cover URLs resolved through `mediaSrc`
+ * here on the server, titles, a composed meta line, and — for the few albums somebody has framed per
+ * screen size — a `Picture` already resolved by `pictureFromMap`, so the island ships no media plumbing
+ * and every album's accessible name is settled before hydration. With no JavaScript the
  * shelf's own `<noscript>` rescue widens the slivers and shows the labels, so the listing is still
  * fully readable (see components/ui/expand-on-hover.tsx).
  */
@@ -41,6 +42,8 @@ import { ExpandOnHover, type ExpandOnHoverItem } from "@/components/ui/expand-on
 import { Pagination } from "@/components/ui/Pagination";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { mediaAlt, mediaSrc } from "@/lib/media/url";
 import { pageMetadata } from "@/lib/seo";
@@ -83,9 +86,31 @@ const albumCardSelect = {
   location: true,
   happenedOn: true,
   cover: { select: MEDIA_IMAGE_SELECT },
+  /**
+   * The cover's id and its per-screen framing, fetched WITH the cover.
+   *
+   * `coverId` is needed as well as the joined row because `pictureFromMap` looks the base photograph up
+   * by id like any other — see `withBaseAsset` in lib/media/framing.ts. Omitting `coverScreens` here
+   * would leave a card an editor has framed rendering unframed, silently and only on this page, which is
+   * the failure the header of scripts/media-select-check.ts describes.
+   */
+  coverId: true,
+  coverScreens: true,
   /** The count, not the rows. An album of 300 pictures costs the same to list as one of three. */
   _count: { select: { items: true } }
 } satisfies Prisma.GalleryAlbumSelect;
+
+/**
+ * The stored framing, out of its JSONB column.
+ *
+ * A cast rather than a parse. `Prisma.JsonValue` carries no shape, and the render side is built to
+ * tolerate that: every member of every bucket is read through optional access and `storedCrop`, so a
+ * hand-edited row degrades to "nothing framed" rather than drawing a broken frame (lib/media/screens.ts).
+ * The Zod schema at the studio's write boundary is what keeps a row this site wrote honest.
+ */
+function coverFraming(value: Prisma.JsonValue | null | undefined): ScreenFraming | null {
+  return (value ?? null) as unknown as ScreenFraming | null;
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -191,6 +216,18 @@ export default async function GalleryIndexPage({
     })
   ]);
 
+  /**
+   * The alternate photographs the covers' framings name.
+   *
+   * A framing may say "on a phone, use this other picture entirely", and those ids sit in a JSONB column
+   * that no relation can join — so they are fetched here, once for the whole page. It is called
+   * unconditionally because it costs NO query when nothing is framed, which is nearly always; guarding
+   * it per album is how one album ends up guarded wrongly (lib/media/framing.ts).
+   */
+  const framingMedia = await framingAssets(
+    ...albums.map((album) => coverFraming(album.coverScreens))
+  );
+
   const categories = unique(
     calendar
       .map((album) => album.category?.trim())
@@ -252,6 +289,18 @@ export default async function GalleryIndexPage({
       href: `/gallery/${album.slug}`,
       imageSrc: mediaSrc(album.cover, 1080),
       alt: mediaAlt(album.cover),
+      /**
+       * The framing, resolved HERE because this is the only place that holds both the cover and the
+       * alternates it may name. `pictureFromMap` owns the lookup rather than a closure written out here:
+       * a bucket whose photograph is missing from the map must INHERIT rather than blank the cover, and
+       * that is the rule a hand-rolled `assetOf` gets subtly wrong. With nothing framed it returns a
+       * single band, which the shelf ignores in favour of `imageSrc` exactly as before.
+       */
+      picture: pictureFromMap(
+        album.coverId,
+        coverFraming(album.coverScreens),
+        withBaseAsset(framingMedia, album.coverId, album.cover)
+      ),
       title: album.title,
       meta
     };

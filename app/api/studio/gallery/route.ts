@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
@@ -26,6 +26,7 @@ import {
   publishTransition,
   requiredText,
   resolveSort,
+  screenFramingField,
   slugFromTitle,
   slugSchema,
   statusSchema,
@@ -85,7 +86,12 @@ const itemSchema = z.object({
   assetId: z.string().trim().min(1, "A picture reference cannot be empty.").max(40),
   caption: optionalText(300),
   presentation: z.enum(PRESENTATIONS).default("image"),
-  tourEntry: optionalText(120)
+  tourEntry: optionalText(120),
+  /**
+   * This row's per-screen framing. Accepted for the same reason the cover's is, one field down: a schema
+   * that stripped it would leave the panel in the editor reporting a successful save and changing nothing.
+   */
+  assetScreens: screenFramingField()
 });
 
 const albumBodySchema = z.object({
@@ -98,6 +104,12 @@ const albumBodySchema = z.object({
   credit: optionalText(160),
   happenedOn: optionalDateTime("The date this happened"),
   coverId: optionalId(),
+  /**
+   * The cover's per-screen framing. Beside the id it belongs to, and it has to be accepted here or the
+   * panel in the editor is a control that silently does nothing — the field would be stripped by this
+   * schema and the save would report success.
+   */
+  coverScreens: screenFramingField(),
   sortOrder: boundedInt({ min: -9999, max: 9999, fallback: 0 }),
   status: statusSchema.default("DRAFT"),
   tags: z
@@ -120,6 +132,11 @@ const ALBUM_SELECT = {
   credit: true,
   happenedOn: true,
   coverId: true,
+  // In the snapshot, for the reason written out at length on `ALBUM_SELECT` in ./[id]/route.ts: the
+  // "a rollback would hand Prisma a bare null" objection does not hold — `redact()` turns every null into
+  // `undefined` and `ownColumns()` skips those — and leaving it out meant a cover's framing appeared in no
+  // audit diff and survived a rollback that claimed to have replaced everything.
+  coverScreens: true,
   sortOrder: true,
   status: true,
   publishedAt: true,
@@ -130,6 +147,16 @@ const ALBUM_SELECT = {
 } as const;
 
 type AlbumRow = Prisma.GalleryAlbumGetPayload<{ select: typeof ALBUM_SELECT }>;
+
+/**
+ * A nullable `Json` column takes `Prisma.JsonNull`, never a bare `null` — Prisma refuses to guess between
+ * "the JSON value null" and "no value" (contract §14). An album created with nothing framed is the
+ * ordinary case, so this is the path almost every create takes.
+ */
+function jsonColumn(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  if (value === null || value === undefined) return Prisma.JsonNull;
+  return value as Prisma.InputJsonValue;
+}
 
 export const GET = route(async (request: Request) => {
   await requireCapability(canAccessStudio);
@@ -166,6 +193,10 @@ export const GET = route(async (request: Request) => {
         updatedAt: true,
         deletedAt: true,
         cover: { select: MEDIA_IMAGE_SELECT_WITH_ID },
+        // The cover's framing travels with the cover. A caller drawing these rows without it would draw
+        // every framed album unframed, which is a fault nothing about the response would reveal.
+        coverId: true,
+        coverScreens: true,
         _count: { select: { items: true } }
       }
     }),
@@ -231,6 +262,8 @@ export const POST = route(async (request: Request) => {
             credit: body.credit,
             happenedOn: body.happenedOn,
             coverId: body.coverId,
+            // Written beside the id it frames, so an album created with a cover already framed keeps it.
+            coverScreens: jsonColumn(body.coverScreens),
             sortOrder: body.sortOrder,
             tags: cleanTags(body.tags),
             status: transition.status,
@@ -247,6 +280,8 @@ export const POST = route(async (request: Request) => {
               caption: item.caption,
               presentation: item.presentation,
               tourEntry: item.tourEntry,
+              // Beside the id it frames, so an album created with a row already framed keeps it.
+              assetScreens: jsonColumn(item.assetScreens),
               position: index
             })),
             // The same picture twice in one album is a duplicate the unique index refuses; skipping is

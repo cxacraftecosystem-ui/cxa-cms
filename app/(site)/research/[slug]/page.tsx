@@ -65,7 +65,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { publicationDisplayVenue } from "@/lib/citation";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
+import type { MediaLike } from "@/lib/media/url";
 import { parseRichText, richTextExcerpt } from "@/lib/richtext";
 import { pageMetadata } from "@/lib/seo";
 import { truncateWords } from "@/lib/utils";
@@ -104,10 +107,31 @@ const projectCardSelect = {
   progress: true,
   startedOn: true,
   endedOn: true,
-  cover: { select: mediaSelect }
+  cover: { select: mediaSelect },
+  /**
+   * The cover's id and its per-screen framing, fetched WITH the cover.
+   *
+   * `coverId` as well as the joined row because `pictureFromMap` looks the base photograph up by id like
+   * any other — see `withBaseAsset` in lib/media/framing.ts. Omitting `coverScreens` would leave a project
+   * somebody has framed rendering unframed on THIS page only while the projects index drew it correctly,
+   * which is the failure the header of scripts/media-select-check.ts describes.
+   */
+  coverId: true,
+  coverScreens: true
 } satisfies Prisma.ProjectSelect;
 
 type ProjectCardRow = Prisma.ProjectGetPayload<{ select: typeof projectCardSelect }>;
+
+/**
+ * A project cover's stored framing, out of its JSONB column.
+ *
+ * A cast rather than a parse. `Prisma.JsonValue` carries no shape, and the render side is built to
+ * tolerate that: every bucket is read through optional access and `storedCrop`, so a hand-edited row
+ * degrades to "nothing framed" rather than drawing a broken frame (lib/media/screens.ts).
+ */
+function coverFraming(value: Prisma.JsonValue | null | undefined): ScreenFraming | null {
+  return (value ?? null) as unknown as ScreenFraming | null;
+}
 
 /**
  * Wider than the row looks, because `publicationDisplayVenue` reads volume, issue, publisher and the
@@ -143,6 +167,11 @@ const personCardSelect = {
   name: true,
   designation: true,
   department: true,
+  // The portrait's id and its framing, for the reason `coverId`/`coverScreens` are on the project select
+  // above: the cards below draw these as 4:5 portraits, and a select that omits the framing renders a
+  // framed portrait unframed on this page alone — silently, which is the whole failure mode.
+  photoId: true,
+  photoScreens: true,
   photo: { select: mediaSelect }
 } satisfies Prisma.PersonSelect;
 
@@ -201,6 +230,14 @@ const loadArea = cache(async (slug: string) => {
       publishedAt: true,
       updatedAt: true,
       cover: { select: mediaSelect },
+      /**
+       * The cover's id and its per-screen framing, for the reason they are on `projectCardSelect` above —
+       * and this is the surface the feature exists for: `PageHero`'s dark tone draws the cover full-bleed,
+       * so one rectangle would have to serve a frame running from roughly 0.5:1 on a phone to 2.5:1 on a
+       * wide desktop.
+       */
+      coverId: true,
+      coverScreens: true,
       // Filtered counts, so the figures agree with the lists below and no draft is advertised.
       _count: { select: { projects: { where: live }, publications: { where: live } } }
     }
@@ -310,6 +347,19 @@ export default async function ResearchAreaPage({ params }: AreaPageProps) {
     })
   ]);
 
+  /**
+   * Every framing this page draws, gathered before a single query is issued.
+   *
+   * A framing may say "on a phone, use this other picture entirely", and those ids sit in a JSONB column no
+   * relation can join — so the alternates need their own read. All three groups are collected first because
+   * every step between them is pure computation on rows already in hand.
+   *
+   * ⚠ RESOLVED HERE RATHER THAN IN `loadArea`, which `generateMetadata` shares: a share card has no
+   * breakpoints, so it must not pay for a second query to produce one.
+   */
+  const projectFramings = projects.map((project) => coverFraming(project.coverScreens));
+  const areaFraming = coverFraming(area.coverScreens);
+
   const membershipScanTruncated = memberships.length > MEMBERSHIP_SCAN_LIMIT;
   const scanned = memberships.slice(0, MEMBERSHIP_SCAN_LIMIT);
 
@@ -322,6 +372,33 @@ export default async function ResearchAreaPage({ params }: AreaPageProps) {
     else peopleById.set(row.personId, { person: row.person, projectCount: 1 });
   }
   const people = [...peopleById.values()];
+
+  /**
+   * The same for the PORTRAITS, once the scan has been reduced to the people actually shown.
+   *
+   * After the de-duplication rather than over `scanned`, so a researcher on four projects in this area
+   * contributes their framing once instead of four times. The cast is `coverFraming`'s, for a portrait —
+   * the reasoning beside it applies unchanged.
+   */
+  const personFramings = people.map(
+    ({ person }) => (person.photoScreens ?? null) as unknown as ScreenFraming | null
+  );
+
+  /**
+   * ⚠ ONE QUERY FOR THE COVER, THE PROJECTS AND THE PORTRAITS — not three. `framingAssets` is variadic
+   * exactly so a page asks once; three awaited calls in a row were three SERIAL round trips, and keeping
+   * three maps apart bought nothing, since an asset id is unique and `withBaseAsset` still folds each
+   * picture's own base in where it is used. Called unconditionally because it costs NO query at all when
+   * nothing is framed, which is nearly always — guarding it per record is how one record ends up guarded
+   * wrongly (lib/media/framing.ts).
+   */
+  const framingMedia = await framingAssets(areaFraming, ...projectFramings, ...personFramings);
+
+  const coverPicture = pictureFromMap(
+    area.coverId,
+    areaFraming,
+    withBaseAsset(framingMedia, area.coverId, area.cover)
+  );
 
   const projectTotal = area._count.projects;
   const publicationTotal = area._count.publications;
@@ -352,6 +429,7 @@ export default async function ResearchAreaPage({ params }: AreaPageProps) {
         title={area.title}
         description={area.summary?.trim() || undefined}
         media={area.cover}
+        picture={coverPicture}
         breadcrumbs={[
           { name: "Home", href: "/" },
           { name: "Research", href: "/research" },
@@ -412,7 +490,7 @@ export default async function ResearchAreaPage({ params }: AreaPageProps) {
           }}
         >
           {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
+            <ProjectCard key={project.id} project={project} framingMedia={framingMedia} />
           ))}
         </CardGrid>
 
@@ -490,11 +568,18 @@ export default async function ResearchAreaPage({ params }: AreaPageProps) {
               "Names appear here once a published project in this area has a published team member on it."
           }}
         >
-          {people.map(({ person, projectCount }) => (
+          {people.map(({ person, projectCount }, index) => (
             <EntityCard
               key={person.id}
               href={`/people/${person.slug}`}
               media={person.photo}
+              /* Nothing framed resolves to a single band, which `MediaImage` ignores — so an unframed
+                 portrait renders exactly as it did before the column existed. */
+              picture={pictureFromMap(
+                person.photoId,
+                personFramings[index],
+                withBaseAsset(framingMedia, person.photoId, person.photo)
+              )}
               variant="portrait"
               title={person.name}
               eyebrow={person.designation?.trim() || undefined}
@@ -596,7 +681,17 @@ function periodOf(project: ProjectCardRow): string | null {
   return to;
 }
 
-function ProjectCard({ project }: { project: ProjectCardRow }) {
+function ProjectCard({
+  project,
+  framingMedia
+}: {
+  project: ProjectCardRow;
+  /**
+   * The page's alternate photographs, keyed by asset id — NOT the cover itself, which arrives on the row.
+   * Empty unless somebody has framed a cover, which is nearly always.
+   */
+  framingMedia: Record<string, MediaLike | undefined>;
+}) {
   const stage = STAGE[project.state];
   const period = periodOf(project);
   const summary = project.tagline?.trim() || project.summary?.trim() || "";
@@ -605,6 +700,13 @@ function ProjectCard({ project }: { project: ProjectCardRow }) {
     <EntityCard
       href={`/projects/${project.slug}`}
       media={project.cover}
+      /* A bucket whose photograph is missing from the map INHERITS rather than blanking the cover, which
+         is exactly the rule `pictureFromMap` owns so no call site writes its own `assetOf`. */
+      picture={pictureFromMap(
+        project.coverId,
+        coverFraming(project.coverScreens),
+        withBaseAsset(framingMedia, project.coverId, project.cover)
+      )}
       title={project.title}
       description={summary ? truncateWords(summary, 170) : undefined}
       meta={

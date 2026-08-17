@@ -36,12 +36,14 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ContentStatus } from "@prisma/client";
 import { Box, ChevronDown, ImagePlus, Trash2, X } from "lucide-react";
 
 import { del, patch, post } from "@/lib/client/fetcher";
 import { summariseFailures, uploadFiles, type UploadProgress } from "@/lib/client/upload";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { cn, unique } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Field, FieldBlock } from "@/components/ui/Field";
@@ -62,6 +64,7 @@ import { StatusControl, statusProblems } from "@/components/studio/StatusControl
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
 import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
+import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
@@ -94,6 +97,13 @@ export interface CraftMediaValue {
   asset: EditorMedia;
   caption: string;
   phase: RestorationPhase;
+  /**
+   * How THIS PICTURE IN THIS GALLERY is framed at each screen width, or null — the resting state, and what
+   * nearly every row carries. It belongs to the row rather than to the file, so the same photograph can be
+   * framed one way here and another in a gallery album. A row never changes its picture (a different
+   * photograph is a different row), so unlike `coverScreens` there is nothing to clear it against.
+   */
+  assetScreens: ScreenFraming | null;
 }
 
 export interface CraftFormValue {
@@ -117,6 +127,16 @@ export interface CraftFormValue {
   latitude: string;
   longitude: string;
   cover: EditorMedia | null;
+  /**
+   * The cover's framing per screen width, or null — which is the resting state and the common case.
+   *
+   * ⚠ IT IS CLEARED WHENEVER THE COVER CHANGES, and that is the rule `MediaFramingField` exists to keep
+   * in one place for the section forms (see its header). The rectangles are fractions of ONE photograph,
+   * so carried onto another they frame whatever happens to sit at those coordinates. This editor's cover
+   * control is the media library dialog rather than an `EntityPicker`, so it keeps the rule itself — in
+   * `onPicked` and beside the remove button.
+   */
+  coverScreens: ScreenFraming | null;
   media: CraftMediaValue[];
   /** The storage key of an uploaded glTF/GLB model, or "". */
   modelObjectKey: string;
@@ -259,6 +279,7 @@ function toPayload(value: CraftFormValue) {
     latitude: toFloatOrNull(value.latitude),
     longitude: toFloatOrNull(value.longitude),
     coverId: value.cover?.id ?? null,
+    coverScreens: value.coverScreens,
     // Sent WHOLE, with positions, and replaced inside the one transaction `mutateWithHistory()` opens.
     // The position is the pairing evidence, so it has to be explicit rather than implied.
     media: value.media.map((entry, position) => ({
@@ -267,6 +288,9 @@ function toPayload(value: CraftFormValue) {
       // `null`, never "", for a picture that is not part of a pair: the column is nullable and the
       // renderer compares against the words "before" and "after".
       restorationPhase: entry.phase.length > 0 ? entry.phase : null,
+      // Beside the id it frames, on every save. Null means "this row's panel was cleared" rather than
+      // "leave the column alone" — see `screenFramingField` in lib/studio/crud.ts.
+      assetScreens: entry.assetScreens,
       position
     })),
     modelObjectKey: orNull(value.modelObjectKey),
@@ -477,16 +501,28 @@ export function CraftEditor({
             .map((asset) => ({
               asset: toEditorMedia(asset),
               caption: "",
-              phase: "" as RestorationPhase
+              phase: "" as RestorationPhase,
+              // A new row starts unframed — null, never an empty framing (`emptyScreenFraming`'s header
+              // explains why six blank buckets would mark a clean form dirty).
+              assetScreens: null
             }));
           return { ...current, media: [...current.media, ...additions].slice(0, MAX_MEDIA) };
         });
       } else if (first) {
-        update({ cover: toEditorMedia(first) });
+        // A DIFFERENT photograph invalidates every rectangle framed on the old one — see `coverScreens`
+        // on `CraftFormValue`. Chosen through `setValue` rather than `update` so the comparison is
+        // against the current cover rather than one captured when this callback was made.
+        setValue((current) => ({
+          ...current,
+          cover: toEditorMedia(first),
+          coverScreens: first.id === current.cover?.id ? current.coverScreens : null
+        }));
       }
       setPicker(null);
     },
-    [picker, settleBody, update]
+    // `update` is deliberately absent: both branches above write through `setValue`'s updater so the
+    // comparison is against the CURRENT value rather than one captured when this callback was made.
+    [picker, settleBody]
   );
 
   // ── The 3D model ─────────────────────────────────────────────────────────────────────────────
@@ -701,9 +737,30 @@ export function CraftEditor({
         description="The region places this craft on the map in the craft explorer. The school is the tradition or lineage it belongs to."
         columns={2}
       >
+        {/*
+          ⚠ BOTH HELP LINES NAME THE SCREEN THAT FILLS THE LIST, and that is not decoration. These two
+          fields used to say "regions are set up separately" and "leave it empty if the craft belongs to no
+          named school" while there was NOWHERE in the studio that either was set up: regions were seeded
+          and read-only, and `CraftSchool` had no route and no screen at all. So an editor with a real
+          school in front of them read a picker with an empty list, a sentence implying the work happened
+          elsewhere, and no elsewhere. A field that cannot be filled must say where it is filled.
+        */}
         <Field
           label="Region"
-          help="Regions are set up separately. Leave it empty if the place is not settled — the record still works, it simply is not on the map."
+          help={
+            <>
+              Where the craft comes from, and what places it on the craft explorer&apos;s map. Leave it
+              empty if the place is not settled — the record still works, it simply is not on the map.{" "}
+              {regions.length === 0 ? (
+                <>No region has been recorded yet, so this list is empty until one is.</>
+              ) : null}{" "}
+              Regions are added and placed on{" "}
+              <Link href="/studio/crafts/regions" className="font-medium text-purple-700 underline-offset-4 hover:underline">
+                Regions on the map
+              </Link>
+              .
+            </>
+          }
         >
           <Select
             value={value.regionId}
@@ -713,7 +770,23 @@ export function CraftEditor({
           />
         </Field>
 
-        <Field label="School or tradition" help="Leave it empty if the craft belongs to no named school.">
+        <Field
+          label="School or tradition"
+          help={
+            <>
+              The named school, gharana or workshop lineage this craft belongs to. Leave it empty if it
+              belongs to no named school — many traditions do not.{" "}
+              {schools.length === 0 ? (
+                <>None has been recorded yet, so this list is empty until one is.</>
+              ) : null}{" "}
+              Schools are added on{" "}
+              <Link href="/studio/crafts/schools" className="font-medium text-purple-700 underline-offset-4 hover:underline">
+                Schools and traditions
+              </Link>
+              .
+            </>
+          }
+        >
           <Select
             value={value.schoolId}
             options={schools}
@@ -877,7 +950,7 @@ export function CraftEditor({
                     variant="ghost"
                     size="sm"
                     icon={Trash2}
-                    onClick={() => update({ cover: null })}
+                    onClick={() => update({ cover: null, coverScreens: null })}
                   >
                     Remove the picture
                   </Button>
@@ -895,6 +968,23 @@ export function CraftEditor({
               Choose a picture
             </Button>
           )}
+
+          {/*
+            Offered only once there is a picture, because framing nothing is a control with nothing to act
+            on — the same condition `MediaFramingField` applies on the section forms. It is SUPPLEMENTARY:
+            one photograph is used at every width unless a bucket says otherwise, so the panel starts shut,
+            and it rides this form's autosave rather than patching anything of its own.
+          */}
+          {value.cover ? (
+            <div className="mt-3">
+              <ScreenFramingPanel
+                label="Framing per screen size"
+                mediaId={value.cover.id}
+                value={value.coverScreens}
+                onChange={(next) => update({ coverScreens: next })}
+              />
+            </div>
+          ) : null}
         </FieldBlock>
       </FormSection>
 
@@ -1035,6 +1125,30 @@ export function CraftEditor({
                           No description, so a screen reader says nothing about this picture. A caption is
                           not the same thing — add a description in the media library.
                         </HelpText>
+                      ) : null}
+
+                      {/*
+                        THIS ROW'S FRAMING, AND ONLY WHERE THE PICTURE IS DRAWN AS AN ORDINARY TILE.
+
+                        A paired picture goes into `BeforeAfterSlider`, which overlays the two halves in one
+                        frame whose shape is the "after"'s so that the seam reveals rather than moves.
+                        Re-framing one half at some widths would slide that seam across the subject, so the
+                        slider is handed the plain rows and the panel is not offered here — the same gate
+                        `HeroForm` puts on a video background, for the same reason.
+
+                        `rowPlan.role` is the editor's own preview of what the page will do, so a row marked
+                        "before" with no "after" under it is a single tile HERE as well as there, and keeps
+                        its panel. Not `MediaFramingField`: a row's photograph is not swappable, so there is
+                        nothing for that component's clear-on-change rule to act on.
+                      */}
+                      {rowPlan.role === "single" ? (
+                        <ScreenFramingPanel
+                          label="Framing per screen size, in this gallery"
+                          help="Optional. Frame this picture differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size, and the smallest falls back to the picture's own crop. It applies to the gallery tile on the craft's page; opening a picture full screen always shows the whole photograph."
+                          mediaId={entry.asset.id}
+                          value={entry.assetScreens}
+                          onChange={(next) => setMedia(index, { assetScreens: next })}
+                        />
                       ) : null}
                     </div>
 

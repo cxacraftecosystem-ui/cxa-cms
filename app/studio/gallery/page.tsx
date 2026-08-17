@@ -5,6 +5,8 @@ import type { ContentStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent } from "@/lib/permissions";
 import { describeStatus } from "@/lib/content";
@@ -74,6 +76,18 @@ type SortKey = keyof typeof SORTS;
 
 function isSortKey(value: string): value is SortKey {
   return Object.prototype.hasOwnProperty.call(SORTS, value);
+}
+
+/**
+ * A cover's stored framing, out of its JSONB column.
+ *
+ * A cast rather than a parse. `Prisma.JsonValue` carries no shape, and the render side is built to
+ * tolerate that: every member of every bucket is read through optional access and `storedCrop`, so a
+ * hand-edited row degrades to "nothing framed" rather than drawing a broken frame (lib/media/screens.ts).
+ * The Zod schema on `/api/studio/gallery` is what keeps a row this studio wrote honest.
+ */
+function coverFraming(value: Prisma.JsonValue | null | undefined): ScreenFraming | null {
+  return (value ?? null) as unknown as ScreenFraming | null;
 }
 
 const STATUSES: readonly ContentStatus[] = ["DRAFT", "IN_REVIEW", "SCHEDULED", "PUBLISHED", "ARCHIVED"];
@@ -163,6 +177,16 @@ export default async function StudioGalleryPage({
         updatedAt: true,
         tags: true,
         cover: { select: MEDIA_IMAGE_SELECT },
+        /**
+         * The cover's id and its per-screen framing, fetched WITH the cover.
+         *
+         * The thumbnail below is small, and that is not a reason to leave the framing behind: an editor
+         * who framed a cover for phones and sees the desktop framing in this list is being shown the
+         * truth about what the site draws at the width they are looking at it from. `coverId` comes too
+         * because a framing resolves by id (lib/media/screens.ts).
+         */
+        coverId: true,
+        coverScreens: true,
         _count: { select: { items: true } }
       }
     }),
@@ -185,6 +209,17 @@ export default async function StudioGalleryPage({
    * Reading the row inside the batch above would save a round trip and lose all of that.
    */
   const featureFlags = await getSettingCached("features");
+
+  /**
+   * The alternate photographs the covers' framings name — ids in a JSONB column that no relation joins.
+   *
+   * Outside the batch above deliberately: it cannot be planned until the albums are known. It costs NO
+   * query when nobody has framed a cover, which is why it is called unconditionally rather than guarded
+   * per row (lib/media/framing.ts).
+   */
+  const framingMedia = await framingAssets(
+    ...albums.map((album) => coverFraming(album.coverScreens))
+  );
 
   const categories = categoryRows
     .map((row) => row.category)
@@ -349,6 +384,13 @@ export default async function StudioGalleryPage({
                         {album.cover ? (
                           <MediaImage
                             media={album.cover}
+                            // The same resolver the public page uses, so this thumbnail and the site
+                            // cannot disagree about what the cover looks like at this width.
+                            picture={pictureFromMap(
+                              album.coverId,
+                              coverFraming(album.coverScreens),
+                              withBaseAsset(framingMedia, album.coverId, album.cover)
+                            )}
                             // The title beside it names the album, so the thumbnail is decorative here.
                             alt=""
                             aspect="none"

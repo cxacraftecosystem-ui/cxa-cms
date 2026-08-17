@@ -4,10 +4,12 @@ import type { Prisma } from "@prisma/client";
 import { PageHero } from "@/components/site/PageHero";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { pageMetadata } from "@/lib/seo";
 
-import { PeopleDirectory } from "./PeopleDirectory";
+import { PeopleDirectory, type DirectoryPerson } from "./PeopleDirectory";
 import { prerenderSafe } from "@/lib/prerender";
 
 /**
@@ -51,6 +53,15 @@ const personSelect = {
   researchInterests: true,
   startedOn: true,
   endedOn: true,
+  /**
+   * The portrait's id and its per-screen framing, beside the photograph itself.
+   *
+   * `photoId` looks redundant next to the relation and is not: `pictureFromMap` resolves the base
+   * photograph out of a media map BY ID, exactly like a bucket that names an alternate — so a row
+   * carrying the relation but not the id cannot be framed at all (lib/media/screens.ts).
+   */
+  photoId: true,
+  photoScreens: true,
   /**
    * The shared fragment, which carries `variants` — without them `pickVariant` has nothing to choose
    * from and every portrait falls back to the full-size original inside a 320px card.
@@ -101,6 +112,35 @@ export default async function PeoplePage() {
     [[], 0]
   );
 
+  /**
+   * Every alternate photograph the roster's framings name, in ONE query for the whole page.
+   *
+   * ⚠ AND NO QUERY AT ALL WHEN NOBODY HAS FRAMED A PORTRAIT, which is the common case and the reason this
+   * is not guarded: `framingAssets` returns an empty map without touching the database when there are no
+   * ids (lib/media/framing.ts). A prerender whose read fell back to `[]` therefore costs nothing either.
+   *
+   * The base photograph is added PER PERSON rather than into one shared map: `pictureFromMap` looks it up
+   * by id like any other band, and a map holding four hundred portraits would be four hundred entries no
+   * single card can use.
+   */
+  const alternates = await framingAssets(
+    // The column is `Json?`, so the shape is a claim rather than a proof — safe because the resolver
+    // reads a framing defensively, which is what makes a hand-edited row degrade to "no framing".
+    ...people.map((person) => (person.photoScreens ?? null) as unknown as ScreenFraming | null)
+  );
+
+  const roster: DirectoryPerson[] = people.map((person) => {
+    const framing = (person.photoScreens ?? null) as unknown as ScreenFraming | null;
+    return {
+      ...person,
+      picture: pictureFromMap(
+        person.photoId,
+        framing,
+        withBaseAsset(alternates, person.photoId, person.photo)
+      )
+    };
+  });
+
   return (
     <>
       <PageHero
@@ -115,7 +155,7 @@ export default async function PeoplePage() {
 
       <section className="shell pb-24 sm:pb-32">
         <PeopleDirectory
-          people={people}
+          people={roster}
           truncated={total > people.length}
           cap={ROSTER_CAP}
           total={total}

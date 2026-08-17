@@ -53,7 +53,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Pagination } from "@/components/ui/Pagination";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
+import type { MediaLike } from "@/lib/media/url";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { truncateWords, unique } from "@/lib/utils";
@@ -85,6 +88,10 @@ const eventCardSelect = {
   venue: true,
   startsAt: true,
   endsAt: true,
+  coverId: true,
+  // The framing rides in the same select as the relation it frames. A query that fetched one without the
+  // other is how the single stored crop came to be rendered by nothing — scripts/media-select-check.ts.
+  coverScreens: true,
   // `isRegistrationOpen` is deliberately NOT selected. A "Registration open" chip on a card would be
   // read as "there is a place for me", and this query has not counted the registrations — a full event
   // would advertise itself as available. Whether a place exists is answered on the event's own page,
@@ -93,6 +100,18 @@ const eventCardSelect = {
 } satisfies Prisma.CoeEventSelect;
 
 type EventCardRow = Prisma.CoeEventGetPayload<{ select: typeof eventCardSelect }>;
+
+/**
+ * The stored framing, typed.
+ *
+ * Prisma answers a JSONB column as `JsonValue` and the shape belongs to lib/media/screens.ts, so the cast
+ * is where the two meet. Nothing downstream trusts it: `resolvePicture` reads each bucket defensively and
+ * an unusable rectangle degrades to "no crop", so a hand-edited row is a plain photograph rather than a
+ * broken frame.
+ */
+function coverFraming(event: EventCardRow): ScreenFraming | null {
+  return (event.coverScreens ?? null) as unknown as ScreenFraming | null;
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -242,6 +261,19 @@ export default async function EventsIndexPage({
     [0, [], 0, [], []]
   );
 
+  /**
+   * The alternate photographs every card's framing names, in ONE query for the whole page.
+   *
+   * `framingAssets` is variadic and issues no query at all when nothing on the page is framed — see its
+   * header — so both lists are handed to it unconditionally rather than each card fetching for itself,
+   * which would be one round trip per card. The base cover is added per card below, because
+   * `pictureFromMap` looks the base photograph up by id like any other.
+   */
+  const framingMedia = await framingAssets(
+    ...upcoming.map(coverFraming),
+    ...past.map(coverFraming)
+  );
+
   const groups: FilterGroup[] = [];
   if (years.length > 1) {
     groups.push({
@@ -344,7 +376,12 @@ export default async function EventsIndexPage({
                   <div className="mt-8">
                     <CardGrid columns={3} stagger>
                       {upcoming.map((event) => (
-                        <EventListCard key={event.id} event={event} headingLevel={3} />
+                        <EventListCard
+                          key={event.id}
+                          event={event}
+                          framingMedia={framingMedia}
+                          headingLevel={3}
+                        />
                       ))}
                     </CardGrid>
                   </div>
@@ -397,7 +434,12 @@ export default async function EventsIndexPage({
                   <div className="mt-8">
                     <CardGrid columns={3} stagger>
                       {past.map((event) => (
-                        <EventListCard key={event.id} event={event} headingLevel={3} />
+                        <EventListCard
+                          key={event.id}
+                          event={event}
+                          framingMedia={framingMedia}
+                          headingLevel={3}
+                        />
                       ))}
                     </CardGrid>
                   </div>
@@ -451,18 +493,29 @@ export default async function EventsIndexPage({
  */
 function EventListCard({
   event,
+  framingMedia,
   headingLevel
 }: {
   event: EventCardRow;
+  /** The page's one batched read of the alternate photographs every framing names. */
+  framingMedia: Record<string, MediaLike | undefined>;
   headingLevel: 3 | 4;
 }) {
   const dates = describeEventDates(event.startsAt, event.endsAt);
   const mode = EVENT_MODES[event.mode];
+  // A single band when nobody has framed this cover, which `MediaImage` ignores — so an unframed card is
+  // the markup it always was.
+  const picture = pictureFromMap(
+    event.coverId,
+    coverFraming(event),
+    withBaseAsset(framingMedia, event.coverId, event.cover)
+  );
 
   return (
     <EntityCard
       href={`/events/${event.slug}`}
       media={event.cover}
+      picture={picture}
       variant="cover"
       headingLevel={headingLevel}
       eyebrow={dates.sentence}

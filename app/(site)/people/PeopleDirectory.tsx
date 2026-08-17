@@ -37,11 +37,20 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field } from "@/components/ui/Field";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Select } from "@/components/ui/Select";
+import type { Picture } from "@/lib/media/screens";
 import { cn } from "@/lib/utils";
 
 export interface DirectoryPerson extends PersonCardPerson {
   /** React key. The slug would do, but the id is what the database calls this row. */
   id: string;
+  /**
+   * The portrait's per-screen framing, resolved on the SERVER.
+   *
+   * It has to arrive already resolved: the alternate photographs a framing names are ids in a JSONB
+   * column that no relation joins, so only the page's own query can fetch them (lib/media/framing.ts),
+   * and this component runs in the browser. Null for the overwhelming majority, who are unframed.
+   */
+  picture?: Picture | null;
 }
 
 export interface PeopleDirectoryProps {
@@ -350,7 +359,12 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
               */}
               <CardGrid columns={4}>
                 {group.people.map((person) => (
-                  <PersonCard key={person.id} person={person} headingLevel={3} />
+                  <PersonCard
+                    key={person.id}
+                    person={person}
+                    picture={person.picture ?? null}
+                    headingLevel={3}
+                  />
                 ))}
               </CardGrid>
             </div>

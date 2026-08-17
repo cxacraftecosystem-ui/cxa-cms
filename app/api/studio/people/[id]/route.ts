@@ -10,7 +10,6 @@ import {
   forbidden,
   notFound,
   ok,
-  parseJson,
   route,
   userAgent
 } from "@/lib/api";
@@ -20,6 +19,7 @@ import { isLive } from "@/lib/content";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { indexDocument, removeDocument, searchDocFromPerson, searchUrlFor } from "@/lib/search/index";
+import { parseStudioJson, screenFramingField } from "@/lib/studio/crud";
 import { unique } from "@/lib/utils";
 
 /**
@@ -111,6 +111,12 @@ const PatchBody = z.object({
   orcid: z.string().trim().max(40).nullable().optional(),
   github: z.string().trim().max(200).nullable().optional(),
   photoId: z.string().trim().min(1).max(64).nullable().optional(),
+  /**
+   * The portrait's per-screen framing. One schema for all twelve record columns — `screenFramingField` in
+   * lib/studio/crud.ts sets out why it is `.nullable().optional()`: absent means "leave the column alone"
+   * on a partial save, and null means "the editor cleared it".
+   */
+  photoScreens: screenFramingField(),
   startedOn: z.coerce.date().nullable().optional(),
   endedOn: z.coerce.date().nullable().optional(),
   sortOrder: z.number().int().min(-9999).max(9999).optional(),
@@ -226,7 +232,7 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   );
 
   const { id } = await context.params;
-  const body = await parseJson(request, PatchBody);
+  const body = await parseStudioJson(request, PatchBody);
 
   const before = await prisma.person.findFirst({ where: { id, deletedAt: null } });
   if (!before) throw notFound("That profile");
@@ -285,6 +291,9 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   if ("orcid" in body) data.orcid = body.orcid?.trim() || null;
   if ("github" in body) data.github = body.github?.trim() || null;
   if ("photoId" in body) data.photoId = body.photoId ?? null;
+  // `in body` rather than a truthiness test, so clearing the framing writes NULL instead of being read as
+  // "the form did not send this". A `Json` column takes `Prisma.JsonNull`, never a bare null (contract §14).
+  if ("photoScreens" in body) data.photoScreens = jsonColumn(body.photoScreens);
   if ("startedOn" in body) data.startedOn = body.startedOn ?? null;
   if ("endedOn" in body) data.endedOn = body.endedOn ?? null;
   if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder;

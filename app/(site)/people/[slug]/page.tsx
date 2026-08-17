@@ -32,6 +32,8 @@ import { personInitials } from "@/components/site/PersonCard";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { publicationDisplayVenue } from "@/lib/citation";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ogImageUrl } from "@/lib/media/url";
 import { parseRichText, richTextExcerpt } from "@/lib/richtext";
@@ -130,6 +132,15 @@ const loadPerson = cache(async (slug: string) => {
       endedOn: true,
       updatedAt: true,
       publishedAt: true,
+      /**
+       * The portrait, its id and its per-screen framing.
+       *
+       * `photoId` as well as the joined row because `pictureFromMap` resolves the BASE photograph out of
+       * the media map by id, exactly like a bucket that names an alternate (lib/media/screens.ts) — and
+       * without `photoScreens` the 4:5 portrait below would draw unframed on the one page it is largest.
+       */
+      photoId: true,
+      photoScreens: true,
       photo: { select: MEDIA_IMAGE_SELECT }
     }
   });
@@ -382,6 +393,11 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
         startedOn: true,
         endedOn: true,
         cover: { select: MEDIA_IMAGE_SELECT },
+        // The cover's id and its per-screen framing. `coverId` as well as the joined row because
+        // `pictureFromMap` looks the base photograph up by id like any other (lib/media/framing.ts);
+        // without `coverScreens` a framed project would draw unframed on this page alone.
+        coverId: true,
+        coverScreens: true,
         researchArea: { select: { title: true } }
       }
     }),
@@ -404,6 +420,36 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
     }),
     prisma.coeEvent.count({ where: spokeAt })
   ]);
+
+  /**
+   * The alternate photographs the project covers' framings name.
+   *
+   * The framing lives in a JSONB column, so its ids cannot be joined through the `cover` relation. Called
+   * unconditionally because it costs NO query when nothing is framed, which is nearly always — guarding
+   * it per project is how one project ends up guarded wrongly (lib/media/framing.ts).
+   *
+   * The cast is deliberate: `Prisma.JsonValue` carries no shape, the studio's route validates the value
+   * with `screenFramingField()` on the way in, and the resolver reads every bucket defensively.
+   */
+  const projectFramings = projects.map(
+    (project) => (project.coverScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const projectFramingMedia = await framingAssets(...projectFramings);
+
+  /**
+   * The same thing for the PORTRAIT, which is the largest this photograph is drawn anywhere on the site.
+   *
+   * A separate call rather than one merged with the projects above: the two maps are read by different
+   * pictures, and both cost nothing when nothing is framed (lib/media/framing.ts). The cast carries the
+   * same reasoning as the one above it.
+   */
+  const photoFraming = (person.photoScreens ?? null) as unknown as ScreenFraming | null;
+  const photoFramingMedia = await framingAssets(photoFraming);
+  const photoPicture = pictureFromMap(
+    person.photoId,
+    photoFraming,
+    withBaseAsset(photoFramingMedia, person.photoId, person.photo)
+  );
 
   const links = profileLinks(person);
   const tenure = personTenure(person);
@@ -464,6 +510,9 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
             {person.photo ? (
               <MediaImage
                 media={person.photo}
+                /* One band — nobody framed this portrait — and `MediaImage` then takes the exact path it
+                   took before the column existed, which is what every unframed portrait relies on. */
+                picture={photoPicture}
                 aspect="4 / 5"
                 rounded="lg"
                 priority
@@ -686,7 +735,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
 
             <div className="mt-8">
               <CardGrid columns={3}>
-                {projects.map((project) => {
+                {projects.map((project, index) => {
                   const from = project.startedOn ? project.startedOn.getUTCFullYear() : null;
                   const to = project.endedOn ? project.endedOn.getUTCFullYear() : null;
                   // UTC, for the reason set out in `personTenure`: a local year turns a January date
@@ -699,6 +748,14 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
                       key={project.id}
                       href={`/projects/${project.slug}`}
                       media={project.cover}
+                      /* A bucket naming a photograph the map does not hold INHERITS rather than blanking
+                         the cover — the rule `pictureFromMap` owns so no call site writes its own
+                         `assetOf`. Nothing framed resolves to one band, which `MediaImage` ignores. */
+                      picture={pictureFromMap(
+                        project.coverId,
+                        projectFramings[index],
+                        withBaseAsset(projectFramingMedia, project.coverId, project.cover)
+                      )}
                       title={project.title}
                       eyebrow={project.researchArea?.title ?? undefined}
                       // Truncated on the SERVER: a CSS line clamp hides text from sighted readers while

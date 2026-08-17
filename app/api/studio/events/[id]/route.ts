@@ -24,6 +24,7 @@ import {
   requiredDateTime,
   requiredText,
   resolveTagIds,
+  screenFramingField,
   slugSchema,
   statusSchema,
   syncSearchDocument
@@ -67,6 +68,14 @@ const agendaItemSchema = z.object({
   startsAt: optionalDateTime("The start of an agenda line"),
   endsAt: optionalDateTime("The end of an agenda line")
 });
+
+/** One gallery row's framing, naming the picture it belongs to. See `galleryScreens` below. */
+const galleryFramingSchema = z.object({
+  assetId: z.string().trim().max(40),
+  screens: screenFramingField()
+});
+
+type GalleryFraming = z.output<typeof galleryFramingSchema>;
 
 const eventBodySchema = z.object({
   title: requiredText(200, "An event needs a title. It appears in every listing and in search results."),
@@ -116,9 +125,25 @@ const eventBodySchema = z.object({
     .default(null),
   isRegistrationOpen: z.boolean(),
   coverId: optionalId(),
+  /**
+   * The cover's per-screen framing. Accepted here because a form that sends a field the route strips is a
+   * control that silently does nothing — which is the whole of the bug the single crop shipped with.
+   */
+  coverScreens: screenFramingField(),
   galleryIds: z
     .array(z.string().trim().max(40))
     .max(GALLERY_LIMIT, `An event holds at most ${GALLERY_LIMIT} pictures. Put the rest in a gallery album.`),
+  /**
+   * The gallery ROWS' per-screen framings, and each entry NAMES ITS PICTURE.
+   *
+   * ⚠ NOT A PARALLEL ARRAY ALONGSIDE `galleryIds`. That list is written by an id picker and stays a list of
+   * ids; a second array matched to it by index would have to be kept in step by hand, and the first
+   * re-order would frame the wrong photograph. Naming the asset in each entry means the two cannot drift.
+   *
+   * `.optional()`, so a caller that says nothing about framing leaves every stored framing alone — an empty
+   * list is the different, deliberate answer that nobody has framed anything.
+   */
+  galleryScreens: z.array(galleryFramingSchema).max(GALLERY_LIMIT).optional(),
   speakerIds: z
     .array(z.string().trim().max(40))
     .max(SPEAKER_LIMIT, `An event lists at most ${SPEAKER_LIMIT} speakers.`),
@@ -151,6 +176,9 @@ const EVENT_SELECT = {
   capacity: true,
   isRegistrationOpen: true,
   coverId: true,
+  // Selected beside the cover it frames, so the editor reads back what it saved and a revision holds the
+  // framing as well as the photograph.
+  coverScreens: true,
   status: true,
   publishedAt: true,
   isFeatured: true,
@@ -204,7 +232,15 @@ export const GET = route(async (request: Request, context: RouteContext) => {
         },
         media: {
           orderBy: { position: "asc" },
-          select: { position: true, caption: true, asset: { select: MEDIA_SELECT } }
+          // The framing rides in the same select as the picture it frames, and `assetId` with it — a
+          // framing is resolved by id, and this row has no other reference to the photograph.
+          select: {
+            position: true,
+            caption: true,
+            assetId: true,
+            assetScreens: true,
+            asset: { select: MEDIA_SELECT }
+          }
         },
         tags: { select: { tag: { select: { id: true, name: true, slug: true } } } },
         _count: { select: { registrations: true } }
@@ -314,6 +350,20 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
               ? { isRegistrationOpen: body.isRegistrationOpen }
               : {}),
             ...(body.coverId !== undefined ? { coverId: body.coverId } : {}),
+            /**
+             * Written through exactly like the picture id beside it. `undefined` is "the form did not send
+             * it, leave the column alone" and `null` is "the editor cleared it" — which in Prisma has to be
+             * `Prisma.JsonNull` rather than `null`, because on a Json column `null` means "ignore this
+             * field" and the framing would never clear.
+             */
+            ...(body.coverScreens !== undefined
+              ? {
+                  coverScreens:
+                    body.coverScreens === null
+                      ? Prisma.JsonNull
+                      : (body.coverScreens as unknown as Prisma.InputJsonValue)
+                }
+              : {}),
             ...(body.isFeatured !== undefined ? { isFeatured: body.isFeatured } : {}),
             slug,
             status: transition.status,
@@ -342,7 +392,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
         }
 
         if (speakerIds !== null) await replaceSpeakers(tx, id, speakerIds);
-        if (assetIds !== null) await replaceMedia(tx, id, assetIds);
+        if (assetIds !== null) await replaceMedia(tx, id, assetIds, body.galleryScreens);
 
         if (body.tags !== undefined) {
           const tagIds = await resolveTagIds(tx, body.tags);
@@ -451,19 +501,41 @@ async function replaceSpeakers(tx: TxClient, eventId: string, personIds: readonl
   }
 }
 
-/** Pictures, in the order given, keeping each caption. */
-async function replaceMedia(tx: TxClient, eventId: string, assetIds: readonly string[]): Promise<void> {
+/**
+ * Pictures, in the order given, keeping each caption.
+ *
+ * `framings` is the list from the body or `undefined`. Undefined means the caller said nothing about
+ * framing, so a stored one is left exactly as it is — the same distinction `coverScreens` draws between
+ * "absent" and "cleared", one level down.
+ */
+async function replaceMedia(
+  tx: TxClient,
+  eventId: string,
+  assetIds: readonly string[],
+  framings: readonly GalleryFraming[] | undefined
+): Promise<void> {
   if (assetIds.length === 0) {
     await tx.eventMedia.deleteMany({ where: { eventId } });
   } else {
     await tx.eventMedia.deleteMany({ where: { eventId, assetId: { notIn: [...assetIds] } } });
   }
 
+  // `as const` so each pair infers as a TUPLE rather than an array of the union of its two members,
+  // which is what `new Map` needs to see.
+  const byAsset = new Map(
+    (framings ?? []).map((entry) => [entry.assetId, entry.screens ?? null] as const)
+  );
+
   for (const [index, assetId] of assetIds.entries()) {
+    // `Prisma.JsonNull` and not a bare null: on a Json column `null` means "ignore this field", so a
+    // cleared panel would never reach the database.
+    const screens = byAsset.get(assetId) ?? null;
+    const assetScreens = screens ? (screens as unknown as Prisma.InputJsonValue) : Prisma.JsonNull;
+
     await tx.eventMedia.upsert({
       where: { eventId_assetId: { eventId, assetId } },
-      create: { eventId, assetId, position: index },
-      update: { position: index }
+      create: { eventId, assetId, position: index, ...(framings ? { assetScreens } : {}) },
+      update: { position: index, ...(framings ? { assetScreens } : {}) }
     });
   }
 }

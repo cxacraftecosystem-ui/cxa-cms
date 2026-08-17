@@ -7,6 +7,7 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent } from "@/lib/permissions";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -75,6 +76,9 @@ const loadEvent = cache(async (id: string) => {
       capacity: true,
       isRegistrationOpen: true,
       coverId: true,
+      // The framing is fetched with the cover it frames: the editor's panel opens on what is stored, and a
+      // form handed nothing would silently offer to overwrite a framing already in force.
+      coverScreens: true,
       status: true,
       publishedAt: true,
       deletedAt: true,
@@ -87,7 +91,9 @@ const loadEvent = cache(async (id: string) => {
       // `EventSpeaker` carries a `role` and a `position`; the picker only orders people, so the position is
       // what is read back and the role is left to whatever set it. Stated on screen beside the field.
       speakers: { orderBy: { position: "asc" }, select: { personId: true } },
-      media: { orderBy: { position: "asc" }, select: { assetId: true } },
+      // Each row's own framing beside the picture it names, for the same reason `coverScreens` is above: a
+      // form handed nothing would post null back and clear a framing nobody touched.
+      media: { orderBy: { position: "asc" }, select: { assetId: true, assetScreens: true } },
       tags: { select: { tag: { select: { name: true } } } },
       _count: { select: { registrations: true } }
     }
@@ -133,7 +139,10 @@ function blankEvent(): EventValue {
     capacity: null,
     isRegistrationOpen: false,
     coverId: null,
+    /** Null, never an empty framing: six blank buckets would be a decision nobody made (screens.ts). */
+    coverScreens: null,
     galleryIds: [],
+    galleryScreens: [],
     speakerIds: [],
     tags: [],
     agenda: [],
@@ -188,7 +197,19 @@ export default async function StudioEventPage({
         capacity: event.capacity,
         isRegistrationOpen: event.isRegistrationOpen,
         coverId: event.coverId,
+        // Prisma answers a JSONB column as `JsonValue`; the shape belongs to lib/media/screens.ts, and the
+        // route validates it with the same Zod schema on the way back in.
+        coverScreens: (event.coverScreens ?? null) as unknown as ScreenFraming | null,
         galleryIds: event.media.map((entry) => entry.assetId),
+        /**
+         * Each row's framing, NAMING its picture rather than riding a second array in step with the one
+         * above. The order the pictures appear in lives in `galleryIds`; a framing belongs to a photograph,
+         * and matching the two by index is what breaks the first time somebody re-orders them.
+         */
+        galleryScreens: event.media.map((entry) => ({
+          assetId: entry.assetId,
+          screens: (entry.assetScreens ?? null) as unknown as ScreenFraming | null
+        })),
         speakerIds: event.speakers.map((entry) => entry.personId),
         tags: event.tags.map((entry) => entry.tag.name),
         agenda: event.agenda.map(

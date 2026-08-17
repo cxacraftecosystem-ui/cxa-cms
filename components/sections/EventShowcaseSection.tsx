@@ -34,6 +34,7 @@ import { EntityCard } from "@/components/site/EntityCard";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { pictureFromMap, type Picture, type ScreenFraming } from "@/lib/media/screens";
 import { pickShowcase, type EventRow, type ResolvedSectionData } from "@/lib/sections/resolve";
 import type { EventShowcaseSectionData } from "@/lib/sections/schema";
 import { cn, truncateWords } from "@/lib/utils";
@@ -178,6 +179,24 @@ function describeDates(startsAt: Date, endsAt: Date | null): EventDates {
   };
 }
 
+/**
+ * One cover, framed per screen size where an editor has framed it.
+ *
+ * `attachEventFraming` in lib/sections/resolve.ts puts both the cover and every alternate a framing names
+ * into `resolved.media`, so this is the same one-line lookup the hero makes. On the `rows` path — a studio
+ * preview, a bespoke page — there is no map and the cover simply draws unframed.
+ *
+ * The column is `Json?`, so its shape is a claim rather than a proof. That is safe because the resolver
+ * reads a framing defensively, which is what makes a hand-edited row degrade to no framing.
+ */
+function coverPicture(event: EventRow, resolved: ResolvedSectionData | undefined): Picture | null {
+  return pictureFromMap(
+    event.coverId,
+    event.coverScreens as unknown as ScreenFraming | null,
+    resolved?.media
+  );
+}
+
 /** Not yet finished — the same rule the resolver's query uses. */
 function isUpcoming(event: EventRow, now: Date): boolean {
   const boundary = event.endsAt ?? event.startsAt;
@@ -280,6 +299,7 @@ export function EventShowcaseSection({
                   title="Still to come"
                   showTitle={bothGroups}
                   events={upcoming}
+                  resolved={resolved}
                   layout={data.layout}
                   titleLevel={titleLevel}
                   allowRegistration
@@ -291,6 +311,7 @@ export function EventShowcaseSection({
                   title="Already happened"
                   showTitle={bothGroups}
                   events={past}
+                  resolved={resolved}
                   layout={data.layout}
                   titleLevel={titleLevel}
                   allowRegistration={false}
@@ -319,6 +340,7 @@ function EventGroup({
   title,
   showTitle,
   events,
+  resolved,
   layout,
   titleLevel,
   allowRegistration
@@ -326,6 +348,8 @@ function EventGroup({
   title: string;
   showTitle: boolean;
   events: EventRow[];
+  /** Carried down only so a card can look its cover's framing up — see `coverPicture`. */
+  resolved: ResolvedSectionData | undefined;
   layout: EventShowcaseSectionData["layout"];
   titleLevel: 3 | 4;
   /** Registration links are drawn for upcoming events only — a "Register" on a finished seminar is a
@@ -351,7 +375,12 @@ function EventGroup({
         <div className={showTitle ? "mt-5" : undefined}>
           <CardGrid columns={3} stagger>
             {events.map((event) => (
-              <EventCard key={event.id} event={event} headingLevel={titleLevel} />
+              <EventCard
+                key={event.id}
+                event={event}
+                resolved={resolved}
+                headingLevel={titleLevel}
+              />
             ))}
           </CardGrid>
         </div>
@@ -379,7 +408,15 @@ function EventGroup({
   );
 }
 
-function EventCard({ event, headingLevel }: { event: EventRow; headingLevel: 3 | 4 }) {
+function EventCard({
+  event,
+  resolved,
+  headingLevel
+}: {
+  event: EventRow;
+  resolved: ResolvedSectionData | undefined;
+  headingLevel: 3 | 4;
+}) {
   const dates = describeDates(event.startsAt, event.endsAt);
   const mode = MODE[event.mode];
 
@@ -387,6 +424,7 @@ function EventCard({ event, headingLevel }: { event: EventRow; headingLevel: 3 |
     <EntityCard
       href={`/events/${event.slug}`}
       media={event.cover}
+      picture={coverPicture(event, resolved)}
       variant="cover"
       headingLevel={headingLevel}
       eyebrow={dates.sentence}

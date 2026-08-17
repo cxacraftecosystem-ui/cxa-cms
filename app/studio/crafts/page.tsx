@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ContentStatus, Prisma } from "@prisma/client";
-import { MapPin, Plus } from "lucide-react";
+import { Landmark, MapPin, Plus } from "lucide-react";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
@@ -241,10 +241,11 @@ export default async function StudioCraftsPage({
         actions={
           <>
             {/*
-              The coordinates screen shares this page's own predicate (`canManageResearch`), so the
-              link needs no gate of its own — nobody who can stand here is refused there (contract
-              §1.7). Without a link the screen is reachable only by typing the address, the defect
-              StudioNav.ts records this repository producing eight times.
+              Both screens share this page's own predicate (`canManageResearch`), so the links need no
+              gate of their own — nobody who can stand here is refused there (contract §1.7). Without a
+              link a screen is reachable only by typing the address, the defect StudioNav.ts records this
+              repository producing eight times. The two filters above read from exactly these two lists,
+              which is why the links sit beside them rather than inside a menu.
             */}
             <Link
               href="/studio/crafts/regions"
@@ -252,6 +253,14 @@ export default async function StudioCraftsPage({
             >
               <MapPin aria-hidden="true" className="h-4 w-4" />
               Regions on the map
+            </Link>
+
+            <Link
+              href="/studio/crafts/schools"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-line-200 bg-card px-3.5 py-2 text-sm font-medium text-ink-700 transition hover:border-purple-300 hover:text-purple-700"
+            >
+              <Landmark aria-hidden="true" className="h-4 w-4" />
+              Schools and traditions
             </Link>
 
             <LinkButton href="/studio/crafts/new" icon={Plus}>

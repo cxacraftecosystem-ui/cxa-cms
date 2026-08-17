@@ -42,7 +42,13 @@ import { SectionHeading } from "@/components/site/SectionHeading";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
-import { pickShowcase, type PartnerRow, type ResolvedSectionData } from "@/lib/sections/resolve";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
+import {
+  pickShowcase,
+  type MediaRow,
+  type PartnerRow,
+  type ResolvedSectionData
+} from "@/lib/sections/resolve";
 import type { PartnerLogosSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
 import type { CSSProperties } from "react";
@@ -50,7 +56,12 @@ import type { CSSProperties } from "react";
 export interface PartnerLogosSectionProps {
   data: PartnerLogosSectionData;
   section: PageSection;
-  /** The whole batched read from `lib/sections/resolve.ts`; this block's rows are pulled out by id. */
+  /**
+   * The whole batched read from `lib/sections/resolve.ts`; this block's rows are pulled out by id, and
+   * its media map carries each logo AND every alternate mark a per-screen framing names, which
+   * `attachPartnerFraming` put there. Optional because a studio preview or a bespoke page may hand over
+   * rows on their own — a logo then draws unframed rather than not at all.
+   */
   resolved?: ResolvedSectionData;
   /** The rows directly, for a studio preview or a bespoke page. Wins over `resolved` when given. */
   rows?: PartnerRow[];
@@ -124,13 +135,18 @@ export function PartnerLogosSection({
             />
           </div>
         ) : marquee ? (
-          <PartnerMarquee partners={rows} monochrome={data.monochrome} />
+          <PartnerMarquee partners={rows} media={resolved?.media} monochrome={data.monochrome} />
         ) : (
           <div className="shell">
             <ul className={cn("grid items-center gap-4", COLUMN_CLASS[data.columns])}>
               {rows.map((partner) => (
                 <li key={partner.id}>
-                  <PartnerLogo partner={partner} monochrome={data.monochrome} interactive />
+                  <PartnerLogo
+                    partner={partner}
+                    media={resolved?.media}
+                    monochrome={data.monochrome}
+                    interactive
+                  />
                 </li>
               ))}
             </ul>
@@ -156,9 +172,11 @@ export function PartnerLogosSection({
 
 function PartnerMarquee({
   partners,
+  media,
   monochrome
 }: {
   partners: PartnerRow[];
+  media?: Record<string, MediaRow | undefined>;
   monochrome: boolean;
 }) {
   // The variable the `animate-ticker-track` keyframes read. Set inline because a class assembled from
@@ -180,7 +198,7 @@ function PartnerMarquee({
         <ul className="flex shrink-0 items-center gap-12">
           {partners.map((partner) => (
             <li key={partner.id} className="w-36 shrink-0 sm:w-40">
-              <PartnerLogo partner={partner} monochrome={monochrome} interactive />
+              <PartnerLogo partner={partner} media={media} monochrome={monochrome} interactive />
             </li>
           ))}
         </ul>
@@ -193,7 +211,12 @@ function PartnerMarquee({
         <ul aria-hidden="true" className="flex shrink-0 items-center gap-12">
           {partners.map((partner) => (
             <li key={`echo-${partner.id}`} className="w-36 shrink-0 sm:w-40">
-              <PartnerLogo partner={partner} monochrome={monochrome} interactive={false} />
+              <PartnerLogo
+                partner={partner}
+                media={media}
+                monochrome={monochrome}
+                interactive={false}
+              />
             </li>
           ))}
         </ul>
@@ -204,10 +227,17 @@ function PartnerMarquee({
 
 function PartnerLogo({
   partner,
+  media,
   monochrome,
   interactive
 }: {
   partner: PartnerRow;
+  /**
+   * The page's media map, which carries the logo AND every alternate a framing names —
+   * `attachPartnerFraming` in lib/sections/resolve.ts puts both there. Absent on the `rows` path (a
+   * studio preview, a bespoke page), where the logo then draws unframed rather than not at all.
+   */
+  media?: Record<string, MediaRow | undefined>;
   monochrome: boolean;
   /** False for the marquee's duplicate copy, which must hold nothing focusable. */
   interactive: boolean;
@@ -217,6 +247,17 @@ function PartnerLogo({
   const mark = partner.logo ? (
     <MediaImage
       media={partner.logo}
+      /* The column is `Json?`, so its shape is a claim rather than a proof — safe because the resolver
+         reads a framing defensively, which is what makes a hand-edited row degrade to no framing.
+
+         ⚠ What this is worth on a LOGO is mostly the alternate photograph, not the rectangle: the mark
+         below is `!object-contain` because a cropped logo is a defaced logo, so the useful override here
+         is "show the monogram on a phone and the full wordmark on a desktop". */
+      picture={pictureFromMap(
+        partner.logoId,
+        (partner.logoScreens ?? null) as unknown as ScreenFraming | null,
+        media
+      )}
       // The NAME, not the asset's stored alt: this image is the whole of the link's accessible text.
       alt={partner.name}
       aspect="3 / 2"

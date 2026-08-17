@@ -54,6 +54,8 @@ import { SectionHeading } from "@/components/site/SectionHeading";
 import { LinkButton } from "@/components/ui/Button";
 import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { resolveSectionData } from "@/lib/sections/resolve";
 import { pageMetadata } from "@/lib/seo";
@@ -229,6 +231,11 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
             name: true,
             designation: true,
             department: true,
+            // The portrait's id and its framing beside the joined row: `pictureFromMap` resolves the base
+            // photograph out of the media map BY ID, like any bucket that names an alternate, so a row
+            // with the relation and no id cannot be framed at all (lib/media/screens.ts).
+            photoId: true,
+            photoScreens: true,
             photo: { select: mediaSelect }
           }
         }),
@@ -245,6 +252,22 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
 
   const facultyTruncated = faculty.length > LEADERSHIP_LIMIT;
   const shownFaculty = faculty.slice(0, LEADERSHIP_LIMIT);
+
+  /**
+   * The alternate photographs the shown portraits' framings name, in one query.
+   *
+   * ⚠ ONLY THE PORTRAITS THAT ARE DRAWN. The query above deliberately takes one row more than the cap so
+   * the truncation can be stated honestly, and fetching alternates for a face nobody sees would be a
+   * query for nothing. Unconditional otherwise, because it costs NO query when nothing is framed — which
+   * is nearly always, and a prerender that fell back to `[]` therefore costs nothing (lib/media/framing.ts).
+   *
+   * The cast is deliberate: `Prisma.JsonValue` carries no shape, the studio's route validates the value
+   * with `screenFramingField()` on the way in, and the resolver reads every bucket defensively.
+   */
+  const facultyFramings = shownFaculty.map(
+    (person) => (person.photoScreens ?? null) as unknown as ScreenFraming | null
+  );
+  const facultyFramingMedia = await framingAssets(...facultyFramings);
 
   const tagline = branding.tagline.trim();
   const description = seo.defaultDescription.trim();
@@ -384,11 +407,19 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
               "Names appear here once a faculty or scientist record is published in the studio."
           }}
         >
-          {shownFaculty.map((person) => (
+          {shownFaculty.map((person, index) => (
             <EntityCard
               key={person.id}
               href={`/people/${person.slug}`}
               media={person.photo}
+              /* A bucket naming a photograph the map does not hold INHERITS rather than blanking the
+                 portrait — the rule `pictureFromMap` owns so no call site writes its own `assetOf`.
+                 Nothing framed resolves to one band, which `MediaImage` ignores. */
+              picture={pictureFromMap(
+                person.photoId,
+                facultyFramings[index],
+                withBaseAsset(facultyFramingMedia, person.photoId, person.photo)
+              )}
               variant="portrait"
               eyebrow={person.designation?.trim() || undefined}
               title={person.name}

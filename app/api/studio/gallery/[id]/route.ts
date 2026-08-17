@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, noContent, ok, route } from "@/lib/api";
 import { mutateWithHistory, type TxClient } from "@/lib/audit";
@@ -21,6 +21,7 @@ import {
   parseStudioJson,
   publishTransition,
   requiredText,
+  screenFramingField,
   slugSchema,
   statusSchema,
   syncSearchDocument
@@ -57,7 +58,12 @@ const itemSchema = z.object({
   assetId: z.string().trim().min(1, "A picture reference cannot be empty.").max(40),
   caption: optionalText(300),
   presentation: z.enum(PRESENTATIONS).default("image"),
-  tourEntry: optionalText(120)
+  tourEntry: optionalText(120),
+  /**
+   * This row's per-screen framing. Accepted for the same reason the cover's is, one field down: a schema
+   * that stripped it would leave the panel in the editor reporting a successful save and changing nothing.
+   */
+  assetScreens: screenFramingField()
 });
 
 const albumBodySchema = z.object({
@@ -69,6 +75,12 @@ const albumBodySchema = z.object({
   credit: optionalText(160),
   happenedOn: optionalDateTime("The date this happened"),
   coverId: optionalId(),
+  /**
+   * The cover's per-screen framing. Beside the id it belongs to, and it has to be accepted here or the
+   * panel in the editor is a control that silently does nothing — the field would be stripped by this
+   * schema and the save would report success.
+   */
+  coverScreens: screenFramingField(),
   sortOrder: boundedInt({ min: -9999, max: 9999, fallback: 0 }),
   status: statusSchema,
   tags: z
@@ -89,6 +101,30 @@ const ALBUM_SELECT = {
   credit: true,
   happenedOn: true,
   coverId: true,
+  /**
+   * `coverScreens` IS IN THE SNAPSHOT, and the note that used to say it could not be was wrong.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ THE CLAIM WAS "a null for a nullable `Json` column is refused, so `ownColumns` would hand Prisma a
+   * bare null on rollback". That cannot happen, in two places independently:
+   *
+   *   • `redact()` in lib/audit.ts opens with `if (value === null || value === undefined) return
+   *     undefined` — every null is already `undefined` before the snapshot is stored, and
+   *     `JSON.stringify` then drops the key entirely.
+   *   • `ownColumns()` in app/studio/audit/page.tsx skips `undefined` explicitly, so even a null that did
+   *     survive would never reach `update()`.
+   *
+   * And the shape was never novel: `Post.body` and `CoeEvent.body` are `Json?` and have always sat in
+   * their own routes' snapshot selects.
+   *
+   * WHAT THE OMISSION ACTUALLY COST was worse than the risk it was avoiding. An album cover's framing
+   * appeared in no audit diff, so changing it looked like changing nothing; and a rollback wrote every
+   * other column back while silently LEAVING the current framing in place — under a message reading "The
+   * earlier version has been written back", which is the one sentence that must not be approximately
+   * true. `news/[id]` and `events/[id]` record it; this file was the sibling that disagreed.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  coverScreens: true,
   sortOrder: true,
   status: true,
   publishedAt: true,
@@ -99,6 +135,16 @@ const ALBUM_SELECT = {
 } as const;
 
 type AlbumRow = Prisma.GalleryAlbumGetPayload<{ select: typeof ALBUM_SELECT }>;
+
+/**
+ * A nullable `Json` column takes `Prisma.JsonNull`, never a bare `null` — Prisma refuses to guess between
+ * "the JSON value null" and "no value" (contract §14). Clearing a framing has to be expressible, so this
+ * is the difference between a cleared panel that saves and one that fails silently.
+ */
+function jsonColumn(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  if (value === null || value === undefined) return Prisma.JsonNull;
+  return value as Prisma.InputJsonValue;
+}
 
 // The figure list — the album editor prints the asset's own caption — plus the columns the picker
 // shows beside the thumbnail.
@@ -123,6 +169,10 @@ export const GET = route(async (request: Request, context: RouteContext) => {
       select: {
         ...ALBUM_SELECT,
         cover: { select: MEDIA_SELECT },
+        // The cover's framing, added HERE rather than to `ALBUM_SELECT` — see the note on that constant for
+        // why the audit snapshot must not carry it. A reader of this album gets the picture and the way it
+        // is framed together, which is the only pairing that cannot go stale against itself.
+        coverScreens: true,
         items: {
           orderBy: { position: "asc" },
           select: {
@@ -131,6 +181,9 @@ export const GET = route(async (request: Request, context: RouteContext) => {
             caption: true,
             presentation: true,
             tourEntry: true,
+            // Each row's framing beside the picture it frames, on the same terms as the cover's above.
+            assetId: true,
+            assetScreens: true,
             asset: { select: MEDIA_SELECT }
           }
         }
@@ -194,6 +247,11 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
             ...(body.credit !== undefined ? { credit: body.credit } : {}),
             ...(body.happenedOn !== undefined ? { happenedOn: body.happenedOn } : {}),
             ...(body.coverId !== undefined ? { coverId: body.coverId } : {}),
+            // Written through like the id beside it. `undefined` is "the form did not send this"; null is
+            // "the editor cleared the framing" and must reach the column as SQL's idea of nothing.
+            ...(body.coverScreens !== undefined
+              ? { coverScreens: jsonColumn(body.coverScreens) }
+              : {}),
             ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
             ...(body.tags !== undefined ? { tags: cleanTags(body.tags) } : {}),
             slug,
@@ -319,6 +377,20 @@ async function replaceItems(tx: TxClient, albumId: string, items: readonly ItemI
   await tx.galleryItem.deleteMany({ where: { albumId, assetId: { notIn: keep } } });
 
   for (const [index, item] of items.entries()) {
+    /**
+     * ⚠ ABSENT AND NULL ARE DIFFERENT HERE, AND `jsonColumn` CANNOT TELL THEM APART. It maps both to
+     * `Prisma.JsonNull`, which CLEARS the column — correct for an explicit null ("the panel was cleared"),
+     * destructive for an absent key. `assetScreens` is `.nullable().optional()` on `itemSchema`, so any
+     * caller that sends `items` without it — a script, a future bulk re-order, an older client — would
+     * silently wipe the per-screen framing off every row in the album while appearing to save a re-order.
+     *
+     * Today's editor always sends the key, so this was latent rather than live. It is guarded because
+     * "the current client happens to send it" is a property of a client, not of a route, and
+     * `app/api/studio/events/[id]/route.ts` already guards the identical write the same way.
+     */
+    const framing =
+      item.assetScreens === undefined ? {} : { assetScreens: jsonColumn(item.assetScreens) };
+
     await tx.galleryItem.upsert({
       where: { albumId_assetId: { albumId, assetId: item.assetId } },
       create: {
@@ -327,13 +399,15 @@ async function replaceItems(tx: TxClient, albumId: string, items: readonly ItemI
         caption: item.caption,
         presentation: item.presentation,
         tourEntry: item.tourEntry,
-        position: index
+        position: index,
+        ...framing
       },
       update: {
         caption: item.caption,
         presentation: item.presentation,
         tourEntry: item.tourEntry,
-        position: index
+        position: index,
+        ...framing
       }
     });
   }

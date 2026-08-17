@@ -42,6 +42,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
+import type { Picture } from "@/lib/media/screens";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -72,6 +73,13 @@ export interface StudioEventRow {
   /** The venue, or "Online" — whichever the mode makes true. */
   place: string;
   cover: MediaLike | null;
+  /**
+   * The cover resolved for every screen width, or null when nobody framed it.
+   *
+   * Resolved on the SERVER and handed down, not derived here: resolving needs the alternate assets a
+   * framing names, and only the fetching query can get them.
+   */
+  picture: Picture | null;
   /** Everybody who has registered, whatever state they are in. */
   registrationCount: number;
   /** Confirmed plus attended — the people actually holding a place. */
@@ -171,6 +179,7 @@ export function EventsTable({
       render: (row) => (
         <MediaImage
           media={row.cover}
+          picture={row.picture}
           alt=""
           aspect="16 / 10"
           rounded="sm"

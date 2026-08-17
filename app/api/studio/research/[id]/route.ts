@@ -10,7 +10,6 @@ import {
   forbidden,
   notFound,
   ok,
-  parseJson,
   route,
   userAgent
 } from "@/lib/api";
@@ -20,6 +19,7 @@ import { isLive } from "@/lib/content";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { indexDocument, removeDocument, searchDocFromResearchArea, searchUrlFor } from "@/lib/search/index";
+import { parseStudioJson, screenFramingField } from "@/lib/studio/crud";
 
 /**
  * One research area: read it, save it, or move it to the recycle bin.
@@ -88,6 +88,12 @@ const PatchBody = z.object({
     .nullable()
     .optional(),
   coverId: z.string().trim().min(1).max(64).nullable().optional(),
+  /**
+   * Per-screen framing for the cover. `.nullable().optional()` — the two are different statements and both
+   * are needed: absent means "the form did not send it, leave the column alone", null means "the editor
+   * cleared it". See `screenFramingField` in lib/studio/crud.ts.
+   */
+  coverScreens: screenFramingField(),
   sortOrder: z.number().int().min(-9999).max(9999).optional(),
   status: z.enum(["DRAFT", "IN_REVIEW", "SCHEDULED", "PUBLISHED", "ARCHIVED"]).optional(),
   /** Defaults to true where it applies: leaving a link broken is never the safer default. */
@@ -195,7 +201,7 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   );
 
   const { id } = await context.params;
-  const body = await parseJson(request, PatchBody);
+  const body = await parseStudioJson(request, PatchBody);
 
   const before = await prisma.researchArea.findFirst({ where: { id, deletedAt: null } });
   if (!before) throw notFound("That research area");
@@ -234,6 +240,9 @@ export const PATCH = route(async (request: NextRequest, context: { params: Promi
   if ("icon" in body) data.icon = body.icon ?? null;
   if ("accentColor" in body) data.accentColor = body.accentColor ?? null;
   if ("coverId" in body) data.coverId = body.coverId ?? null;
+  // Written through beside the picture it frames. A framing the route accepted and then dropped would be
+  // a control in the studio that silently does nothing.
+  if ("coverScreens" in body) data.coverScreens = jsonColumn(body.coverScreens);
   if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder;
 
   if (body.status !== undefined) {

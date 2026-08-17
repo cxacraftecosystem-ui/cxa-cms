@@ -76,6 +76,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ContentStatus } from "@prisma/client";
 
 import { del, patch, post } from "@/lib/client/fetcher";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { DateField } from "@/components/ui/DateField";
@@ -86,6 +87,7 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/ToastProvider";
 import { DeleteButton } from "@/components/studio/DeleteButton";
+import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
 import { SaveBar } from "@/components/studio/SaveBar";
@@ -201,6 +203,13 @@ export interface AlbumItemDraft {
   /** A free-text column in the database; normalised on the way into this component. */
   presentation: string;
   tourEntry: string;
+  /**
+   * How THIS PICTURE IN THIS ALBUM is framed at each screen size, or null — the resting state, and what
+   * nearly every row carries. It belongs to the row rather than to the file, so the same photograph can be
+   * framed one way here and another in a project's gallery. A row never changes its picture (a different
+   * photograph is a different row), so unlike `coverScreens` there is nothing to clear it against.
+   */
+  assetScreens: ScreenFraming | null;
   asset: AlbumItemAsset;
 }
 
@@ -216,6 +225,13 @@ export interface AlbumDraft {
   /** `YYYY-MM-DD`, or "" — the shape the `DateField` on this screen reads and writes, and no other. */
   happenedOn: string;
   coverId: string | null;
+  /**
+   * How the cover is framed at each screen size, or null — which is the resting state and what nearly
+   * every album carries. It belongs to the COVER, so it is cleared whenever `coverId` changes: a
+   * rectangle is a fraction of one particular photograph, and carried onto another it frames whatever
+   * happens to sit at those coordinates (the rule `MediaFramingField` exists to hold for the blocks).
+   */
+  coverScreens: ScreenFraming | null;
   sortOrder: number;
   status: ContentStatus;
   /** ISO instant, read-only. The server stamps it. */
@@ -235,10 +251,17 @@ interface AlbumPayload {
   /** An ISO instant at UTC midnight, or null. See `toIsoDay`. */
   happenedOn: string | null;
   coverId: string | null;
+  coverScreens: ScreenFraming | null;
   sortOrder: number;
   status: ContentStatus;
   tags: string[];
-  items: { assetId: string; caption: string; presentation: PresentationValue; tourEntry: string | null }[];
+  items: {
+    assetId: string;
+    caption: string;
+    presentation: PresentationValue;
+    tourEntry: string | null;
+    assetScreens: ScreenFraming | null;
+  }[];
 }
 
 /**
@@ -315,6 +338,9 @@ export function AlbumEditor({
       credit: draft.credit.trim(),
       happenedOn: toIsoDay(draft.happenedOn),
       coverId: draft.coverId,
+      // Sent on every save beside the id it frames. Null is a real answer the route writes through, so
+      // clearing the panel clears the column rather than leaving the last framing in place.
+      coverScreens: draft.coverScreens,
       sortOrder: draft.sortOrder,
       status: draft.status,
       tags: draft.tags,
@@ -324,7 +350,10 @@ export function AlbumEditor({
         presentation: normalisePresentation(item.presentation),
         // An empty entry scene is nothing, not the empty string: the column is nullable and "" would
         // read as a scene whose name happens to be blank.
-        tourEntry: item.tourEntry.trim().length > 0 ? item.tourEntry.trim() : null
+        tourEntry: item.tourEntry.trim().length > 0 ? item.tourEntry.trim() : null,
+        // Sent beside the picture it frames, on every save. Null is a real answer the route writes
+        // through, so clearing a row's panel clears its column.
+        assetScreens: item.assetScreens
       }))
     }),
     [draft, items]
@@ -403,6 +432,9 @@ export function AlbumEditor({
           caption: asset.caption ?? "",
           presentation: asset.kind === "VIDEO" ? "video" : asset.kind === "PANORAMA" ? "panorama" : "image",
           tourEntry: "",
+          // A new row starts unframed. Null, never an empty framing — see `emptyScreenFraming` in
+          // lib/media/screens.ts for why six empty buckets would mark a clean form dirty.
+          assetScreens: null,
           asset: {
             id: asset.id,
             kind: asset.kind,
@@ -471,12 +503,16 @@ export function AlbumEditor({
         if (index === -1) return current;
         const removed = current.items[index];
         const remaining = current.items.filter((item) => item.key !== key);
+        const losesCover = Boolean(removed && current.coverId === removed.assetId);
         return {
           ...current,
           items: remaining,
           // A cover that has just been taken out of the album would be a cover a visitor never sees
           // beside the pictures they do. Cleared with it, and the sentence below explains the rule.
-          coverId: removed && current.coverId === removed.assetId ? null : current.coverId
+          coverId: losesCover ? null : current.coverId,
+          // And its framing goes with it: those rectangles are fractions of the photograph that has just
+          // left, so keeping them would frame whatever a later cover happens to have at those coordinates.
+          coverScreens: losesCover ? null : current.coverScreens
         };
       });
       setSelectedKey((current) => (current === key ? null : current));
@@ -682,7 +718,8 @@ export function AlbumEditor({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => patchDraft({ coverId: null })}
+                  // The framing goes with the picture it was drawn on — see `coverScreens` on `AlbumDraft`.
+                  onClick={() => patchDraft({ coverId: null, coverScreens: null })}
                   className="ml-2 !px-2"
                 >
                   Clear the cover
@@ -946,6 +983,32 @@ export function AlbumEditor({
                     </Field>
                   ) : null}
 
+                  {/*
+                    THIS ROW'S OWN FRAMING, which is a different column from the cover's panel further
+                    down: `GalleryItem.assetScreens` frames the picture as it appears INSIDE the album,
+                    and `GalleryAlbum.coverScreens` frames the one card in the listing. A picture that is
+                    also the cover therefore has two, and the two help sentences say which is which.
+
+                    Not `MediaFramingField`: that pairs a picker with the panel, and a row's photograph is
+                    not swappable — a different picture is a different row (add it and take this one out).
+                    So there is nothing here for the "changing the picture clears the framing" rule to act
+                    on, which is the one thing that component exists to hold.
+
+                    No gate on `presentation`: the album page and the gallery block both draw every item
+                    as a still picture whatever it says, and the chip beside it is what tells a reader it
+                    is a panorama or a tour. A panel offered on some tiles and not others would be the
+                    confusing half-measure.
+                  */}
+                  <ScreenFramingPanel
+                    /* Both labels name WHERE the framing lands, because a picture that is also the cover
+                       shows both panels in this one column and two identical headings would be a puzzle. */
+                    label="Framing per screen size, inside the album"
+                    help="Optional. Frame this picture differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size, and the smallest falls back to the picture's own crop. This applies to this picture inside this album, wherever the album's pictures are shown."
+                    mediaId={selected.assetId}
+                    value={selected.assetScreens}
+                    onChange={(next) => updateItem(selected.key, { assetScreens: next })}
+                  />
+
                   <div className="flex flex-wrap gap-2">
                     {draft.coverId === selected.assetId ? (
                       <p className="flex items-center gap-1.5 text-xs font-medium text-purple-700">
@@ -957,7 +1020,10 @@ export function AlbumEditor({
                         variant="secondary"
                         size="sm"
                         icon={Star}
-                        onClick={() => patchDraft({ coverId: selected.assetId })}
+                        // A new cover starts unframed. The framing that was there belonged to the old
+                        // photograph — see `coverScreens` on `AlbumDraft` for why carrying it across is
+                        // the one thing that must never happen.
+                        onClick={() => patchDraft({ coverId: selected.assetId, coverScreens: null })}
                       >
                         Use as the album cover
                       </Button>
@@ -972,6 +1038,35 @@ export function AlbumEditor({
                       Take out of this album
                     </Button>
                   </div>
+
+                  {/*
+                    THE COVER'S FRAMING, AND IT IS OFFERED ONLY ON THE PICTURE THAT IS THE COVER.
+
+                    The framing belongs to the album's `coverScreens` column, not to this `GalleryItem`, so
+                    it would be a lie to show it beside a picture that is merely selected. The panel is
+                    where the cover DECISION is, which is here, next to the button that makes it.
+
+                    Not `MediaFramingField`: that component pairs a picker with the panel, and this screen
+                    deliberately has no picker for the cover — it is chosen from the album's own pictures
+                    (see the file header). The rule that component exists to hold, that changing the
+                    picture clears the framing, is held instead at the three places `coverId` moves.
+
+                    ⚠ WHERE IT TAKES EFFECT IS STATED, because the answer is not the obvious one. The cover
+                    is drawn on the gallery LISTING; the album's own page shows the pictures themselves and
+                    carries no cover image at all (app/(site)/gallery/[slug]/page.tsx says why). An editor
+                    framing something they then cannot find on the album's page would reasonably conclude
+                    the control was broken.
+                  */}
+                  {draft.coverId === selected.assetId ? (
+                    <ScreenFramingPanel
+                      /* See the note on the panel above: the label says which of the two this is. */
+                      label="Framing per screen size, on the gallery listing"
+                      help="Optional. Frame the cover differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size, and the smallest falls back to the picture's own crop. This shows in the gallery listing, where the cover is drawn — the album's own page shows the pictures themselves."
+                      mediaId={selected.assetId}
+                      value={draft.coverScreens}
+                      onChange={(next) => patchDraft({ coverScreens: next })}
+                    />
+                  ) : null}
                 </>
               )}
             </FormSection>

@@ -32,6 +32,7 @@ import {
   Breadcrumbs,
   type BreadcrumbItem
 } from "@/components/site/Breadcrumbs";
+import type { Picture } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +47,15 @@ export interface PageHeroProps {
   description?: ReactNode;
   /** Backdrop (dark tone) or banner (light tone). See the header. */
   media?: MediaLike | null;
+  /**
+   * `media`'s per-screen framing, already resolved by the page that fetched it.
+   *
+   * Passed straight through to `MediaImage`, which ignores a single-band picture — so a hero whose
+   * record nobody has framed renders byte-identically to before. It is resolved by the CALLER rather
+   * than here because the alternate photographs a framing names are ids in a JSONB column that no
+   * relation joins, and only the page holds the query that fetched them (lib/media/framing.ts).
+   */
+  picture?: Picture | null;
   /** A row of chips, dates or authors. Rendered as given, in a wrapping flex row. */
   meta?: ReactNode;
   /** Buttons — `LinkButton` for anything that navigates. */
@@ -91,6 +101,7 @@ export function PageHero({
   title,
   description,
   media,
+  picture,
   meta,
   actions,
   breadcrumbs,
@@ -174,6 +185,7 @@ export function PageHero({
               <div aria-hidden="true" className="absolute inset-0">
                 <MediaImage
                   media={media}
+                  picture={picture}
                   alt=""
                   aspect="none"
                   rounded="none"
@@ -196,6 +208,7 @@ export function PageHero({
           {media ? (
             <MediaImage
               media={media}
+              picture={picture}
               aspect="21 / 9"
               rounded="lg"
               priority

@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
@@ -75,6 +76,9 @@ function blankValue(): ProjectFormValue {
     endedOn: "",
     progress: "0",
     cover: null,
+    // Null, never an empty framing: six blank buckets and "nobody has framed this" must look the same
+    // to the autosave snapshot, or opening the panel would queue a save (lib/media/screens.ts).
+    coverScreens: null,
     members: [],
     milestones: [],
     gallery: [],
@@ -129,6 +133,8 @@ export default async function StudioProjectPage({
           status: true,
           publishedAt: true,
           cover: { select: MEDIA_SELECT },
+          // The stored framing, so the panel opens on what is in force rather than on six empty rows.
+          coverScreens: true,
           members: {
             select: { personId: true, role: true },
             orderBy: { position: "asc" }
@@ -138,7 +144,9 @@ export default async function StudioProjectPage({
             orderBy: { position: "asc" }
           },
           media: {
-            select: { caption: true, asset: { select: MEDIA_SELECT } },
+            // Each row's own framing beside its picture, for the same reason `coverScreens` is above: the
+            // panel has to open on what is stored, or the next save posts null back and clears it.
+            select: { caption: true, assetScreens: true, asset: { select: MEDIA_SELECT } },
             orderBy: { position: "asc" }
           },
           files: { select: { fileId: true }, orderBy: { position: "asc" } },
@@ -177,6 +185,14 @@ export default async function StudioProjectPage({
         endedOn: toDateInput(project.endedOn),
         progress: String(project.progress),
         cover,
+        /**
+         * The stored framing, out of its JSONB column.
+         *
+         * A cast rather than a parse. The API validates it with `screenFramingField()` on the way in, and
+         * both the panel and the public renderer read every bucket defensively — so a hand-edited row
+         * shows as "nothing framed" rather than breaking the editor (lib/media/screens.ts).
+         */
+        coverScreens: (project.coverScreens ?? null) as unknown as ScreenFraming | null,
         members: project.members.map((member) => ({
           personId: member.personId,
           role: member.role ?? ""
@@ -189,7 +205,9 @@ export default async function StudioProjectPage({
         })),
         gallery: project.media.map((entry) => ({
           asset: { ...entry.asset, variants: entry.asset.variants },
-          caption: entry.caption ?? ""
+          caption: entry.caption ?? "",
+          // A cast rather than a parse, on the same terms as `coverScreens` below it.
+          assetScreens: (entry.assetScreens ?? null) as unknown as ScreenFraming | null
         })),
         fileIds: project.files.map((entry) => entry.fileId),
         publicationIds: project.publications.map((entry) => entry.id),

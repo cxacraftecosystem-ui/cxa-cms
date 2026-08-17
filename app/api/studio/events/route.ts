@@ -28,6 +28,7 @@ import {
   requiredText,
   resolveSort,
   resolveTagIds,
+  screenFramingField,
   slugFromTitle,
   slugSchema,
   statusSchema,
@@ -143,10 +144,31 @@ const eventBodySchema = z.object({
     .default(null),
   isRegistrationOpen: z.boolean().default(false),
   coverId: optionalId(),
+  /**
+   * The cover's per-screen framing. Accepted on creation as well as on the PATCH, because the editor is the
+   * same form either way — a route that stripped it here would take a framing an editor set before their
+   * first save and drop it without saying so.
+   */
+  coverScreens: screenFramingField(),
   galleryIds: z
     .array(z.string().trim().max(40))
     .max(GALLERY_LIMIT, `An event holds at most ${GALLERY_LIMIT} pictures. Put the rest in a gallery album.`)
     .default([]),
+  /**
+   * The gallery ROWS' per-screen framings, and each entry NAMES ITS PICTURE.
+   *
+   * ⚠ NOT A PARALLEL ARRAY ALONGSIDE `galleryIds`. That list is written by an id picker and stays a list of
+   * ids; a second array matched to it by index would have to be kept in step by hand, and the first
+   * re-order would frame the wrong photograph. Naming the asset in each entry means the two cannot drift.
+   *
+   * `.optional()` rather than `.default([])`: absent means "this caller has nothing to say about framing",
+   * which must leave every stored framing alone — an empty list, by contrast, is a real answer meaning
+   * nobody has framed anything.
+   */
+  galleryScreens: z
+    .array(z.object({ assetId: z.string().trim().max(40), screens: screenFramingField() }))
+    .max(GALLERY_LIMIT)
+    .optional(),
   speakerIds: z
     .array(z.string().trim().max(40))
     .max(SPEAKER_LIMIT, `An event lists at most ${SPEAKER_LIMIT} speakers.`)
@@ -184,6 +206,8 @@ const EVENT_SELECT = {
   capacity: true,
   isRegistrationOpen: true,
   coverId: true,
+  // Selected beside the cover it frames, so the created row answers with the framing it was given.
+  coverScreens: true,
   status: true,
   publishedAt: true,
   isFeatured: true,
@@ -235,6 +259,10 @@ export const GET = route(async (request: Request) => {
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
+        // Beside the picture, so a caller of this list can resolve the framing rather than
+        // drawing every framed cover unframed. `coverId` is the key `pictureFromMap` resolves by.
+        coverId: true,
+        coverScreens: true,
         cover: { select: MEDIA_IMAGE_SELECT_WITH_ID },
         tags: { select: { tag: { select: { id: true, name: true, slug: true } } } },
         _count: { select: { registrations: true } }
@@ -322,6 +350,14 @@ export const POST = route(async (request: Request) => {
             capacity: body.capacity,
             isRegistrationOpen: body.isRegistrationOpen,
             coverId: body.coverId,
+            /**
+             * Absent and cleared are the same answer on a CREATE — there is no stored framing to leave
+             * alone — and both mean SQL NULL. `Prisma.JsonNull` rather than a bare `null`, because on a
+             * Json column `null` means "ignore this field" and the column would take its default instead.
+             */
+            coverScreens: body.coverScreens
+              ? (body.coverScreens as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
             isFeatured: body.isFeatured,
             status: transition.status,
             ...(transition.publishedAt ? { publishedAt: transition.publishedAt } : {})
@@ -353,8 +389,23 @@ export const POST = route(async (request: Request) => {
         }
 
         if (assetIds.length > 0) {
+          // The framing travels with the picture it frames, so an event created with a row already framed
+          // keeps it. `Prisma.JsonNull` for a row nobody framed, for the reason given on `coverScreens`.
+          // `as const` so each pair infers as a TUPLE rather than an array of the union of its two
+          // members, which is what `new Map` needs to see.
+          const framings = new Map(
+            (body.galleryScreens ?? []).map((entry) => [entry.assetId, entry.screens ?? null] as const)
+          );
           await tx.eventMedia.createMany({
-            data: assetIds.map((assetId, index) => ({ eventId: row.id, assetId, position: index })),
+            data: assetIds.map((assetId, index) => {
+              const screens = framings.get(assetId) ?? null;
+              return {
+                eventId: row.id,
+                assetId,
+                position: index,
+                assetScreens: screens ? (screens as unknown as Prisma.InputJsonValue) : Prisma.JsonNull
+              };
+            }),
             skipDuplicates: true
           });
         }
