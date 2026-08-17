@@ -852,7 +852,10 @@ export function ProjectEditor({
           ids={value.fileIds}
           onChange={(fileIds) => update({ fileIds })}
           max={MAX_LINKED}
-          help="Reports, datasets and slide decks from the file store. A file that is not marked public cannot be downloaded from the site, whatever is listed here."
+          // A project's own reports and datasets: this field OWNS the document rather than arranging
+          // somebody else's, which is the test for offering an upload here.
+          upload
+          help="Reports, datasets and slide decks — choose them from the file library or upload them here. A file that is not marked public cannot be downloaded from the site, whatever is listed here."
         />
 
         <EntityPicker

@@ -119,7 +119,16 @@ export function DocumentEmbedForm({
         help={SHAPE.mediaId.description}
         ids={hasDocument ? [chosen] : []}
         onChange={(next) => update({ mediaId: next[0] ?? "" })}
-        footnote="Upload the document in Media first. A file that also needs to be counted as a download — a dataset, a form to fill in — belongs in a Downloads block instead, which serves it through the file store and records every download."
+        /*
+          ⚠ THE FOOTNOTE USED TO OPEN WITH "Upload the document in Media first", NAMING A SCREEN IT COULD
+          NOT LINK TO. This block is the one place on a page whose entire purpose is one document, and it
+          was the one place that could not accept one. `upload` writes into the MEDIA library rather than
+          the file store, which is not a preference — see the schema's own note: a `FileAsset` is served
+          with `Content-Disposition: attachment`, so an `<iframe>` pointed at one leaves an empty box on the
+          page and a file in the reader's Downloads folder.
+        */
+        upload
+        footnote="Choose a document from the media library, or upload one here. A file that also needs to be counted as a download — a dataset, a form to fill in — belongs in a Downloads block instead, which serves it through the file store and records every download."
       />
 
       <Verdict

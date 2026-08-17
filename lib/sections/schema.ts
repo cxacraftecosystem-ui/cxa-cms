@@ -1142,6 +1142,12 @@ export const embedSectionSchema = z
  * So the document is chosen from the media library, with the same `mediaId()` reference every other
  * block uses for an uploaded asset. A file that is ALSO meant to be counted as a download belongs in
  * a DOWNLOADS block beside this one; the two answer different questions.
+ *
+ * ⚠ AND IT CAN NOW BE UPLOADED FROM THE BLOCK ITSELF. This help used to end "Upload it there first",
+ * naming a screen the form could not link to — so the one block on a page whose entire purpose is a single
+ * document was the one place that could not accept one. `EntityPicker`'s `upload` prop
+ * (components/studio/fields/PickerUpload.tsx) puts it here, and it writes to the MEDIA library rather than
+ * the file store for exactly the reason set out above: an attachment disposition cannot be framed.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * `title` is required once a document is chosen — the third of the conditional requirements
@@ -1158,7 +1164,7 @@ export const embedSectionSchema = z
 export const documentEmbedSectionSchema = z
   .object({
     mediaId: mediaId(
-      "The document, chosen from the media library. Upload it there first. A PDF is shown on the page itself; a PowerPoint, Word or OpenDocument file cannot be — browsers cannot draw those — so it is offered as a download with its name, type and size."
+      "The document, chosen from the media library or uploaded here. A PDF is shown on the page itself; a PowerPoint, Word or OpenDocument file cannot be — browsers cannot draw those — so it is offered as a download with its name, type and size."
     ),
     title: text(
       160,

@@ -78,6 +78,7 @@ import { MediaImage } from "@/components/ui/MediaImage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { HelpText } from "@/components/studio/HelpText";
+import { PickerUpload } from "@/components/studio/fields/PickerUpload";
 
 /** Every table a picker can search. The route handler switches on exactly these words. */
 export const LOOKUP_KINDS = [
@@ -186,6 +187,22 @@ export interface EntityPickerProps {
   error?: string | null;
   /** An extra sentence under the chosen list — what a showcase says about unpublished picks. */
   footnote?: ReactNode;
+  /**
+   * Offer an UPLOAD inside the panel, for the two kinds that have somewhere to upload to.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ OPT-IN RATHER THAN AUTOMATIC FOR `file` AND `media`, because not every picker of those kinds is a
+   * place an upload belongs. The DOWNLOADS block's picker chooses which EXISTING files a showcase lists;
+   * uploading a new document from there would add it to the library as a side effect of arranging a page,
+   * which is a surprising thing for a layout control to do. A field that says "this document" is the
+   * opposite case and should not send the editor to another screen.
+   *
+   * Passing it for any other kind does nothing: there is no generic "create a person" upload, and
+   * silently ignoring it beats inventing one. See `components/studio/fields/PickerUpload.tsx` for which
+   * TABLE each kind writes to and why a picker must not upload into the other one.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  upload?: boolean;
   className?: string;
 }
 
@@ -204,7 +221,8 @@ function EntityPickerControl({
   onChange,
   max = 24,
   reorderable = true,
-  footnote
+  footnote,
+  upload = false
 }: EntityPickerProps) {
   const field = useFieldContext();
   const noun = LOOKUP_NOUNS[kind];
@@ -268,6 +286,28 @@ function EntityPickerControl({
       if (ids.includes(item.id) || ids.length >= max) return;
       onChange([...ids, item.id]);
       setAnnouncement(`${item.title} added. ${ids.length + 1} of ${max} chosen.`);
+    },
+    [ids, max, onChange, single]
+  );
+
+  /**
+   * Choose a record by id alone, for something that did not come out of the search.
+   *
+   * ⚠ AN UPLOAD CANNOT GO THROUGH `add`, which takes a whole `LookupItem` in order to announce a title.
+   * A file that existed a quarter of a second ago is not in any search result the panel has fetched, and
+   * waiting for one before choosing it would leave the editor watching a spinner after their upload had
+   * already succeeded. The title arrives on its own: `resolvedItems` resolves every chosen id through the
+   * same lookup, so the chip fills in a moment later exactly as a searched one does. `PickerUpload` does
+   * the announcing, because it is the thing that knows the file's name.
+   */
+  const addById = useCallback(
+    (id: string) => {
+      if (single) {
+        onChange([id]);
+        return;
+      }
+      if (ids.includes(id) || ids.length >= max) return;
+      onChange([...ids, id]);
     },
     [ids, max, onChange, single]
   );
@@ -495,6 +535,25 @@ function EntityPickerControl({
             ) : null}
           </>
         )}
+
+        {/*
+          ⚠ BELOW THE RESULTS, AND OUTSIDE THE BRANCH ABOVE. It has to survive all three states — loading,
+          error, and the empty list — because the empty list is exactly when an editor most needs it: "there
+          are no files in the studio yet" used to end the journey, and now it is the moment to offer one.
+        */}
+        {upload && (kind === "file" || kind === "media") ? (
+          <div className="mt-2">
+            <PickerUpload
+              kind={kind}
+              onUploaded={addById}
+              unavailable={
+                atLimit && !single
+                  ? `You have chosen the maximum of ${max}, so there is nowhere to put another. Remove one first to upload.`
+                  : null
+              }
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

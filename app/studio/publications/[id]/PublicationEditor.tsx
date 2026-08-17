@@ -677,7 +677,13 @@ export function PublicationEditor({
           ids={value.pdfFileIds}
           onChange={(pdfFileIds) => update({ pdfFileIds })}
           max={1}
-          help="Upload it in Files first, then choose it here. A file that is not marked public cannot be downloaded from the site, whatever is chosen here — which is how an accepted manuscript can be attached before an embargo lifts."
+          /*
+            ⚠ THE HELP USED TO SAY "Upload it in Files first", WHICH WAS THE WHOLE PROBLEM. This form
+            autosaves, so sending an editor to another screen mid-edit is the journey most likely to lose
+            work — and they had the PDF in front of them the entire time. `upload` puts the upload here.
+          */
+          upload
+          help="Choose one from the file library, or upload it here. A file that is not marked public cannot be downloaded from the site, whatever is chosen here — which is how an accepted manuscript can be attached before an embargo lifts."
         />
       </FormSection>
 
