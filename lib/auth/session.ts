@@ -80,7 +80,64 @@ export async function createSession(input: {
 
 export type RotateResult =
   | { ok: true; user: User; session: IssuedSession }
-  | { ok: false; reason: "unknown" | "expired" | "revoked" | "reused" | "user-inactive" };
+  | { ok: false; reason: "unknown" | "expired" | "revoked" | "reused" | "raced" | "user-inactive" };
+
+/**
+ * How recently a parent must have been spent for a second presentation to be a RACE rather than a REPLAY.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ THIS EXISTS BECAUSE THE STUDIO WAS SIGNING PEOPLE OUT SEVERAL TIMES A DAY, AND THE CAUSE WAS THIS
+ * FUNCTION DOING EXACTLY WHAT IT WAS WRITTEN TO DO.
+ *
+ * One browser routinely presents the same refresh token twice within milliseconds, with no attacker
+ * anywhere near it. `lib/client/fetcher.ts` dedupes concurrent refreshes, but only within ONE tab and
+ * only for requests that go through it — and the studio's other refresh path does not: middleware
+ * redirects a PAGE navigation whose access token has expired to `GET /api/auth/refresh`. So an editor
+ * coming back to a tab after half an hour, with a page load and an autosave firing together, or with
+ * the studio open in two tabs, produces two rotations of one parent. One wins. The loser was told
+ * "reused", which this module could only read as theft, and the whole family died.
+ *
+ * The distinguishing evidence is that a race leaves a LIVE CHILD. A replay of a token stolen days later
+ * does not: by then the chain has moved on or been revoked. So a second presentation is forgiven only
+ * when the parent was spent moments ago AND the child it was spent for is still valid.
+ *
+ * ⚠ WHAT THIS COSTS, STATED PLAINLY. A thief replaying a token inside this window is not detected. They
+ * gain nothing by it — the request is still refused and still mints no token — so the exposure is a
+ * delay in DETECTION, not access. Replayed a second later than the window, or against a chain that has
+ * moved on, and the family still dies. Sixty seconds is chosen to be far longer than any real burst of
+ * concurrent requests and far shorter than any useful replay attack.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+const ROTATION_GRACE_MS = 60_000;
+
+/**
+ * Was this parent spent moments ago, for a child that is still live?
+ *
+ * `revokedAt` is the rotation's own timestamp — `rotateSession` writes `rotatedTo` and `revokedAt`
+ * together — so it is the honest "when was this spent". `createdAt` would be when the token was
+ * ISSUED, which says nothing about when it was used.
+ */
+async function isConcurrentRotation(
+  tx: Pick<Prisma.TransactionClient, "session">,
+  parent: { rotatedTo: string | null; revokedAt: Date | null }
+): Promise<boolean> {
+  if (!parent.rotatedTo) return false;
+
+  const spentAt = parent.revokedAt?.getTime();
+  if (spentAt === undefined) return false;
+  if (Date.now() - spentAt > ROTATION_GRACE_MS) return false;
+
+  const child = await tx.session.findUnique({
+    where: { id: parent.rotatedTo },
+    select: { revokedAt: true, expiresAt: true }
+  });
+  if (!child) return false;
+
+  // A child that has itself been revoked means the chain was torn down deliberately — a sign-out, a
+  // password change, an administrator. Forgiving a reuse against that would resurrect nothing but it
+  // would also stop reporting a state the reader should be told about.
+  return child.revokedAt === null && child.expiresAt.getTime() > Date.now();
+}
 
 /** Only the session table is ever written through these helpers, and the type says so. */
 type SessionWriter = Pick<Prisma.TransactionClient, "session">;
@@ -149,8 +206,17 @@ export async function rotateSession(input: {
       }
 
       if (existing.rotatedTo || existing.revokedAt) {
-        // REUSE. Cannot be distinguished from theft, so the family dies. Revoked here rather than
-        // afterwards so the refusal and the revocation commit together.
+        /**
+         * A SECOND PRESENTATION. Two very different things arrive here and they used to be answered
+         * identically — see the note on `ROTATION_GRACE_MS`. A parent spent moments ago whose child is
+         * still live is one browser refreshing twice at once; the family MUST survive that, or the
+         * editor is signed out for opening a second tab. Anything else is indistinguishable from theft
+         * and the family dies.
+         */
+        if (await isConcurrentRotation(tx, existing)) {
+          return { ok: false, reason: "raced" };
+        }
+        // Revoked here rather than afterwards so the refusal and the revocation commit together.
         await revokeFamilyOn(tx, existing.familyId);
         return { ok: false, reason: existing.rotatedTo ? "reused" : "revoked" };
       }
@@ -189,8 +255,19 @@ export async function rotateSession(input: {
     });
   } catch (error) {
     if (!(error instanceof RotationRaceLost)) throw error;
-    await revokeFamily(error.familyId, "refresh token reuse detected");
-    return { ok: false, reason: "reused" };
+    /**
+     * ⚠ THIS PATH IS A RACE BY CONSTRUCTION, NOT A REPLAY, AND IT USED TO REVOKE THE FAMILY.
+     *
+     * Getting here means the compare-and-swap found the parent already spent while THIS transaction was
+     * working — so the winner committed within the last few milliseconds and its child is live. That is
+     * the narrowest possible definition of a concurrent refresh. `isConcurrentRotation` is not even
+     * consulted: no window check could be tighter than "it happened while we were mid-transaction".
+     *
+     * Our own child row was rolled back with the throw, so nothing is orphaned, and the caller holding
+     * the winner's fresh cookies is unaffected. Revoking here was the single largest source of "the
+     * studio signed me out again".
+     */
+    return { ok: false, reason: "raced" };
   }
 
   if (!outcome.ok) return { ok: false, reason: outcome.reason };

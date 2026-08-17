@@ -211,7 +211,27 @@ function refreshOnce(): Promise<boolean> {
         cache: "no-store",
         headers: { accept: "application/json" }
       });
-      return response.ok;
+      if (response.ok) return true;
+
+      /**
+       * ⚠ A LOST REFRESH RACE COUNTS AS SUCCESS, BECAUSE THE COOKIES ARE ALREADY GOOD.
+       *
+       * The promise above dedupes concurrent refreshes within THIS tab, and that is all it can do: a
+       * second tab has its own copy of this module, and middleware refreshes a page navigation without
+       * coming through here at all. So one browser really does present the same refresh token twice, and
+       * the server now answers the loser with 409 `refresh_raced` instead of tearing the session down
+       * (lib/auth/session.ts, ROTATION_GRACE_MS).
+       *
+       * The winner's `Set-Cookie` has landed by the time that 409 arrives, so retrying the original
+       * request is exactly the right move — and reporting failure here was the last step of the old
+       * behaviour, which redirected the editor to the login screen with a perfectly good session in the
+       * cookie jar.
+       */
+      if (response.status === 409) {
+        const body: unknown = await response.json().catch(() => null);
+        if (isRecord(body) && body.code === "refresh_raced") return true;
+      }
+      return false;
     } catch {
       // The network died mid-refresh. Reported as failure so the caller stops, but see
       // `request()`: a network failure is never treated as "you are signed out".

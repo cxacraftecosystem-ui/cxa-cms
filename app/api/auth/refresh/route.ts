@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { User } from "@prisma/client";
 import {
+  ApiError,
   assertSameOrigin,
   clientIp,
   ok,
@@ -90,6 +91,8 @@ function safeNextPath(raw: string | null): string {
  */
 function messageFor(reason: Exclude<RotateResult, { ok: true }>["reason"]): string {
   switch (reason) {
+    case "raced":
+      return "Another request refreshed this session a moment ago. Try that again.";
     case "reused":
       return (
         "This sign-in could not be verified, so this device has been signed out. If you did not expect " +
@@ -152,6 +155,36 @@ async function handle(request: NextRequest, mode: Mode): Promise<NextResponse> {
     userAgent: userAgent(request),
     ipAddress: clientIp(request)
   });
+
+  /**
+   * ⚠ A LOST RACE MUST NOT TOUCH THE COOKIES, AND `refuse()` CLEARS THEM.
+   *
+   * This is the second half of the "the studio keeps signing me out" fault; `ROTATION_GRACE_MS` in
+   * lib/auth/session.ts is the first. When one browser refreshes twice at once — a page navigation
+   * redirected here by middleware alongside an autosave coming through the fetcher, or simply two tabs —
+   * the winner's response carries fresh cookies and the loser arrives here. Sending it through `refuse()`
+   * cleared all three, so whichever response the browser applied last decided whether the editor stayed
+   * signed in. Half the time it was the loser, and the session was gone.
+   *
+   * Changing nothing is what makes the outcome order-independent: both responses are in flight, only one
+   * writes cookies, and after the burst the jar holds the winner's regardless of which landed last. It
+   * also cannot loop — the next request carries a valid access token, so middleware does not send it back
+   * here.
+   *
+   * The 409 is deliberate rather than a 401: `lib/client/fetcher.ts` answers a 401 by refreshing, which
+   * from here would be an immediate second race. A 409 with this code tells it to retry the ORIGINAL
+   * request, which is exactly right — by then the cookies it needs are already in the jar.
+   */
+  if (!rotated.ok && rotated.reason === "raced") {
+    const response =
+      mode === "redirect"
+        ? NextResponse.redirect(new URL(target, request.nextUrl.origin), 303)
+        : toErrorResponse(
+            new ApiError(409, messageFor("raced"), { code: "refresh_raced" })
+          );
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
 
   if (!rotated.ok) return refuse(request, mode, target, messageFor(rotated.reason));
 
