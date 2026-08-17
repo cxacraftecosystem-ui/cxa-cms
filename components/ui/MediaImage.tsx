@@ -23,7 +23,7 @@
 import Image from "next/image";
 import { ImageOff } from "lucide-react";
 
-import { cropFrameStyle, storedCrop } from "@/lib/media/crop";
+import { cropFrameStyle, cropImageStyle, storedCrop } from "@/lib/media/crop";
 import { cdnConfigured, mediaAlt, mediaSrc, type MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 
@@ -235,6 +235,10 @@ export function MediaImage({
             unoptimized={isVector}
             placeholder={media?.blurDataUrl ? "blur" : "empty"}
             blurDataURL={media?.blurDataUrl ?? undefined}
+            // Only inside the crop box, and only because the box is the whole picture rather than the
+            // frame — see `cropImageStyle`. The uncropped branch below needs no origin: its image fills
+            // the frame, so the default centre already is the centre of what the reader sees.
+            style={cropImageStyle(crop)}
             className={cn("object-cover", imageClassName)}
           />
         </span>

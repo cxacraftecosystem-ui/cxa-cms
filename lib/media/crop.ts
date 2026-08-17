@@ -154,3 +154,31 @@ export function cropFrameStyle(rect: CropRect): CSSProperties {
     top: `${-(rect.y / rect.height) * 100}%`
   };
 }
+
+/**
+ * What the `<img>` INSIDE a crop box needs, so a `transform` on it still pivots where a reader expects.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ WITHOUT THIS, EVERY HOVER ZOOM ON A CROPPED PICTURE SLIDES OFF ITS SUBJECT.
+ *
+ * Five surfaces scale the image on hover through `MediaImage`'s `imageClassName` — `EntityCard`, which is
+ * the card used across the whole site, `StoryPicture` at `scale-[1.18]`, and the gallery grids on the
+ * event, gallery and project pages. `transform-origin` defaults to the centre of the element being
+ * transformed, and before the crop existed that element filled the frame, so "the centre" was the centre
+ * of what the reader could see.
+ *
+ * Inside a crop box it is not. The `<img>` now fills the box holding the WHOLE picture, and the frame is
+ * only the sub-rectangle `[x, x+w] × [y, y+h]` of it — so scaling about the image's centre pushes the
+ * visible region towards a part of the photograph the editor deliberately cropped out. On a tight or
+ * off-centre crop the subject walks out of frame on hover, which reads as the crop moving by itself.
+ *
+ * The frame's centre, in the box's own coordinates, is exactly `(x + w/2, y + h/2)` — the crop rectangle's
+ * own centre, because the box IS the full image and the rectangle is expressed as fractions of it. One
+ * property, no extra element, and `scale()` zooms about what is on screen again.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export function cropImageStyle(rect: CropRect): CSSProperties {
+  return {
+    transformOrigin: `${(rect.x + rect.width / 2) * 100}% ${(rect.y + rect.height / 2) * 100}%`
+  };
+}
