@@ -22,6 +22,9 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
+import resolveConfig from "tailwindcss/resolveConfig";
+
+import tailwindConfig from "../tailwind.config";
 import { FULL_CROP, cropFrameStyle, cropImageStyle, storedCrop, type CropRect } from "../lib/media/crop";
 import {
   SCREEN_BUCKETS,
@@ -31,6 +34,9 @@ import {
   resolvePicture,
   screenBucketLabel,
   screenFramingMediaIds,
+  pictureClass,
+  pictureCss,
+  screenMediaQuery,
   setBucket,
   type Picture,
   type ScreenBucketId,
@@ -201,7 +207,7 @@ function bandAt(picture: Picture, width: number) {
 
 // ── 5. The geometry the renderer emits ──────────────────────────────────────
 {
-  const none = cropVarsFor({ bucket: "base", minRem: null, media: PLAIN, crop: null, mediaFrom: "base", cropFrom: null });
+  const none = cropVarsFor({ bucket: "base", mediaQuery: null, media: PLAIN, crop: null, mediaFrom: "base", cropFrom: null });
   check(none["--cxa-crop-w"] === "100%" && none["--cxa-crop-x"] === "0%", "no crop is a full-frame box", JSON.stringify(none));
 
   const full = cropFrameStyle(FULL_CROP);
@@ -213,7 +219,7 @@ function bandAt(picture: Picture, width: number) {
 
   const vars = cropVarsFor({
     bucket: "base",
-    minRem: null,
+    mediaQuery: null,
     media: CROPPED,
     crop: { x: 0.1, y: 0.05, width: 0.5, height: 0.4 },
     mediaFrom: "base",
@@ -238,7 +244,7 @@ function bandAt(picture: Picture, width: number) {
 // ── 6. The bucket table and the framing's shape ─────────────────────────────
 {
   check(SCREEN_BUCKETS.length === 6, "five breakpoints make six ranges", `got ${SCREEN_BUCKETS.length}`);
-  check(SCREEN_BUCKETS[0]?.minRem === null, "the first bucket needs no media query", "base carries a min-width");
+  check(SCREEN_BUCKETS[0]?.minWidthPx === null, "the first bucket needs no media query", "base carries a min-width");
   check(
     SCREEN_BUCKETS.every((bucket, index) => index === 0 || bucket.min > (SCREEN_BUCKETS[index - 1]?.min ?? -1)),
     "the buckets ascend",
@@ -249,11 +255,47 @@ function bandAt(picture: Picture, width: number) {
     "the ranges meet with no gap and no overlap",
     "a bucket's max does not abut the next bucket's min"
   );
+  /**
+   * ⚠ THE BOUNDARIES ARE ASSERTED AGAINST TAILWIND'S RESOLVED CONFIG, NOT AGAINST A COPY OF IT.
+   *
+   * A picture's framing has to change at the same width the LAYOUT changes at — the frame being cropped
+   * for is decided by the `sm:` / `lg:` utilities on the elements around it. Restating 640/768/1024 here
+   * as literals would be a second source of truth that drifts silently the day somebody adds a `screens`
+   * key to tailwind.config.ts. Reading the resolved config means that day is a failing assertion instead.
+   */
+  // `as unknown as` because resolveConfig's own types declare `screens` as possibly undefined for a
+  // config it has just resolved defaults into. The assertion below is what actually proves it is there.
+  const tailwindScreens = resolveConfig(tailwindConfig as never).theme?.screens as unknown as
+    | Record<string, string>
+    | undefined;
+  const expected = SCREEN_BUCKETS.filter((bucket) => bucket.minWidthPx !== null).map((bucket) => ({
+    id: bucket.id,
+    px: bucket.minWidthPx
+  }));
   check(
-    SCREEN_BUCKETS.every((bucket) => bucket.minRem === null || /^[\d.]+rem$/.test(bucket.minRem)),
-    "the queries are in rem, as Tailwind's screens are",
-    "a bucket's minRem is not a rem value"
+    Object.keys(tailwindScreens ?? {}).length === expected.length,
+    "there is one bucket per Tailwind screen, plus base",
+    `Tailwind has ${Object.keys(tailwindScreens ?? {}).length} screens, SCREEN_BUCKETS has ${expected.length} above base`
   );
+  for (const bucket of expected) {
+    const declared = tailwindScreens?.[bucket.id];
+    check(
+      declared === `${bucket.px}px`,
+      `bucket ${bucket.id} matches Tailwind's screen`,
+      `Tailwind says ${declared}, SCREEN_BUCKETS says ${bucket.px}px`
+    );
+  }
+  check(
+    SCREEN_BUCKETS.every((bucket) => bucket.minWidthPx === null || Number.isInteger(bucket.minWidthPx)),
+    "the queries are whole pixels",
+    "a bucket's minWidthPx is not an integer"
+  );
+  check(
+    screenMediaQuery(SCREEN_BUCKETS[2]) === "(min-width: 768px)",
+    "the query is built from the pixel value",
+    String(screenMediaQuery(SCREEN_BUCKETS[2]))
+  );
+  check(screenMediaQuery(SCREEN_BUCKETS[0]) === null, "base needs no query", "base produced a media query");
   check(screenBucketLabel("md").includes("768"), "a label names its range", screenBucketLabel("md"));
 
   // Key ORDER is what keeps autosave from seeing a clean form as dirty.
@@ -274,6 +316,52 @@ function bandAt(picture: Picture, width: number) {
     JSON.stringify(screenFramingMediaIds(framingWith({ sm: { mediaId: "a" }, lg: { mediaId: "a" }, xl: { mediaId: "b" } })))
   );
   check(same(screenFramingMediaIds(null), []), "no framing names no photographs", "screenFramingMediaIds invented ids");
+}
+
+// ── 7. The generated stylesheet ─────────────────────────────────────────────
+{
+  const picture = resolvePicture(
+    CROPPED,
+    framingWith({ lg: { cropX: 0.1, cropY: 0.05, cropWidth: 0.5, cropHeight: 0.4 } })
+  )!;
+  check(picture.length === 2, "the fixture has two bands", `got ${picture.length}`);
+
+  const className = pictureClass(picture);
+  check(/^cxa-pic-[0-9a-z]+$/.test(className), "the class is a safe identifier", className);
+  check(className === pictureClass(picture), "the class is deterministic", "two calls disagreed");
+  check(
+    pictureClass(resolvePicture(PLAIN, null)!) !== className,
+    "a different picture gets a different class",
+    "two unrelated pictures collided"
+  );
+
+  const css = pictureCss(picture, className);
+  check(css.startsWith(`.${className}{`), "the first band is unconditional", css.slice(0, 40));
+  check(css.includes("@media (min-width: 1024px)"), "the second band is behind its own query", css);
+  check(
+    (css.match(/@media/g) ?? []).length === picture.length - 1,
+    "one query per band above the first",
+    `${(css.match(/@media/g) ?? []).length} queries for ${picture.length} bands`
+  );
+  check(css.includes("--cxa-crop-origin:35% 25%"), "the origin travels with the band", css);
+
+  /**
+   * ⚠ THE INJECTION ASSERTION. This CSS is emitted inside a `<style>` element, so anything that could
+   * carry a stored string into it would be an injection surface. Every value is a percentage computed
+   * from four numbers and the selector is a hash, so the whole output should match one strict shape —
+   * and if a future change interpolates a caption, a filename or an object key, this fails.
+   */
+  check(
+    /^(\.cxa-pic-[0-9a-z]+\{[-a-z0-9:;.%\s]*\}|@media \(min-width: \d+px\)\{\.cxa-pic-[0-9a-z]+\{[-a-z0-9:;.%\s]*\}\})+$/.test(css),
+    "the stylesheet contains nothing but hashed selectors and numeric values",
+    css
+  );
+  check(!/[<>"'\\]/.test(css), "and no character that could close the style element", css);
+
+  // A single-band picture is never given a stylesheet by MediaImage, but the generator must still be
+  // honest if asked: one rule, no query.
+  const single = pictureCss(resolvePicture(CROPPED, null)!, "cxa-pic-x");
+  check(!single.includes("@media"), "a single band needs no query", single);
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────

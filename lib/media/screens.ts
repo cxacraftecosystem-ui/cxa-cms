@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { isUsableCrop, storedCrop, type CropColumns, type CropRect } from "./crop";
+import { cropOrigin, isUsableCrop, pct, storedCrop, type CropColumns, type CropRect } from "./crop";
 import type { MediaLike } from "./url";
 
 /**
@@ -37,15 +37,29 @@ export interface ScreenBucket {
   /** Inclusive upper bound, or null for "and wider". Derived from the next bucket; stated for the label. */
   max: number | null;
   /**
-   * The `min-width` for a media query, in rem, or null for the bucket that needs no query.
+   * The `min-width` for this bucket's media query in CSS PIXELS, or null for the bucket below every
+   * breakpoint, which needs no query at all.
    *
-   * ⚠ REM, NOT PX, AND THE TWO ARE NOT INTERCHANGEABLE HERE. Tailwind's stock screens are `40rem`,
-   * `48rem`, `64rem`, `80rem`, `96rem`, and a reader who has raised their browser's default font size
-   * moves every one of those boundaries. Writing `768px` where Tailwind wrote `48rem` would put the
-   * layout's breakpoint and the picture's breakpoint at different widths for exactly the readers who
-   * most need the layout to behave — so the queries are generated from the same unit Tailwind uses.
+   * ⚠ PIXELS, BECAUSE TAILWIND'S SCREENS ARE PIXELS, AND THE UNIT IS NOT A DETAIL. This project runs
+   * stock Tailwind screens — `640px 768px 1024px 1280px 1536px`, and tailwind.config.ts deliberately
+   * leaves `screens` alone (its own note says so). A picture's framing has to change at the same width
+   * the LAYOUT changes at, because the frame it is being cropped for is decided by `sm:` / `lg:`
+   * utilities on the elements around it.
+   *
+   * `rem` looks like the more careful choice and is the wrong one here. Inside a media query `rem`
+   * resolves against the browser's INITIAL font size, not the root element's — which is exactly why
+   * `.cxa-edge` in app/globals.css can safely state Tailwind's breakpoints as `64rem`/`80rem`/`96rem`
+   * and stay in step with `lg:` even when `:root[data-larger-text]` raises the page's own font size.
+   * But it also means a reader who has changed their BROWSER's default font size moves every rem query
+   * while leaving every Tailwind px query where it was. For a decorative 2px edge that divergence costs
+   * nothing; for a crop it would swap the framing at a width the layout has not switched at yet.
    */
-  minRem: string | null;
+  minWidthPx: number | null;
+}
+
+/** The `min-width` query for a bucket, or null for the one that needs none. */
+export function screenMediaQuery(bucket: ScreenBucket): string | null {
+  return bucket.minWidthPx === null ? null : `(min-width: ${bucket.minWidthPx}px)`;
 }
 
 /**
@@ -59,12 +73,12 @@ export interface ScreenBucket {
  * `ScreenBucketId` would become an alias for `string` that catches no typo.
  */
 export const SCREEN_BUCKETS = [
-  { id: "base", label: "Phones", min: 0, max: 639, minRem: null },
-  { id: "sm", label: "Large phones", min: 640, max: 767, minRem: "40rem" },
-  { id: "md", label: "Tablets", min: 768, max: 1023, minRem: "48rem" },
-  { id: "lg", label: "Small laptops", min: 1024, max: 1279, minRem: "64rem" },
-  { id: "xl", label: "Laptops and desktops", min: 1280, max: 1535, minRem: "80rem" },
-  { id: "2xl", label: "Wide desktops", min: 1536, max: null, minRem: "96rem" }
+  { id: "base", label: "Phones", min: 0, max: 639, minWidthPx: null },
+  { id: "sm", label: "Large phones", min: 640, max: 767, minWidthPx: 640 },
+  { id: "md", label: "Tablets", min: 768, max: 1023, minWidthPx: 768 },
+  { id: "lg", label: "Small laptops", min: 1024, max: 1279, minWidthPx: 1024 },
+  { id: "xl", label: "Laptops and desktops", min: 1280, max: 1535, minWidthPx: 1280 },
+  { id: "2xl", label: "Wide desktops", min: 1536, max: null, minWidthPx: 1536 }
 ] as const satisfies readonly ScreenBucket[];
 
 export type ScreenBucketId = (typeof SCREEN_BUCKETS)[number]["id"];
@@ -168,8 +182,8 @@ export function screenFramingMediaIds(framing: ScreenFraming | null | undefined)
  */
 export interface PictureBand {
   bucket: ScreenBucketId;
-  /** The `min-width` for this band's media query, or null for the first one. */
-  minRem: string | null;
+  /** The  query for this band, or null for the first one. */
+  mediaQuery: string | null;
   media: MediaLike;
   crop: CropRect | null;
   /** Which bucket the PHOTOGRAPH came from, for the editor's "inherited from Phones" sentence. */
@@ -262,7 +276,7 @@ export function resolvePicture(
       }
     }
 
-    const band: PictureBand = { bucket: bucket.id, minRem: bucket.minRem, media, crop, mediaFrom, cropFrom };
+    const band: PictureBand = { bucket: bucket.id, mediaQuery: screenMediaQuery(bucket), media, crop, mediaFrom, cropFrom };
     const previous = bands[bands.length - 1];
     if (!previous || !sameBand(previous, band)) bands.push(band);
   }
@@ -282,10 +296,10 @@ function bandVars(band: PictureBand): Record<string, string> {
     return { "--cxa-crop-w": "100%", "--cxa-crop-h": "100%", "--cxa-crop-x": "0%", "--cxa-crop-y": "0%" };
   }
   return {
-    "--cxa-crop-w": `${100 / rect.width}%`,
-    "--cxa-crop-h": `${100 / rect.height}%`,
-    "--cxa-crop-x": `${-(rect.x / rect.width) * 100}%`,
-    "--cxa-crop-y": `${-(rect.y / rect.height) * 100}%`
+    "--cxa-crop-w": pct(100 / rect.width),
+    "--cxa-crop-h": pct(100 / rect.height),
+    "--cxa-crop-x": pct(-(rect.x / rect.width) * 100),
+    "--cxa-crop-y": pct(-(rect.y / rect.height) * 100)
   };
 }
 
@@ -305,4 +319,76 @@ export function cropVars(picture: Picture): CSSProperties {
 /** Every band's variables, for a renderer emitting one rule per band. */
 export function cropVarsFor(band: PictureBand): Record<string, string> {
   return bandVars(band);
+}
+
+/**
+ * FNV-1a, base36. A deterministic name for a picture, and the reason it is a HASH rather than an id.
+ *
+ * ⚠ `useId()` WOULD FORCE `MediaImage` INTO THE CLIENT BUNDLE. It is deliberately server-renderable — its
+ * header says marking it `"use client"` would push `next/image` into the client bundle of every page that
+ * shows a photograph — so it cannot call a hook, and a counter would give the server and the client
+ * different answers and produce a hydration mismatch on every page.
+ *
+ * Hashing the CONTENT sidesteps both, and gains something: two placements resolving to the same bands get
+ * the same class and therefore one rule instead of two identical ones. A collision would mean two
+ * different pictures sharing a rule, so the input is the full geometry, and the odds are not the argument
+ * — the values are short and few.
+ *
+ * Not `node:crypto`: this module is client-safe by design, and importing it would break that.
+ */
+function hash(input: string): string {
+  let value = 0x811c9dc5;
+  for (let index = 0; index < input.length; index += 1) {
+    value ^= input.charCodeAt(index);
+    // `Math.imul` for a real 32-bit multiply — `*` would silently lose precision past 2^53.
+    value = Math.imul(value, 0x01000193);
+  }
+  return (value >>> 0).toString(36);
+}
+
+/** The class that carries a picture's per-width geometry. Stable for identical bands. */
+export function pictureClass(picture: Picture): string {
+  const signature = picture
+    .map((band) => {
+      const rect = band.crop;
+      const box = rect ? `${rect.x},${rect.y},${rect.width},${rect.height}` : "full";
+      return `${band.bucket}:${band.media.objectKey}:${box}`;
+    })
+    .join("|");
+  return `cxa-pic-${hash(signature)}`;
+}
+
+/**
+ * The stylesheet for one picture: one rule per band, the first unconditional, the rest in media queries.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHY A `<style>` BLOCK AT ALL. Inline style cannot hold a media query, and the geometry has to change at
+ * a breakpoint. Custom properties are the bridge: the static `.cxa-crop` rule in app/globals.css reads
+ * them, and these rules reassign them per width. That is the shape `.cxa-edge` in the same stylesheet
+ * already uses for a breakpoint-varying value, so it is a pattern this codebase reads rather than a new
+ * idea.
+ *
+ * ⚠ ONLY A MULTI-BAND PICTURE GETS ONE. A single band means nothing was overridden, and `MediaImage` must
+ * then take the path it took before per-screen framing existed — no style block, no extra class. That
+ * keeps the overwhelming majority of images on the site byte-identical, which is the guarantee thousands
+ * of them depend on.
+ *
+ * ⚠ NOTHING HERE INTERPOLATES A STRING FROM THE DATABASE. Every value is a percentage computed from four
+ * numbers, and the selector is a hash of them — so there is no path from an editor's text to inside a
+ * `<style>` element. That is worth stating because injecting CSS built from stored content is how a
+ * stylesheet becomes an injection surface, and `screens-check` asserts the output matches a strict shape.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export function pictureCss(picture: Picture, className: string): string {
+  const rules: string[] = [];
+  for (const band of picture) {
+    const vars = bandVars(band);
+    const origin = band.crop ? cropOrigin(band.crop) : "50% 50%";
+    const body = `${Object.entries(vars)
+      .map(([name, value]) => `${name}:${value}`)
+      .join(";")};--cxa-crop-origin:${origin}`;
+    const rule = `.${className}{${body}}`;
+    rules.push(band.mediaQuery === null ? rule : `@media ${band.mediaQuery}{${rule}}`);
+  }
+  return rules.join("");
 }

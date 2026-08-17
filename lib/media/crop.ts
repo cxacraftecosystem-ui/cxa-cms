@@ -148,11 +148,24 @@ export function isWholeImage(rect: CropRect): boolean {
 export function cropFrameStyle(rect: CropRect): CSSProperties {
   return {
     position: "absolute",
-    width: `${100 / rect.width}%`,
-    height: `${100 / rect.height}%`,
-    left: `${-(rect.x / rect.width) * 100}%`,
-    top: `${-(rect.y / rect.height) * 100}%`
+    width: pct(100 / rect.width),
+    height: pct(100 / rect.height),
+    left: pct(-(rect.x / rect.width) * 100),
+    top: pct(-(rect.y / rect.height) * 100)
   };
+}
+
+/**
+ * A percentage, rounded to four decimals.
+ *
+ * ⚠ NOT COSMETIC. `0.3 / 0.4 * 100` is `74.99999999999999`, and that string reached the DOM — which is
+ * ugly, but the real cost is elsewhere: the per-width rules in lib/media/screens.ts are keyed on a hash
+ * of these values, so two geometries that differ only in float noise would get two different class names
+ * and two identical rules. Four decimals is far below one device pixel at any plausible image size, and
+ * `Number.parseFloat` drops the trailing zeros so `200.0000` comes back out as `200`.
+ */
+export function pct(value: number): string {
+  return `${Number.parseFloat(value.toFixed(4))}%`;
 }
 
 /**
@@ -178,7 +191,10 @@ export function cropFrameStyle(rect: CropRect): CSSProperties {
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 export function cropImageStyle(rect: CropRect): CSSProperties {
-  return {
-    transformOrigin: `${(rect.x + rect.width / 2) * 100}% ${(rect.y + rect.height / 2) * 100}%`
-  };
+  return { transformOrigin: cropOrigin(rect) };
+}
+
+/** The origin on its own, for the per-width rules that cannot use an inline style. */
+export function cropOrigin(rect: CropRect): string {
+  return `${pct((rect.x + rect.width / 2) * 100)} ${pct((rect.y + rect.height / 2) * 100)}`;
 }

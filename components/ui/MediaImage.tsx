@@ -24,6 +24,7 @@ import Image from "next/image";
 import { ImageOff } from "lucide-react";
 
 import { cropFrameStyle, cropImageStyle, storedCrop } from "@/lib/media/crop";
+import { pictureClass, pictureCss, type Picture } from "@/lib/media/screens";
 import { cdnConfigured, mediaAlt, mediaSrc, type MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 
@@ -97,6 +98,17 @@ export interface MediaImageProps {
    * image, the crop is the point and this stays at its default.
    */
   crop?: boolean;
+  /**
+   * Per-width framing, already resolved by `resolvePicture` (lib/media/screens.ts).
+   *
+   * Omit it and nothing changes. A picture of ONE band is ignored too — one band means nothing was
+   * overridden, and this component must then render exactly as it did before per-screen framing existed.
+   *
+   * ⚠ WHEN IT HAS MORE THAN ONE BAND IT SUPERSEDES `media`'s OWN CROP RATHER THAN COMBINING WITH IT. The
+   * resolver has already folded the asset's stored rectangle in as the base of the cascade, so reading
+   * those columns again here would apply the base crop twice and silently ignore every override.
+   */
+  picture?: Picture | null;
 }
 
 function resolveAspect(aspect: number | string | undefined, media: MediaLike | null | undefined) {
@@ -122,7 +134,8 @@ export function MediaImage({
   targetWidth = DEFAULT_TARGET_WIDTH,
   alt: altOverride,
   imageClassName,
-  crop: applyCrop = true
+  crop: applyCrop = true,
+  picture
 }: MediaImageProps) {
   const crop = applyCrop ? storedCrop(media) : null;
 
@@ -218,6 +231,52 @@ export function MediaImage({
    * screen reader. A `span` with no role and no text contributes nothing to the accessibility tree
    * anyway, so there is nothing to hide.
    */
+
+  /**
+   * THE MULTI-WIDTH PATH, and it is deliberately the only branch that behaves differently.
+   *
+   * `picture` arrives with one band per width at which the framing changes, already resolved
+   * (lib/media/screens.ts). A picture of LENGTH 1 means nothing was overridden, so it is ignored
+   * entirely and the ordinary branches below run — that is what keeps every existing image on the site
+   * byte-identical, and it is the guarantee `screens-check` guards hardest.
+   *
+   * Above one band the geometry has to change at a breakpoint, which an inline style cannot express. So
+   * the four values become custom properties: `.cxa-crop` in globals.css reads them, and one generated
+   * `<style>` block reassigns them per width. The class is a hash of the geometry, so it is identical on
+   * the server and in the browser (no hydration mismatch) and two placements resolving to the same bands
+   * share one rule.
+   */
+  const bands = picture && picture.length > 1 ? picture : null;
+  const bandClass = bands ? pictureClass(bands) : null;
+
+  if (bands && bandClass) {
+    const first = bands[0];
+    const bandSrc = mediaSrc(first.media, first.crop ? Math.round(targetWidth / first.crop.width) : targetWidth);
+    if (bandSrc) {
+      return (
+        <div style={frameStyle} className={cn("relative overflow-hidden", radiusClass, className)}>
+          {/*
+            Values are percentages computed from four numbers and the selector is a hash of them, so no
+            stored text reaches inside this element. See the note on `pictureCss`.
+          */}
+          <style>{pictureCss(bands, bandClass)}</style>
+          <span className={cn("cxa-crop", bandClass)}>
+            <Image
+              src={bandSrc}
+              alt={alt}
+              fill
+              sizes={sizes}
+              priority={priority}
+              unoptimized={/\.svg(\?|$)/i.test(bandSrc)}
+              placeholder={first.media.blurDataUrl ? "blur" : "empty"}
+              blurDataURL={first.media.blurDataUrl ?? undefined}
+              className={cn("cxa-crop-img object-cover", imageClassName)}
+            />
+          </span>
+        </div>
+      );
+    }
+  }
 
   return (
     <div
