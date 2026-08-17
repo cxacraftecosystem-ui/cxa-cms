@@ -5,6 +5,7 @@ import { badRequest, ok, parseQuery, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
 import { livePublishableWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canAuthor } from "@/lib/permissions";
 import { searchUrlFor } from "@/lib/search/index";
 import { formatBytes, truncateWords, unique } from "@/lib/utils";
@@ -301,14 +302,7 @@ const MEDIA_KIND_WORDS = {
  * The variants come with it because the picker draws a 56px thumbnail: without them `mediaSrc` falls
  * back to the ORIGINAL, and a 4000px original in a 56px box is several megabytes per row.
  */
-const MEDIA_SELECT = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
+const MEDIA_SELECT = MEDIA_IMAGE_SELECT satisfies Prisma.MediaAssetSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The per-kind table

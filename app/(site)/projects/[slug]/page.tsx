@@ -82,6 +82,7 @@ import { MediaImage } from "@/components/ui/MediaImage";
 import { publicationDisplayVenue } from "@/lib/citation";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { publicObjectUrl } from "@/lib/media/url";
 import { parseRichText, richTextExcerpt } from "@/lib/richtext";
 import { pageMetadata } from "@/lib/seo";
@@ -121,19 +122,13 @@ function formatDate(value: Date | null): string | null {
 }
 
 /**
- * Everything `<MediaImage>` needs.
+ * Everything `<MediaImage>` needs, from the one shared fragment (lib/media/select.ts) — a local alias
+ * because four selects on this page read it.
  *
  * `variants` is not optional: without it `pickVariant` has nothing to choose from and every image falls
  * back to the full-size ORIGINAL — a 6 MB photograph inside a 320px card.
  */
-const mediaSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
+const mediaSelect = MEDIA_IMAGE_SELECT;
 
 const STAGE: Record<ProjectStatus, { label: string; tone: BadgeTone; icon: LucideIcon }> = {
   PROPOSED: { label: "Proposed", tone: "neutral", icon: Lightbulb },
@@ -515,6 +510,11 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     height: row.asset.height,
     altText: row.asset.altText,
     blurDataUrl: row.asset.blurDataUrl,
+    // The crop travels with the row: a field not named here is a field MediaImage never sees.
+    cropX: row.asset.cropX ?? null,
+    cropY: row.asset.cropY ?? null,
+    cropWidth: row.asset.cropWidth ?? null,
+    cropHeight: row.asset.cropHeight ?? null,
     variants: row.asset.variants,
     // The PLACEMENT's caption wins over the asset's: the same photograph legitimately says something
     // different on a project page than it does in an album.

@@ -54,6 +54,7 @@ import { PageHero } from "@/components/site/PageHero";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { livePublishableWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import type { ContactFormSectionData, MapSectionData } from "@/lib/sections/schema";
 import { pageMetadata } from "@/lib/seo";
 import { SOCIAL_PLATFORMS, type ContactSettings, type SocialLink } from "@/lib/settings/schema";
@@ -84,16 +85,7 @@ const loadContactPage = cache(async () =>
       seoTitle: true,
       seoDescription: true,
       seoNoIndex: true,
-      seoImage: {
-        select: {
-          objectKey: true,
-          width: true,
-          height: true,
-          altText: true,
-          blurDataUrl: true,
-          variants: { select: { label: true, format: true, objectKey: true, width: true } }
-        }
-      }
+      seoImage: { select: MEDIA_IMAGE_SELECT }
     }
     })
     .catch((error: unknown) => {

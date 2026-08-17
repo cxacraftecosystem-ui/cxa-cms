@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { PageHero } from "@/components/site/PageHero";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { pageMetadata } from "@/lib/seo";
 
 import { PeopleDirectory } from "./PeopleDirectory";
@@ -39,20 +40,6 @@ import { prerenderSafe } from "@/lib/prerender";
  */
 const ROSTER_CAP = 400;
 
-/**
- * Everything `<MediaImage>` needs and nothing else — structurally identical to `MediaLike` in
- * lib/media/url.ts. `variants` is not optional: without it `pickVariant` has nothing to choose from
- * and every portrait falls back to the full-size original inside a 320px card.
- */
-const mediaSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
-
 const personSelect = {
   id: true,
   slug: true,
@@ -64,7 +51,11 @@ const personSelect = {
   researchInterests: true,
   startedOn: true,
   endedOn: true,
-  photo: { select: mediaSelect }
+  /**
+   * The shared fragment, which carries `variants` — without them `pickVariant` has nothing to choose
+   * from and every portrait falls back to the full-size original inside a 320px card.
+   */
+  photo: { select: MEDIA_IMAGE_SELECT }
 } satisfies Prisma.PersonSelect;
 
 export async function generateMetadata(): Promise<Metadata> {

@@ -53,6 +53,7 @@ import {
 } from "@/components/site/SearchResults";
 import { liveStatusWhere, livePublishableWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { searchUrlFor } from "@/lib/search/index";
 import { search } from "@/lib/search/query";
 import { pageMetadata } from "@/lib/seo";
@@ -81,15 +82,8 @@ interface SearchPageProps {
   searchParams: Promise<SearchParams>;
 }
 
-/** The media columns a suggestion card needs. */
-const MEDIA_SELECT = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} as const;
+/** The media columns a suggestion card needs, from the one shared fragment (crop included). */
+const MEDIA_SELECT = MEDIA_IMAGE_SELECT;
 
 function firstValue(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return (value[0] ?? "").trim();

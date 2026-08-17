@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
 import { AlbumEditor, type AlbumDraft, type AlbumItemDraft } from "./AlbumEditor";
 
@@ -63,15 +64,9 @@ export async function generateMetadata({
  * called, and whether anybody has written a description for it.
  */
 const itemAssetSelect = {
-  id: true,
+  ...MEDIA_IMAGE_SELECT_WITH_ID,
   kind: true,
-  fileName: true,
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
+  fileName: true
 } satisfies Prisma.MediaAssetSelect;
 
 type ItemAsset = Prisma.MediaAssetGetPayload<{ select: typeof itemAssetSelect }>;
@@ -104,6 +99,11 @@ function toItemDraft(row: {
       height: row.asset.height,
       altText: row.asset.altText,
       blurDataUrl: row.asset.blurDataUrl,
+      // The crop travels with the row: a field not named here is a field MediaImage never sees.
+      cropX: row.asset.cropX ?? null,
+      cropY: row.asset.cropY ?? null,
+      cropWidth: row.asset.cropWidth ?? null,
+      cropHeight: row.asset.cropHeight ?? null,
       variants: row.asset.variants
     }
   };

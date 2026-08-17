@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -41,12 +42,6 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Research area"
-};
-
-/** The variants a preview thumbnail can choose between. Smallest first, so `pickVariant` can walk up. */
-const VARIANT_SELECT = {
-  select: { label: true, format: true, objectKey: true, width: true },
-  orderBy: { width: "asc" as const }
 };
 
 /** A blank area. Sort order 0 puts a new one at the top, where the reader can see what they just made. */
@@ -100,18 +95,9 @@ export default async function StudioResearchAreaPage({
           sortOrder: true,
           status: true,
           publishedAt: true,
-          cover: {
-            select: {
-              id: true,
-              fileName: true,
-              altText: true,
-              objectKey: true,
-              width: true,
-              height: true,
-              blurDataUrl: true,
-              variants: VARIANT_SELECT
-            }
-          },
+          // The shared image columns — variants smallest first, so `pickVariant` can walk up — plus
+          // `fileName`, which the preview thumbnail prints beside the picture.
+          cover: { select: { ...MEDIA_IMAGE_SELECT_WITH_ID, fileName: true } },
           _count: {
             select: {
               projects: { where: { deletedAt: null } },
@@ -132,6 +118,11 @@ export default async function StudioResearchAreaPage({
         width: area.cover.width,
         height: area.cover.height,
         blurDataUrl: area.cover.blurDataUrl,
+        // The crop travels with the row: a field not named here is a field MediaImage never sees.
+        cropX: area.cover.cropX ?? null,
+        cropY: area.cover.cropY ?? null,
+        cropWidth: area.cover.cropWidth ?? null,
+        cropHeight: area.cover.cropHeight ?? null,
         variants: area.cover.variants
       }
     : null;

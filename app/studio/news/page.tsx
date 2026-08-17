@@ -7,6 +7,7 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { siteUrl } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canAuthor, canEditRecord, canManageContent, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import { CENTRE_TIME_ZONE, centreZoneName } from "@/components/site/EventDateBlock";
@@ -152,16 +153,7 @@ export default async function StudioNewsPage({
         mdx: true,
         author: { select: { name: true } },
         category: { select: { name: true } },
-        cover: {
-          select: {
-            objectKey: true,
-            width: true,
-            height: true,
-            altText: true,
-            blurDataUrl: true,
-            variants: { select: { label: true, format: true, objectKey: true, width: true } }
-          }
-        }
+        cover: { select: MEDIA_IMAGE_SELECT }
       }
     }),
     prisma.category.findMany({

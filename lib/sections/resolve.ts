@@ -4,6 +4,7 @@ import type { PageSection, Prisma } from "@prisma/client";
 
 import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { getSettingCached } from "@/lib/settings/service";
 import {
   CENSUS_METRICS,
@@ -184,15 +185,17 @@ export function pickShowcase<T>(
  * `DownloadsSection` sets out: a stored type is whatever the uploading browser guessed, and the
  * extension is what an editor actually named the file.
  */
+/**
+ * ⚠ THE IMAGE COLUMNS COME FROM `MEDIA_IMAGE_SELECT`, NOT FROM A LIST WRITTEN OUT HERE. This module used
+ * to spell them out, as forty-three other queries did, and when the crop columns were added to
+ * `MediaAsset` not one of those lists learned about them — so every crop an editor drew was fetched by
+ * nothing. `MediaLike` makes every field optional, so every one of them still typechecked. Only
+ * `fileName` and `byteSize` are local, because only the document block needs them (see the note above).
+ */
 const mediaSelect = {
-  objectKey: true,
+  ...MEDIA_IMAGE_SELECT,
   fileName: true,
-  byteSize: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
+  byteSize: true
 } satisfies Prisma.MediaAssetSelect;
 
 export type MediaRow = Prisma.MediaAssetGetPayload<{ select: typeof mediaSelect }>;
@@ -1532,6 +1535,15 @@ function galleryImageSource(): EntitySource<EmptyFilter, GalleryItemPayload, Gal
       height: raw.asset.height,
       altText: raw.asset.altText,
       blurDataUrl: raw.asset.blurDataUrl,
+      // ⚠ THE CROP HAS TO BE CARRIED ACROSS THE FLATTENING TOO. Selecting the four columns is only half
+      // the job: this hydrate rebuilds a row by hand, and a field not named here is a field
+      // `MediaImage` never sees — so a gallery image would go back to being trimmed from the centre
+      // while every other surface honoured its crop. Anywhere else that assembles a `MediaLike` by hand
+      // has the same obligation.
+      cropX: raw.asset.cropX,
+      cropY: raw.asset.cropY,
+      cropWidth: raw.asset.cropWidth,
+      cropHeight: raw.asset.cropHeight,
       variants: raw.asset.variants,
       id: raw.id,
       caption: raw.caption ?? raw.asset.caption,

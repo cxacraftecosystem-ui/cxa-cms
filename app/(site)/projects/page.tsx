@@ -58,6 +58,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { pageMetadata } from "@/lib/seo";
 import { truncateWords, unique } from "@/lib/utils";
 import { prerenderSafe } from "@/lib/prerender";
@@ -103,15 +104,6 @@ function isProjectStatus(value: string): value is ProjectStatus {
   return (STAGE_ORDER as readonly string[]).includes(value);
 }
 
-const mediaSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
-
 const projectCardSelect = {
   id: true,
   slug: true,
@@ -123,7 +115,7 @@ const projectCardSelect = {
   startedOn: true,
   endedOn: true,
   isFeatured: true,
-  cover: { select: mediaSelect },
+  cover: { select: MEDIA_IMAGE_SELECT },
   researchArea: { select: { slug: true, title: true } }
 } satisfies Prisma.ProjectSelect;
 

@@ -5,6 +5,7 @@ import type { ContentStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent } from "@/lib/permissions";
 import { describeStatus } from "@/lib/content";
 import { getSettingCached } from "@/lib/settings/service";
@@ -98,15 +99,6 @@ function formatDay(date: Date | null): string {
   });
 }
 
-const coverSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
-
 export default async function StudioGalleryPage({
   searchParams
 }: {
@@ -170,7 +162,7 @@ export default async function StudioGalleryPage({
         publishedAt: true,
         updatedAt: true,
         tags: true,
-        cover: { select: coverSelect },
+        cover: { select: MEDIA_IMAGE_SELECT },
         _count: { select: { items: true } }
       }
     }),

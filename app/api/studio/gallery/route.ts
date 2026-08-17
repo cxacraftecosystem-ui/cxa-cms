@@ -5,6 +5,7 @@ import { assertSameOrigin, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canAccessStudio, canManageContent } from "@/lib/permissions";
 import {
   assertMediaAvailable,
@@ -164,17 +165,7 @@ export const GET = route(async (request: Request) => {
         createdAt: true,
         updatedAt: true,
         deletedAt: true,
-        cover: {
-          select: {
-            id: true,
-            objectKey: true,
-            width: true,
-            height: true,
-            altText: true,
-            blurDataUrl: true,
-            variants: { select: { label: true, format: true, objectKey: true, width: true } }
-          }
-        },
+        cover: { select: MEDIA_IMAGE_SELECT_WITH_ID },
         _count: { select: { items: true } }
       }
     }),

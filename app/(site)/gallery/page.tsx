@@ -41,6 +41,7 @@ import { ExpandOnHover, type ExpandOnHoverItem } from "@/components/ui/expand-on
 import { Pagination } from "@/components/ui/Pagination";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { mediaAlt, mediaSrc } from "@/lib/media/url";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
@@ -81,16 +82,7 @@ const albumCardSelect = {
   category: true,
   location: true,
   happenedOn: true,
-  cover: {
-    select: {
-      objectKey: true,
-      width: true,
-      height: true,
-      altText: true,
-      blurDataUrl: true,
-      variants: { select: { label: true, format: true, objectKey: true, width: true } }
-    }
-  },
+  cover: { select: MEDIA_IMAGE_SELECT },
   /** The count, not the rows. An album of 300 pictures costs the same to list as one of three. */
   _count: { select: { items: true } }
 } satisfies Prisma.GalleryAlbumSelect;

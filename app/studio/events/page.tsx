@@ -6,6 +6,7 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { siteUrl } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import { CENTRE_TIME_ZONE, centreZoneName, describeEventDates, eventPhase } from "@/components/site/EventDateBlock";
@@ -152,16 +153,7 @@ export default async function StudioEventsPage({
         endsAt: true,
         capacity: true,
         isRegistrationOpen: true,
-        cover: {
-          select: {
-            objectKey: true,
-            width: true,
-            height: true,
-            altText: true,
-            blurDataUrl: true,
-            variants: { select: { label: true, format: true, objectKey: true, width: true } }
-          }
-        }
+        cover: { select: MEDIA_IMAGE_SELECT }
       }
     })
   ]);

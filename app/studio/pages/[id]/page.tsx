@@ -9,6 +9,7 @@ import { buildQuery } from "@/lib/client/fetcher";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { siteName, siteUrl, storageConfigured } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { PAGE_PREVIEW_QUERY_KEY, pagePath, pagePreviewToken } from "@/lib/pages";
 import { canManageStructure } from "@/lib/permissions";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -66,16 +67,7 @@ const loadPage = cache(async (id: string) => {
       canonicalUrl: true,
       isSystem: true,
       sortOrder: true,
-      seoImage: {
-        select: {
-          objectKey: true,
-          width: true,
-          height: true,
-          altText: true,
-          blurDataUrl: true,
-          variants: { select: { label: true, format: true, objectKey: true, width: true } }
-        }
-      },
+      seoImage: { select: MEDIA_IMAGE_SELECT },
       sections: {
         // Ordered in SQL. `PageSection` has `@@unique([pageId, position])` and a dense 0-based ordering
         // maintained by the builder, so this is total.

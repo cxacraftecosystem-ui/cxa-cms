@@ -7,6 +7,7 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent } from "@/lib/permissions";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { CENTRE_TIME_ZONE, centreZoneName } from "@/components/site/EventDateBlock";
@@ -48,15 +49,6 @@ const TAG_SUGGESTION_LIMIT = 60;
 /** The address that means "make a new one". See the header. */
 const NEW_SEGMENT = "new";
 
-const mediaSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} as const;
-
 /** `cache()` so `generateMetadata` and the page body cost one query rather than two. */
 const loadEvent = cache(async (id: string) => {
   if (id === NEW_SEGMENT) return null;
@@ -87,7 +79,7 @@ const loadEvent = cache(async (id: string) => {
       publishedAt: true,
       deletedAt: true,
       isFeatured: true,
-      cover: { select: mediaSelect },
+      cover: { select: MEDIA_IMAGE_SELECT },
       agenda: {
         orderBy: { position: "asc" },
         select: { title: true, detail: true, speaker: true, startsAt: true, endsAt: true }

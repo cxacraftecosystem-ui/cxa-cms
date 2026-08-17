@@ -32,6 +32,7 @@ import { personInitials } from "@/components/site/PersonCard";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { publicationDisplayVenue } from "@/lib/citation";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ogImageUrl } from "@/lib/media/url";
 import { parseRichText, richTextExcerpt } from "@/lib/richtext";
 import { absoluteUrl, pageMetadata, serializeJsonLd } from "@/lib/seo";
@@ -71,16 +72,6 @@ export const revalidate = 300;
 const PUBLICATION_CAP = 50;
 const PROJECT_CAP = 12;
 const EVENT_CAP = 12;
-
-/** Structurally identical to `MediaLike` in lib/media/url.ts — see the note on /people/page.tsx. */
-const mediaSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
 
 /**
  * The publication columns a citation line needs.
@@ -139,7 +130,7 @@ const loadPerson = cache(async (slug: string) => {
       endedOn: true,
       updatedAt: true,
       publishedAt: true,
-      photo: { select: mediaSelect }
+      photo: { select: MEDIA_IMAGE_SELECT }
     }
   });
 });
@@ -390,7 +381,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
         summary: true,
         startedOn: true,
         endedOn: true,
-        cover: { select: mediaSelect },
+        cover: { select: MEDIA_IMAGE_SELECT },
         researchArea: { select: { title: true } }
       }
     }),

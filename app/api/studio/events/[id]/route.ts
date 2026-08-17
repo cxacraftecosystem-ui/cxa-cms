@@ -5,6 +5,7 @@ import { assertSameOrigin, noContent, ok, route } from "@/lib/api";
 import { mutateWithHistory, type TxClient } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canAccessStudio, canManageContent } from "@/lib/permissions";
 import { parseRichText } from "@/lib/richtext";
 import {
@@ -160,16 +161,11 @@ const EVENT_SELECT = {
 
 type EventRow = Prisma.CoeEventGetPayload<{ select: typeof EVENT_SELECT }>;
 
+// The shared renderable list plus the two columns the studio picker shows beside the thumbnail.
 const MEDIA_SELECT = {
-  id: true,
-  objectKey: true,
+  ...MEDIA_IMAGE_SELECT_WITH_ID,
   kind: true,
-  fileName: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
+  fileName: true
 } as const;
 
 interface RouteContext {

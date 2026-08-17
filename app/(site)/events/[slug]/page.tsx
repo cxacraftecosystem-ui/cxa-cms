@@ -76,6 +76,7 @@ import { MediaImage } from "@/components/ui/MediaImage";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { eventCalendarHref } from "@/lib/ical";
+import { MEDIA_FIGURE_SELECT, MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ogImageUrl } from "@/lib/media/url";
 import { mailerConfigured } from "@/lib/newsletter/delivery";
 import { richTextExcerpt, parseRichText } from "@/lib/richtext";
@@ -92,15 +93,12 @@ export const revalidate = 300;
  */
 const PRERENDER_LIMIT = 300;
 
-/** Everything `<MediaImage>` needs. `variants` is not optional — see components/ui/MediaImage.tsx. */
-const MEDIA_SELECT = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
+/**
+ * Everything `<MediaImage>` needs, named locally because four selects in this file want it. The list
+ * itself comes from lib/media/select.ts — a hand-written copy is how the crop columns came to be stored
+ * and never rendered. `variants` is not optional — see components/ui/MediaImage.tsx.
+ */
+const MEDIA_SELECT = MEDIA_IMAGE_SELECT satisfies Prisma.MediaAssetSelect;
 
 const eventSelect = {
   id: true,
@@ -160,7 +158,7 @@ const eventSelect = {
     select: {
       assetId: true,
       caption: true,
-      asset: { select: { ...MEDIA_SELECT, caption: true, credit: true } }
+      asset: { select: MEDIA_FIGURE_SELECT }
     }
   },
   tags: {
@@ -335,6 +333,12 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     height: item.asset.height,
     altText: item.asset.altText,
     blurDataUrl: item.asset.blurDataUrl,
+    // Copied across one by one because this object is hand-built: an omitted crop column here would lose
+    // the editor's rectangle again, one layer above the select.
+    cropX: item.asset.cropX,
+    cropY: item.asset.cropY,
+    cropWidth: item.asset.cropWidth,
+    cropHeight: item.asset.cropHeight,
     variants: item.asset.variants,
     // The PLACEMENT's caption wins over the asset's: the same photograph carries a different caption in
     // an album than it does on an event page.

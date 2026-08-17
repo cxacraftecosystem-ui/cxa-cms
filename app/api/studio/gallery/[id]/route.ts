@@ -5,6 +5,7 @@ import { assertSameOrigin, noContent, ok, route } from "@/lib/api";
 import { mutateWithHistory, type TxClient } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { MEDIA_FIGURE_SELECT } from "@/lib/media/select";
 import { canAccessStudio, canManageContent } from "@/lib/permissions";
 import {
   assertMediaAvailable,
@@ -99,17 +100,13 @@ const ALBUM_SELECT = {
 
 type AlbumRow = Prisma.GalleryAlbumGetPayload<{ select: typeof ALBUM_SELECT }>;
 
+// The figure list — the album editor prints the asset's own caption — plus the columns the picker
+// shows beside the thumbnail.
 const MEDIA_SELECT = {
+  ...MEDIA_FIGURE_SELECT,
   id: true,
   kind: true,
-  fileName: true,
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  caption: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
+  fileName: true
 } as const;
 
 interface RouteContext {

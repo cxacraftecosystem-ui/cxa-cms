@@ -80,6 +80,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { clamp, slugify } from "@/lib/utils";
@@ -381,16 +382,7 @@ export default async function CraftExplorerPage({ searchParams }: CraftExplorerP
               longitude: true,
               region: { select: { name: true } },
               school: { select: { name: true } },
-              cover: {
-                select: {
-                  objectKey: true,
-                  width: true,
-                  height: true,
-                  altText: true,
-                  blurDataUrl: true,
-                  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-                }
-              }
+              cover: { select: MEDIA_IMAGE_SELECT }
             }
           }),
           // How many DATED crafts the other filters matched, so the difference from `matched` is exactly what

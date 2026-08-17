@@ -26,6 +26,7 @@ import {
 } from "@/lib/auth/totp";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { isProduction, siteName } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/permissions";
 import { Badge } from "@/components/ui/Badge";
 import { Button, buttonClasses } from "@/components/ui/Button";
@@ -506,16 +507,7 @@ export default async function StudioAccountPage({
         twoFactorRecoveryCodes: true,
         lastLoginAt: true,
         createdAt: true,
-        avatar: {
-          select: {
-            objectKey: true,
-            width: true,
-            height: true,
-            altText: true,
-            blurDataUrl: true,
-            variants: { select: { label: true, format: true, objectKey: true, width: true } }
-          }
-        }
+        avatar: { select: MEDIA_IMAGE_SELECT }
       }
     }),
     /**

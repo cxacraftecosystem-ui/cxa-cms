@@ -53,6 +53,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Pagination } from "@/components/ui/Pagination";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { truncateWords, unique } from "@/lib/utils";
@@ -88,16 +89,7 @@ const eventCardSelect = {
   // read as "there is a place for me", and this query has not counted the registrations — a full event
   // would advertise itself as available. Whether a place exists is answered on the event's own page,
   // where the count is.
-  cover: {
-    select: {
-      objectKey: true,
-      width: true,
-      height: true,
-      altText: true,
-      blurDataUrl: true,
-      variants: { select: { label: true, format: true, objectKey: true, width: true } }
-    }
-  }
+  cover: { select: MEDIA_IMAGE_SELECT }
 } satisfies Prisma.CoeEventSelect;
 
 type EventCardRow = Prisma.CoeEventGetPayload<{ select: typeof eventCardSelect }>;

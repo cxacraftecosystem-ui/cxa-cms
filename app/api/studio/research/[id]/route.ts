@@ -17,6 +17,7 @@ import {
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
 import { requireCapability, type SessionUser } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { indexDocument, removeDocument, searchDocFromResearchArea, searchUrlFor } from "@/lib/search/index";
 
@@ -171,21 +172,8 @@ export const GET = route(async (request: NextRequest, context: { params: Promise
   const area = await prisma.researchArea.findFirst({
     where: { id, deletedAt: null },
     include: {
-      cover: {
-        select: {
-          id: true,
-          fileName: true,
-          altText: true,
-          objectKey: true,
-          width: true,
-          height: true,
-          blurDataUrl: true,
-          variants: {
-            select: { label: true, format: true, objectKey: true, width: true },
-            orderBy: { width: "asc" }
-          }
-        }
-      },
+      // `fileName` on top of the shared list: the editor labels the picked cover by its file name.
+      cover: { select: { ...MEDIA_IMAGE_SELECT_WITH_ID, fileName: true } },
       _count: { select: { projects: true, publications: true } }
     }
   });

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { assertSameOrigin, ok, parseJson, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageMedia } from "@/lib/permissions";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { mediaSrc, VARIANT_WIDTHS } from "@/lib/media/url";
 
 /**
@@ -66,19 +67,17 @@ const VARIANT_SELECT = {
   orderBy: { width: "asc" as const }
 };
 
-/** Just enough of an asset to choose between two copies of it. */
+/**
+ * Just enough of an asset to choose between two copies of it: the shared renderable image columns
+ * (crop included, so the thumbnail here matches the site) plus the four the chooser reads to tell them
+ * apart — kind, name, size and age.
+ */
 const COPY_SELECT = {
-  id: true,
+  ...MEDIA_IMAGE_SELECT_WITH_ID,
   kind: true,
-  objectKey: true,
   fileName: true,
   byteSize: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  createdAt: true,
-  variants: VARIANT_SELECT
+  createdAt: true
 } satisfies Prisma.MediaAssetSelect;
 
 type CopyRow = Prisma.MediaAssetGetPayload<{ select: typeof COPY_SELECT }>;

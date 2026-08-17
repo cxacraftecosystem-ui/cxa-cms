@@ -17,6 +17,7 @@ import {
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
 import { requireCapability, type SessionUser } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { indexDocument, removeDocument, searchDocFromProject, searchUrlFor } from "@/lib/search/index";
 import { clamp } from "@/lib/utils";
@@ -385,20 +386,9 @@ async function recordRename(tx: TxClient, fromSlug: string, toSlug: string): Pro
 // GET
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
+// `fileName` on top of the shared list: the editor labels the picked asset by its file name.
 const EDITOR_MEDIA_SELECT = {
-  select: {
-    id: true,
-    fileName: true,
-    altText: true,
-    objectKey: true,
-    width: true,
-    height: true,
-    blurDataUrl: true,
-    variants: {
-      select: { label: true, format: true, objectKey: true, width: true },
-      orderBy: { width: "asc" as const }
-    }
-  }
+  select: { ...MEDIA_IMAGE_SELECT_WITH_ID, fileName: true }
 };
 
 export const GET = route(async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {

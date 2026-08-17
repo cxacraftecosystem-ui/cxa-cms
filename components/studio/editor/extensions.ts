@@ -1409,6 +1409,11 @@ export interface EditorMediaSelection {
   width?: number | null;
   height?: number | null;
   blurDataUrl?: string | null;
+  /** The crop chosen on the asset. Carried onto the node — see the note on the crop attributes. */
+  cropX?: number | null;
+  cropY?: number | null;
+  cropWidth?: number | null;
+  cropHeight?: number | null;
 }
 
 /** The attributes an inserted picture carries. Nothing here is a URL — see the note on the node. */
@@ -1421,6 +1426,15 @@ export function imageAttrsFromMedia(media: EditorMediaSelection): Record<string,
     width: media.width ?? null,
     height: media.height ?? null,
     blurDataUrl: media.blurDataUrl ?? null,
+    /**
+     * The crop travels with the picture. Without these four, a photograph inserted into a body of text
+     * ignored the rectangle its editor had drawn and was centre-trimmed by the frame — every other
+     * surface on the site honoured it, and rich text alone did not.
+     */
+    cropX: media.cropX ?? null,
+    cropY: media.cropY ?? null,
+    cropWidth: media.cropWidth ?? null,
+    cropHeight: media.cropHeight ?? null,
     // Deliberately null. The renderer resolves `objectKey` through the CDN and picks a width from
     // `sizes`; a stored `src` would freeze both.
     src: null
@@ -1523,10 +1537,58 @@ export const RichTextImage = Image.extend({
         parseHTML: (element: HTMLElement) => element.getAttribute("data-blur"),
         renderHTML: (attributes: Record<string, unknown>) =>
           typeof attributes.blurDataUrl === "string" ? { "data-blur": attributes.blurDataUrl } : {}
-      }
+      },
+
+      /**
+       * The crop, frozen onto the node at insert time.
+       *
+       * ⚠ FROZEN, LIKE `width`, `height` AND `blurDataUrl` BESIDE IT, AND NOT LIKE THE VARIANT LIST.
+       * The note on this node explains why no `src` and no variant list are stored: both go stale the
+       * moment the derivative pipeline is re-run, so the renderer resolves them from `objectKey`
+       * instead. The crop is the opposite case, and it belongs with the frozen half for the same reason
+       * those three are there — the renderer for a document has the node and nothing else. It cannot
+       * reach the asset row, so a crop left on the asset would simply not apply, which is exactly the
+       * state every picture in every rich-text body was in.
+       *
+       * The consequence, stated plainly: re-cropping the asset in the media library does NOT re-crop a
+       * copy already embedded in a document. Re-inserting the picture picks up the new rectangle. That
+       * is the same contract the alt text and the dimensions beside it already have.
+       *
+       * Four separate attributes rather than one object, because Tiptap serialises attributes into HTML
+       * and a nested object has no honest `data-` representation.
+       */
+      ...cropAttributes()
     };
   }
 });
+
+/**
+ * The four crop attributes, generated rather than written out four times.
+ *
+ * Each is a number or null, and the four are only meaningful together — `storedCrop` in lib/media/crop.ts
+ * treats a partial set as no crop at all, which is the behaviour a document written before this existed
+ * relies on: four absent attributes read as "show the whole picture", exactly as before.
+ */
+function cropAttributes(): Record<string, unknown> {
+  const columns = ["cropX", "cropY", "cropWidth", "cropHeight"] as const;
+  const attributes: Record<string, unknown> = {};
+  for (const column of columns) {
+    // "cropWidth" → "data-crop-width".
+    const dataName = `data-${column.replace(/([A-Z])/g, "-$1").toLowerCase()}`;
+    attributes[column] = {
+      default: null,
+      parseHTML: (element: HTMLElement) => {
+        const raw = element.getAttribute(dataName);
+        if (raw === null) return null;
+        const parsed = Number.parseFloat(raw);
+        return Number.isFinite(parsed) ? parsed : null;
+      },
+      renderHTML: (attrs: Record<string, unknown>) =>
+        typeof attrs[column] === "number" ? { [dataName]: String(attrs[column]) } : {}
+    };
+  }
+  return attributes;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The set

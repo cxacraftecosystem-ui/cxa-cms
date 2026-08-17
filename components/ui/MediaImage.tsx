@@ -23,6 +23,7 @@
 import Image from "next/image";
 import { ImageOff } from "lucide-react";
 
+import { cropFrameStyle, storedCrop } from "@/lib/media/crop";
 import { cdnConfigured, mediaAlt, mediaSrc, type MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +87,16 @@ export interface MediaImageProps {
    * and later classes do NOT win (contract §5), overriding that needs `!object-contain`.
    */
   imageClassName?: string;
+  /**
+   * Set false to IGNORE the asset's stored crop and draw the whole picture.
+   *
+   * ⚠ THIS EXISTS FOR THE STUDIO, AND NOTHING ON THE PUBLIC SITE SHOULD PASS IT. A screen whose job is
+   * to show an editor what they HAVE — the media library's detail preview, which deliberately asks for
+   * `!object-contain` — must show the whole photograph, or the crop dialog opens on a picture that has
+   * already had the crop applied to it and the editor is cropping a crop. Everywhere a reader sees an
+   * image, the crop is the point and this stays at its default.
+   */
+  crop?: boolean;
 }
 
 function resolveAspect(aspect: number | string | undefined, media: MediaLike | null | undefined) {
@@ -110,9 +121,24 @@ export function MediaImage({
   rounded = "md",
   targetWidth = DEFAULT_TARGET_WIDTH,
   alt: altOverride,
-  imageClassName
+  imageClassName,
+  crop: applyCrop = true
 }: MediaImageProps) {
-  const src = mediaSrc(media, targetWidth);
+  const crop = applyCrop ? storedCrop(media) : null;
+
+  /**
+   * A CROP NEEDS A BIGGER SOURCE THAN THE FRAME DOES, and asking for the frame's width would quietly
+   * undo half the point of cropping.
+   *
+   * The geometry blows the full picture up to `1 / crop.width` times the frame's width so that the
+   * chosen rectangle lands frame-sized. A crop keeping 40% of the width therefore paints a source that
+   * is 2.5× the frame, and asking `mediaSrc` for the frame's width would hand it a derivative with 40%
+   * of the pixels it needs — a sharp decision by an editor rendered as a soft photograph. Scaling the
+   * request is the whole fix; `pickVariant` already answers "the largest I have" when nothing is big
+   * enough, and `mediaSrc` now prefers the original over a derivative narrower than it.
+   */
+  const sourceWidth = crop ? Math.round(targetWidth / crop.width) : targetWidth;
+  const src = mediaSrc(media, sourceWidth);
   const alt = altOverride ?? mediaAlt(media);
   const ratio = resolveAspect(aspect, media);
   // Inline, not a Tailwind class: an arbitrary `aspect-[3/2]` assembled from data would be purged.
@@ -155,24 +181,78 @@ export function MediaImage({
   // derivatives resolves to a .webp variant and is optimised normally.
   const isVector = /\.svg(\?|$)/i.test(src);
 
+  /**
+   * THE CROP, AND WHY IT IS A NESTED BOX RATHER THAN AN `object-position`.
+   *
+   * ⚠ UNTIL THIS EXISTED, NOTHING ON THE SITE READ THE CROP COLUMNS. The cropper wrote them, the API
+   * saved them, `MediaLike` did not carry them and this component did not look — so every rectangle an
+   * editor drew was stored and ignored, and photographs kept being trimmed from the centre. That is the
+   * whole of the "cropping does not work" report; the rectangles were always right.
+   *
+   * `object-position` was the cheaper option and it is not enough: it moves the visible window but
+   * cannot ZOOM, so a tight crop — the case where somebody has cut a face out of a wide group shot —
+   * would come out framed the same as no crop at all. So the image goes inside a box holding the FULL
+   * picture, sized and offset by `cropFrameStyle` so that the chosen rectangle lands exactly frame-sized.
+   * Pure percentages, no measurement, no `ResizeObserver`, and it renders on the server.
+   *
+   * ⚠ THE GEOMETRY GOES ON A WRAPPER, NOT ON THE `<Image>`'s OWN `style`, AND THAT IS A DELIBERATE
+   * CHOICE BETWEEN TWO WORKING OPTIONS. `next/image` builds its `fill` styles and then spreads the
+   * caller's `style` LAST (node_modules/next/dist/shared/lib/get-img-props.js), so
+   * `style={cropFrameStyle(rect)}` directly on a `fill` image does win today and would save a DOM node.
+   * It wins because of the argument order inside an internal helper, though — an implementation detail
+   * of one Next version, invisible from here, and silent if it ever changes: the crop would simply stop
+   * applying and every photograph would go back to being centre-trimmed with nothing to show it had
+   * happened. A wrapper that owns the absolute positioning outright cannot be quietly overruled by an
+   * upgrade. One span is a cheap price for that.
+   *
+   * `sizes` still describes the FRAME, which is right: it tells the browser how much of the viewport the
+   * picture occupies. The crop changes which pixels are shown, not how wide the slot is — the extra
+   * source resolution a crop needs is handled by `sourceWidth` above.
+   *
+   * An asset nobody has cropped takes the plain `fill` branch, so the overwhelming majority of images on
+   * the site render through byte-identical markup to before.
+   *
+   * ⚠ THE CROP BOX CARRIES NO `aria-hidden`, and that is deliberate. It is a positioning box with no
+   * meaning of its own, so hiding it looks tidy — but `aria-hidden` hides a whole SUBTREE, and it would
+   * take the `<img>` and its alt text with it, silencing every cropped photograph on the site for a
+   * screen reader. A `span` with no role and no text contributes nothing to the accessibility tree
+   * anyway, so there is nothing to hide.
+   */
+
   return (
     <div
       style={frameStyle}
       className={cn("relative overflow-hidden", radiusClass, className)}
     >
-      <Image
-        src={src}
-        alt={alt}
-        fill
-        sizes={sizes}
-        priority={priority}
-        unoptimized={isVector}
-        // `blurDataURL` — capital URL — is next/image's spelling; the database column is
-        // `blurDataUrl`. The mismatch is a silent no-op if you get it the wrong way round.
-        placeholder={media?.blurDataUrl ? "blur" : "empty"}
-        blurDataURL={media?.blurDataUrl ?? undefined}
-        className={cn("object-cover", imageClassName)}
-      />
+      {crop ? (
+        <span style={cropFrameStyle(crop)} className="block">
+          <Image
+            src={src}
+            alt={alt}
+            fill
+            sizes={sizes}
+            priority={priority}
+            unoptimized={isVector}
+            placeholder={media?.blurDataUrl ? "blur" : "empty"}
+            blurDataURL={media?.blurDataUrl ?? undefined}
+            className={cn("object-cover", imageClassName)}
+          />
+        </span>
+      ) : (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          sizes={sizes}
+          priority={priority}
+          unoptimized={isVector}
+          // `blurDataURL` — capital URL — is next/image's spelling; the database column is
+          // `blurDataUrl`. The mismatch is a silent no-op if you get it the wrong way round.
+          placeholder={media?.blurDataUrl ? "blur" : "empty"}
+          blurDataURL={media?.blurDataUrl ?? undefined}
+          className={cn("object-cover", imageClassName)}
+        />
+      )}
     </div>
   );
 }

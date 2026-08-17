@@ -6,6 +6,7 @@ import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { LIVE_STATUSES } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import {
   describePublishBlockers,
   normalisePageSlug,
@@ -165,17 +166,7 @@ export const GET = route(async (request: Request, context: { params: Promise<{ i
       where: { id },
       select: {
         ...PAGE_EDITABLE_SELECT,
-        seoImage: {
-          select: {
-            id: true,
-            objectKey: true,
-            width: true,
-            height: true,
-            altText: true,
-            blurDataUrl: true,
-            variants: { select: { label: true, format: true, objectKey: true, width: true } }
-          }
-        },
+        seoImage: { select: MEDIA_IMAGE_SELECT_WITH_ID },
         sections: {
           orderBy: { position: "asc" },
           select: { id: true, type: true, position: true, label: true, data: true, isVisible: true }

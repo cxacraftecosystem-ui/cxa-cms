@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import {
@@ -114,19 +115,7 @@ export default async function StudioPeoplePage({
       isVisible: true,
       sortOrder: true,
       status: true,
-      photo: {
-        select: {
-          objectKey: true,
-          altText: true,
-          width: true,
-          height: true,
-          blurDataUrl: true,
-          variants: {
-            select: { label: true, format: true, objectKey: true, width: true },
-            orderBy: { width: "asc" }
-          }
-        }
-      },
+      photo: { select: MEDIA_IMAGE_SELECT },
       _count: {
         select: {
           projects: true,

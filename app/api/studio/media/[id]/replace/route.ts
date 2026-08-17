@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageMedia } from "@/lib/permissions";
 import {
   deleteObject,
@@ -244,16 +245,17 @@ export const POST = route(async (request: NextRequest, context: { params: Promis
     // somewhere nothing on the site can see, and the restore would then bring back a different picture.
     where: { id, deletedAt: null },
     select: {
-      id: true,
+      // The image columns come from the one shared media select (lib/media/select.ts) rather than a
+      // hand-written copy, so this read cannot fall behind the next column added to a renderable image.
+      ...MEDIA_IMAGE_SELECT_WITH_ID,
+      // The file's own bookkeeping, which the audit `before` records so a mistaken replacement is
+      // recoverable. `variants` is narrowed to the rows themselves: their keys are the objects this
+      // replacement abandons, and nothing here renders them.
       kind: true,
-      objectKey: true,
       fileName: true,
       mimeType: true,
       byteSize: true,
-      width: true,
-      height: true,
       checksum: true,
-      blurDataUrl: true,
       variants: { select: { id: true, objectKey: true } }
     }
   });

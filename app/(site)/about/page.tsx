@@ -54,6 +54,7 @@ import { SectionHeading } from "@/components/site/SectionHeading";
 import { LinkButton } from "@/components/ui/Button";
 import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { resolveSectionData } from "@/lib/sections/resolve";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingsCached } from "@/lib/settings/service";
@@ -69,14 +70,12 @@ const BREADCRUMBS = [
   { name: "About", href: "/about" }
 ] as const;
 
-const mediaSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
+/**
+ * The shared media column list, named locally because both the SEO image and the faculty photo use it.
+ * It MUST come from lib/media/select.ts: a hand-written copy is how the crop columns came to be stored
+ * and never rendered.
+ */
+const mediaSelect = MEDIA_IMAGE_SELECT satisfies Prisma.MediaAssetSelect;
 
 /**
  * The `Page` row, memoised for the duration of ONE request.

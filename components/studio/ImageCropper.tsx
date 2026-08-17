@@ -56,25 +56,31 @@ import {
 } from "react";
 import { Check, Crop, RotateCcw, TriangleAlert } from "lucide-react";
 
+/**
+ * The geometry lives in `lib/media/crop.ts` and is imported, not defined here.
+ *
+ * It used to be defined here, and the standing note beside `cropFrameStyle` said to move it before
+ * `MediaImage` called it. That was the right instruction for a blunt reason: this module carries
+ * `"use client"`, and a function exported from a client module and imported by a Server Component is a
+ * client reference rather than the function. `MediaImage` is server-renderable, so it could not reach
+ * the geometry — and so it applied no crop at all, which is the entire "cropping does not work" report.
+ * The names are re-exported below for the studio components that already import them from here.
+ */
+import {
+  cropFrameStyle,
+  isUsableCrop,
+  isWholeImage,
+  storedCrop,
+  FULL_CROP,
+  type CropRect
+} from "@/lib/media/crop";
 import { clamp, cn } from "@/lib/utils";
 import { useReducedMotionPreference } from "@/components/motion";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 
-/**
- * The crop, in fractions of the FULL image, origin at the top left.
- *
- * FRACTIONS, NOT PIXELS, and the reason is `VARIANT_WIDTHS` in lib/media/url.ts: the same asset is
- * served at six widths from 320 to 2560, and a pixel rectangle is meaningful against exactly one of
- * them. Fractions survive the derivative pipeline, a later regeneration at different widths, and the
- * `og` variant's forced 1200 × 630.
- */
-export interface CropRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+export { cropFrameStyle, isUsableCrop, isWholeImage, storedCrop, FULL_CROP };
+export type { CropRect };
 
 /** A crop plus the preset it was made on, which is the whole answer this dialog returns. */
 export interface CropChoice {
@@ -143,9 +149,6 @@ export const CROP_ASPECTS = [
 
 export type CropAspectId = (typeof CROP_ASPECTS)[number]["id"];
 
-/** The whole picture, which is what "no crop" means and what a reset returns to. */
-export const FULL_CROP: CropRect = { x: 0, y: 0, width: 1, height: 1 };
-
 /**
  * Nothing below this fraction of an edge can be kept.
  *
@@ -158,118 +161,6 @@ const MIN_EDGE = 0.05;
 const NUDGE = 0.002;
 const NUDGE_FAST = 0.02;
 
-/**
- * Is this rectangle usable? Anything else is treated as "no crop" and the whole picture is shown.
- *
- * Exported because the render side needs the identical test: a row written by an older client, a
- * hand-edited database or a future bug must degrade to today's behaviour (the whole image, cover-fit)
- * rather than to a stretched or empty frame. A CHECK constraint was considered and rejected for the
- * same reason — see the migration.
- */
-export function isUsableCrop(rect: Partial<CropRect> | null | undefined): rect is CropRect {
-  if (!rect) return false;
-  const { x, y, width, height } = rect;
-  if (
-    typeof x !== "number" ||
-    typeof y !== "number" ||
-    typeof width !== "number" ||
-    typeof height !== "number"
-  ) {
-    return false;
-  }
-  if (![x, y, width, height].every(Number.isFinite)) return false;
-  if (width <= 0 || height <= 0) return false;
-  // A hair over 1 is allowed on the sums because the numbers come from floating-point division and
-  // `0.3 + 0.7` is famously not 1. A hair is not a crop.
-  return x >= 0 && y >= 0 && x + width <= 1.0001 && y + height <= 1.0001;
-}
-
-/**
- * The crop stored on a media row, or null for "nobody has chosen — show the whole picture".
- *
- * ⚠ A ROW UPLOADED BEFORE THIS FEATURE EXISTED CARRIES FIVE NULLS, AND FIVE NULLS MEAN THE WHOLE
- * IMAGE — never a zero-size box. `isUsableCrop` rejects the undefined members, the answer is null, and
- * every caller reads null as `FULL_CROP`: the dialog opens on the whole picture and the render side
- * cover-fits it exactly as it did before prisma/migrations/20260816190000_media_asset_crop. That is
- * the entire back-compatibility story for the migration, and it is why the columns are nullable rather
- * than defaulted to 0/0/1/1 — a default would be indistinguishable from a decision somebody made.
- *
- * ⚠ THE `?? undefined` ON EACH LINE IS LOAD-BEARING, not noise. The columns are `number | null` and
- * `isUsableCrop` takes a `Partial<CropRect>`, whose members are `number | undefined`; passing the
- * nulls straight through does not typecheck, and widening the predicate instead would weaken the one
- * test the studio and the render side share.
- *
- * A STRUCTURAL PARAMETER rather than `StudioMediaAsset`, for two reasons: this module must keep its
- * one-way dependency (components/studio/media/MediaGrid.tsx imports nothing from here, and adding an
- * import back would close a cycle), and the same five fields arrive on an `UploadedMediaAsset` and on
- * a detail row. Pure and React-free like `isUsableCrop`, so it moves to `lib/media/crop.ts` with it.
- */
-export function storedCrop(row: {
-  cropX?: number | null;
-  cropY?: number | null;
-  cropWidth?: number | null;
-  cropHeight?: number | null;
-}): CropRect | null {
-  const rect = {
-    x: row.cropX ?? undefined,
-    y: row.cropY ?? undefined,
-    width: row.cropWidth ?? undefined,
-    height: row.cropHeight ?? undefined
-  };
-  return isUsableCrop(rect) ? rect : null;
-}
-
-/** Is this crop indistinguishable from the whole picture? Then there is nothing worth storing. */
-export function isWholeImage(rect: CropRect): boolean {
-  return rect.x < 0.001 && rect.y < 0.001 && rect.width > 0.999 && rect.height > 0.999;
-}
-
-/**
- * The CSS that shows `rect` of an image inside a frame — the geometry `MediaImage` must use.
- *
- * ══════════════════════════════════════════════════════════════════════════════════════════════
- * PURE PERCENTAGES, NO MEASUREMENT, so this works in a Server Component and needs no ResizeObserver.
- *
- * The frame is `position: relative; overflow: hidden` with its own `aspect-ratio`. Inside it sits a
- * box holding the FULL image, sized so that the crop sub-rectangle comes out exactly frame-sized:
- *
- *     width  = 100 / rect.width  %          → the crop's width becomes 100% of the frame
- *     height = 100 / rect.height %          → the crop's height becomes 100% of the frame
- *     left   = −(rect.x / rect.width)  ×100% → slide the crop's left edge onto the frame's
- *     top    = −(rect.y / rect.height) ×100%
- *
- * The image inside that box is `object-fit: cover`, and the arithmetic of why is worth writing down.
- * The box's own aspect ratio works out at `frameAspect × (rect.height / rect.width)`. When the frame
- * is the shape the editor cropped for — a 16:9 crop landing in a 16:9 hero, which is the case this
- * whole feature exists to serve — that expression collapses to the image's NATURAL aspect ratio, so
- * `cover` has nothing to do and the picture is neither stretched nor re-trimmed. The crop is shown
- * exactly.
- *
- * ⚠ MOVE THIS FUNCTION (AND `isUsableCrop`, AND `storedCrop`) TO `lib/media/crop.ts` BEFORE
- * `MediaImage` CALLS IT. They live here for now because this is the file that owns the geometry, but
- * this module carries `"use client"` — and a plain function exported from a client module and
- * imported by a Server Component is not the function, it is a client reference; calling it on the
- * server throws. They are deliberately pure, dependency-free and untied to React so that the move is a
- * cut and a paste.
- *
- * ⚠ WHEN THE FRAME IS A DIFFERENT SHAPE FROM THE CROP, `cover` RE-TRIMS FROM THE CENTRE OF THE CROP.
- * A 16:9 crop dropped into a square tile loses its own left and right edges. That is a real
- * limitation and it is the honest one: a single stored rectangle cannot be simultaneously correct for
- * a 21:9 banner and a 1:1 avatar. What it guarantees is that the trimming happens around the region
- * the editor chose instead of around the middle of the original frame, which is the whole complaint.
- * `object-fit: contain` was the alternative and is worse — it letterboxes, so a gallery of mixed
- * shapes grows grey bars and the layout stops reading as a grid.
- * ══════════════════════════════════════════════════════════════════════════════════════════════
- */
-export function cropFrameStyle(rect: CropRect): CSSProperties {
-  return {
-    position: "absolute",
-    width: `${100 / rect.width}%`,
-    height: `${100 / rect.height}%`,
-    left: `${-(rect.x / rect.width) * 100}%`,
-    top: `${-(rect.y / rect.height) * 100}%`
-  };
-}
 
 type Corner = "nw" | "ne" | "sw" | "se";
 type DragKind = "move" | Corner;

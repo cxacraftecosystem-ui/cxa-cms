@@ -8,6 +8,7 @@ import type { Page, PageSection, Prisma, SectionType } from "@prisma/client";
 import { livePublishableWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { authEnv } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { sectionLabel } from "@/lib/sections/registry";
 import { placeholderPromptsIn } from "@/lib/sections/schema";
 import { pageMetadata } from "@/lib/seo";
@@ -75,18 +76,14 @@ import { pageMetadata } from "@/lib/seo";
  * the same value can be handed to `<MediaImage>` without a second query — a narrower select would
  * silently cost the blur placeholder and the intrinsic size the moment somebody rendered it.
  *
- * Written out rather than imported: the equivalent select in lib/sections/resolve.ts is private to that
- * module and shaped for cards. Two small literals that each say what they are beat one shared one that
- * has to serve both.
+ * ⚠ IT IS NO LONGER WRITTEN OUT, AND THE REASON IT USED TO BE IS THE REASON IT MUST NOT BE. The note here
+ * argued that "two small literals that each say what they are beat one shared one that has to serve
+ * both". Forty-four copies of this list existed on that reasoning, and when the crop columns were added
+ * to `MediaAsset` not one of them learned about them — so every crop an editor drew was fetched by
+ * nothing and rendered by nothing. `MediaLike` makes every field optional, so all forty-four still
+ * typechecked. The list now lives once, in lib/media/select.ts.
  */
-const seoImageSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
+const seoImageSelect = MEDIA_IMAGE_SELECT;
 
 export type PageSeoImage = Prisma.MediaAssetGetPayload<{ select: typeof seoImageSelect }>;
 

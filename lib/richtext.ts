@@ -146,6 +146,15 @@ export interface RichTextImage {
   width: number | null;
   height: number | null;
   blurDataUrl: string | null;
+  /**
+   * The crop, as fractions of the full image, frozen onto the node when the picture was inserted.
+   * All four null means "show the whole thing" — which is what every document written before the crop
+   * attributes existed says, so those keep rendering exactly as they did.
+   */
+  cropX: number | null;
+  cropY: number | null;
+  cropWidth: number | null;
+  cropHeight: number | null;
 }
 
 export interface RichTextLink {
@@ -534,7 +543,11 @@ export function imageAttrsOf(node: RichTextNode): RichTextImage {
     caption: attrString(node, "caption") ?? attrString(node, "title"),
     width: attrNumber(node, "width"),
     height: attrNumber(node, "height"),
-    blurDataUrl: attrString(node, "blurDataUrl")
+    blurDataUrl: attrString(node, "blurDataUrl"),
+    cropX: attrNumber(node, "cropX"),
+    cropY: attrNumber(node, "cropY"),
+    cropWidth: attrNumber(node, "cropWidth"),
+    cropHeight: attrNumber(node, "cropHeight")
   };
 }
 

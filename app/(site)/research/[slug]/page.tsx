@@ -65,6 +65,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { publicationDisplayVenue } from "@/lib/citation";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { parseRichText, richTextExcerpt } from "@/lib/richtext";
 import { pageMetadata } from "@/lib/seo";
 import { truncateWords } from "@/lib/utils";
@@ -87,17 +88,11 @@ const RELATED_LIMIT = 6;
  * Everything `<MediaImage>` needs.
  *
  * `variants` is not optional: without it `pickVariant` has nothing to choose from and every image falls
- * back to the full-size ORIGINAL — a 6 MB photograph inside a 320px card. Written out here rather than
- * imported because lib/sections/resolve.ts keeps its copy private.
+ * back to the full-size ORIGINAL — a 6 MB photograph inside a 320px card. It, and the crop columns, now
+ * come from the one shared fragment in lib/media/select.ts; the local copy this alias replaced omitted
+ * the crop and silently rendered every image uncropped.
  */
-const mediaSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
+const mediaSelect = MEDIA_IMAGE_SELECT;
 
 const projectCardSelect = {
   id: true,

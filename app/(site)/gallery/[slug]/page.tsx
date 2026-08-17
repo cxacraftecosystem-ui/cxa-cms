@@ -49,6 +49,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_FIGURE_SELECT, MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { absoluteUrl, pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { prerenderParams } from "@/lib/prerender";
@@ -67,15 +68,6 @@ const ALBUM_DATE = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC"
 });
 
-const MEDIA_SELECT = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
-
 const albumSelect = {
   id: true,
   slug: true,
@@ -88,14 +80,15 @@ const albumSelect = {
   tags: true,
   publishedAt: true,
   updatedAt: true,
-  cover: { select: MEDIA_SELECT },
+  cover: { select: MEDIA_IMAGE_SELECT },
   items: {
     orderBy: { position: "asc" },
     select: {
       id: true,
       caption: true,
       presentation: true,
-      asset: { select: { ...MEDIA_SELECT, caption: true, credit: true } }
+      // The figure variant: `caption` and `credit` are printed under each photograph here.
+      asset: { select: MEDIA_FIGURE_SELECT }
     }
   }
 } satisfies Prisma.GalleryAlbumSelect;
@@ -167,7 +160,7 @@ export async function generateMetadata({
       happenedOn: true,
       publishedAt: true,
       updatedAt: true,
-      cover: { select: MEDIA_SELECT },
+      cover: { select: MEDIA_IMAGE_SELECT },
       _count: { select: { items: true } }
     }
   });
@@ -238,6 +231,11 @@ export default async function GalleryAlbumPage({
     height: item.asset.height,
     altText: item.asset.altText,
     blurDataUrl: item.asset.blurDataUrl,
+    // The crop travels with the row: a field not named here is a field MediaImage never sees.
+    cropX: item.asset.cropX ?? null,
+    cropY: item.asset.cropY ?? null,
+    cropWidth: item.asset.cropWidth ?? null,
+    cropHeight: item.asset.cropHeight ?? null,
     variants: item.asset.variants,
     // The PLACEMENT's caption wins over the asset's: the same photograph carries a different caption in
     // one album than it does in another.

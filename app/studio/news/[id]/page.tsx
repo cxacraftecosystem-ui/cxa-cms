@@ -8,6 +8,7 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ROLES_DESCENDING, canAuthor, canEditRecord, hasRank } from "@/lib/permissions";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
@@ -45,15 +46,6 @@ export const dynamic = "force-dynamic";
 /** How many tag names the editor offers as suggestions. The cap is stated on screen. */
 const TAG_SUGGESTION_LIMIT = 60;
 
-const seoImageSelect = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} as const;
-
 /** `cache()` so `generateMetadata` and the page body cost one query rather than two. */
 const loadPost = cache(async (id: string) => {
   return prisma.post.findFirst({
@@ -80,7 +72,7 @@ const loadPost = cache(async (id: string) => {
       seoNoIndex: true,
       readingMinutes: true,
       author: { select: { id: true, name: true } },
-      cover: { select: seoImageSelect },
+      cover: { select: MEDIA_IMAGE_SELECT },
       tags: { select: { tag: { select: { name: true } } } },
       // The editorial picks this article makes, not the ones made about it. `relatedFrom` is the other
       // direction and belongs to those articles' own editors.

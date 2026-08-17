@@ -69,6 +69,14 @@ export interface EditorMedia {
   width: number | null;
   height: number | null;
   blurDataUrl: string | null;
+  /**
+   * The crop chosen on the asset. Carried so a picture rendered from this row honours it — a field
+   * absent here is a field `MediaImage` never sees, whatever the query fetched.
+   */
+  cropX: number | null;
+  cropY: number | null;
+  cropWidth: number | null;
+  cropHeight: number | null;
   variants: { label: string; format: string; objectKey: string; width: number }[];
 }
 
@@ -195,6 +203,11 @@ function toEditorMedia(asset: StudioMediaAsset): EditorMedia {
     width: asset.width,
     height: asset.height,
     blurDataUrl: asset.blurDataUrl,
+    // The crop travels with the row: a field not named here is a field MediaImage never sees.
+    cropX: asset.cropX ?? null,
+    cropY: asset.cropY ?? null,
+    cropWidth: asset.cropWidth ?? null,
+    cropHeight: asset.cropHeight ?? null,
     variants: asset.variants ?? []
   };
 }

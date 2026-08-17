@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -27,11 +28,6 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Person"
-};
-
-const VARIANT_SELECT = {
-  select: { label: true, format: true, objectKey: true, width: true },
-  orderBy: { width: "asc" as const }
 };
 
 /** A day as `<input type="date">` wants it. UTC throughout, so a date never shifts by one. */
@@ -110,18 +106,8 @@ export default async function StudioPersonPage({
           isVisible: true,
           status: true,
           publishedAt: true,
-          photo: {
-            select: {
-              id: true,
-              fileName: true,
-              altText: true,
-              objectKey: true,
-              width: true,
-              height: true,
-              blurDataUrl: true,
-              variants: VARIANT_SELECT
-            }
-          },
+          // `fileName` on top of the shared fragment: the media picker shows it beside the thumbnail.
+          photo: { select: { ...MEDIA_IMAGE_SELECT_WITH_ID, fileName: true } },
           _count: { select: { projects: true, publications: true, events: true } }
         }
       });

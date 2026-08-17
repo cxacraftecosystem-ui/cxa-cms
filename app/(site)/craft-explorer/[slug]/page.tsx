@@ -52,6 +52,7 @@ import { TagList } from "@/components/site/TagList";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_FIGURE_SELECT } from "@/lib/media/select";
 import { mediaAlt } from "@/lib/media/url";
 import { isEmptyRichText, parseRichText } from "@/lib/richtext";
 import { pageMetadata } from "@/lib/seo";
@@ -76,18 +77,13 @@ interface CraftPageProps {
   params: Promise<{ slug: string }>;
 }
 
-/** The media columns every picture on this page needs, in one place so the two selects cannot drift. */
-const MEDIA_SELECT = {
-  id: true,
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  caption: true,
-  credit: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} as const;
+/**
+ * The media columns every picture on this page needs, in one place so the two selects cannot drift —
+ * and taken from lib/media/select.ts, because a hand-written copy of this list is exactly how the crop
+ * columns came to be stored and never rendered. The figure variant for the caption and credit lines
+ * printed under the gallery pictures, plus `id`, which keys the gallery.
+ */
+const MEDIA_SELECT = { ...MEDIA_FIGURE_SELECT, id: true } as const;
 
 /**
  * One query, memoised for the duration of one request.
@@ -259,6 +255,12 @@ export default async function CraftPage({ params }: CraftPageProps) {
       height: placement.asset.height,
       altText: placement.asset.altText,
       blurDataUrl: placement.asset.blurDataUrl,
+      // Copied across one by one because this object is hand-built: an omitted crop column here would
+      // lose the editor's rectangle again, one layer above the select.
+      cropX: placement.asset.cropX,
+      cropY: placement.asset.cropY,
+      cropWidth: placement.asset.cropWidth,
+      cropHeight: placement.asset.cropHeight,
       variants: placement.asset.variants,
       // The placement's caption wins over the asset's: the same photograph carries a different caption
       // in an album than it does here.

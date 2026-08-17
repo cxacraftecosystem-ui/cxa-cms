@@ -6,6 +6,7 @@ import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canAccessStudio, canAuthor, canEditOthersContent, canPublish } from "@/lib/permissions";
 import { isEmptyRichText, parseRichText, richTextToPlainText } from "@/lib/richtext";
 import { plainTextFromMdx } from "@/lib/search/index";
@@ -165,17 +166,7 @@ export const GET = route(async (request: Request, context: RouteContext) => {
         ...POST_SELECT,
         author: { select: { id: true, name: true, email: true } },
         category: { select: { id: true, name: true, slug: true } },
-        cover: {
-          select: {
-            id: true,
-            objectKey: true,
-            width: true,
-            height: true,
-            altText: true,
-            blurDataUrl: true,
-            variants: { select: { label: true, format: true, objectKey: true, width: true } }
-          }
-        },
+        cover: { select: MEDIA_IMAGE_SELECT_WITH_ID },
         tags: { select: { tag: { select: { id: true, name: true, slug: true } } } },
         relatedTo: { select: { id: true, title: true, slug: true } }
       }

@@ -17,6 +17,7 @@ import {
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
 import { requireCapability, type SessionUser } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { indexDocument, removeDocument, searchDocFromPerson, searchUrlFor } from "@/lib/search/index";
 import { unique } from "@/lib/utils";
@@ -192,21 +193,8 @@ export const GET = route(async (request: NextRequest, context: { params: Promise
   const person = await prisma.person.findFirst({
     where: { id, deletedAt: null },
     include: {
-      photo: {
-        select: {
-          id: true,
-          fileName: true,
-          altText: true,
-          objectKey: true,
-          width: true,
-          height: true,
-          blurDataUrl: true,
-          variants: {
-            select: { label: true, format: true, objectKey: true, width: true },
-            orderBy: { width: "asc" }
-          }
-        }
-      },
+      // `fileName` on top of the shared image columns: the profile editor names the chosen photo.
+      photo: { select: { ...MEDIA_IMAGE_SELECT_WITH_ID, fileName: true } },
       projects: {
         orderBy: { position: "asc" },
         select: { role: true, project: { select: { id: true, title: true, status: true } } }

@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
+import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -45,20 +46,10 @@ export const metadata: Metadata = {
   title: "Project"
 };
 
-const VARIANT_SELECT = {
-  select: { label: true, format: true, objectKey: true, width: true },
-  orderBy: { width: "asc" as const }
-};
-
+/** The shared image columns plus `fileName`, which the picker prints beside the thumbnail. */
 const MEDIA_SELECT = {
-  id: true,
-  fileName: true,
-  altText: true,
-  objectKey: true,
-  width: true,
-  height: true,
-  blurDataUrl: true,
-  variants: VARIANT_SELECT
+  ...MEDIA_IMAGE_SELECT_WITH_ID,
+  fileName: true
 } as const;
 
 /** A day as a `<input type="date">` wants it. UTC throughout — see the header. */

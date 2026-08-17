@@ -615,6 +615,14 @@ export function MediaDetailPanel({
                 alt=""
                 className="w-full bg-surface-100"
                 imageClassName="!object-contain"
+                /**
+                 * ⚠ THE WHOLE PICTURE, DELIBERATELY UNCROPPED. This preview's job is to show an editor
+                 * what the FILE is; the panel below it, headed "What the site shows of this picture", is
+                 * where the crop is shown. Letting `MediaImage` apply the crop here would mean the crop
+                 * dialog opened on a picture that had already had the crop applied to it — cropping a
+                 * crop, with no way back to the parts already trimmed away.
+                 */
+                crop={false}
               />
             ) : null}
 

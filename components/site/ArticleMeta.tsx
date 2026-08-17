@@ -45,6 +45,7 @@ import { Clock } from "lucide-react";
 
 import { EntityCard } from "@/components/site/EntityCard";
 import { MediaImage } from "@/components/ui/MediaImage";
+import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import type { MediaLike } from "@/lib/media/url";
 import { parseRichText, richTextToPlainText } from "@/lib/richtext";
 import { cn, readingMinutes, truncateWords } from "@/lib/utils";
@@ -53,16 +54,12 @@ import { cn, readingMinutes, truncateWords } from "@/lib/utils";
  * Everything `<MediaImage>` needs and nothing else — structurally identical to `MediaLike`.
  *
  * `variants` is not optional: without it `pickVariant` has nothing to choose from and every cover on
- * the page falls back to the full-size ORIGINAL, i.e. a 6 MB photograph inside a 400px card.
+ * the page falls back to the full-size ORIGINAL, i.e. a 6 MB photograph inside a 400px card. The list
+ * now comes from lib/media/select.ts, which is also where the crop columns arrive from — the
+ * hand-written copy this replaced omitted them, so every article cover rendered uncropped. The name is
+ * kept because four routes import it.
  */
-export const ARTICLE_MEDIA_SELECT = {
-  objectKey: true,
-  width: true,
-  height: true,
-  altText: true,
-  blurDataUrl: true,
-  variants: { select: { label: true, format: true, objectKey: true, width: true } }
-} satisfies Prisma.MediaAssetSelect;
+export const ARTICLE_MEDIA_SELECT = MEDIA_IMAGE_SELECT;
 
 /** The columns an article card renders, plus the two the reading-time fallback measures. */
 export const articleCardSelect = {

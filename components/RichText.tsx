@@ -946,7 +946,15 @@ function renderPicture(node: RichTextNode, ctx: RenderContext): ReactNode {
         width: image.width,
         height: image.height,
         altText: image.altText,
-        blurDataUrl: image.blurDataUrl
+        blurDataUrl: image.blurDataUrl,
+        // The crop the editor drew, carried from the node. Omitting these four here is not "leaving out
+        // what we do not use": this object IS the `MediaLike` the renderer receives, so a field absent
+        // here is a field that cannot be applied, and a picture in a body of text would be the one
+        // surface on the site still trimmed from its centre.
+        cropX: image.cropX,
+        cropY: image.cropY,
+        cropWidth: image.cropWidth,
+        cropHeight: image.cropHeight
       }
     : null;
 
