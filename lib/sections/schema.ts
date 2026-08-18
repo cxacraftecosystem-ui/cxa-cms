@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { screenFramingPayload } from "@/lib/media/framing-schema";
+import { EMBED_ASPECT_RATIOS, EMBED_PROVIDERS, videoSettingsSchema } from "@/lib/media/video";
 import type { SectionType } from "@prisma/client";
 
 import { blockTypesetSchema } from "@/lib/typography/typeset";
@@ -46,9 +47,22 @@ import { blockTypesetSchema } from "@/lib/typography/typeset";
  *     would choose, so a headline cannot silently become a paragraph; the description is the inline
  *     help the studio editor renders beneath the field, so no field is ever a guess.
  *
- *  6. **Payloads are flat and JSON-serialisable.** No dates, no `Map`, no class instances — the
- *     value goes into a Postgres `Json` column and comes back as plain JSON. The one nested value is
- *     the RICH_TEXT document, which is a Tiptap doc by definition.
+ *  6. **Payloads are JSON-SERIALISABLE.** No `Date`, no `Map`, no class instances — the value goes
+ *     into a Postgres `Json` column and comes back as plain JSON, so anything that survives
+ *     `JSON.parse(JSON.stringify(x))` unchanged is allowed and nothing else is. A date is stored as
+ *     the string an editor typed.
+ *
+ *     ⚠ THIS RULE USED TO SAY "FLAT", NAMING THE RICH_TEXT DOCUMENT AS THE ONE NESTED VALUE, AND IT
+ *     WAS ALREADY UNTRUE WHEN IT SAID SO — which is why the correction is recorded rather than made
+ *     quietly. `cta()` is a nested object on eight blocks, `screenFraming()` is a nested object of six
+ *     nested objects on twelve fields, and TIMELINE, ACTION_STEPS, LINK_GRID, STORY_SCROLL,
+ *     HORIZONTAL_RAIL and PROCESS_STEPS all store arrays of objects. `videoSettings` is the newest of
+ *     them and the reason the sentence was re-read. A rule that the file itself breaks in a dozen
+ *     places is a rule the next reader learns to ignore, which is worse than not having written it.
+ *
+ *     What has to hold for a nested value is rule 2, one level down: every field inside it needs a
+ *     default AND the object itself needs one, or a payload saved before it existed fails to parse.
+ *     `videoSettingsSchema` ends in `.default({})` for exactly that reason.
  *
  * Enum VALUES here are code words (`center`, not `centre`) because they end up beside CSS; the
  * British prose lives in the labels and the help text, which is what a person actually reads.
@@ -855,14 +869,23 @@ export const mediaSplitSectionSchema = z.object({
   mediaId: mediaId("The picture or video for this block."),
   /**
    * ⚠ THE FIELD ABOVE MAY HOLD A VIDEO, AND A FRAMING IS ONLY EVER ABOUT A PHOTOGRAPH. A film is drawn
-   * by the browser's own player, which no rectangle of ours touches, so `MediaSplitForm` offers the
-   * panel only once the chosen file is a picture — and both sides reach that verdict through
-   * `isVideoObjectKey` below rather than each testing the file for itself. See HERO's
+   * by `VideoPlayer`, which no rectangle of ours touches, so `MediaSplitForm` offers the panel only
+   * once the chosen file is a picture — and both sides reach that verdict through `isVideoObjectKey`
+   * in lib/media/video.ts rather than each testing the file for itself. See HERO's
    * `backgroundMediaScreens` for why per-screen framing exists at all.
    */
   mediaScreens: screenFraming(
     "Optional. Frame this picture differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size. It does nothing for a video."
   ),
+  /**
+   * How the player behaves, for the branch where the chosen file IS a film.
+   *
+   * ⚠ IT IS THE SAME OBJECT THE EMBED BLOCK AND THE RICH-TEXT VIDEO NODE STORE, declared once in
+   * lib/media/video.ts. Three surfaces offering three subtly different sets of video settings is three
+   * places to fix a default; one schema is one. `MediaSplitForm` shows the panel only when the chosen
+   * file is a film, for the same reason the framing panel is hidden when it is.
+   */
+  videoSettings: videoSettingsSchema,
   side: z
     .enum(["left", "right"])
     .default("left")
@@ -878,26 +901,13 @@ export const mediaSplitSectionSchema = z.object({
 });
 
 /**
- * Is a chosen file a film rather than a photograph?
- *
- * EXPORTED FOR THE SAME REASON AS `documentFormat` FURTHER DOWN. `MediaSplitSection` reaches this
- * verdict to choose between the browser's video player and `MediaImage`; `MediaSplitForm` has to reach
- * the SAME one to decide whether framing per screen size is a control with any visible effect. Two
- * copies of the list would disagree the first time either learned about a container, and an editor
- * would be offered six rows of framing for a film.
- *
- * It lives HERE rather than in the renderer because this module is isomorphic (rule 1) and the renderer
- * is not: a `"use client"` form importing that component tree to read one regular expression would
- * drag the whole of it into the studio bundle.
- *
- * ⚠ THE OBJECT KEY IS THE ONLY SIGNAL AVAILABLE — `MediaLike` carries no asset kind. It matters: a
- * video pushed through the image optimiser answers 400 and draws a broken frame with no clue why.
+ * ⚠ `isVideoObjectKey` USED TO LIVE HERE AND NOW LIVES IN `lib/media/video.ts`, WITH THE REST OF THE
+ * VIDEO VOCABULARY. It was already shared between a renderer and a studio form for the reason
+ * `documentFormat` further down is; it is now shared with the rich-text video node and the player as
+ * well, none of which has any business importing the whole section schema to read one regular
+ * expression. That module is isomorphic on exactly the same terms as this one, so the property that
+ * made the export safe here is unchanged. Import it from there.
  */
-const VIDEO_OBJECT_KEY = /\.(mp4|webm|ogv|mov|m4v)(\?|$)/i;
-
-export function isVideoObjectKey(objectKey: string): boolean {
-  return VIDEO_OBJECT_KEY.test(objectKey);
-}
 
 /**
  * A chronology.
@@ -1077,37 +1087,92 @@ export const mapSectionSchema = z.object({
  *
  * `title` is the one conditional requirement in this file, and it is an accessibility rule rather
  * than an editorial one: a screen reader announces an untitled `<iframe>` as "frame", which tells the
- * reader nothing about whether to enter it. It binds only once there is a URL, so a block that has
- * just been dropped onto the page still saves (§10 — a field may only be mandatory where it is
- * answerable).
+ * reader nothing about whether to enter it. It binds only once there is something to describe — a URL
+ * for the four hosted providers, a chosen file for `upload` — so a block that has just been dropped
+ * onto the page still saves (§10 — a field may only be mandatory where it is answerable). The
+ * uploaded branch is not an `<iframe>` at all, but a `<video>` with no accessible name is announced
+ * as "video" and nothing else, so the requirement is the same requirement.
  *
  * Because of that rule this is the ONE schema here that is a `ZodEffects` rather than a `ZodObject`:
  * an editor form reading field descriptions off `.shape` must go through `.innerType()` for this
  * type. Everything else in `SECTION_SCHEMAS` has `.shape` directly.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ FIVE PROVIDERS, AND TWO OF THEM ARE NEW AND ARE NOT VARIATIONS ON THE OTHER THREE.
+ *
+ * `drive` is a Google Drive file. It is a provider of its own rather than an "in a frame" address
+ * because the link an editor copies out of Drive's address bar — `/view` — is served with
+ * `X-Frame-Options: SAMEORIGIN` and refuses to be framed at all: every one would be a silent blank
+ * rectangle. `driveTarget` in lib/media/video.ts rewrites it to `/preview`, which is the same viewer
+ * without that header. It is the answer to "we want to show a 400 MB recording, or a large dataset,
+ * without it entering this deployment's object store or its 200 MB limit".
+ *
+ * `upload` is a film in the Centre's OWN media library, played by `components/site/VideoPlayer.tsx`.
+ * It has no address: it names a `MediaAsset` with `mediaId`, exactly as MEDIA_SPLIT and
+ * DOCUMENT_EMBED do, and for the same reason (see `mediaId()`). It is the only provider whose
+ * `videoSettings` are honoured in full, because it is the only one this site controls the player of —
+ * `providerHonours()` in lib/media/video.ts is the table that says so, and the studio form hides
+ * every control the chosen provider would ignore.
+ *
+ * ⚠ ADDING TO THIS ENUM IS SAFE; REORDERING OR REMOVING IS NOT. A payload holding a value this
+ * release has never heard of fails the parse of the whole EMBED block on its own (there is no
+ * `.catch()`), and the builder then shows the editor the raw value to correct — which is right, and
+ * is the path `EmbedForm`'s widened lookups are written to survive.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 export const embedSectionSchema = z
   .object({
     provider: z
-      .enum(["youtube", "vimeo", "iframe"])
+      .enum(EMBED_PROVIDERS)
       .default("youtube")
       .describe(
-        "Where the video is hosted. YouTube and Vimeo are loaded only when a reader asks to play, so they cost nothing until then. Frame embeds anything else and cannot be optimised."
+        "Where the video is. YouTube, Vimeo and Google Drive are loaded only when a reader asks to play, so they cost nothing until then. A film uploaded here is played by this site's own player and is the only one whose settings below do anything. Frame embeds any other page and cannot be optimised."
       ),
     url: link("The address of the video or page to embed. Paste the ordinary share link."),
+    /**
+     * The film, when the provider is `upload`.
+     *
+     * ⚠ IT IS IGNORED FOR EVERY OTHER PROVIDER RATHER THAN CLEARED, and that is deliberate: an editor
+     * who picks a file, then switches to YouTube to compare, then switches back must find their file
+     * still chosen. The renderer branches on the PROVIDER, never on which of the two fields happens to
+     * be filled in, so a block can carry both without ambiguity about what it draws.
+     */
+    mediaId: mediaId(
+      "The film, chosen from the media library or uploaded here. Up to 200 MB — anything larger belongs on YouTube or Google Drive, which is what those choices are for."
+    ),
     title: text(
       160,
       "What this embed contains, in a sentence. It is read aloud to anyone using a screen reader and is the only description they get, so “Video” is not enough."
     ),
     aspectRatio: z
-      .enum(["16:9", "4:3", "1:1", "9:16"])
+      // The four shapes, from lib/media/video.ts — where `HostedVideoFrame` keeps the one table of
+      // classes that draws them, and where the rich-text video node reads the same list.
+      .enum(EMBED_ASPECT_RATIOS)
       .default("16:9")
       .describe(
         "The shape of the frame. Getting it right avoids black bars; 9:16 is for phone-shot vertical video."
       ),
-    caption: text(240, "A caption under the embed. Optional.")
+    caption: text(240, "A caption under the embed. Optional."),
+    /**
+     * How the player behaves. Honoured in full only by `upload`; see the ⚠ in this schema's header
+     * and `providerHonours()` in lib/media/video.ts, which is what the studio form reads to decide
+     * which of these controls to offer at all.
+     */
+    videoSettings: videoSettingsSchema
   })
   .superRefine((value, ctx) => {
-    if (value.url !== "" && value.title === "") {
+    /**
+     * "There is something to describe" is whatever THIS BLOCK WILL DRAW — a chosen film for `upload`,
+     * an address for everything else, including a provider this release has never heard of.
+     *
+     * ⚠ IT IS NOT `url || mediaId`, AND THE DIFFERENCE IS A BLOCK THAT CANNOT BE SAVED. `mediaId` is
+     * deliberately KEPT rather than cleared when an editor switches provider (see the field's own
+     * note), so an editor who picks a film, switches to YouTube to compare, and then clears both the
+     * address and the description would be refused a save over a film the block is no longer drawing —
+     * with the message pointing at a field they cannot see the reason for.
+     */
+    const hasSomething = value.provider === "upload" ? value.mediaId !== "" : value.url !== "";
+    if (hasSomething && value.title === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["title"],

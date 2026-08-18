@@ -47,11 +47,14 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
+import { VideoPlayer } from "@/components/site/VideoPlayer";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { framingAssets, withBaseAsset } from "@/lib/media/framing";
 import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_FIGURE_SELECT, MEDIA_IMAGE_SELECT } from "@/lib/media/select";
+import { attachedFilmSettings, isVideoObjectKey } from "@/lib/media/video";
+import { publicObjectUrl } from "@/lib/media/url";
 import { absoluteUrl, pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { prerenderParams } from "@/lib/prerender";
@@ -252,24 +255,79 @@ export default async function GalleryAlbumPage({
    * MediaLightbox.tsx), so there is no per-width frame for a rectangle to fit — and a crop drawn for a
    * 4:3 tile would trim the picture a reader has just asked to see in full.
    */
-  const items: LightboxItem[] = album.items.map((item) => ({
-    id: item.id,
-    objectKey: item.asset.objectKey,
-    width: item.asset.width,
-    height: item.asset.height,
-    altText: item.asset.altText,
-    blurDataUrl: item.asset.blurDataUrl,
-    // The crop travels with the row: a field not named here is a field MediaImage never sees.
-    cropX: item.asset.cropX ?? null,
-    cropY: item.asset.cropY ?? null,
-    cropWidth: item.asset.cropWidth ?? null,
-    cropHeight: item.asset.cropHeight ?? null,
-    variants: item.asset.variants,
-    // The PLACEMENT's caption wins over the asset's: the same photograph carries a different caption in
-    // one album than it does in another.
-    caption: item.caption ?? item.asset.caption,
-    credit: item.asset.credit
-  }));
+  /**
+   * Which rows are FILMS, and therefore play here rather than opening a still full screen.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ THE TEST IS THE OBJECT KEY, NOT THE `presentation` COLUMN, AND THE DIFFERENCE IS THE WHOLE FIX.
+   *
+   * `presentation` is what an editor SAID the tile is; the object key is what the file actually is, and
+   * the two legitimately disagree — an album row may be a still frame of a film, deliberately marked
+   * "video" so the chip says so. A row whose asset is a real `.mp4`, on the other hand, was being
+   * handed to `MediaImage`, which asks `next/image` to resize it; the optimiser answers 400 and the
+   * tile is a broken image, on a published album page, with the chip beside it promising a still frame
+   * that nothing in this deployment has ever generated (no `MediaVariant` row is made for a video, and
+   * there is no still-frame column). The studio's own help text promises "shown with a play control".
+   *
+   * So: a real film plays, in place, with the same player every other film on this site uses. A still
+   * marked "video" keeps the chip and the lightbox, exactly as it did. `isVideoObjectKey` is the same
+   * verdict `MediaSplitSection` reaches for the same reason (`MediaLike` carries no asset kind).
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const isFilm = album.items.map((item) => isVideoObjectKey(item.asset.objectKey));
+  const filmCount = isFilm.filter(Boolean).length;
+
+  /**
+   * Where each film sits AMONG THE FILMS, for the player's accessible name.
+   *
+   * ⚠ THE ROW'S OWN POSITION IS THE WRONG NUMBER HERE, exactly as it is for the lightbox trigger
+   * beside it. In an album of four photographs and one film, the row index made the player announce
+   * itself as "Video 2 of 5" — a position among things it is not one of, and a total the reader can
+   * never count to. Built in the same pass shape as `lightboxIndex` for the same reason: two lists,
+   * one index, is how a label ends up describing the wrong thing.
+   */
+  const filmIndex: (number | null)[] = [];
+  let nextFilmIndex = 0;
+  for (const film of isFilm) {
+    filmIndex.push(film ? nextFilmIndex : null);
+    if (film) nextFilmIndex += 1;
+  }
+
+  /**
+   * Where each row sits in the LIGHTBOX list, or null for a row the viewer does not hold.
+   *
+   * ⚠ TWO LISTS AND ONE INDEX IS HOW A LIGHTBOX OPENS THE WRONG PICTURE. `LightboxTrigger` takes a
+   * position in `items`, and `items` no longer has an entry per row — so the grid cannot pass its own
+   * index. Building the map in the same pass that builds the list is what keeps them in step; skipping
+   * the film from one and not the other would shift every picture after it by one.
+   */
+  const lightboxIndex: (number | null)[] = [];
+  let nextLightboxIndex = 0;
+  for (const film of isFilm) {
+    lightboxIndex.push(film ? null : nextLightboxIndex);
+    if (!film) nextLightboxIndex += 1;
+  }
+
+  const items: LightboxItem[] = album.items
+    .filter((_item, index) => !isFilm[index])
+    .map((item) => ({
+      id: item.id,
+      objectKey: item.asset.objectKey,
+      width: item.asset.width,
+      height: item.asset.height,
+      altText: item.asset.altText,
+      blurDataUrl: item.asset.blurDataUrl,
+      // The crop travels with the row: a field not named here is a field MediaImage never sees.
+      cropX: item.asset.cropX ?? null,
+      cropY: item.asset.cropY ?? null,
+      cropWidth: item.asset.cropWidth ?? null,
+      cropHeight: item.asset.cropHeight ?? null,
+      variants: item.asset.variants,
+      // The PLACEMENT's caption wins over the asset's: the same photograph carries a different caption
+      // in one album than it does in another.
+      caption: item.caption ?? item.asset.caption,
+      credit: item.asset.credit
+    }));
 
   /**
    * The tiles' framings, and ONE query for the whole album.
@@ -295,7 +353,16 @@ export default async function GalleryAlbumPage({
     )
   );
 
+  /**
+   * The items whose tile really is a still of something else — a panorama, a tour, or a film's own
+   * still frame that an editor uploaded as a picture.
+   *
+   * ⚠ A REAL FILM IS NO LONGER COUNTED HERE, because it is no longer a still: it plays in its tile.
+   * Leaving it in would put a sentence under the grid telling a reader that the video they have just
+   * watched cannot be played in this viewer.
+   */
   const interactiveKinds = album.items
+    .filter((_item, index) => !isFilm[index])
     .map((item) => presentationOf(item.presentation))
     .filter((spec) => spec.stillOnly);
 
@@ -334,8 +401,16 @@ export default async function GalleryAlbumPage({
               <time dateTime={album.happenedOn.toISOString().slice(0, 10)}>{when}</time>
             ) : null}
             {album.location?.trim() ? <span>{album.location}</span> : null}
+            {/*
+              ⚠ THE FILMS ARE COUNTED SEPARATELY RATHER THAN CALLED PICTURES. An album of four
+              photographs and one film used to read "5 pictures", which was merely loose while the film
+              was drawn as a still and is plainly wrong now that it plays. The common case — an album
+              with no film at all — reads exactly as it always did.
+            */}
             <span>
-              {count} {count === 1 ? "picture" : "pictures"}
+              {filmCount === 0
+                ? `${count} ${count === 1 ? "picture" : "pictures"}`
+                : `${count - filmCount} ${count - filmCount === 1 ? "picture" : "pictures"} and ${filmCount} ${filmCount === 1 ? "video" : "videos"}`}
             </span>
           </>
         }
@@ -386,44 +461,89 @@ export default async function GalleryAlbumPage({
                           it and a press would hit nothing. The label is `pointer-events-none` so it
                           cannot swallow the press either, whichever way round the two end up.
                         */}
-                        <div className="group relative overflow-hidden rounded-md bg-surface-100">
-                          <MediaImage
-                            media={item.asset}
-                            picture={itemPictures[index] ?? null}
-                            aspect="4 / 3"
-                            rounded="none"
-                            sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
-                            // The first row, and only the first row. This page's hero carries no image
-                            // (see the PageHero below — the album's cover is already the first tile), so
-                            // the top of the grid IS the largest thing painted and the one worth
-                            // prioritising. Every tile marked priority would mean none of them was.
-                            priority={index < 3}
-                            className="w-full"
-                            imageClassName="transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                          />
+                        {isFilm[index] ? (
+                          /*
+                            A FILM PLAYS HERE. No lightbox trigger over it and no chip on it: the player
+                            has its own controls, and a transparent button across the whole tile would
+                            swallow the press meant for the play button underneath — which is the same
+                            painting-order trap the comment above describes, arriving from the other
+                            side.
 
-                          {spec.stillOnly ? (
-                            <span className="pointer-events-none absolute left-2 top-2">
-                              <Badge tone={spec.tone} icon={spec.icon} size="sm">
-                                {spec.label}
-                              </Badge>
-                            </span>
-                          ) : null}
-
-                          <LightboxTrigger
-                            index={index}
-                            // The name says what pressing it DOES, and says which item it is — the alt
-                            // text describes the picture, which is a different sentence.
-                            label={
-                              described
-                                ? `Open ${spec.stillOnly ? `the still frame of this ${spec.label.toLowerCase()}` : "image"} ${index + 1} of ${count} full screen: ${described}`
-                                : `Open ${spec.stillOnly ? "the still frame of" : "image"} ${index + 1} of ${count} full screen`
+                            ⚠ AN ALBUM'S FILM HAS NO SETTINGS SCREEN, so it gets
+                            `attachedFilmSettings()` — the block defaults with autoplay TURNED OFF, named
+                            once in lib/media/video.ts. A wall of tiles where each one started itself as
+                            it came into view would be several soundtracks at once, each cutting off the
+                            last.
+                          */
+                          <VideoPlayer
+                            src={publicObjectUrl(item.asset.objectKey)}
+                            // See `filmIndex`: its place among the FILMS, and how many films there
+                            // are. `?? 0` is unreachable on this branch (only a film renders it) and is
+                            // there because the compiler cannot know that.
+                            title={
+                              described ||
+                              (filmCount === 1
+                                ? `Video in ${album.title}`
+                                : `Video ${(filmIndex[index] ?? 0) + 1} of ${filmCount} in ${album.title}`)
                             }
-                            className="absolute inset-0 h-full w-full"
+                            settings={attachedFilmSettings()}
                           />
-                        </div>
+                        ) : (
+                          <div className="group relative overflow-hidden rounded-md bg-surface-100">
+                            <MediaImage
+                              media={item.asset}
+                              picture={itemPictures[index] ?? null}
+                              aspect="4 / 3"
+                              rounded="none"
+                              sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
+                              // The first row, and only the first row. This page's hero carries no image
+                              // (see the PageHero below — the album's cover is already the first tile), so
+                              // the top of the grid IS the largest thing painted and the one worth
+                              // prioritising. Every tile marked priority would mean none of them was.
+                              priority={index < 3}
+                              className="w-full"
+                              imageClassName="transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                            />
 
-                        {caption || credit || spec.stillOnly ? (
+                            {spec.stillOnly ? (
+                              <span className="pointer-events-none absolute left-2 top-2">
+                                <Badge tone={spec.tone} icon={spec.icon} size="sm">
+                                  {spec.label}
+                                </Badge>
+                              </span>
+                            ) : null}
+
+                            {/*
+                              ⚠ THE INDEX IS THE VIEWER'S, NOT THE ROW'S. Films are not in the viewer's
+                              list, so a row's own position would open the wrong picture for every tile
+                              after the first film. `lightboxIndex` is built in the same pass as the
+                              list; `?? 0` is unreachable for a still (only a film maps to null) and is
+                              there because the compiler cannot know that.
+                            */}
+                            <LightboxTrigger
+                              index={lightboxIndex[index] ?? 0}
+                              // The name says what pressing it DOES, and says which item it is — the alt
+                              // text describes the picture, which is a different sentence.
+                              /*
+                                ⚠ THE POSITION AND THE TOTAL ARE THE VIEWER'S, NOT THE GRID'S. Films
+                                are no longer in the viewer, so "image 3 of 5" on an album of four
+                                photographs and one film would name a position the reader cannot arrive
+                                at by pressing next, and a total they can never reach. `lightboxIndex`
+                                is the row's place in that list; `?? 0` is unreachable here (only a film
+                                maps to null, and a film does not render this trigger) and is there
+                                because the compiler cannot know it.
+                              */
+                              label={
+                                described
+                                  ? `Open ${spec.stillOnly ? `the still frame of this ${spec.label.toLowerCase()}` : "image"} ${(lightboxIndex[index] ?? 0) + 1} of ${items.length} full screen: ${described}`
+                                  : `Open ${spec.stillOnly ? "the still frame of" : "image"} ${(lightboxIndex[index] ?? 0) + 1} of ${items.length} full screen`
+                              }
+                              className="absolute inset-0 h-full w-full"
+                            />
+                          </div>
+                        )}
+
+                        {caption || credit || (spec.stillOnly && !isFilm[index]) ? (
                           <figcaption className="mt-2 text-xs leading-relaxed text-ink-500">
                             {caption}
                             {credit ? (

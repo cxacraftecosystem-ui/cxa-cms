@@ -255,6 +255,20 @@ declare module "@tiptap/core" {
       /** A dividing line of the given treatment. */
       setRule: (variant: RuleVariant) => ReturnType;
     };
+    richTextVideo: {
+      /** A video block: a film from the media library, or an address on a service that hosts one. */
+      insertVideoEmbed: (attributes: Record<string, unknown>) => ReturnType;
+      /**
+       * Rewrite the attributes of the video the selection is on.
+       *
+       * ⚠ EVERY VIDEO THE SELECTION COVERS, NOT THE FIRST — that is what `updateAttributes` does, and
+       * it is stated here because it is the one way this command can surprise somebody. A selection
+       * dragged across two adjacent videos and then edited gives both the same title, address and
+       * caption. In practice the dialog is opened from a caret or a node selection, which is one
+       * video; the case worth knowing about is a deliberate sweep over two.
+       */
+      updateVideoEmbed: (attributes: Record<string, unknown>) => ReturnType;
+    };
   }
 }
 
@@ -1316,6 +1330,208 @@ export const FigureCaption = Node.create({
   }
 });
 
+/**
+ * The words on the card an author sees in the editor, one per provider.
+ *
+ * ⚠ THEY ARE THE ONLY THING THE EDITOR CAN SHOW, and that is a limitation worth stating rather than
+ * papering over. The card is what `renderHTML` emits — there is deliberately no node view (see the
+ * node's own header) — so it cannot draw a poster, a thumbnail or the film itself. Naming the service
+ * and the film is what makes two videos in one article tellable apart, which is the whole job.
+ */
+const VIDEO_EMBED_SOURCES: Record<string, string> = {
+  upload: "Video — uploaded here",
+  youtube: "Video — YouTube",
+  vimeo: "Video — Vimeo",
+  drive: "Video — Google Drive",
+  iframe: "Video — in a frame"
+};
+
+/** What a video with nothing chosen yet says. It is a prompt, and it must read as one. */
+export const VIDEO_EMBED_PLACEHOLDER = "Add a video";
+
+/**
+ * A string attribute carried on one `data-` attribute, in the shape every attribute in this file uses.
+ *
+ * Written once because the video node needs nine of them and nine copies of the same four lines is
+ * where a typo in a `data-` name hides — an attribute that renders under one name and parses under
+ * another is silently lost on every copy and paste, with nothing to see in the editor.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ THE FIELD NAME IS PASSED IN, NOT DERIVED FROM THE `data-` NAME, AND THE FIRST VERSION OF THIS
+ * DERIVED IT AND WAS WRONG FOR A THIRD OF THE ATTRIBUTES.
+ *
+ * `renderHTML` is handed the whole attribute bag rather than the one value, so the helper has to know
+ * which key to read. Turning `data-poster-key` into a camelCase key gives `posterKey`, and the field is
+ * called `posterObjectKey` — so the read was `undefined`, the branch below returned `{}`, and the
+ * attribute was written to the DOM by nothing. `data-captions-key`/`captionsObjectKey` and
+ * `data-aspect`/`aspectRatio` were wrong the same way.
+ *
+ * ⚠ AND IT WOULD HAVE BEEN INVISIBLE IN THE STUDIO AND ON THE PAGE. A node's attributes live in the
+ * ProseMirror JSON, which is what the `Json` column stores and what `components/RichText.tsx` reads —
+ * neither goes near `renderHTML`. The only thing that would have been lost is the HTML round trip:
+ * copy a video out of one article and paste it into another, and its poster, its subtitles and its
+ * shape would silently not come with it. That is exactly the class of defect this helper exists to
+ * prevent, arriving through the cleverness meant to prevent it.
+ *
+ * Two arguments, checked against each other by the caller writing them on one line, is the honest
+ * shape. TypeScript cannot check the pair — the attribute bag is `Record<string, unknown>` and always
+ * will be — so the thing to do is keep them adjacent and readable rather than clever.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+function stringAttribute(dataName: string, attributeKey: string, fallback: string | null) {
+  return {
+    default: fallback,
+    parseHTML: (element: HTMLElement) => element.getAttribute(dataName),
+    renderHTML: (attributes: Record<string, unknown>) => {
+      const value = attributes[attributeKey];
+      return typeof value === "string" && value.length > 0 ? { [dataName]: value } : {};
+    }
+  };
+}
+
+/**
+ * JSON out of an attribute, or null.
+ *
+ * ⚠ IT MUST NOT THROW. `parseHTML` runs on every paste, and a `data-settings` that is not JSON — hand
+ * edited, truncated by a copy — would take the whole editor down while somebody was pasting. `null`
+ * means "nothing stored", which `readVideoSettings()` turns into the complete defaults.
+ */
+function readJsonAttribute(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A video: a film from the media library, or an address on a service that hosts one.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * IT IS AN ATOM, AND EVERY ONE OF ITS PARTS IS AN ATTRIBUTE.
+ *
+ * The alternative — a `figure`-shaped node with a real caption child — was considered and refused.
+ * `figure` needs a content expression naming its children, and that is exactly what makes a figure
+ * undeletable from the keyboard until `FigureCaption` adds a Backspace rule to rescue it. A video's
+ * caption is one plain line in practice, so the trade is: no italics and no link inside a video's
+ * caption, and a node an author can select and delete like any other block. `RichTextVideo` in
+ * lib/richtext.ts states the same cost from the reading side.
+ *
+ * ⚠ IT STORES STORAGE KEYS, NEVER URLS — the same rule the picture node follows and for the same
+ * three reasons: a URL written into a document breaks the day the CDN host changes, cannot be resolved
+ * to a variant, and would hotlink somebody else's server if it pointed at one. `objectKey` is what
+ * `publicObjectUrl()` resolves; `mediaId` rides along so the media library can answer "which documents
+ * use this film?" before somebody deletes it.
+ *
+ * ⚠ THE SETTINGS ARE ONE OBJECT ATTRIBUTE, NOT THIRTEEN SCALARS, and that is the one place this node
+ * departs from the picture node's four separate crop attributes. The reason the crop is four is that
+ * it is four numbers with no schema of their own; the reason this is one is that it HAS a schema —
+ * `videoSettingsSchema` — shared with two block types, and splitting it here would mean thirteen
+ * `data-` attributes to keep in step with it by hand. It serialises to one `data-settings` holding
+ * JSON, which is an honest `data-` representation of an object where a nested one would not be, and
+ * `readVideoSettings()` is what turns it back into a complete set with a per-field fallback.
+ *
+ * ⚠ THERE IS NO NODE VIEW, DELIBERATELY. One would let the editor draw the actual player, and drawing
+ * the actual player inside a writing surface means an autoplaying film under the caret, a corner
+ * player docking while somebody edits the paragraph below it, and a third-party iframe mounted every
+ * time an article is opened for a typo — which is the exact request `HostedVideoFrame` refuses to make
+ * on a reader's behalf and has no business making on an author's. The card below names the film; the
+ * toolbar's own button re-opens the dialog on it, which is how it is edited.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export const VideoEmbed = Node.create({
+  name: "videoEmbed",
+  group: "block",
+  atom: true,
+  draggable: true,
+  selectable: true,
+
+  addOptions() {
+    return { HTMLAttributes: {} as Record<string, unknown> };
+  },
+
+  addAttributes() {
+    return {
+      // ⚠ THE TWO NAMES ON EACH LINE MUST AGREE — the `data-` attribute and the field it is read from.
+      //   Nothing checks them but this alignment; see `stringAttribute` for what happened when the
+      //   second was derived from the first instead of written down.
+      provider: stringAttribute("data-provider", "provider", "iframe"),
+      url: stringAttribute("data-url", "url", ""),
+      objectKey: stringAttribute("data-object-key", "objectKey", null),
+      mediaId: stringAttribute("data-media-id", "mediaId", null),
+      posterObjectKey: stringAttribute("data-poster-key", "posterObjectKey", null),
+      captionsObjectKey: stringAttribute("data-captions-key", "captionsObjectKey", null),
+      title: stringAttribute("data-title", "title", ""),
+      caption: stringAttribute("data-caption", "caption", null),
+      aspectRatio: stringAttribute("data-aspect", "aspectRatio", "16:9"),
+
+      /** The player's settings, as JSON in one attribute. See `readJsonAttribute` for the guard. */
+      settings: {
+        default: null,
+        parseHTML: (element: HTMLElement) => readJsonAttribute(element.getAttribute("data-settings")),
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const value = attributes.settings;
+          if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+          return { "data-settings": JSON.stringify(value) };
+        }
+      }
+    };
+  },
+
+  parseHTML() {
+    // Our own marker only. A `<video>` or an `<iframe>` pasted from elsewhere is NOT adopted: its
+    // source is somebody else's server, and silently embedding whatever an author copied out of a
+    // page is how a document ends up hotlinking a file that disappears.
+    return [{ tag: "div[data-video-embed]" }];
+  },
+
+  renderHTML({ node, HTMLAttributes }) {
+    const provider = typeof node.attrs.provider === "string" ? node.attrs.provider : "iframe";
+    const title = typeof node.attrs.title === "string" ? node.attrs.title.trim() : "";
+    const url = typeof node.attrs.url === "string" ? node.attrs.url.trim() : "";
+    const objectKey = typeof node.attrs.objectKey === "string" ? node.attrs.objectKey.trim() : "";
+    const chosen = provider === "upload" ? objectKey.length > 0 : url.length > 0;
+
+    return [
+      "div",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { "data-video-embed": "" }),
+      ["span", { "data-video-embed-source": "" }, VIDEO_EMBED_SOURCES[provider] ?? "Video"],
+      [
+        "span",
+        { "data-video-embed-title": "" },
+        // The prompt is a real sentence rather than an empty box, and it is the same shape every other
+        // unfinished thing in this repository uses — see `SECTION_PLACEHOLDERS`.
+        title || (chosen ? url || objectKey : VIDEO_EMBED_PLACEHOLDER)
+      ]
+    ];
+  },
+
+  addCommands() {
+    return {
+      insertVideoEmbed:
+        (attributes: Record<string, unknown>) =>
+        ({ chain, state }) => {
+          const target = blockInsertionAt(state, this.name);
+          if (!target) return false;
+          const { at } = target;
+          // No `setTextSelection` afterwards, unlike the figure and the definition list: an atom has
+          // nothing to type into, and putting the caret inside one is not a position that exists.
+          // Tiptap leaves the new node selected, which is what makes the toolbar's button reopen the
+          // dialog on it.
+          return chain().insertContentAt(at, { type: this.name, attrs: attributes }).run();
+        },
+
+      updateVideoEmbed:
+        (attributes: Record<string, unknown>) =>
+        ({ commands }) =>
+          commands.updateAttributes(this.name, attributes)
+    };
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Attributes bolted onto blocks this file does not own
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1745,6 +1961,11 @@ export function createRichTextExtensions(
     // belong beside each other for the reader.)
     Figure,
     FigureCaption,
+
+    // The video. An atom with no content expression, so — unlike `figure` — nothing else has to be
+    // registered beside it for the schema to compile. `components/RichText.tsx` draws it through the
+    // same two client islands the EMBED block uses.
+    VideoEmbed,
 
     // Rule variants, and the code block's language made visible. Extends StarterKit's own nodes.
     RichTextBlockAttributes,

@@ -16,6 +16,7 @@ import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
+import { FilterDateRange } from "@/components/studio/FilterDateRange";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
@@ -515,10 +516,33 @@ function formatWhen(date: Date): string {
   })} UTC`;
 }
 
-/** `YYYY-MM-DD` → a UTC instant. `new Date("2026-03-01")` is parsed as UTC by the specification. */
+/**
+ * `YYYY-MM-DD` → a UTC instant. `new Date("2026-03-01")` is parsed as UTC by the specification.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ THE SHAPE TEST IS LOAD-BEARING AND IT USED TO BE MISSING, WHICH WAS SAFE ONLY WHILE THE BOX WAS A
+ * NATIVE `type="date"`. That control could submit `YYYY-MM-DD` or nothing at all, so an emptiness
+ * check was the whole of the problem. The box is now `DateField` — a plain TEXT input, deliberately,
+ * because two browsers draw their own picker glyph inside a native one — and a text input submits
+ * whatever is in it, including a date somebody was halfway through typing.
+ *
+ * Two things then go wrong at once, and neither shows on screen:
+ *
+ *   • `new Date("2026-9")` is not NaN. It is 1 September 2026, so a half-typed date becomes a REAL
+ *     filter, silently narrowing the log to something nobody asked for.
+ *   • `new Date("2026-9-30")` — the shape a reader gets by leaving off a leading zero — is parsed as a
+ *     LOCAL date rather than a UTC one, because only the exact `YYYY-MM-DD` form is specified as UTC.
+ *     For a reader west of Greenwich that is the day before the one the field's own help promises,
+ *     which reads "Dates are read as UTC, which is how the log stores them".
+ *
+ * The test is the one `parseDay` on the analytics screen already applies, in the same words. Anything
+ * that is not the exact shape is "no date", which is what an empty box already means: the filter
+ * stands down rather than narrowing to a guess.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
 function dayStart(value: string): Date | null {
   const trimmed = value.trim();
-  if (trimmed.length === 0) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
   const date = new Date(trimmed);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -657,8 +681,10 @@ export default async function StudioAuditPage({
         {/* A GET form. No JavaScript, no client component, and the URL is the state. */}
         <form method="get" className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* `Field` (a real `<label>`) for every one of these: each control is a plain `<input>` or a
-                native `<select>`, so there is no button inside for a stray click to be forwarded to. */}
+            {/* `Field` (a real `<label>`) for the four below: each of those controls is a plain
+                `<input>` or a native `<select>`, so there is no button inside for a stray click to be
+                forwarded to. The two dates bring their own `FieldBlock`, because a calendar trigger IS
+                such a button — see `DateField`'s header. */}
             <Field
               label="Search"
               help="The name of the thing that changed, its id, or the email address of whoever changed it."
@@ -699,13 +725,19 @@ export default async function StudioAuditPage({
               />
             </Field>
 
-            <Field label="From" help="Dates are read as UTC, which is how the log stores them.">
-              <Input name="from" type="date" defaultValue={from} />
-            </Field>
-
-            <Field label="To">
-              <Input name="to" type="date" defaultValue={to} />
-            </Field>
+            {/*
+              ⚠ THESE TWO USED TO BE `<Input type="date">` — the browser's picker rather than the
+              Centre's. `FilterDateRange` opens `components/ui/Calendar.tsx`, the same grid nine other
+              studio screens use, and it still submits with this form because `DateField` carries a
+              `name`. Analytics carries the twin of this note; both are in that component's header.
+            */}
+            <FilterDateRange
+              fromName="from"
+              toName="to"
+              fromValue={from}
+              toValue={to}
+              fromHelp="Dates are read as UTC, which is how the log stores them."
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

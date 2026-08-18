@@ -39,7 +39,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ClipboardList, Image as ImageIcon, MapPin, Plus, X } from "lucide-react";
@@ -73,7 +73,8 @@ import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
-import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
+import { RichTextEditor, type EditorMediaKind } from "@/components/studio/editor/RichTextEditor";
+import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
 
@@ -409,6 +410,59 @@ export function EventEditor({
   const [value, setValue] = useState<EventValue>(initial);
   const [cover, setCover] = useState<MediaLike | null>(initialCover);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /**
+   * The media picker, as a promise — and the second job this screen's one dialog now does.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ THIS EVENT'S DESCRIPTION COULD NOT HOLD A PICTURE AT ALL UNTIL NOW, and nothing said so. Every
+   * other screen with a body of writing passed `onRequestMedia` to `RichTextEditor`; this one did not,
+   * so the toolbar's picture button and the "/" menu's picture entry were simply absent — correctly, by
+   * the rule those two follow, and invisibly, because an absent control explains nothing. An editor
+   * writing up a workshop had no way to put a photograph or a film in the middle of it.
+   *
+   * `pickerJob` is what lets one dialog serve two callers: the cover button sets it to "cover" and
+   * resolves nothing, the body sets it to "body" and resolves the promise the editor is waiting on. A
+   * second `MediaPicker` would be a second upload area and a second set of filters on one screen.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const [pickerJob, setPickerJob] = useState<"cover" | "body">("cover");
+  /**
+   * Which sort of asset the BODY is asking for. State rather than an argument read at open time,
+   * because the dialog is rendered once and its `kind` prop is what narrows the list — a picker that
+   * always showed photographs would leave an author who asked for a film searching a list that cannot
+   * contain one.
+   */
+  const [bodyMediaKind, setBodyMediaKind] = useState<EditorMediaKind>("IMAGE");
+  const bodyResolver = useRef<((chosen: EditorMediaSelection | null) => void) | null>(null);
+
+  const requestBodyMedia = useCallback(
+    (kind: EditorMediaKind) =>
+      new Promise<EditorMediaSelection | null>((resolve) => {
+        bodyResolver.current = resolve;
+        setBodyMediaKind(kind);
+        setPickerJob("body");
+        setPickerOpen(true);
+      }),
+    []
+  );
+
+  /**
+   * A dismissed dialog must still settle the promise, or the body editor waits for ever.
+   *
+   * The ref is cleared BEFORE the resolver is called, so a resolver cannot be called twice — once here
+   * and once by the `onSelect` that follows — which would be a picture inserted once and a handler that
+   * quietly believes it was cancelled. It is the rule `RichTextForm` states in the same words.
+   */
+  const settleBody = useCallback((selection: EditorMediaSelection | null) => {
+    const resolve = bodyResolver.current;
+    bodyResolver.current = null;
+    resolve?.(selection);
+  }, []);
+
+  const closePicker = useCallback(() => {
+    setPickerOpen(false);
+    settleBody(null);
+  }, [settleBody]);
   const [tagDraft, setTagDraft] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]> | null>(null);
 
@@ -724,6 +778,10 @@ export function EventEditor({
               label="Event description"
               placeholder="What will happen, who is speaking, what to bring."
               minHeight={280}
+              // Withheld when there is nowhere to upload to: a picker whose upload area cannot work is
+              // worse than no picker, and `RichTextEditor` drops both controls rather than showing one
+              // that fails. ArticleEditor's exact shape.
+              onRequestMedia={storageReady ? requestBodyMedia : undefined}
             />
           </FormSection>
 
@@ -954,7 +1012,15 @@ export function EventEditor({
             )}
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" size="sm" icon={ImageIcon} onClick={() => setPickerOpen(true)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={ImageIcon}
+                onClick={() => {
+                  setPickerJob("cover");
+                  setPickerOpen(true);
+                }}
+              >
                 {cover === null ? "Choose a photograph" : "Change the photograph"}
               </Button>
               {cover !== null ? (
@@ -1165,10 +1231,19 @@ export function EventEditor({
 
       <MediaPicker
         open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
+        onClose={closePicker}
         onSelect={(assets: StudioMediaAsset[]) => {
           const chosen = assets[0];
           if (!chosen) return;
+
+          if (pickerJob === "body") {
+            // `StudioMediaAsset` already carries every field `EditorMediaSelection` asks for, so it goes
+            // straight through — no URL is ever handed to the document (see the picture node).
+            settleBody(chosen);
+            setPickerOpen(false);
+            return;
+          }
+
           setCover(chosen);
           // A different photograph invalidates every rectangle drawn on the old one, so the framing goes
           // with it — the rule `MediaFramingField` enforces for the blocks (see `coverScreens`).
@@ -1179,9 +1254,16 @@ export function EventEditor({
           }));
           setPickerOpen(false);
         }}
-        kind="IMAGE"
+        // The cover is always a photograph; the body asks for whichever it is inserting.
+        kind={pickerJob === "body" ? bodyMediaKind : "IMAGE"}
         storageReady={storageReady}
-        title="Choose a cover photograph"
+        title={
+          pickerJob === "body"
+            ? bodyMediaKind === "VIDEO"
+              ? "Insert a film"
+              : "Insert a picture"
+            : "Choose a cover photograph"
+        }
       />
     </div>
   );

@@ -106,6 +106,15 @@ const CONTENT_TYPE_KINDS: Readonly<Record<string, MediaKindName>> = {
   "application/zip": "DOCUMENT",
   "text/plain": "DOCUMENT",
   "text/csv": "DOCUMENT",
+  /**
+   * Subtitles, and the ONE format `<track>` accepts.
+   *
+   * ⚠ FILED AS A DOCUMENT RATHER THAN GIVEN A KIND OF ITS OWN. `MediaKind` is a Prisma enum and a new
+   * value there is a migration plus four tables to update, for a file that is never listed on its own
+   * and is only ever reached through a video block's captions picker. `isCaptionsObjectKey` in
+   * lib/media/video.ts is what tells a caption file apart from a report, on both sides.
+   */
+  "text/vtt": "DOCUMENT",
 
   "model/gltf-binary": "MODEL_3D",
   "model/gltf+json": "MODEL_3D"
@@ -116,7 +125,7 @@ export const ACCEPTED_CONTENT_TYPES: readonly string[] = Object.keys(CONTENT_TYP
 
 /** The same rule as a sentence, for readers who do not think in MIME types. */
 export const ACCEPTED_TYPES_SUMMARY =
-  "Images, video, audio, PDFs, Office documents, plain text and glTF models";
+  "Images, video, audio, PDFs, Office documents, subtitle files, plain text and glTF models";
 
 /** The kind implied by a content type, or null when the type is not accepted at all. */
 export function kindForContentType(contentType: string): MediaKindName | null {

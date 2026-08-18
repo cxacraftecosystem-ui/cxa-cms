@@ -206,6 +206,27 @@ export interface DateFieldProps {
   /** Called with the same shape as `value`, and with `""` when the field is emptied or unreadable. */
   onChange: (next: string) => void;
   /**
+   * The form-control name, for a field that is submitted by a `<form>` rather than read from state.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ IT GOES ON THE DATE BOX, WHICH IS THE ONLY THING HERE A FORM CAN SUBMIT. The calendar is a
+   * `<button>` and a portalled panel; the box is a plain text input, and everything the grid does is
+   * write digits into it (see the header). So a named field submits exactly the characters the reader
+   * can see — which is the property that makes this usable on the studio's two GET filter forms
+   * without a hidden input shadowing it, and the property a hidden input would quietly break the first
+   * time the two disagreed.
+   *
+   * ⚠ WITH `withTime` THE NAME CARRIES THE DATE HALF ONLY. The time box is a separate control and
+   * would need a name of its own; nothing submits one today, and inventing `${name}Time` here would be
+   * a convention no reader could discover. A caller that needs both should submit from state.
+   *
+   * Omitted, the box is nameless and is excluded from submission by the HTML specification — which is
+   * correct for the dozen controlled callers that read their value from React state and would be
+   * astonished to find it in a query string.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  name?: string;
+  /**
    * Adds a `<input type="time">` beside the date box and lengthens the value to `YYYY-MM-DDTHH:mm`.
    *
    * The calendar writes only the DATE half — a month grid has nothing to say about the time — so the
@@ -227,6 +248,7 @@ export function DateField({
   label,
   value,
   onChange,
+  name,
   withTime = false,
   min,
   max,
@@ -316,6 +338,7 @@ export function DateField({
     >
       <DateFieldControl
         label={label}
+        name={name}
         dayText={dayText}
         timeText={timeText}
         selected={parsed}
@@ -339,6 +362,7 @@ export function DateField({
  */
 function DateFieldControl({
   label,
+  name,
   dayText,
   timeText,
   selected,
@@ -350,6 +374,8 @@ function DateFieldControl({
   onSettled
 }: {
   label: string;
+  /** The form-control name, or undefined for a field read from state. See `DateFieldProps.name`. */
+  name: string | undefined;
   dayText: string;
   timeText: string;
   /** The typed date, when it is readable. What the grid highlights, and nothing else. */
@@ -429,6 +455,10 @@ function DateFieldControl({
           // ⚠ NOT `type="date"`. See the file header — two browsers draw their own picker glyph and
           // one of them cannot be talked out of it.
           type="text"
+          // Only where a caller asked for one. A nameless control is excluded from form submission by
+          // the specification, which is right for the dozen callers that read their value from React
+          // state — see `DateFieldProps.name`.
+          name={name}
           // A date is digits and two hyphens. `numeric` is the keypad a phone should offer; it is a
           // hint rather than a restriction, so a hardware keyboard is unaffected.
           inputMode="numeric"

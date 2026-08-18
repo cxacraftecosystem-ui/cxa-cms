@@ -73,11 +73,14 @@ import { TagList } from "@/components/site/TagList";
 import { Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { MediaImage } from "@/components/ui/MediaImage";
+import { VideoPlayer } from "@/components/site/VideoPlayer";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { eventCalendarHref } from "@/lib/ical";
 import { framingAssets, withBaseAsset } from "@/lib/media/framing";
+import { publicObjectUrl } from "@/lib/media/url";
 import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
+import { attachedFilmSettings, isVideoObjectKey } from "@/lib/media/video";
 import { MEDIA_FIGURE_SELECT, MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ogImageUrl } from "@/lib/media/url";
 import { mailerConfigured } from "@/lib/newsletter/delivery";
@@ -404,11 +407,34 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
    * MediaLightbox.tsx), so there is no per-width frame for a rectangle to fit — and a crop drawn for a 4:3
    * tile would trim the picture a reader has just asked to see in full.
    */
-  const galleryFramings = event.media.map(
+  /**
+   * The attachments, split into the two things this page can draw.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ A FILM WAS BEING HANDED TO `MediaImage`, AND THAT IS A BROKEN TILE RATHER THAN A WRONG ONE. This
+   * page fetched every `EventMedia` row and drew every one of them as a photograph. No `MediaVariant`
+   * row is ever made for a video (`DERIVABLE_MIME_TYPES` is image-only), so `mediaSrc` falls back to
+   * the original `.mp4`, `next/image` asks the optimiser to resize it, the optimiser answers 400, and
+   * the reader gets a broken-image glyph on a published event page. The studio has always allowed a
+   * film to be attached here.
+   *
+   * The test is the OBJECT KEY, not the asset kind: `MediaLike` carries no kind and the shared media
+   * select fetches no `mimeType`, deliberately (see `MEDIA_IMAGE_SELECT`). It is the same verdict
+   * `MediaSplitSection` and the album grid reach, through the same function.
+   *
+   * Splitting BEFORE the framings are resolved is what keeps the three arrays below aligned: they are
+   * all indexed by position, and a film left in one and not the others would shift every picture after
+   * it by one.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const stillRows = event.media.filter((item) => !isVideoObjectKey(item.asset.objectKey));
+  const filmRows = event.media.filter((item) => isVideoObjectKey(item.asset.objectKey));
+
+  const galleryFramings = stillRows.map(
     (item) => (item.assetScreens ?? null) as unknown as ScreenFraming | null
   );
   const galleryFramingMedia = await framingAssets(...galleryFramings);
-  const galleryPictures = event.media.map((item, index) =>
+  const galleryPictures = stillRows.map((item, index) =>
     pictureFromMap(
       item.assetId,
       galleryFramings[index] ?? null,
@@ -416,7 +442,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     )
   );
 
-  const gallery: LightboxItem[] = event.media.map((item) => ({
+  const gallery: LightboxItem[] = stillRows.map((item) => ({
     id: item.assetId,
     objectKey: item.asset.objectKey,
     width: item.asset.width,
@@ -810,6 +836,51 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                     })}
                   </ul>
                 </MediaLightboxProvider>
+              </section>
+            ) : null}
+
+            {filmRows.length > 0 ? (
+              /*
+                The films attached to this event, played rather than drawn.
+
+                ⚠ A SECTION OF THEIR OWN RATHER THAN TILES IN THE WALL ABOVE. That wall is a lightbox: a
+                press opens the picture full screen, and a film has controls of its own that the
+                overlay trigger would swallow. Separating them also keeps the wall's indices honest —
+                see the split at the top of this file.
+
+                ⚠ AN ATTACHED FILM HAS NO SETTINGS SCREEN, so it gets `attachedFilmSettings()` —
+                the block defaults with autoplay TURNED OFF, named once in lib/media/video.ts. A page
+                of films that each started themselves as they arrived would be several soundtracks at
+                once, each cutting off the last.
+              */
+              <section className="mt-12">
+                <SectionHeading
+                  level={2}
+                  title={filmRows.length === 1 ? "Video" : "Videos"}
+                  className="mb-6"
+                />
+                <div className="grid gap-8 md:grid-cols-2">
+                  {filmRows.map((item) => {
+                    const caption = (item.caption ?? item.asset.caption)?.trim() ?? "";
+                    return (
+                      <figure key={item.assetId} className="min-w-0">
+                        <VideoPlayer
+                          src={publicObjectUrl(item.asset.objectKey)}
+                          title={caption || `Video from ${event.title}`}
+                          settings={attachedFilmSettings()}
+                        />
+                        {caption ? (
+                          <figcaption className="mt-2 text-xs leading-relaxed text-ink-500">
+                            {caption}
+                            {item.asset.credit ? (
+                              <span className="text-ink-300"> — {item.asset.credit}</span>
+                            ) : null}
+                          </figcaption>
+                        ) : null}
+                      </figure>
+                    );
+                  })}
+                </div>
               </section>
             ) : null}
           </div>

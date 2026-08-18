@@ -296,7 +296,7 @@ export const SECTION_REGISTRY = {
     type: "EMBED",
     label: "Video or embed",
     description:
-      "A YouTube or Vimeo video, or any other page in a frame. Always needs a description, which is what a screen reader announces.",
+      "A film uploaded here and played by this site's own player, a YouTube, Vimeo or Google Drive video, or any other page in a frame. Always needs a description, which is what a screen reader announces.",
     icon: "Video",
     group: "Media",
     allowMultiple: true

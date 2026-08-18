@@ -82,7 +82,7 @@ import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
-import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
+import { RichTextEditor, type EditorMediaKind } from "@/components/studio/editor/RichTextEditor";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
@@ -304,12 +304,23 @@ export function ArticleEditor({
   // renders — a ref, because resolving is not a render.
 
   const [pickerTarget, setPickerTarget] = useState<"cover" | "body" | null>(null);
+  /**
+   * Which sort of asset the BODY is asking for.
+   *
+   * ⚠ IT HAS TO BE STATE RATHER THAN AN ARGUMENT READ AT OPEN TIME, because `MediaPicker` is rendered
+   * once at the bottom of this screen and its `kind` prop is what narrows the list. A picker that
+   * always showed photographs would leave an author who asked for a film searching a list that cannot
+   * contain one, with nothing on screen to say why — which is the failure `RichTextEditor.onRequestMedia`
+   * warns about in as many words.
+   */
+  const [bodyMediaKind, setBodyMediaKind] = useState<EditorMediaKind>("IMAGE");
   const mediaResolver = useRef<((chosen: EditorMediaSelection | null) => void) | null>(null);
 
   const requestBodyMedia = useCallback(
-    () =>
+    (kind: EditorMediaKind) =>
       new Promise<EditorMediaSelection | null>((resolve) => {
         mediaResolver.current = resolve;
+        setBodyMediaKind(kind);
         setPickerTarget("body");
       }),
     []
@@ -1126,9 +1137,16 @@ export function ArticleEditor({
           }
           setPickerTarget(null);
         }}
-        kind="IMAGE"
+        // The cover is always a photograph; the body asks for whichever it is inserting.
+        kind={pickerTarget === "body" ? bodyMediaKind : "IMAGE"}
         storageReady={storageReady}
-        title={pickerTarget === "cover" ? "Choose a cover photograph" : "Choose a picture to insert"}
+        title={
+          pickerTarget === "cover"
+            ? "Choose a cover photograph"
+            : bodyMediaKind === "VIDEO"
+              ? "Choose a film to insert"
+              : "Choose a picture to insert"
+        }
       />
     </div>
   );

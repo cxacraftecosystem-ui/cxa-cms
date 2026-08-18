@@ -76,6 +76,7 @@ import { ProjectProgress } from "@/components/site/ProjectProgress";
 import { RelatedContent, type RelatedItem } from "@/components/site/RelatedContent";
 import { ProseArticle } from "@/components/site/ProseArticle";
 import { SectionHeading } from "@/components/site/SectionHeading";
+import { VideoPlayer } from "@/components/site/VideoPlayer";
 import { Accordion, AccordionItem } from "@/components/ui/Accordion";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { MediaImage } from "@/components/ui/MediaImage";
@@ -86,6 +87,7 @@ import { framingAssets, withBaseAsset } from "@/lib/media/framing";
 import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { publicObjectUrl } from "@/lib/media/url";
+import { attachedFilmSettings } from "@/lib/media/video";
 import { parseRichText, richTextExcerpt } from "@/lib/richtext";
 import { pageMetadata } from "@/lib/seo";
 import { formatBytes, truncateWords } from "@/lib/utils";
@@ -898,43 +900,33 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
           <div className="grid gap-8 md:grid-cols-2">
             {videos.map((row) => {
-              const src = publicObjectUrl(row.asset.objectKey);
               const caption = row.caption?.trim() || row.asset.caption?.trim() || "";
 
               return (
                 <figure key={row.asset.id} className="min-w-0">
-                  {src ? (
-                    // A native player: `controls` is a full keyboard-operable transport in every
-                    // browser, and `preload="metadata"` fetches the duration without pulling the file
-                    // down for a reader who never presses play.
-                    <video
-                      controls
-                      preload="metadata"
-                      className="w-full rounded-md border border-line-200 bg-ink-900"
-                      // An empty `aria-label` would leave the player nameless; the caption is the only
-                      // description this record carries.
-                      aria-label={caption ? `Video: ${caption}` : `Video from ${project.title}`}
-                    >
-                      <source src={src} type={row.asset.mimeType} />
-                      {/* The last resort in a browser that cannot play the container. It is a real
-                          sentence, because "your browser does not support video" tells a reader
-                          nothing they can act on. */}
-                      <p className="p-4 text-sm text-white">
-                        This video cannot be played in this browser.{" "}
-                        <a href={src} className="underline">
-                          Download the file instead
-                        </a>
-                        .
-                      </p>
-                    </video>
-                  ) : (
-                    // SAY SO RATHER THAN LEAVE A GAP (contract §1.6): an editor finding out that the
-                    // media base URL is unset is worth more than a page that silently looks fine.
-                    <p className="rounded-md border border-dashed border-line-200 bg-surface-50 px-4 py-6 text-sm text-ink-500">
-                      This video is attached to the project but cannot be played, because no public
-                      media address is configured for this deployment.
-                    </p>
-                  )}
+                  {/*
+                    THE SAME PLAYER EVERY OTHER FILM ON THIS SITE USES. This was a `<video controls>`
+                    written out here — a perfectly good player, and the third hand-written one on the
+                    site, each with its own accessibility decisions and its own fallback sentence.
+                    `VideoPlayer` carries all three, plus the "no public media address" line this branch
+                    used to write for itself.
+
+                    ⚠ AN ATTACHED FILM HAS NO SETTINGS SCREEN, so it gets `attachedFilmSettings()`
+                    — the block defaults with autoplay TURNED OFF, named once in lib/media/video.ts
+                    rather than written out here. The distinction is not decorative: the block default
+                    IS to start when the film comes into view, which is right for a film an editor
+                    deliberately placed and can change, and wrong for a grid of several with nowhere to
+                    say otherwise. Here it starts when the reader presses play and pauses when they
+                    scroll past.
+                  */}
+                  <VideoPlayer
+                    src={publicObjectUrl(row.asset.objectKey)}
+                    mimeType={row.asset.mimeType}
+                    // The player's accessible name. The caption is the only description this record
+                    // carries; naming the project is better than "video" when there is none.
+                    title={caption || `Video from ${project.title}`}
+                    settings={attachedFilmSettings()}
+                  />
 
                   {caption ? (
                     <figcaption className="mt-2 text-sm leading-relaxed text-ink-500">

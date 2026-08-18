@@ -132,6 +132,8 @@ const CONTENT_TYPE_KINDS: Readonly<Record<string, MediaKind>> = {
   "application/zip": "DOCUMENT",
   "text/plain": "DOCUMENT",
   "text/csv": "DOCUMENT",
+  // Subtitles for the video player. Filed as a DOCUMENT — see the note in lib/client/upload.ts.
+  "text/vtt": "DOCUMENT",
 
   "model/gltf-binary": "MODEL_3D",
   "model/gltf+json": "MODEL_3D"
@@ -194,7 +196,7 @@ function checkReplacement(contentType: string, current: MediaKind): { problem: s
     return {
       problem:
         `Files of type ${contentType} are not accepted in the media library, so nothing was changed. ` +
-        "Images, video, audio, PDFs, Office documents, plain text and glTF models can be uploaded."
+        "Images, video, audio, PDFs, Office documents, subtitle files, plain text and glTF models can be uploaded."
     };
   }
 

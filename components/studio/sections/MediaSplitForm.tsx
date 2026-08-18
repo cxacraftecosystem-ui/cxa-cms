@@ -16,11 +16,8 @@
  * file up — see the note on the lookup below.
  */
 
-import {
-  isVideoObjectKey,
-  mediaSplitSectionSchema,
-  type MediaSplitSectionData
-} from "@/lib/sections/schema";
+import { isVideoObjectKey } from "@/lib/media/video";
+import { mediaSplitSectionSchema, type MediaSplitSectionData } from "@/lib/sections/schema";
 import { useResource } from "@/lib/client/useResource";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
@@ -34,6 +31,7 @@ import {
 } from "@/components/studio/fields/EntityPicker";
 import { LinkField } from "@/components/studio/fields/LinkField";
 import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
+import { VideoSettingsFields } from "@/components/studio/fields/VideoSettingsFields";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = mediaSplitSectionSchema.shape;
@@ -96,6 +94,27 @@ export function MediaSplitForm({ data, onChange, onDirty }: SectionFormProps<Med
           Without a picture this block is only its words, and the page shows a blank half where the
           picture should be. Choose one above, or use a text block instead.
         </HelpText>
+      ) : null}
+
+      {/*
+        The player's settings, on exactly the branch the framing panel is hidden on.
+
+        ⚠ THE PROVIDER IS HARD-CODED TO `upload`, AND IT IS NOT A SETTING HERE. This block has no
+        provider field: whatever the editor chose came out of the media library, so it is always the
+        Centre's own file and always played by `VideoPlayer`. Passing the literal is what makes
+        `providerHonours` offer the full set rather than the four a YouTube URL can carry.
+
+        It follows the same "as far as we can tell YET" rule as the framing panel above and for the
+        same reason: while the lookup is in flight `isVideo` is false, so the panel appears a moment
+        after a film is chosen rather than flickering in and out on every render.
+      */}
+      {isVideo ? (
+        <VideoSettingsFields
+          provider="upload"
+          value={data.videoSettings}
+          onChange={(next) => update({ videoSettings: next })}
+          onDirty={onDirty}
+        />
       ) : null}
 
       <Field label="Which side the picture sits on" help={SHAPE.side.description}>

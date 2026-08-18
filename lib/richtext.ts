@@ -67,7 +67,19 @@ export const RICH_TEXT_NODE_TYPES = [
   "columns",
   /** A picture with an EDITABLE caption. A bare `image` still renders — see `renderImage`. */
   "figure",
-  "figureCaption"
+  "figureCaption",
+  /**
+   * A video: a film uploaded to the media library, or a YouTube, Vimeo or Google Drive address shown
+   * in a frame.
+   *
+   * ⚠ IT IS AN ATOM WITH NO CHILDREN, and its caption is an ATTRIBUTE rather than a child node —
+   * unlike `figure`, whose caption is real prose that can carry a link. That difference is deliberate
+   * and it is a trade: a video's caption is almost always one plain line, and a `videoEmbed` that held
+   * a `figureCaption` would need a content expression naming it, which would make the video node
+   * undeletable from the keyboard in the same way `figure` is (see `FigureCaption`'s Backspace rule).
+   * The cost is stated rather than discovered: a video caption cannot be italicised or linked.
+   */
+  "videoEmbed"
 ] as const;
 
 export type RichTextNodeType = (typeof RICH_TEXT_NODE_TYPES)[number];
@@ -155,6 +167,52 @@ export interface RichTextImage {
   cropY: number | null;
   cropWidth: number | null;
   cropHeight: number | null;
+}
+
+/**
+ * A video node's attributes.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ EVERYTHING THE RENDERER NEEDS IS FROZEN ONTO THE NODE, exactly as the picture node's dimensions,
+ * blur placeholder and crop are. A document renderer has the node and nothing else — it cannot reach a
+ * `MediaAsset` row, and it must not issue a query per paragraph — so a poster or a caption file named
+ * only by its library id would simply never appear. The ids ride along beside the keys for the reason
+ * `mediaId` does on a picture: so the media library can answer "which documents use this film?" before
+ * somebody deletes it.
+ *
+ * The consequence, stated plainly rather than discovered: replacing the film in the media library does
+ * NOT change a copy already embedded in a document. Re-inserting it does. That is the same contract
+ * the picture node's alt text and dimensions already carry.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export interface RichTextVideo {
+  /** `"upload"`, `"youtube"`, `"vimeo"`, `"drive"`, or anything else for a plain frame. */
+  provider: string;
+  /** The share link, for every provider except `upload`. */
+  url: string;
+  /** Storage key of the film itself, for `upload`. Null for every other provider. */
+  objectKey: string | null;
+  /** The media-library row the film came from. Provenance only — see the header. */
+  mediaId: string | null;
+  /** Storage key of the still shown before it plays, or null. */
+  posterObjectKey: string | null;
+  /** Storage key of the WebVTT subtitle file, or null. */
+  captionsObjectKey: string | null;
+  /** The player's accessible name. Never empty on the page — the renderer falls back. */
+  title: string;
+  /** One plain line under the film. An attribute rather than a child node — see the node's own entry. */
+  caption: string | null;
+  /** `"16:9"`, `"4:3"`, `"1:1"`, `"9:16"`. Only a framed provider uses it. */
+  aspectRatio: string;
+  /**
+   * The player's settings, RAW.
+   *
+   * ⚠ `unknown` ON PURPOSE. Coercing it here would mean importing `videoSettingsSchema`, and with it
+   * `zod`, into a module that every public page which draws a body of writing depends on. The
+   * renderer calls `readVideoSettings()` from lib/media/video.ts instead, which is where the defaults
+   * already live and where one bad field falls back to the complete set rather than to nothing.
+   */
+  settings: unknown;
 }
 
 export interface RichTextLink {
@@ -343,6 +401,23 @@ function attrString(node: RichTextNode | RichTextMark, key: string): string | nu
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * An attribute that is not a scalar, handed straight on.
+ *
+ * ⚠ IT COERCES NOTHING, WHICH IS THE ONE EXCEPTION IN THIS BLOCK AND IS DELIBERATE. Its only use is
+ * the video node's settings object, and coercing that here would mean importing `videoSettingsSchema`
+ * — and with it `zod` — into a module every public page that draws a body of writing depends on. The
+ * consumer parses it instead, with a total fallback (`readVideoSettings` in lib/media/video.ts), which
+ * is the same "one bad field must not cost the whole object" rule the section schemas follow. The
+ * guard that IS applied here is the one this file can make without a dependency: anything that is not
+ * a plain object becomes null, so a string or an array can never reach a parser expecting a shape.
+ */
+function attrUnknown(node: RichTextNode, key: string): unknown {
+  const value = node.attrs?.[key];
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  return value;
 }
 
 function attrNumber(node: RichTextNode, key: string): number | null {
@@ -551,6 +626,28 @@ export function imageAttrsOf(node: RichTextNode): RichTextImage {
   };
 }
 
+/**
+ * A video node's attributes.
+ *
+ * `attrRecord` rather than `attrString` for the settings, because that one is an object and the two
+ * readers below coerce a scalar. Every string here defaults to `""` or null in the same way the
+ * picture reader's do, so a hand-written or migrated document cannot produce `undefined` in a prop.
+ */
+export function videoAttrsOf(node: RichTextNode): RichTextVideo {
+  return {
+    provider: attrString(node, "provider") ?? "iframe",
+    url: attrString(node, "url") ?? "",
+    objectKey: attrString(node, "objectKey"),
+    mediaId: attrString(node, "mediaId"),
+    posterObjectKey: attrString(node, "posterObjectKey"),
+    captionsObjectKey: attrString(node, "captionsObjectKey"),
+    title: attrString(node, "title") ?? "",
+    caption: attrString(node, "caption"),
+    aspectRatio: attrString(node, "aspectRatio") ?? "16:9",
+    settings: attrUnknown(node, "settings")
+  };
+}
+
 export function linkAttrsOf(mark: RichTextMark): RichTextLink {
   return { href: attrString(mark, "href"), title: attrString(mark, "title") };
 }
@@ -602,7 +699,15 @@ function serialiseNode(node: RichTextNode): TextPiece {
   if (node.type === "hardBreak") return { text: "\n", block: false };
   // An image contributes nothing. Its alt text describes a picture to somebody who cannot see it —
   // it is not prose, and in an excerpt it reads as a caption that wandered into the article.
-  if (node.type === "image" || node.type === "horizontalRule") return { text: "", block: true };
+  //
+  // ⚠ A VIDEO IS THE SAME CASE AND IS LISTED FOR THE SAME REASON, not merely because it has no
+  // children. Its `title` is the player's accessible name — the sentence a screen reader is given
+  // instead of the film — and its caption is one line under it; neither is body prose, and indexing
+  // either would put "A five-minute film of the Bagru workshop" into a search result as though the
+  // article said it. It is a BLOCK so the paragraphs either side of it do not fuse.
+  if (node.type === "image" || node.type === "videoEmbed" || node.type === "horizontalRule") {
+    return { text: "", block: true };
+  }
   if (node.type === "tableRow") return { text: serialiseNodes(node.content ?? [], " "), block: true };
   // A footnote is an INLINE node carrying a whole sentence, so it is flattened as a block: its body is
   // not part of the word it hangs off. Without this, "in 1947" followed by a note reading "Nehru's

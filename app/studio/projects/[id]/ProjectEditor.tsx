@@ -56,7 +56,7 @@ import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { EntityPicker, lookupResolvePath, type LookupItem, type LookupResponse } from "@/components/studio/fields/EntityPicker";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
-import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
+import { RichTextEditor, type EditorMediaKind } from "@/components/studio/editor/RichTextEditor";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
@@ -403,10 +403,22 @@ export function ProjectEditor({
 
   // ── The media picker ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Which sort of asset the BODY is asking for.
+   *
+   * ⚠ IT HAS TO BE STATE RATHER THAN AN ARGUMENT READ AT OPEN TIME, because `MediaPicker` is rendered
+   * once at the bottom of this screen and its `kind` prop is what narrows the list. A picker that always
+   * showed photographs would leave an author who asked for a film searching a list that cannot contain
+   * one, with nothing on screen to say why — which is the failure `RichTextEditor.onRequestMedia` warns
+   * about in as many words.
+   */
+  const [bodyMediaKind, setBodyMediaKind] = useState<EditorMediaKind>("IMAGE");
+
   const requestBodyMedia = useCallback(
-    () =>
+    (kind: EditorMediaKind) =>
       new Promise<EditorMediaSelection | null>((resolve) => {
         bodyResolver.current = resolve;
+        setBodyMediaKind(kind);
         setPicker("body");
       }),
     []
@@ -1055,11 +1067,14 @@ export function ProjectEditor({
         onClose={closePicker}
         onSelect={onPicked}
         multiple={picker === "gallery"}
-        kind="IMAGE"
+        // Every other job on this screen is a photograph; only the body can ask for a film.
+        kind={picker === "body" ? bodyMediaKind : "IMAGE"}
         storageReady={storageReady}
         title={
           picker === "body"
-            ? "Insert a picture"
+            ? bodyMediaKind === "VIDEO"
+              ? "Insert a film"
+              : "Insert a picture"
             : picker === "gallery"
               ? "Add pictures to this project"
               : "Choose a cover picture"

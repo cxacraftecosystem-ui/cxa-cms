@@ -162,7 +162,7 @@ import { Field, FieldBlock } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { HelpText } from "@/components/studio/HelpText";
-import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
+import { RichTextEditor, type EditorMediaKind } from "@/components/studio/editor/RichTextEditor";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
 import { MediaFramingField } from "@/components/studio/fields/MediaFramingField";
 import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker";
@@ -294,12 +294,22 @@ export function RichTextForm({
   // ref, because resolving is not a render. The same three pieces every other caller uses.
 
   const [pickerOpen, setPickerOpen] = useState(false);
+  /**
+   * Which sort of asset the editor is asking for.
+   *
+   * ⚠ STATE RATHER THAN AN ARGUMENT READ AT OPEN TIME, because the dialog below is rendered once and
+   * its `kind` prop is what narrows the list. A picker that always showed photographs would leave an
+   * author who asked for a film searching a list that cannot contain one, with nothing on screen to say
+   * why — the failure `RichTextEditor.onRequestMedia` warns about in as many words.
+   */
+  const [mediaKind, setMediaKind] = useState<EditorMediaKind>("IMAGE");
   const mediaResolver = useRef<((chosen: EditorMediaSelection | null) => void) | null>(null);
 
   const requestMedia = useCallback(
-    () =>
+    (kind: EditorMediaKind) =>
       new Promise<EditorMediaSelection | null>((resolve) => {
         mediaResolver.current = resolve;
+        setMediaKind(kind);
         setPickerOpen(true);
       }),
     []
@@ -470,8 +480,9 @@ export function RichTextForm({
       />
 
       {/*
-        The picker itself. `kind="IMAGE"` because the picture node stores an image's storage key and
-        nothing else could be inserted as a figure.
+        The picker itself. Its `kind` follows what the editor asked for: the picture node stores an
+        image's storage key, and the video node stores a film's, so the two are different lists and a
+        single fixed `kind` would show the wrong one for half the inserts.
 
         ⚠ `onSelect` RESOLVES THE PROMISE AND CLEARS THE REF IN THE SAME BREATH. A resolver left in place
         would be called a second time by the next `onClose`, and a promise resolved twice is a picture
@@ -489,14 +500,14 @@ export function RichTextForm({
           mediaResolver.current = null;
           setPickerOpen(false);
         }}
-        kind="IMAGE"
+        kind={mediaKind}
         /*
           Passed rather than left to default — CraftEditor.tsx:1199's shape. It is belt as well as braces:
           with `onRequestMedia` withheld above the dialog can never be opened, but a picker that has been
           TOLD the truth cannot offer an upload area that would fail, whatever opens it next.
         */
         storageReady={storageReady}
-        title="Choose a picture to insert"
+        title={mediaKind === "VIDEO" ? "Choose a film to insert" : "Choose a picture to insert"}
       />
     </div>
   );

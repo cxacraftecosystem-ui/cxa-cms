@@ -65,12 +65,27 @@ import { LinkDialog, type PageLinkSearch } from "@/components/studio/editor/Link
 import { SlashCommands } from "@/components/studio/editor/SlashCommands";
 import { TableControls } from "@/components/studio/editor/TableControls";
 import {
+  VideoDialog,
+  type ChosenFilm,
+  type VideoEmbedAttributes
+} from "@/components/studio/editor/VideoDialog";
+import {
   createRichTextExtensions,
   describeSchemaDrift,
   imageAttrsFromMedia,
   EDITOR_SHORTCUT_GROUPS,
   type EditorMediaSelection
 } from "@/components/studio/editor/extensions";
+import { defaultVideoSettings, readVideoSettings } from "@/lib/media/video";
+
+/**
+ * Which sort of asset the editor is asking for.
+ *
+ * Deliberately narrower than `MediaKind`: these are the two things a body of writing can hold. A
+ * caption file and a poster are chosen inside `VideoDialog`, through `EntityPicker`, which does its
+ * own lookup and needs nothing from here.
+ */
+export type EditorMediaKind = "IMAGE" | "VIDEO";
 
 export interface RichTextEditorProps {
   /** The stored document — a `Json` column value, or an already-parsed one. Anything else is empty. */
@@ -91,12 +106,22 @@ export interface RichTextEditorProps {
   minHeight?: number;
   /**
    * Opens the media picker and resolves with the chosen asset, or null if the author changed their
-   * mind. Omitted → there is no way to insert a picture and no button offering to.
+   * mind. Omitted → there is no way to insert a picture OR a film, and neither button is offered.
    *
    * ⚠ A CALLBACK RATHER THAN THE PICKER ITSELF, so this file does not depend on
    * components/studio/media/MediaPicker.tsx and either can be worked on without the other.
+   *
+   * ⚠ IT TAKES THE KIND NOW, AND A CALLER THAT IGNORES IT SILENTLY BREAKS THE VIDEO BUTTON. The
+   * editor asks for `"IMAGE"` when a picture is being inserted and `"VIDEO"` when a film is; a
+   * `requestBodyMedia` that opens a `MediaPicker kind="IMAGE"` whatever it is handed leaves an author
+   * hunting for a film in a list that shows only photographs, with nothing on screen to explain it.
+   * Every call site in this repository forwards it into the picker.
+   *
+   * (An existing zero-argument callback still TYPECHECKS — a function of fewer parameters is
+   * assignable in TypeScript — which is exactly why this is written down rather than left to the
+   * compiler.)
    */
-  onRequestMedia?: () => Promise<EditorMediaSelection | null>;
+  onRequestMedia?: (kind: EditorMediaKind) => Promise<EditorMediaSelection | null>;
   /** Replaces the link dialog's page search. See LinkDialog. */
   searchPages?: PageLinkSearch;
   /** False for a read-only view. The toolbar and the "/" menu stand down with it. */
@@ -201,6 +226,24 @@ const EDITOR_PROSE_CLASS = [
   "[&_figure]:mt-4",
   "[&_figure_img]:mt-0",
   "[&_figcaption]:mt-2 [&_figcaption]:text-sm [&_figcaption]:leading-6 [&_figcaption]:text-ink-500",
+
+  /*
+    The video card.
+
+    ⚠ IT IS A CARD AND NOT A PLAYER, AND THE DIFFERENCE IS THE WHOLE DESIGN — `VideoEmbed`'s header in
+    extensions.ts sets out why there is no node view: an editor that drew the real player would autoplay
+    a film under the caret, dock a corner player while somebody edited the paragraph below it, and mount
+    a third-party iframe every time an article was opened for a typo. So the editor shows the source and
+    the film's description, one above the other, and the toolbar's own button is how it is edited.
+
+    `[data-video-embed]` is what the node writes; the two spans inside it are what its `renderHTML`
+    emits. Every class is literal — a class assembled from data is purged (contract §5) — and the
+    selected state uses the ring colour every other selected node in this surface uses.
+  */
+  "[&_[data-video-embed]]:mt-4 [&_[data-video-embed]]:cursor-default [&_[data-video-embed]]:rounded-md [&_[data-video-embed]]:border [&_[data-video-embed]]:border-line-200 [&_[data-video-embed]]:bg-surface-50 [&_[data-video-embed]]:px-3 [&_[data-video-embed]]:py-2.5",
+  "[&_[data-video-embed-source]]:block [&_[data-video-embed-source]]:text-xs [&_[data-video-embed-source]]:font-semibold [&_[data-video-embed-source]]:uppercase [&_[data-video-embed-source]]:tracking-wide [&_[data-video-embed-source]]:text-ink-500",
+  "[&_[data-video-embed-title]]:mt-0.5 [&_[data-video-embed-title]]:block [&_[data-video-embed-title]]:text-sm [&_[data-video-embed-title]]:leading-6 [&_[data-video-embed-title]]:text-ink-900",
+  "[&_[data-video-embed].ProseMirror-selectednode]:border-purple-600 [&_[data-video-embed].ProseMirror-selectednode]:ring-2 [&_[data-video-embed].ProseMirror-selectednode]:ring-purple-600/25",
 
   // Rule, and its ornament variant.
   //
@@ -434,6 +477,14 @@ export function RichTextEditor({
     href: string | null;
     text: string | null;
   }>({ open: false, href: null, text: null });
+  /**
+   * The video dialog. `value` is null for an insert and the selected node's attributes for an edit —
+   * which is how one button does both, in the way the link button already does.
+   */
+  const [videoDialog, setVideoDialog] = useState<{
+    open: boolean;
+    value: VideoEmbedAttributes | null;
+  }>({ open: false, value: null });
 
   /**
    * Read ONCE, in a state initialiser.
@@ -689,7 +740,7 @@ export function RichTextEditor({
   const insertMedia = useCallback(() => {
     if (!editor || !onRequestMedia) return;
     void (async () => {
-      const chosen = await onRequestMedia();
+      const chosen = await onRequestMedia("IMAGE");
       // Null is "the author closed the picker", which is not a failure and gets no message.
       if (!chosen) return;
       const attrs = imageAttrsFromMedia(chosen);
@@ -700,6 +751,89 @@ export function RichTextEditor({
         .run();
     })();
   }, [editor, onRequestMedia]);
+
+  /**
+   * The film picker, narrowed to what `VideoDialog` actually needs.
+   *
+   * ⚠ IT HANDS BACK THREE FIELDS OUT OF ELEVEN, and that is the point rather than an omission. A
+   * dialog typed against the whole `EditorMediaSelection` would be a dialog that has to be updated
+   * every time the picture pipeline gains a column — a crop, a blur placeholder, a set of dimensions,
+   * none of which mean anything for a film. `ChosenFilm` is the contract, and it is small enough to
+   * read.
+   */
+  const requestFilm = useCallback(async (): Promise<ChosenFilm | null> => {
+    if (!onRequestMedia) return null;
+    const chosen = await onRequestMedia("VIDEO");
+    if (!chosen) return null;
+    return { id: chosen.id, objectKey: chosen.objectKey, caption: chosen.caption ?? null };
+  }, [onRequestMedia]);
+
+  /**
+   * Open the video dialog on the video the caret is in, or on a blank one.
+   *
+   * ⚠ ONE CONTROL FOR BOTH, exactly as the link button is. A separate "edit this video" affordance
+   * would have to live on the node itself, which means a node view — and the node's own header sets
+   * out at length why there is not one.
+   *
+   * `getAttributes` returns `{}` for a node type the selection is not on, so the `isActive` test is
+   * what tells "editing an existing video" from "adding one" rather than the emptiness of the object.
+   */
+  const openVideo = useCallback(() => {
+    if (!editor) return;
+    if (!editor.isActive("videoEmbed")) {
+      setVideoDialog({ open: true, value: null });
+      return;
+    }
+    const attrs = editor.getAttributes("videoEmbed");
+    const read = (key: string): string | null =>
+      typeof attrs[key] === "string" && attrs[key].length > 0 ? (attrs[key] as string) : null;
+
+    setVideoDialog({
+      open: true,
+      value: {
+        provider: read("provider") ?? "youtube",
+        url: read("url") ?? "",
+        objectKey: read("objectKey"),
+        mediaId: read("mediaId"),
+        posterObjectKey: read("posterObjectKey"),
+        captionsObjectKey: read("captionsObjectKey"),
+        title: read("title") ?? "",
+        caption: read("caption"),
+        aspectRatio: read("aspectRatio") ?? "16:9",
+        // The stored settings may be anything — a node's attributes go through no schema on the way
+        // into the column. `readVideoSettings` repairs field by field rather than all or nothing.
+        settings: attrs.settings ? readVideoSettings(attrs.settings) : defaultVideoSettings()
+      }
+    });
+  }, [editor]);
+
+  /**
+   * Write the dialog's answer into the document.
+   *
+   * ⚠ `editing` IS THE FLAG THE DIALOG WAS OPENED WITH, NOT A FRESH `isActive` CHECK, and the
+   * difference is which node gets written. Asking the editor again at save time asks about the
+   * selection as it stands NOW — and a dialog is open for as long as somebody takes to paste an
+   * address, during which an autosave, a re-render or a stray interaction can move it. "Was this
+   * opened on a video?" is a fact about the moment the reader pressed the button, and it is the fact
+   * that decides between changing that video and adding another one.
+   */
+  const saveVideo = useCallback(
+    (attributes: VideoEmbedAttributes, editing: boolean) => {
+      if (!editor) return;
+      // Spread into a plain record: the command takes `Record<string, unknown>` because Tiptap
+      // attributes are untyped, and the node's own `addAttributes` is where the names are declared.
+      const attrs: Record<string, unknown> = { ...attributes };
+      // `updateVideoEmbed` needs the selection to still be on one. Where it is not — the rare case the
+      // paragraph above describes — falling through to an insert keeps the author's work rather than
+      // discarding it into a command that quietly does nothing.
+      if (editing && editor.isActive("videoEmbed")) {
+        editor.chain().focus().updateVideoEmbed(attrs).run();
+        return;
+      }
+      editor.chain().focus().insertVideoEmbed(attrs).run();
+    },
+    [editor]
+  );
 
   return (
     <div
@@ -723,6 +857,7 @@ export function RichTextEditor({
             label={`Formatting — ${label}`}
             onRequestLink={openLink}
             onRequestImage={onRequestMedia ? insertMedia : undefined}
+            onRequestVideo={openVideo}
             onShowShortcuts={() => setShortcutsOpen(true)}
           />
           <TableControls editor={editor} />
@@ -739,6 +874,10 @@ export function RichTextEditor({
           // Same rule as the toolbar: with no picker there is no way to insert a picture, so the entry
           // is absent from the menu rather than present and inert.
           onRequestImage={onRequestMedia ? insertMedia : undefined}
+          // ⚠ NOT GATED ON THE PICKER, unlike the picture above. A video may be a YouTube, Vimeo or
+          // Drive address, which needs no media library at all — so the entry is useful on a screen
+          // that has no picker, and the dialog is what withholds the "uploaded film" option there.
+          onRequestVideo={openVideo}
         />
       ) : null}
 
@@ -788,6 +927,15 @@ export function RichTextEditor({
         onSave={applyLink}
         onRemove={linkDialog.href ? removeLink : undefined}
         searchPages={searchPages}
+      />
+
+      <VideoDialog
+        open={videoDialog.open}
+        value={videoDialog.value}
+        onClose={() => setVideoDialog({ open: false, value: null })}
+        // The target is decided by what the dialog was OPENED on. See `saveVideo`.
+        onSave={(attributes) => saveVideo(attributes, videoDialog.value !== null)}
+        onRequestFilm={onRequestMedia ? requestFilm : undefined}
       />
 
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />

@@ -387,6 +387,7 @@ that merely reads the database is a Server Component and must stay one.
 | `lib/storage/keys.ts` | `buildObjectKey`, `buildVariantKey`, `variantPrefix`, `isSafeObjectKey`, `extensionOf`, `safeStem` |
 | `lib/storage/derivatives.ts` | `generateDerivatives`, `probeImage`, `generateBlurDataUrl`, `DERIVABLE_MIME_TYPES`, `isSvg` |
 | `lib/media/url.ts` | `publicObjectUrl`, `mediaSrc`, `ogImageUrl`, `mediaAlt`, `pickVariant`, `VARIANT_LABELS`, `VARIANT_WIDTHS` |
+| `lib/media/video.ts` | `isVideoObjectKey`, `isCaptionsObjectKey`, `resolveEmbedTarget`, `videoSettingsSchema`, `readVideoSettings`, `defaultVideoSettings`, `videoSettingsMediaIds`, `providerHonours`, `EMBED_PROVIDERS`, `EMBED_ASPECT_RATIOS` |
 
 **Do not add `clsx`, `tailwind-merge`, `next-themes`, a second toast library, or a second icon set.**
 Icons are `lucide-react`, and only `lucide-react`.

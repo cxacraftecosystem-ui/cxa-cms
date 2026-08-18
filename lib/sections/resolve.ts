@@ -6,6 +6,7 @@ import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { screenFramingMediaIds, type ScreenFraming } from "@/lib/media/screens";
+import { videoSettingsMediaIds } from "@/lib/media/video";
 import { getSettingCached } from "@/lib/settings/service";
 import {
   CENSUS_METRICS,
@@ -14,6 +15,7 @@ import {
   type StatsSectionData,
   type CraftExplorerSectionData,
   type DocumentEmbedSectionData,
+  type EmbedSectionData,
   type DownloadsSectionData,
   type EventShowcaseSectionData,
   type GallerySectionData,
@@ -1031,6 +1033,33 @@ async function resolveSectionDataOrThrow(
         // photograph is missing from the map INHERITS rather than erroring, so an unfetched row would
         // quietly draw the phone picture on a desktop. They join the same `IN (…)` at no extra query.
         for (const id of screenFramingMediaIds(data.mediaScreens)) rememberMedia(id);
+        /**
+         * The film's poster and its caption file, for the branch where the chosen asset is a video.
+         *
+         * Collected UNCONDITIONALLY rather than behind an "is it a film" test, and the reason is that
+         * the test cannot be made here: it needs the chosen asset's object key, which is precisely
+         * what this pass exists to fetch. Two ids on a block that turns out to hold a photograph cost
+         * two entries in an `IN (…)` the page was issuing anyway; the alternative is a second query
+         * to decide whether to widen the first one.
+         */
+        for (const id of videoSettingsMediaIds(data.videoSettings)) rememberMedia(id);
+        break;
+      }
+      /**
+       * An EMBED block's own film, when the provider is `upload` — plus its poster and captions.
+       *
+       * ⚠ THE PROVIDER TEST IS DELIBERATE HERE AND ITS ABSENCE IS DELIBERATE ABOVE. Unlike
+       * MEDIA_SPLIT, this block knows from its own payload which branch it will draw, and `mediaId`
+       * is explicitly kept rather than cleared when an editor switches to YouTube to compare (see the
+       * schema's note on the field). Fetching it regardless would put a row in the `IN (…)` for every
+       * YouTube block on the site that had ever briefly held a file.
+       */
+      case "EMBED": {
+        const data = parsed.data as EmbedSectionData;
+        if (data.provider === "upload") {
+          rememberMedia(data.mediaId);
+          for (const id of videoSettingsMediaIds(data.videoSettings)) rememberMedia(id);
+        }
         break;
       }
       /*

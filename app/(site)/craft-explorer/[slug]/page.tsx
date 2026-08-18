@@ -50,12 +50,14 @@ import { RelatedContent, type RelatedItem } from "@/components/site/RelatedConte
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { TagList } from "@/components/site/TagList";
 import { MediaImage } from "@/components/ui/MediaImage";
+import { VideoPlayer } from "@/components/site/VideoPlayer";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { framingAssets, withBaseAsset } from "@/lib/media/framing";
 import { pictureFromMap, type Picture, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_FIGURE_SELECT } from "@/lib/media/select";
-import { mediaAlt } from "@/lib/media/url";
+import { mediaAlt, publicObjectUrl } from "@/lib/media/url";
+import { attachedFilmSettings, isVideoObjectKey } from "@/lib/media/video";
 import { isEmptyRichText, parseRichText } from "@/lib/richtext";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
@@ -307,7 +309,30 @@ export default async function CraftPage({ params }: CraftPageProps) {
     }
   }));
 
-  const { pairs, singles } = splitPhases(placements);
+  /**
+   * The films, taken out before the before-and-after pairing runs.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ A FILM WAS BEING HANDED TO `MediaImage`, AND THAT IS A BROKEN TILE RATHER THAN A WRONG ONE. This
+   * page fetched every `CraftMedia` row and drew every one of them as a photograph. No `MediaVariant`
+   * row is ever made for a video (`DERIVABLE_MIME_TYPES` is image-only), so `mediaSrc` falls back to
+   * the original `.mp4`, `next/image` asks the optimiser to resize it, the optimiser answers 400, and
+   * the reader gets a broken-image glyph on a published craft page. The studio has always allowed a
+   * film to be attached here.
+   *
+   * ⚠ IT HAPPENS BEFORE `splitPhases`, WHICH IS THE PART THAT MATTERS. That function pairs a "before"
+   * with the next "after" BY ADJACENCY, because `CraftMedia` has no column linking the two halves — so
+   * a film sitting between them would break a genuine pair into two singles. Removing it first leaves
+   * the editor's ordering exactly as they arranged it.
+   *
+   * The test is the OBJECT KEY, not the asset kind: `MediaLike` carries no kind and the shared media
+   * select fetches no `mimeType`, deliberately (see `MEDIA_IMAGE_SELECT`).
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const films = placements.filter((placement) => isVideoObjectKey(placement.item.objectKey));
+  const stills = placements.filter((placement) => !isVideoObjectKey(placement.item.objectKey));
+
+  const { pairs, singles } = splitPhases(stills);
 
   const hasBody = !isEmptyRichText(parseRichText(craft.body));
 
@@ -704,6 +729,52 @@ export default async function CraftPage({ params }: CraftPageProps) {
                     })}
                   </div>
                 </MediaLightboxProvider>
+              </section>
+            ) : null}
+
+            {films.length > 0 ? (
+              /*
+                The films recorded for this craft, played rather than drawn.
+
+                ⚠ A SECTION OF THEIR OWN RATHER THAN TILES IN THE WALL ABOVE. That wall is a lightbox: a
+                press opens the photograph full screen, and a film has controls of its own that the
+                overlay trigger would swallow. It also keeps a film out of the before-and-after pairing
+                — see the split above.
+
+                ⚠ A RECORDED FILM HAS NO SETTINGS SCREEN, so it gets `attachedFilmSettings()` —
+                the block defaults with autoplay TURNED OFF, named once in lib/media/video.ts: it starts
+                when the reader presses play, and pauses when they scroll past.
+              */
+              <section className="mt-16">
+                <SectionHeading
+                  title={films.length === 1 ? "Video" : "Videos"}
+                  description={
+                    films.length === 1
+                      ? "A recording from the archive."
+                      : `${films.length} recordings from the archive.`
+                  }
+                  className="mb-8"
+                />
+
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                  {films.map((placement) => {
+                    const caption = placement.caption?.trim() ?? "";
+                    return (
+                      <figure key={placement.id} className="min-w-0">
+                        <VideoPlayer
+                          src={publicObjectUrl(placement.item.objectKey)}
+                          title={caption || mediaAlt(placement.item) || `Video of ${craft.name}`}
+                          settings={attachedFilmSettings()}
+                        />
+                        {caption ? (
+                          <figcaption className="mt-2 text-sm leading-relaxed text-ink-500">
+                            {caption}
+                          </figcaption>
+                        ) : null}
+                      </figure>
+                    );
+                  })}
+                </div>
               </section>
             ) : null}
 

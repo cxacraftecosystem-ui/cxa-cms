@@ -70,7 +70,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { mediaAlt, mediaSrc } from "@/lib/media/url";
+import { mediaAlt, mediaSrc, publicObjectUrl } from "@/lib/media/url";
+import { isCaptionsObjectKey, readVideoSettings } from "@/lib/media/video";
+import { HostedVideoFrame } from "@/components/site/HostedVideoFrame";
+import { VideoPlayer } from "@/components/site/VideoPlayer";
 import {
   calloutToneOf,
   cellSpansOf,
@@ -87,6 +90,7 @@ import {
   richTextHeadingIds,
   ruleVariantOf,
   textAlignOf,
+  videoAttrsOf,
   textColourOf,
   trackingAmountOf,
   walkRichText,
@@ -801,6 +805,9 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): ReactN
     case "figure":
       return renderFigure(node, key, ctx);
 
+    case "videoEmbed":
+      return renderVideoEmbed(node, key, ctx);
+
     case "figureCaption":
       // Only reached for a caption that is NOT inside a figure — `renderFigure` draws its own. The
       // schema forbids that, but a hand-written or migrated document can still hold one, and drawing
@@ -986,6 +993,68 @@ function renderPicture(node: RichTextNode, ctx: RenderContext): ReactNode {
       className="h-auto w-full rounded-md border border-line-200"
       {...(blur ? { placeholder: "blur" as const, blurDataURL: blur } : {})}
     />
+  );
+}
+
+/**
+ * A video inside a body of writing.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ THE SAME TWO COMPONENTS THE VIDEO BLOCK USES, AND THAT IS THE WHOLE POINT OF THE NODE. A second
+ * implementation of "poster, then iframe" would be a second chance to mount a third-party player on
+ * page load — the one thing `HostedVideoFrame`'s header exists to prevent — and a second `<video>`
+ * would be the fourth hand-written player on this site, each with its own accessibility decisions.
+ *
+ * ⚠ THIS FILE STAYS A SERVER COMPONENT AND BOTH OF THOSE ARE CLIENT ISLANDS. That is legal in exactly
+ * this direction: a Server Component may render a client component, and nothing here passes it a
+ * function. It is also why the node stores STORAGE KEYS rather than ids — there is no query to be made
+ * from inside a paragraph, and `RichTextVideo`'s own header says so at length.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * A film whose object key resolves to nothing gets the same labelled placeholder a missing picture
+ * gets: an item dropped silently from the middle of an article is indistinguishable from an article
+ * that never had one (contract §1.6).
+ */
+function renderVideoEmbed(node: RichTextNode, key: string, ctx: RenderContext): ReactNode {
+  const video = videoAttrsOf(node);
+  const settings = readVideoSettings(video.settings);
+  const caption = video.caption?.trim() ?? "";
+
+  const player =
+    video.provider === "upload" ? (
+      <VideoPlayer
+        src={publicObjectUrl(video.objectKey)}
+        // The player's only description, and it must never be empty — a `<video>` with no accessible
+        // name is announced as "video" and nothing else. The caption is the next best sentence the
+        // node carries; "Video" is the last resort rather than the first.
+        title={video.title || caption || "Video"}
+        poster={publicObjectUrl(video.posterObjectKey)}
+        // WebVTT or nothing: a browser handed anything else as a caption track fails in silence. The
+        // same guard the two blocks make, made again here because a node's attributes are not
+        // validated on write.
+        captionsSrc={
+          video.captionsObjectKey && isCaptionsObjectKey(video.captionsObjectKey)
+            ? publicObjectUrl(video.captionsObjectKey)
+            : null
+        }
+        captionsLabel={settings.captionsLabel}
+        settings={settings}
+      />
+    ) : (
+      <HostedVideoFrame
+        provider={video.provider}
+        url={video.url}
+        title={video.title || caption}
+        aspectRatio={video.aspectRatio}
+        settings={settings}
+      />
+    );
+
+  return (
+    <figure key={key} className={ctx.scale.figure}>
+      {player}
+      {caption ? <figcaption className={ctx.scale.caption}>{caption}</figcaption> : null}
+    </figure>
   );
 }
 

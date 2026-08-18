@@ -34,6 +34,15 @@ not an error: it is large uploads becoming slow and fragile, which reads as a ne
 `AllowedOrigins` must list the **exact** origin including scheme and port. A wildcard works and is worth
 avoiding: any page on the internet can then read from the bucket with the visitor's credentials.
 
+**`GET` in `AllowedMethods` is also what makes SUBTITLES work**, and that one fails silently in a way
+uploads do not. A `<track>` on a `<video>` is fetched as a CORS request, and the media is served from
+`NEXT_PUBLIC_CDN_URL` — a different origin from the page by construction. Without the grant the browser
+refuses the track: no error a reader can see, no captions, and a subtitles menu that appears and does
+nothing. `components/site/VideoPlayer.tsx` sets `crossOrigin="anonymous"` on the element **only when a
+caption file is present**, precisely so a bucket that has never allowed cross-origin reads keeps playing
+the videos it plays today; captions are the new capability, and they are the only thing that needs the
+header.
+
 ## 2. Environment
 
 Every variable is documented inline in [`.env.example`](../.env.example). The ones whose absence is

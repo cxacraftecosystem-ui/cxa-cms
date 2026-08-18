@@ -10,8 +10,7 @@ import { getSettingCached } from "@/lib/settings/service";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field } from "@/components/ui/Field";
-import { Input } from "@/components/ui/Input";
+import { FilterDateRange } from "@/components/studio/FilterDateRange";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
@@ -581,15 +580,24 @@ export default async function StudioAnalyticsPage({
           ))}
         </div>
 
-        {/* A GET form: no JavaScript, and the URL is the state. */}
+        {/*
+          A GET form: the URL is the state, and it stays that way.
+
+          ⚠ THE TWO BOXES USED TO BE `<Input type="date">`, WHICH IS THE BROWSER'S PICKER RATHER THAN
+          THE CENTRE'S. This screen is the one place an editor pages backwards through months, and it
+          was the one place they got Chrome's grey grid in Chrome's week order — while nine other
+          studio screens opened `components/ui/Calendar.tsx`. `FilterDateRange` is that pair, named so
+          it still submits with this form; see its header for why there is no hidden input.
+        */}
         <form method="get" className="flex flex-wrap items-end gap-3">
-          {/* `Field` (a real `<label>`) is right for both: each control is a plain `<input>`. */}
-          <Field label="From" help="Read as UTC, which is how the counts are bucketed.">
-            <Input name="from" type="date" defaultValue={toDayInput(rangeFrom)} max={toDayInput(today)} />
-          </Field>
-          <Field label="To">
-            <Input name="to" type="date" defaultValue={toDayInput(rangeTo)} max={toDayInput(today)} />
-          </Field>
+          <FilterDateRange
+            fromName="from"
+            toName="to"
+            fromValue={toDayInput(rangeFrom)}
+            toValue={toDayInput(rangeTo)}
+            fromHelp="Read as UTC, which is how the counts are bucketed."
+            max={toDayInput(today)}
+          />
           <Button type="submit" variant="secondary">
             Show this range
           </Button>

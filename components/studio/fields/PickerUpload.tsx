@@ -50,7 +50,8 @@ import {
   UploadError,
   kindForContentType,
   summariseFailures,
-  uploadFiles
+  uploadFiles,
+  type MediaKindName
 } from "@/lib/client/upload";
 import { formatBytes } from "@/lib/utils";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -59,8 +60,29 @@ import { HelpText } from "@/components/studio/HelpText";
 /** The two picker kinds that have an upload path behind them. */
 export type UploadableKind = "file" | "media";
 
+/** Which media files a `kind="media"` upload offers. Ignored for `kind="file"`, which takes anything. */
+export type UploadableMediaKind = Extract<MediaKindName, "DOCUMENT" | "VIDEO" | "IMAGE">;
+
 export interface PickerUploadProps {
   kind: UploadableKind;
+  /**
+   * Which media files the chooser offers, for `kind="media"`.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ IT DEFAULTS TO `DOCUMENT`, WHICH IS WHAT THIS COMPONENT USED TO DO AND ONLY DO. The paragraph
+   * below the accept list explains why: the one picker that offered an upload was the DOCUMENT_EMBED
+   * block's, and offering images there would have let an editor put a PNG into a field labelled "The
+   * document".
+   *
+   * `VIDEO` exists because the EMBED block now has an `upload` provider whose entire purpose is a film
+   * of up to 200 MB, and sending an editor to the media library to put it there first is exactly the
+   * abandoned-form journey this component was written to remove. The same argument, the same answer.
+   *
+   * ⚠ THE FILTER IS STILL DERIVED FROM `ACCEPTED_CONTENT_TYPES`, NEVER WRITTEN OUT. A hand-written
+   * per-kind list is the third copy the note below refuses; the kind is the only thing that varies.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  mediaKind?: UploadableMediaKind;
   /** The new record's id. The picker adds it to its selection and resolves it like any other. */
   onUploaded: (id: string) => void;
   /**
@@ -90,33 +112,62 @@ export interface PickerUploadProps {
  * drift from either independently — a hand-written third list was the copy nobody would have thought to
  * update. `accept` takes MIME types directly, so there is no translation step to get wrong either.
  *
- * FILTERED TO `DOCUMENT`, because every media picker that offers this upload is asking for one — the
- * DOCUMENT_EMBED block. A picture is chosen through `MediaPicker`, which uploads already and additionally
- * names the file and warns about missing alt text. Offering images here would let an editor put a PNG into
- * a block whose own label reads "The document".
+ * FILTERED BY KIND, because a media picker that offers an upload is always asking for one PARTICULAR
+ * sort of thing — a document for the DOCUMENT_EMBED block, a film for the EMBED block's `upload`
+ * provider. A picture is normally chosen through `MediaPicker`, which uploads already and additionally
+ * names the file and warns about missing alt text; offering everything here would let an editor put a
+ * PNG into a field whose own label reads "The document".
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
-const MEDIA_DOCUMENT_ACCEPT = ACCEPTED_CONTENT_TYPES.filter(
-  (contentType) => kindForContentType(contentType) === "DOCUMENT"
-).join(",");
+function mediaAcceptFor(mediaKind: UploadableMediaKind): string {
+  return ACCEPTED_CONTENT_TYPES.filter(
+    (contentType) => kindForContentType(contentType) === mediaKind
+  ).join(",");
+}
 
-/** What the two kinds are called where an editor can read it. */
-const NOUN: Record<UploadableKind, { one: string; accept: string; hint: string }> = {
-  file: {
+/** What each media kind is called, and what an editor is told about where it goes. */
+const MEDIA_NOUN: Record<UploadableMediaKind, { one: string; hint: string }> = {
+  DOCUMENT: {
     one: "document",
-    // Anything is a document if somebody wants to download it — the size cap is what constrains. Same
-    // reasoning as `FILE_ACCEPT` in the file library.
-    accept: "*/*",
-    hint: "It is added to the file library, where it can be renamed and made public."
-  },
-  media: {
-    one: "document",
-    accept: MEDIA_DOCUMENT_ACCEPT,
     hint: "It is added to the media library, which is what a document embedded on a page has to come from."
+  },
+  VIDEO: {
+    one: "video",
+    hint: "It is added to the media library and played by this site's own player."
+  },
+  IMAGE: {
+    one: "picture",
+    hint: "It is added to the media library. Its description for screen readers is written there."
   }
 };
 
-export function PickerUpload({ kind, onUploaded, unavailable = null }: PickerUploadProps) {
+/**
+ * A file the browser could not name, renamed by its extension.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ IT EXISTS FOR SUBTITLE FILES AND FOR NOTHING ELSE, AND WITHOUT IT THEY CANNOT BE UPLOADED AT ALL.
+ * A browser fills `File.type` from the operating system's own registry, and `.vtt` is registered on
+ * almost no desktop — so Windows and most Linux desktops hand over an EMPTY content type. Every layer
+ * below reads that value: `kindForContentType("")` is null, `precheck` refuses the file, and the
+ * message an editor gets is "Files of type are not accepted", with a blank where the type should be.
+ *
+ * The fix is deliberately one extension wide. A general "guess from the name" would let a renamed
+ * `.exe` declare itself an image, which is precisely what the server-side allow-list exists to stop,
+ * and the server still checks the declared type against its own table either way.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+function withDeclaredType(file: File): File {
+  if (file.type.trim().length > 0) return file;
+  if (!/\.vtt$/i.test(file.name)) return file;
+  return new File([file], file.name, { type: "text/vtt", lastModified: file.lastModified });
+}
+
+export function PickerUpload({
+  kind,
+  mediaKind = "DOCUMENT",
+  onUploaded,
+  unavailable = null
+}: PickerUploadProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const inputId = useId();
   const [busy, setBusy] = useState(false);
@@ -125,10 +176,25 @@ export function PickerUpload({ kind, onUploaded, unavailable = null }: PickerUpl
   /** Announced rather than only drawn, because an upload finishing is not a visible change up here. */
   const [announcement, setAnnouncement] = useState("");
 
-  const noun = NOUN[kind];
+  /**
+   * The file library takes anything a person might want to download, so the size cap is what
+   * constrains it — the same reasoning as `FILE_ACCEPT` in the file library. The media library takes
+   * only what the presign route accepts, narrowed to the kind this picker is asking for.
+   */
+  const noun =
+    kind === "file"
+      ? {
+          one: "document",
+          accept: "*/*",
+          hint: "It is added to the file library, where it can be renamed and made public."
+        }
+      : { one: MEDIA_NOUN[mediaKind].one, accept: mediaAcceptFor(mediaKind), hint: MEDIA_NOUN[mediaKind].hint };
 
   const run = useCallback(
-    async (file: File) => {
+    async (chosen: File) => {
+      // See `withDeclaredType`: a `.vtt` arrives from most desktops with no content type at all, and
+      // every layer below this one reads that value.
+      const file = withDeclaredType(chosen);
       setBusy(true);
       setError(null);
       setFraction(0);

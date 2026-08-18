@@ -1,10 +1,15 @@
-"use client";
-
 /**
- * EmbedSection — a YouTube or Vimeo video, or any other page in a frame.
+ * EmbedSection — a video or another page, from wherever it lives.
+ *
+ * ⚠ IT CARRIES NO `"use client"` ANY MORE, AND THAT IS A CHANGE RATHER THAN AN OVERSIGHT. The
+ * poster-then-frame state that made it interactive now lives in `components/site/HostedVideoFrame.tsx`,
+ * where the rich-text video node can reach it too, and the uploaded branch is
+ * `components/site/VideoPlayer.tsx`. What is left decides which of the two to draw and how wide it may
+ * be, which is a Server Component's job (contract §12) — and it keeps this file out of the bundle of
+ * every page that carries an embed.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
- * NOTHING IS LOADED UNTIL SOMEBODY ASKS FOR IT.
+ * NOTHING FROM A THIRD PARTY IS LOADED UNTIL SOMEBODY ASKS FOR IT.
  *
  * A third-party player mounted on page load is a request to someone else's server for every single
  * visitor, whether or not they ever press play. It is reliably the heaviest thing on any page that
@@ -21,26 +26,31 @@
  * tells the reader nothing about whether entering it is worth their time.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
+ * ⚠ THE `upload` PROVIDER IS A COMPLETELY DIFFERENT BRANCH AND SHARES NONE OF THE ABOVE. A film in the
+ * Centre's own media library is served from the Centre's own object base, so there is no third party
+ * to withhold, nothing to warn the reader about, and no reason to make them press a poster before the
+ * player exists. It is handed to `components/site/VideoPlayer.tsx`, which is the only place on this
+ * site that honours the block's video settings in full — `providerHonours()` in lib/media/video.ts is
+ * the table that says which settings each of the other providers can take, and the studio form offers
+ * exactly those and no more.
+ *
  * A BLOCK WITH NO USABLE ADDRESS SAYS SO. An embed that renders nothing is indistinguishable from a
  * page that was never finished, and the editor who pasted a channel URL instead of a video URL has no
- * way to discover it (contract §1.6, and rule 4 of lib/sections/schema.ts).
+ * way to discover it (contract §1.6, and rule 4 of lib/sections/schema.ts). The same sentence covers
+ * an uploaded film whose asset has since been deleted from the library.
  */
 
-import { useState } from "react";
 import type { PageSection } from "@prisma/client";
-import { Play, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 
 import { Reveal } from "@/components/motion";
+import { HostedVideoFrame } from "@/components/site/HostedVideoFrame";
+import { VideoPlayer } from "@/components/site/VideoPlayer";
+import { publicObjectUrl } from "@/lib/media/url";
+import { isCaptionsObjectKey } from "@/lib/media/video";
+import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { EmbedSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
-
-/** Complete literal class strings — an `aspect-[${r}]` built from data is purged (contract §5). */
-const ASPECT_CLASS: Record<EmbedSectionData["aspectRatio"], string> = {
-  "16:9": "aspect-video",
-  "4:3": "aspect-[4/3]",
-  "1:1": "aspect-square",
-  "9:16": "aspect-[9/16]"
-};
 
 /**
  * How wide the frame is allowed to be.
@@ -55,191 +65,52 @@ const WIDTH_CLASS: Record<EmbedSectionData["aspectRatio"], string> = {
   "9:16": "max-w-sm"
 };
 
-interface EmbedTarget {
-  /** The `src` for the iframe, already carrying autoplay — the reader has just pressed play. */
-  src: string;
-  /** The host named in the poster's warning, so nobody is surprised by the request. */
-  host: string;
-  allow: string;
-}
-
-/** YouTube ids are 11 characters today, but the length has changed before; the shape has not. */
-const ID_SHAPE = /^[A-Za-z0-9_-]{6,24}$/;
-
-function parseUrl(raw: string): URL | null {
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return null;
-  try {
-    const url = new URL(trimmed);
-    // A relative path cannot host a video, and `javascript:` in an iframe src is a script injection.
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    return url;
-  } catch {
-    return null;
-  }
-}
-
-function youTubeId(url: URL): string | null {
-  const host = url.hostname.replace(/^www\./, "");
-
-  if (host === "youtu.be") {
-    const id = url.pathname.slice(1).split("/")[0] ?? "";
-    return ID_SHAPE.test(id) ? id : null;
-  }
-
-  if (host === "youtube.com" || host === "m.youtube.com" || host === "youtube-nocookie.com") {
-    const query = url.searchParams.get("v");
-    if (query && ID_SHAPE.test(query)) return query;
-
-    // /embed/…, /shorts/…, /v/… and /live/… all put the id in the second segment.
-    const segments = url.pathname.split("/").filter(Boolean);
-    const [first, second] = segments;
-    if (first && second && ["embed", "shorts", "v", "live"].includes(first)) {
-      return ID_SHAPE.test(second) ? second : null;
-    }
-  }
-
-  return null;
-}
-
-function vimeoTarget(url: URL): EmbedTarget | null {
-  const host = url.hostname.replace(/^www\./, "");
-  if (host !== "vimeo.com" && host !== "player.vimeo.com") return null;
-
-  const segments = url.pathname.split("/").filter(Boolean);
-  // The id is the first purely numeric segment: /123, /channels/staff/123 and /video/123 all occur.
-  const index = segments.findIndex((segment) => /^\d+$/.test(segment));
-  const id = index >= 0 ? segments[index] : undefined;
-  if (!id) return null;
-
-  // An unlisted video carries a private hash, either as the segment after the id or as ?h=.
-  const following = index >= 0 ? segments[index + 1] : undefined;
-  const hash =
-    url.searchParams.get("h") ?? (following && /^[a-f0-9]{6,20}$/i.test(following) ? following : null);
-
-  const params = new URLSearchParams({ autoplay: "1", dnt: "1" });
-  if (hash) params.set("h", hash);
-
-  return {
-    src: `https://player.vimeo.com/video/${id}?${params.toString()}`,
-    host: "player.vimeo.com",
-    allow: "autoplay; fullscreen; picture-in-picture; clipboard-write"
-  };
-}
-
 /**
- * Turn the editor's pasted share link into something safe to put in a `src`, or null.
+ * The same table, read by an arbitrary string.
  *
- * Exported because the studio's block editor shows the same "this address could not be read" warning
- * while the URL is being typed, and two copies of this parser would disagree the first time either
- * one learned about a new URL shape.
+ * ⚠ THE SAME WIDENING `EmbedForm`'s `PATTERN_FOR_PROVIDER` CARRIES, AND FOR THE SAME REASON — except
+ * that here the value being looked up is `aspectRatio` rather than `provider`. A payload whose
+ * `aspectRatio` is a value this release has never heard of fails the parse, and a page in PRODUCTION
+ * renders nothing for a failed parse (see `SectionProblem`), so this table is not on that path today.
+ * It is widened because the studio's LIVE PREVIEW renders the builder's raw working copy through this
+ * very component, and there `data.aspectRatio` really can be a string that has never been through the
+ * enum — where the narrow read produced `undefined` in a `className`, which Tailwind ignores, so the
+ * figure silently lost its width cap rather than crashing. `HostedVideoFrame` carries the twin of this
+ * note for the SHAPE table, which lives there because the frame is what draws it.
  */
-export function resolveEmbedTarget(
-  provider: EmbedSectionData["provider"],
-  rawUrl: string
-): EmbedTarget | null {
-  const url = parseUrl(rawUrl);
-  if (!url) return null;
-
-  if (provider === "youtube") {
-    const id = youTubeId(url);
-    if (!id) return null;
-    // youtube-nocookie.com is the same player without the tracking cookies set on first load. `rel=0`
-    // keeps the end-card suggestions inside the same channel rather than sending a reader off into
-    // whatever the recommender picks.
-    return {
-      src: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0&modestbranding=1&playsinline=1`,
-      host: "youtube-nocookie.com",
-      allow:
-        "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    };
-  }
-
-  if (provider === "vimeo") return vimeoTarget(url);
-
-  return { src: url.toString(), host: url.hostname, allow: "fullscreen" };
-}
+const WIDTH_FOR: Partial<Record<string, string>> = WIDTH_CLASS;
 
 export interface EmbedSectionProps {
   data: EmbedSectionData;
-  /** Unused here — an EMBED block needs no resolved rows — but part of the renderer signature. */
+  /** The block's own row — the anchor id comes off it. */
   section: PageSection;
+  /**
+   * The batched read from `lib/sections/resolve.ts`; `resolved.media` is keyed by ASSET id.
+   *
+   * Optional because the studio's live preview renders a block before any resolution has happened,
+   * and an uploaded film with no resolved asset says so rather than throwing.
+   */
+  resolved?: ResolvedSectionData;
 }
 
-export function EmbedSection({ data, section }: EmbedSectionProps) {
-  const [playing, setPlaying] = useState(false);
-
-  const target = resolveEmbedTarget(data.provider, data.url);
+export function EmbedSection({ data, section, resolved }: EmbedSectionProps) {
   const title = data.title.trim();
-  const hasUrl = data.url.trim().length > 0;
+  const width = WIDTH_FOR[data.aspectRatio] ?? WIDTH_CLASS["16:9"];
 
   return (
     <section id={`block-${section.id}`} className="py-20 md:py-28">
       <div className="shell">
-        <Reveal as="figure" className={cn("mx-auto min-w-0", WIDTH_CLASS[data.aspectRatio])}>
-          {target ? (
-            <div
-              className={cn(
-                "relative overflow-hidden rounded-lg border border-line-200",
-                ASPECT_CLASS[data.aspectRatio],
-                playing ? "bg-ink-900" : "grad-brand"
-              )}
-            >
-              {playing ? (
-                <iframe
-                  src={target.src}
-                  // The frame's only description. Never "Video" — see the header.
-                  title={title || "Embedded media"}
-                  loading="lazy"
-                  allow={target.allow}
-                  allowFullScreen
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  // `allow-same-origin` is what lets the player reach its own cookies and storage, and
-                  // it is safe HERE because the frame's origin is the provider's, not ours. ⚠ For the
-                  // generic "frame" provider pointed at a same-origin page, the pair cancels the
-                  // sandbox out — that combination is a deliberate embed of our own content, not a
-                  // third party, and there is nothing to contain.
-                  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation allow-forms"
-                  className="absolute inset-0 h-full w-full border-0"
-                />
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setPlaying(true)}
-                    className="group absolute inset-0 flex flex-col items-center justify-center gap-5 px-6 text-center transition hover:bg-ink-900/15"
-                  >
-                    <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/40 transition group-hover:bg-white/25">
-                      <Play aria-hidden="true" className="ml-0.5 h-7 w-7" />
-                    </span>
-                    {/* "Play" is spoken, not printed: the visible title is already the label, and a
-                        button captioned "Play <title>" reads as clutter beside a play glyph. */}
-                    <span className="sr-only">Play </span>
-                    <span className="display-title text-balance text-lg text-white sm:text-xl">
-                      {title || "Watch this video"}
-                    </span>
-                  </button>
-
-                  {/*
-                    Outside the button so it is not folded into the button's accessible name, and
-                    `pointer-events-none` so the sentence is not a dead patch in the middle of the
-                    poster — a press on it falls through to the button underneath.
-                  */}
-                  <p className="pointer-events-none absolute inset-x-0 bottom-0 px-5 pb-4 text-center text-xs leading-relaxed text-white/70">
-                    Playing this loads the player from {target.host}.
-                  </p>
-                </>
-              )}
-            </div>
+        <Reveal as="figure" className={cn("mx-auto min-w-0", width)}>
+          {data.provider === "upload" ? (
+            <UploadedFilm data={data} title={title} resolved={resolved} />
           ) : (
-            <div className="flex items-start gap-3 rounded-lg border border-dashed border-line-200 bg-surface-50 px-5 py-4">
-              <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
-              <p className="text-sm leading-relaxed text-ink-500">
-                {hasUrl
-                  ? "This video block has an address that could not be read. Check that the link is the ordinary share link for the video rather than a channel or playlist."
-                  : "This video block has no address yet."}
-              </p>
-            </div>
+            <HostedVideoFrame
+              provider={data.provider}
+              url={data.url}
+              title={title}
+              aspectRatio={data.aspectRatio}
+              settings={data.videoSettings}
+            />
           )}
 
           {data.caption ? (
@@ -250,5 +121,76 @@ export function EmbedSection({ data, section }: EmbedSectionProps) {
         </Reveal>
       </div>
     </section>
+  );
+}
+
+/**
+ * A film this site hosts.
+ *
+ * ⚠ THE BLOCK'S `aspectRatio` ONLY CAPS THE WIDTH HERE; it does not force a shape onto the frame.
+ * `VideoPlayer` lets the film size itself, which is what makes black bars impossible — a 4:3
+ * recording inside a forced 16:9 box is letterboxed by the browser and there is nothing an editor can
+ * do about it from the studio. The width cap is still worth having: an upright phone recording at the
+ * full content width is three screens tall.
+ */
+function UploadedFilm({
+  data,
+  title,
+  resolved
+}: {
+  data: EmbedSectionData;
+  title: string;
+  resolved: ResolvedSectionData | undefined;
+}) {
+  const asset = data.mediaId ? resolved?.media[data.mediaId] : undefined;
+  if (!asset) {
+    return (
+      <EmbedProblem
+        message={
+          data.mediaId
+            ? "This video block names a film that is no longer in the media library. Choose it again, or restore it from the recycle bin."
+            : "This video block has no film chosen yet."
+        }
+      />
+    );
+  }
+
+  const settings = data.videoSettings;
+  const posterAsset = settings.posterMediaId ? resolved?.media[settings.posterMediaId] : undefined;
+  const captionsAsset = settings.captionsMediaId
+    ? resolved?.media[settings.captionsMediaId]
+    : undefined;
+
+  return (
+    <VideoPlayer
+      src={publicObjectUrl(asset.objectKey)}
+      title={title || "Video"}
+      poster={posterAsset ? publicObjectUrl(posterAsset.objectKey) : null}
+      /**
+       * ⚠ THE CAPTION FILE IS CHECKED BY ITS NAME BEFORE IT IS OFFERED AS ONE. `<track>` accepts
+       * WebVTT and nothing else, and a browser handed a PDF as a caption track fails silently — no
+       * error, no captions, and a subtitle menu that appears and does nothing. The studio's picker
+       * refuses anything but `.vtt` for the same reason; this is the render-side half of it, because
+       * a payload can outlive the form that wrote it.
+       */
+      captionsSrc={
+        captionsAsset && isCaptionsObjectKey(captionsAsset.objectKey)
+          ? publicObjectUrl(captionsAsset.objectKey)
+          : null
+      }
+      captionsLabel={settings.captionsLabel}
+      settings={settings}
+      downloadName={asset.fileName}
+    />
+  );
+}
+
+/** One shape for every "this block cannot draw anything, and here is why" — see the header. */
+function EmbedProblem({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-dashed border-line-200 bg-surface-50 px-5 py-4">
+      <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+      <p className="text-sm leading-relaxed text-ink-500">{message}</p>
+    </div>
   );
 }

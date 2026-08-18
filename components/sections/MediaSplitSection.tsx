@@ -17,12 +17,14 @@ import { ArrowRight } from "lucide-react";
 import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
+import { VideoPlayer } from "@/components/site/VideoPlayer";
 import { LinkButton } from "@/components/ui/Button";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { pictureFromMap } from "@/lib/media/screens";
 import { publicObjectUrl } from "@/lib/media/url";
+import { isCaptionsObjectKey, isVideoObjectKey } from "@/lib/media/video";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
-import { isVideoObjectKey, type MediaSplitSectionData } from "@/lib/sections/schema";
+import type { MediaSplitSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
 
 export interface MediaSplitSectionProps {
@@ -39,9 +41,23 @@ export function MediaSplitSection({ data, section, resolved }: MediaSplitSection
 
   if (!asset && !data.heading && !data.body && !primary && !secondary) return null;
 
-  // `isVideoObjectKey` is read off the schema module so that the studio's form can offer the framing
+  // `isVideoObjectKey` is read off lib/media/video.ts so that the studio's form can offer the framing
   // panel on exactly the branch that draws a picture — see its note there.
-  const videoSrc = asset && isVideoObjectKey(asset.objectKey) ? publicObjectUrl(asset.objectKey) : null;
+  const isFilm = Boolean(asset && isVideoObjectKey(asset.objectKey));
+  const videoSrc = asset && isFilm ? publicObjectUrl(asset.objectKey) : null;
+
+  /**
+   * The film's still and its captions, from the same batched read the picture comes out of.
+   *
+   * Both are `MediaAsset` ids on the block's own settings, collected by `videoSettingsMediaIds` in
+   * lib/sections/resolve.ts — the collector exists precisely so a poster that was never fetched
+   * cannot be told apart from a poster that was never chosen (its header says so at length).
+   */
+  const settings = data.videoSettings;
+  const posterAsset = settings.posterMediaId ? resolved?.media[settings.posterMediaId] : undefined;
+  const captionsAsset = settings.captionsMediaId
+    ? resolved?.media[settings.captionsMediaId]
+    : undefined;
   /**
    * The per-screen framing, resolved. It reaches only the image branch: a film is drawn by the
    * browser's own player and no rectangle of ours applies to it. `pictureFromMap` has already folded in
@@ -57,15 +73,36 @@ export function MediaSplitSection({ data, section, resolved }: MediaSplitSection
           {asset ? (
             <Reveal className={cn("order-1", mediaSide === "right" && "lg:order-2")}>
               <figure>
-                {videoSrc ? (
-                  // Content video, not a backdrop: it has controls and does not autoplay, so nothing
-                  // here moves until the reader asks it to and there is no reduced-motion branch to
-                  // get wrong.
-                  <video
+                {isFilm ? (
+                  /*
+                    Content video, not a backdrop, and now through the SAME player every other film on
+                    this site uses. It used to be a bare `<video controls>` written out here — which
+                    was a perfectly good player and was also the third hand-written one on the site,
+                    each with its own accessibility decisions and its own fallback sentence.
+                    `VideoPlayer` is one of them, it carries the block's own settings, and it is what
+                    makes "start it when it comes into view" and "keep it in the corner" available
+                    here rather than only in the video block.
+
+                    ⚠ IT IS INSIDE A FINISHED `Reveal`, WHICH IS THE ONE PLACEMENT RULE THE PLAYER HAS:
+                    a permanent transform on an ancestor would make the corner player position itself
+                    against this figure instead of against the viewport. `Reveal` writes a transform
+                    only while it animates and leaves `none` behind — see the ⚠ in VideoPlayer's own
+                    header, where the rule and the check are written out.
+                  */
+                  <VideoPlayer
                     src={videoSrc}
-                    controls
-                    preload="metadata"
-                    className="w-full rounded-lg border border-line-200"
+                    title={data.caption.trim() || data.heading.trim() || "Video"}
+                    poster={posterAsset ? publicObjectUrl(posterAsset.objectKey) : null}
+                    // WebVTT or nothing: a browser handed anything else as a caption track fails in
+                    // silence. See the same guard in `EmbedSection`.
+                    captionsSrc={
+                      captionsAsset && isCaptionsObjectKey(captionsAsset.objectKey)
+                        ? publicObjectUrl(captionsAsset.objectKey)
+                        : null
+                    }
+                    captionsLabel={settings.captionsLabel}
+                    settings={settings}
+                    downloadName={asset.fileName}
                   />
                 ) : (
                   <MediaImage

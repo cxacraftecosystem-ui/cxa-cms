@@ -243,14 +243,19 @@ Each is a bug it prevents, and they are why a five-year-old payload still render
    flips an input to uncontrolled and warns.
 4. **Almost nothing is conditionally required.** Autosave fires every few seconds, so a rule that
    bites mid-edit refuses the save while the editor is still working. Where a value is genuinely
-   missing, the **renderer** says so on screen (contract §1.6). There are exactly two exceptions —
-   the `EMBED` and `FORM_EMBED` titles — and both are accessibility requirements: a screen reader
-   announces an untitled `<iframe>` as "frame". `FORM_EMBED` carries one more, a host allow-list,
-   which is a security requirement.
+   missing, the **renderer** says so on screen (contract §1.6). The exceptions are all of ONE KIND
+   rather than a list to memorise: every conditionally required field is a frame's accessible name —
+   the `EMBED`, `FORM_EMBED` and `DOCUMENT_EMBED` titles — and each is an accessibility requirement,
+   because a screen reader announces an untitled `<iframe>` as "frame" and an untitled `<video>` as
+   "video". Each binds only once there is something to name: a URL or a chosen film for the first, a
+   URL for the second, a chosen document for the third. `FORM_EMBED` carries one more, a host
+   allow-list, which is a security requirement.
 5. **Every on-screen string carries a `.max()` and a `.describe()`.** The max is a length a human
    would choose; the description is the inline help the editor form renders beneath the field.
-6. **Payloads are flat and JSON-serialisable.** No `Date`, no `Map`, no class instances — the value
-   lands in a Postgres `Json` column. ⚠ A date is stored as the string `<input type="date">`
+6. **Payloads are JSON-serialisable.** No `Date`, no `Map`, no class instances — the value
+   lands in a Postgres `Json` column. Nesting is allowed and common (`cta()`, `screenFraming()`,
+   `videoSettings`, and the six blocks that store arrays of rows); what a nested value must have is
+   rule 2 one level down — a default on every field AND on the object itself. ⚠ A date is stored as the string `<input type="date">`
    produces, and it is validated by counting the day against the real length of that month:
    `Date.parse` accepts `2026-02-31` and rolls it silently to 3 March, so a closing date typed one
    digit wrong would save and then display as a different day with nothing anywhere saying so.
@@ -810,7 +815,8 @@ what appears on screen to what they just typed.
 
 ### 6.5 The verification layers
 
-`npm run check` = `typecheck` + `lint` + `route-check` + `font-check` + `theme-check`. CI
+`npm run check` = `typecheck` + `lint` + `route-check` + `media-select-check` + `screens-check` +
+`media-render-check` + `framing-select-check` + `video-check` + `font-check` + `theme-check`. CI
 (`.github/workflows/ci.yml`) runs the first three ahead of everything else, because they fail in
 about two minutes with no database and no build, and only then pays for a migrate, a seed, a build, a
 server and the two runtime checks:
@@ -820,6 +826,17 @@ server and the two runtime checks:
   that.
 - **`npm run leak-check`** exists because a draft leaking to the public site is an omission across
   ninety-odd queries.
+
+Every one of the offline checks after `route-check` exists because a whole feature once shipped
+NON-FUNCTIONAL with every gate green, and each header says which:
+
+| Check | Blind spot it closes |
+|---|---|
+| `media-select-check` | A media column added to `MediaAsset` and fetched by none of the queries that draw it — `MediaLike` makes every field optional, so "not selected" and "not set" are one shape. |
+| `screens-check` | The per-screen framing resolver's own cascade, collapse and degradation. |
+| `media-render-check` | What `MediaImage` actually *emits* — a resolver with no consumer looks identical to a consumer with no resolver from every other gate. |
+| `framing-select-check` | A framed picture fetched without the framing column beside it, across twelve models where no shared fragment can carry it. |
+| `video-check` | The embed resolvers — facts about somebody else's product that no type can carry: Drive's `/view` refuses to be framed, its account segment moves between two products, YouTube's `loop` needs a playlist of itself, Vimeo's start time is a fragment. |
 
 ⚠ **`font-check` and `theme-check` are in `npm run check` but not in `ci.yml`**, so they are yours to
 run locally. Both catch a class of defect every other gate is blind to *by construction*:

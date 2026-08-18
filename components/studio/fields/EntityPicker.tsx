@@ -78,7 +78,7 @@ import { MediaImage } from "@/components/ui/MediaImage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { HelpText } from "@/components/studio/HelpText";
-import { PickerUpload } from "@/components/studio/fields/PickerUpload";
+import { PickerUpload, type UploadableMediaKind } from "@/components/studio/fields/PickerUpload";
 
 /** Every table a picker can search. The route handler switches on exactly these words. */
 export const LOOKUP_KINDS = [
@@ -203,6 +203,18 @@ export interface EntityPickerProps {
    * ══════════════════════════════════════════════════════════════════════════════════════════════
    */
   upload?: boolean;
+  /**
+   * Which media files that upload offers — `"DOCUMENT"` unless a caller says otherwise.
+   *
+   * ⚠ IT DOES NOT NARROW THE SEARCH RESULTS, only the upload chooser, and the difference is worth
+   * knowing before reaching for it. `/api/studio/lookup` has no `MediaKind` filter at all, so a
+   * `kind="media"` picker lists every asset of every kind whatever is passed here — which is how a
+   * film reaches the hero and the image-beside-text blocks today, and why both renderers decide what
+   * they are drawing by testing the object key rather than by trusting a setting. This prop is for
+   * the half of the panel that CAN be narrowed: what the file chooser accepts when an editor uploads
+   * from inside the picker.
+   */
+  uploadMediaKind?: UploadableMediaKind;
   className?: string;
 }
 
@@ -222,7 +234,8 @@ function EntityPickerControl({
   max = 24,
   reorderable = true,
   footnote,
-  upload = false
+  upload = false,
+  uploadMediaKind
 }: EntityPickerProps) {
   const field = useFieldContext();
   const noun = LOOKUP_NOUNS[kind];
@@ -545,6 +558,7 @@ function EntityPickerControl({
           <div className="mt-2">
             <PickerUpload
               kind={kind}
+              mediaKind={uploadMediaKind}
               onUploaded={addById}
               unavailable={
                 atLimit && !single

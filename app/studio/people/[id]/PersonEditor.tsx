@@ -48,7 +48,7 @@ import { SlugField } from "@/components/studio/SlugField";
 import { StatusControl, statusProblems } from "@/components/studio/StatusControl";
 import { PUBLISHED_AUTOSAVE_NOTICE, useAutosave } from "@/components/studio/useAutosave";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
-import { RichTextEditor } from "@/components/studio/editor/RichTextEditor";
+import { RichTextEditor, type EditorMediaKind } from "@/components/studio/editor/RichTextEditor";
 import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
@@ -294,10 +294,22 @@ export function PersonEditor({
 
   // ── The media picker ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Which sort of asset the BODY is asking for.
+   *
+   * ⚠ IT HAS TO BE STATE RATHER THAN AN ARGUMENT READ AT OPEN TIME, because `MediaPicker` is rendered
+   * once at the bottom of this screen and its `kind` prop is what narrows the list. A picker that always
+   * showed photographs would leave an author who asked for a film searching a list that cannot contain
+   * one, with nothing on screen to say why — which is the failure `RichTextEditor.onRequestMedia` warns
+   * about in as many words.
+   */
+  const [bodyMediaKind, setBodyMediaKind] = useState<EditorMediaKind>("IMAGE");
+
   const requestBodyMedia = useCallback(
-    () =>
+    (kind: EditorMediaKind) =>
       new Promise<EditorMediaSelection | null>((resolve) => {
         bodyResolver.current = resolve;
+        setBodyMediaKind(kind);
         setPicker("body");
       }),
     []
@@ -775,9 +787,16 @@ export function PersonEditor({
         onClose={closePicker}
         onSelect={onPicked}
         multiple={false}
-        kind="IMAGE"
+        // Every other job on this screen is a photograph; only the body can ask for a film.
+        kind={picker === "body" ? bodyMediaKind : "IMAGE"}
         storageReady={storageReady}
-        title={picker === "body" ? "Insert a picture" : "Choose a photograph"}
+        title={
+          picker === "body"
+            ? bodyMediaKind === "VIDEO"
+              ? "Insert a film"
+              : "Insert a picture"
+            : "Choose a photograph"
+        }
       />
     </div>
   );

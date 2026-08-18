@@ -105,6 +105,7 @@ import {
   Highlighter,
   ImagePlus,
   Info,
+  Film,
   Italic,
   Lightbulb,
   Link2,
@@ -349,6 +350,15 @@ export interface EditorToolbarProps {
    * has no way to insert a picture, and a button that cannot work is worse than no button.
    */
   onRequestImage?: () => void;
+  /**
+   * Opens the video dialog — on the video the caret is in, or on a blank one.
+   *
+   * ⚠ NOT GATED ON A MEDIA PICKER, unlike the picture button above, and the difference is real rather
+   * than an inconsistency: a video may be a YouTube, Vimeo or Google Drive address, which needs no
+   * media library at all. The dialog is what withholds the "a film uploaded here" option on a screen
+   * that cannot pick one.
+   */
+  onRequestVideo?: () => void;
   /** Opens the keyboard-shortcut list. */
   onShowShortcuts: () => void;
   /** Names the toolbar. Include the field it belongs to when a page has two editors. */
@@ -501,6 +511,25 @@ function selectToolbarState(instance: Editor) {
     canDefinitionList: can.insertDefinitionList().run(),
     canRule: can.setRule("hairline").run(),
     canTable: can.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    /**
+     * Is the caret on a video, and could one be inserted where it is?
+     *
+     * `videoEmbed` is what makes ONE button both "add" and "change", the way the link button already
+     * is.
+     *
+     * ⚠ `canVideo` IS BESIDE IT BECAUSE "IT CAN ALWAYS LAND SOMEWHERE" IS FALSE, AND THE COMMENT THAT
+     * SAID SO PUT A DEAD BUTTON ON THE TOOLBAR. `blockInsertionAt` climbs outwards until a container
+     * accepts the node — but its loop stops ABOVE depth 0, deliberately (reading `$from.before(0)`
+     * throws), and depth 0 is a real, reachable state: a NodeSelection on a top-level block, which is
+     * what clicking a picture gives you. From there the command returns false, the insert silently does
+     * nothing, and the dialog closes over an article that gained no video. Every other insert control
+     * on this toolbar is gated on `can()` for exactly this reason.
+     *
+     * The two are OR'd where the button is built, so a selected video can still be edited — that
+     * selection is itself at depth 0 and would otherwise grey out the one control that changes it.
+     */
+    videoEmbed: instance.isActive("videoEmbed"),
+    canVideo: can.insertVideoEmbed({}).run(),
     canFootnote: can.insertFootnote().run(),
     canAttribution: instance.isActive("blockquote") || instance.isActive("pullQuote"),
     inAttribution: instance.isActive("attribution"),
@@ -610,6 +639,7 @@ function ToolbarBar({
   state,
   onRequestLink,
   onRequestImage,
+  onRequestVideo,
   onShowShortcuts,
   label = "Formatting",
   stickyOffset = 64,
@@ -987,6 +1017,27 @@ function ToolbarBar({
                 icon: ImagePlus,
                 available: true,
                 run: onRequestImage
+              }
+            ]
+          : []),
+        ...(onRequestVideo
+          ? [
+              {
+                control: "button" as const,
+                id: "video",
+                // The label says which of the two the press will do, because the button does both and
+                // a control whose effect depends on the caret must say so where the caret is.
+                label: state.videoEmbed
+                  ? "Change this video"
+                  : "Video — uploaded here, or from YouTube, Vimeo or Google Drive",
+                icon: Film,
+                // See `canVideo`: a video cannot land from every caret position, and a control that
+                // does nothing when pressed is worse than one that is visibly unavailable.
+                available: state.videoEmbed || state.canVideo,
+                // `pressed` rather than a second style: the button reports the caret's state through
+                // `aria-pressed`, which is the same thing the bold and link buttons do.
+                pressed: state.videoEmbed,
+                run: onRequestVideo
               }
             ]
           : []),

@@ -96,6 +96,8 @@ const ALLOWED_CONTENT_TYPES: Readonly<Record<string, MediaKindName>> = {
   "application/zip": "DOCUMENT",
   "text/plain": "DOCUMENT",
   "text/csv": "DOCUMENT",
+  // Subtitles for the video player. Filed as a DOCUMENT — see the note in lib/client/upload.ts.
+  "text/vtt": "DOCUMENT",
 
   "model/gltf-binary": "MODEL_3D",
   "model/gltf+json": "MODEL_3D"
@@ -103,7 +105,7 @@ const ALLOWED_CONTENT_TYPES: Readonly<Record<string, MediaKindName>> = {
 
 /** One sentence for readers who do not think in MIME types. Mirrors ACCEPTED_TYPES_SUMMARY. */
 const ACCEPTED_SUMMARY =
-  "Images, video, audio, PDFs, Office documents, plain text and glTF models can be uploaded.";
+  "Images, video, audio, PDFs, Office documents, subtitle files, plain text and glTF models can be uploaded.";
 
 const PresignBody = z.object({
   fileName: z

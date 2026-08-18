@@ -51,6 +51,7 @@ import {
   BookA,
   Columns2,
   Columns3,
+  Film,
   ImagePlus,
   Info,
   Lightbulb,
@@ -218,6 +219,14 @@ export interface SlashCommandsProps {
    * with no picker cannot insert one.
    */
   onRequestImage?: () => void;
+  /**
+   * Opens the video dialog. Omitted → the video entry is absent.
+   *
+   * ⚠ IT IS NOT THE SAME CONDITION AS THE PICTURE ABOVE, and the editor passes it unconditionally. A
+   * video may be a YouTube, Vimeo or Google Drive address, which needs no media library; the dialog
+   * is what withholds the "a film uploaded here" option on a screen that cannot pick one.
+   */
+  onRequestVideo?: () => void;
 }
 
 /**
@@ -226,7 +235,7 @@ export interface SlashCommandsProps {
  * ⚠ The order is load-bearing — see the ⚠ in this file's header. Within a section the order is
  * editorial: the thing an author reaches for most often is first.
  */
-function buildItems(onRequestImage?: () => void): SlashItem[] {
+function buildItems(onRequestImage?: () => void, onRequestVideo?: () => void): SlashItem[] {
   const callouts: SlashItem[] = CALLOUT_TONES.map((tone) => ({
     id: `callout-${tone}`,
     section: "quotes" as const,
@@ -253,6 +262,26 @@ function buildItems(onRequestImage?: () => void): SlashItem[] {
             // between.
             editor.chain().focus().deleteRange(range).run();
             onRequestImage();
+          }
+        }
+      ]
+    : [];
+
+  const video: SlashItem[] = onRequestVideo
+    ? [
+        {
+          id: "video",
+          section: "blocks",
+          label: "Video",
+          hint: "A film uploaded here, or a YouTube, Vimeo or Google Drive address.",
+          icon: Film,
+          keywords: ["video", "film", "youtube", "vimeo", "drive", "google", "embed", "clip"],
+          run: (editor, range) => {
+            // The "/" and its query go first, in their own step, so the document is tidy while the
+            // dialog is open — the author may spend a minute in there, and an autosave could land in
+            // between. The same reason the picture entry does it.
+            editor.chain().focus().deleteRange(range).run();
+            onRequestVideo();
           }
         }
       ]
@@ -296,8 +325,9 @@ function buildItems(onRequestImage?: () => void): SlashItem[] {
     ...blockStyleItems("quotes"),
     ...callouts,
 
-    // ── Blocks and pictures ──────────────────────────────────────────────────
+    // ── Blocks, pictures and film ────────────────────────────────────────────
     ...picture,
+    ...video,
     {
       id: "table",
       section: "blocks",
@@ -355,9 +385,12 @@ function matches(item: SlashItem, query: string): boolean {
   return item.keywords.some((keyword) => keyword.toLowerCase().includes(needle));
 }
 
-export function SlashCommands({ editor, onRequestImage }: SlashCommandsProps) {
+export function SlashCommands({ editor, onRequestImage, onRequestVideo }: SlashCommandsProps) {
   const listboxId = useId();
-  const items = useMemo(() => buildItems(onRequestImage), [onRequestImage]);
+  const items = useMemo(
+    () => buildItems(onRequestImage, onRequestVideo),
+    [onRequestImage, onRequestVideo]
+  );
   const [highlighted, setHighlighted] = useState(0);
   /** The document position of a "/" the reader dismissed. Null once the trigger has moved on. */
   const [dismissedFrom, setDismissedFrom] = useState<number | null>(null);
