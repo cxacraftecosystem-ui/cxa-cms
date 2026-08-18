@@ -106,9 +106,9 @@ const documentSchema = z.record(z.string(), z.unknown(), {
 
 /**
  * Answers exactly what is stored for this group, repaired field by field where the stored document has
- * drifted (see `getSetting`). `../route.ts` answers all seven at once for the screen's first render; this
- * exists so the nested address is not a 405 for a read, which is the sort of asymmetry that sends somebody
- * hunting for a second bug after they have found the first.
+ * drifted (see `getSetting`). `../route.ts` answers every group at once for the screen's first render;
+ * this exists so the nested address is not a 405 for a read, which is the sort of asymmetry that sends
+ * somebody hunting for a second bug after they have found the first.
  */
 export const GET = route(async (_request: Request, context: RouteContext) => {
   await requireCapability(canManageSettings, NEEDS_ADMIN);

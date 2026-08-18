@@ -66,6 +66,7 @@ import { usePublishNotice } from "@/components/studio/usePublishNotice";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { RichTextEditor, type EditorMediaKind } from "@/components/studio/editor/RichTextEditor";
+import { LocationMap } from "@/components/studio/fields/LocationMap";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
@@ -849,6 +850,26 @@ export function CraftEditor({
             className="font-mono text-xs"
           />
         </Field>
+
+        {/*
+          THE MAP, BESIDE THE TWO BOXES RATHER THAN INSTEAD OF THEM. A craft's origin is a village more
+          often than a city, and a village is far easier to find by name than to look up as a pair of
+          decimals. `LocationMap` carries MapTiler's tiles and a place search; the boxes still accept a
+          coordinate somebody already has.
+
+          ⚠ THE VALUES ARE DRAFT STRINGS ON THIS SCREEN and stay that way. `toFloatOrNull` is what the
+          rest of this form already reads them through, so the pin follows a half-typed value to null
+          rather than jumping to zero — and the picker hands back strings fixed to seven decimals, so
+          nothing is re-formatted on the way in.
+        */}
+        <LocationMap
+          latitude={latitude}
+          longitude={longitude}
+          ariaLabel={`Map for placing “${value.name.trim() || "this craft"}”. Click where it comes from.`}
+          onPick={(nextLatitude, nextLongitude) =>
+            update({ latitude: nextLatitude, longitude: nextLongitude })
+          }
+        />
 
         {halfACoordinate ? (
           <div className="sm:col-span-2">

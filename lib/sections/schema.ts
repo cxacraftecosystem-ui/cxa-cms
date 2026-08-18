@@ -137,7 +137,16 @@ function mediaId(help: string) {
  */
 const screenFraming = screenFramingPayload;
 
-/** A hand-picked list of record ids. The cap is stated in the message, because a silent cap is a lie. */
+/**
+ * A hand-picked list of record ids. The cap is stated in the message, because a silent cap is a lie.
+ *
+ * ⚠ THERE IS ALWAYS A CAP, AND "no cap at all" IS NOT ONE OF THE OPTIONS. A payload lives in a `Json`
+ * column, outlives the code that wrote it, and can arrive from an import, a restored revision or a row
+ * edited by hand — so an unbounded array is a public page that renders as many cards as somebody once
+ * put in it, thousands of records fetched and drawn in a single section because of one bad row. The
+ * number is therefore chosen to sit far past any real list rather than close to it: a cap an editor can
+ * reach is an obstruction, and a cap only a corrupt payload can reach is a guard.
+ */
 function idList(max: number, help: string) {
   return z
     .array(z.string().trim().min(1, "An empty id cannot be saved.").max(40))
@@ -322,7 +331,42 @@ function showcase(options: {
   plural: string;
   /** What "Latest" orders by for this record type. Editors guess wrong when this is not spelled out. */
   latestMeaning: string;
+  /** What the block shows until somebody changes it. Deliberately NOT raised — see `maxLimit`. */
   fallbackLimit: number;
+  /**
+   * The highest "show this many" a STORED payload may carry.
+   *
+   * ⚠ IT IS NOT THE CEILING AN EDITOR MEETS, AND CONFLATING THE TWO IS HOW THIS COMMENT WAS WRONG THE
+   * DAY IT WAS WRITTEN. The studio's number box is capped by `ShowcaseFields`'s own `maxLimit` PROP in
+   * components/studio/sections/ShowcaseForm.tsx, which every call site still sets per block — 24 for a
+   * news grid, 48 for a people strip, 60 for a publication list — because how many cards a block was
+   * drawn to hold is a layout decision. This number is the other kind of cap entirely: a payload lives
+   * in a `Json` column, outlives the code that wrote it, and can arrive from an import, a restored
+   * revision or a hand-edited row, so what it guards against is a block asked to draw a thousand
+   * records, not an editor being ambitious.
+   *
+   * ⚠ ONLY `people` CARRIES 200, AND THE ASYMMETRY IS DELIBERATE RATHER THAN AN OVERSIGHT. That is the
+   * block that answers "who leads this", and the number of people in such a list was asked to be
+   * arbitrary — whatever an administrator picks is what the page shows, so its stored ceiling and its
+   * on-screen one are both 200 and they match. Every other block keeps the figure it was drawn for: a
+   * news grid at 24 is an editorial judgement about a page nobody wants two hundred articles on, and
+   * raising it here would raise it for pages nobody asked to change.
+   *
+   * WHICH MEANS A HAND-PICKED LIST CAN LEGITIMATELY BE LONGER THAN THE BLOCK WILL EVER DRAW, and that
+   * gap is stated on screen rather than discovered on the published page: `ShowcaseFields` warns with
+   * both figures named, says the leftovers stay chosen, and — when the on-screen ceiling cannot be
+   * raised far enough to cover them — says the ceiling out loud instead of sending somebody after a
+   * control that will not go that far (contract §1.6).
+   *
+   * `fallbackLimit` is left exactly where it was: every block already on a page keeps the number it
+   * has, because raising a CEILING must never silently lengthen a page that was fine yesterday. Only
+   * somebody typing a bigger number changes what a page shows.
+   *
+   * It stays a per-block option rather than becoming a constant, and the paragraph above is why: the
+   * callers do NOT all pass the same figure, and the one that differs is the one the product asked to
+   * differ. A logo strip has a width; a list of the people who run something has a length that is a
+   * fact rather than a preference.
+   */
   maxLimit: number;
 }) {
   const { plural, latestMeaning, fallbackLimit, maxLimit } = options;
@@ -342,8 +386,28 @@ function showcase(options: {
       fallback: fallbackLimit,
       help: `At most how many ${plural} to show. Where there are more, the block says how many, so a shortened list never reads as the whole list.`
     }),
+    /**
+     * 200 — THE SAME NUMBER AS `MAX_IDS` IN app/api/studio/lookup/route.ts, AND THE TWO MUST MOVE
+     * TOGETHER.
+     *
+     * That endpoint is what turns a stored list of ids back into titles for the studio, and it REFUSES
+     * a request for more ids than its own cap rather than truncating one. So a list allowed to grow
+     * past the resolve cap does not fail anywhere anybody can read: `EntityPicker` shows every id
+     * beyond it as "deleted, take it out", and an editor doing as they are told destroys picks that
+     * were perfectly good. A schema more generous than the endpoint is not a generous schema, it is a
+     * trap — which is why raising this number without raising that one is not a smaller change, it is
+     * the broken half of this one.
+     *
+     * Why 200 and not simply unbounded: see `idList` above. A stored list with no bound is a page that
+     * a corrupt or imported payload can make render thousands of cards. Two hundred is far past any
+     * real roster — the longest list anyone curates by hand here is the whole staff — so the refusal is
+     * something accidents meet and editors do not. `maxLimit` above is the same figure, so a payload can
+     * always promise to draw as many records as it is allowed to name; what an EDITOR may type into the
+     * "at most how many" box is a smaller, per-block figure set in the studio form, and the gap between
+     * the two is stated on screen there rather than left to be found on the published page.
+     */
     ids: idList(
-      24,
+      200,
       `The ${plural} to show, in order. Used only when the mode above is “Chosen by hand”.`
     ),
     ctaLabel: text(40, `The words on the link below the block, such as “See all ${plural}”.`),
@@ -769,7 +833,7 @@ export const peopleShowcaseSectionSchema = showcase({
   plural: "people",
   latestMeaning: "in the order set on the people page",
   fallbackLimit: 8,
-  maxLimit: 48
+  maxLimit: 200
 }).extend({
   kind: z
     .enum(PERSON_KINDS)

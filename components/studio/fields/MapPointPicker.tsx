@@ -29,16 +29,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import type * as maplibregl from "maplibre-gl";
 
+import { mapTilerConfigured, mapTilerStyleUrl } from "@/lib/geo/basemap";
 import { PlaceSearchBox } from "@/components/studio/fields/PlaceSearchBox";
 import type { PlaceHit } from "@/lib/geo/placeSearch";
-
-/**
- * ⚠ WRITTEN OUT IN FULL, NOT READ THROUGH A VARIABLE. Next's build-time substitution is a literal text
- * replacement on `process.env.NEXT_PUBLIC_*`; a dynamic lookup is not substituted and reads `undefined` in
- * the browser — the trap lib/media/url.ts documents for the CDN base, and it would show here as a map that
- * renders grey with a 403 on every tile.
- */
-const maptilerKey = process.env.NEXT_PUBLIC_MAPTILER_API_KEY;
 
 /**
  * Whether a map can be drawn at all in this build.
@@ -46,9 +39,15 @@ const maptilerKey = process.env.NEXT_PUBLIC_MAPTILER_API_KEY;
  * Exported so a caller can decide NOT TO OFFER the control rather than offering one that opens onto a grey
  * rectangle. A build without the key is a legitimate deployment, and a "Place on the map" control that does
  * nothing reads as a broken studio rather than as a missing key.
+ *
+ * ⚠ IT IS NOW A DELEGATION, AND THE KEY IS READ IN ONE PLACE. This file used to hold its own
+ * `process.env.NEXT_PUBLIC_MAPTILER_API_KEY` and build its own style URL inline — which is exactly how
+ * the studio came to draw MapTiler while the two public maps drew OpenStreetMap raster tiles, with
+ * nothing tying the two answers together. `lib/geo/basemap.ts` is that one answer now, for the studio
+ * and the site alike.
  */
 export function mapPickerAvailable(): boolean {
-  return Boolean(maptilerKey);
+  return mapTilerConfigured();
 }
 
 export type MapLibre = typeof maplibregl;
@@ -160,7 +159,9 @@ export function MapPointPicker({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !maptilerKey) return;
+    // The same gate the caller has already applied, restated here because this effect is the thing that
+    // would actually open a canvas onto a 403. See `mapPickerAvailable`.
+    if (!container || !mapTilerConfigured()) return;
     // Closing the panel (or unmounting the form) before the download lands must not leave a map attached to
     // a container React has already taken back.
     let cancelled = false;
@@ -172,7 +173,11 @@ export function MapPointPicker({
         moduleRef.current = maplibre;
         const map = new maplibre.Map({
           container,
-          style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${maptilerKey}`,
+          // ⚠ NEVER NULL ON THIS PATH: the caller has already asked `mapPickerAvailable()` and does not
+          //   render the picker without a key. `?? ""` would be a well-formed URL that MapTiler answers
+          //   with a 403, which is a grey canvas rather than an absent control — so the branch throws the
+          //   possibility away rather than papering over it with an address that cannot work.
+          style: mapTilerStyleUrl() ?? undefined,
           center: lat !== null && lon !== null ? [lon, lat] : INDIA_CENTRE,
           zoom: lat !== null && lon !== null ? 12 : 4
         });

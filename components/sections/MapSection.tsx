@@ -13,21 +13,26 @@
  * and been helped by an empty grey rectangle.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
- * THE STYLE IS BUILT INLINE, as a single raster source. A hosted style JSON is the usual way to get a
- * map and it is also an API key, a rate limit, a third-party outage and a request to somebody else's
- * server on every page view. A raster tile URL is none of those things: it needs no key and no
- * account, and swapping the provider is one environment variable.
+ * THE BASEMAP IS MAPTILER, AND IT IS CHOSEN IN `lib/geo/basemap.ts` RATHER THAN HERE.
  *
- * ⚠ THE DEFAULT IS OPENSTREETMAP'S OWN TILE SERVER, and OSM's tile usage policy is explicitly not
- * suitable for heavy production traffic — it is a volunteer-funded service intended for development
- * and low-volume use. A deployment that expects real traffic MUST point
- * `NEXT_PUBLIC_MAP_TILE_URL` at its own tile server or a commercial one (MapTiler, Stadia, Protomaps,
- * a self-hosted renderer) and set `NEXT_PUBLIC_MAP_ATTRIBUTION` to match. Leaving the default in
- * place at volume is discourteous and will eventually be blocked.
+ * This file used to build its own style inline, as a single raster source from
+ * `NEXT_PUBLIC_MAP_TILE_URL`. The argument for that was real — a raster URL needs no key, no account
+ * and no third party — but it produced a worse problem than the one it solved: the studio's pin
+ * picker drew MapTiler's VECTOR tiles, so an editor placed a pin on one map and a reader saw the same
+ * place on a different map, in different colours, with different labels and a different zoom ceiling.
+ * One module now answers "what does a map on this site look like" for both sides.
  *
- * ⚠ Both variables are written out IN FULL as `process.env.NEXT_PUBLIC_*`. Next's substitution is a
- * literal text replacement; a dynamic lookup like `process.env[name]` is not substituted and reads
- * `undefined` in the browser (the same trap `lib/media/url.ts` documents for the CDN base).
+ * ⚠ THE RASTER PATH IS KEPT AS THE FALLBACK and is still configurable. A build with no
+ * `NEXT_PUBLIC_MAPTILER_API_KEY` is a legitimate deployment — CI runs as one — and a public page whose
+ * map is a grey rectangle is worse than one drawn on OpenStreetMap's tiles. ⚠ OSM's tile usage policy
+ * is explicitly NOT suitable for production traffic, so a deployment running without a MapTiler key at
+ * volume must still point `NEXT_PUBLIC_MAP_TILE_URL` at its own tile server and set
+ * `NEXT_PUBLIC_MAP_ATTRIBUTION` to match.
+ *
+ * ⚠ THE ATTRIBUTION FOLLOWS THE SOURCE. MapTiler's terms require both MapTiler and OpenStreetMap to be
+ * credited; the raster fallback credits OpenStreetMap alone. `basemapAttribution()` returns the line
+ * for whichever is in force, which is why `MapAttribution` below prints a function call rather than a
+ * constant — a page must not credit one source while the canvas draws the other.
  *
  * THE LIBRARY AND ITS STYLESHEET ARE LOADED INSIDE THE EFFECT, not at the top of the file.
  * `SectionRenderer` imports every renderer statically, so a top-level `import "maplibre-gl"` would
@@ -49,6 +54,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { PageSection } from "@prisma/client";
 import type { Map as MapLibreMap, StyleSpecification } from "maplibre-gl";
+
+import { basemapAttribution, mapTilerStyleUrl, rasterBasemapStyle } from "@/lib/geo/basemap";
 import { ExternalLink, MapPin } from "lucide-react";
 
 import { Reveal } from "@/components/motion";
@@ -57,13 +64,19 @@ import { LinkButton } from "@/components/ui/Button";
 import type { MapSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
 
-/** OpenStreetMap's own tiles. Development and low volume only — see the header. */
-const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const DEFAULT_ATTRIBUTION = "© OpenStreetMap contributors";
-
-const TILE_URL = (process.env.NEXT_PUBLIC_MAP_TILE_URL ?? "").trim() || DEFAULT_TILE_URL;
-const TILE_ATTRIBUTION =
-  (process.env.NEXT_PUBLIC_MAP_ATTRIBUTION ?? "").trim() || DEFAULT_ATTRIBUTION;
+/**
+ * ⚠ THE BASEMAP IS DECIDED IN `lib/geo/basemap.ts` AND NOT HERE ANY MORE.
+ *
+ * This file used to build its own raster style from `NEXT_PUBLIC_MAP_TILE_URL`, defaulting to
+ * OpenStreetMap's tiles, while the studio's pin picker drew MapTiler's vector ones — so an editor
+ * placed a pin on one map and a reader saw the same place on a different map, in different colours,
+ * with different labels and a different zoom ceiling. One module now answers "what does a map on this
+ * site look like" for both sides, and it keeps the raster source as the fallback for a build with no
+ * MapTiler key, which is a legitimate deployment and must not render a grey rectangle.
+ *
+ * The hand-drawn India outline (components/map/IndiaMap.tsx) is deliberately outside all of this: it
+ * is SVG geometry rather than a basemap, and the boundary it draws is the official depiction.
+ */
 
 /**
  * purple-700, resolved to sRGB.
@@ -165,19 +178,14 @@ export function MapCanvas({
 
       if (cancelled) return;
 
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          basemap: {
-            type: "raster",
-            tiles: [TILE_URL],
-            tileSize: 256,
-            // Most raster schemes stop at 19; asking for 20 returns 404s that look like a broken map.
-            maxzoom: 19
-          }
-        },
-        layers: [{ id: "basemap", type: "raster", source: "basemap" }]
-      };
+      /**
+       * MapTiler's vector style when there is a key, the raster fallback when there is not.
+       *
+       * maplibre takes either a style URL or a full specification in the same `style` option, which is
+       * what lets one branch answer both. See `lib/geo/basemap.ts` for why the fallback is kept.
+       */
+      const style: string | StyleSpecification =
+        mapTilerStyleUrl() ?? (rasterBasemapStyle() as StyleSpecification);
 
       const first = coordinates[0];
       const origin: [number, number] | null =
@@ -294,7 +302,12 @@ export function MapCanvas({
 export function MapAttribution({ className }: { className?: string }) {
   return (
     <p className={cn("mt-2 text-xs text-ink-500", className)}>
-      Map data {TILE_ATTRIBUTION}
+      {/*
+        ⚠ THE CREDIT FOLLOWS THE SOURCE. MapTiler's terms require both MapTiler and OpenStreetMap to be
+        named; the raster fallback credits OpenStreetMap alone. `basemapAttribution()` returns the line
+        for whichever is actually in force, so this cannot print one while the canvas draws the other.
+      */}
+      Map data {basemapAttribution()}
     </p>
   );
 }

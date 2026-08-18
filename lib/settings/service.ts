@@ -48,7 +48,7 @@ function defaultsFor<K extends SettingsGroup>(key: K): SettingsOf<K> {
  * Turn a stored JSON document into a valid settings object, salvaging what is salvageable.
  *
  * Only called for a row that EXISTS — a group nobody has saved yet is not a fault and must not warn,
- * or a fresh install prints seven warnings at boot and teaches its operator to ignore them.
+ * or a fresh install prints one warning per group at boot and teaches its operator to ignore them.
  */
 function resolve<K extends SettingsGroup>(key: K, stored: unknown): SettingsOf<K> {
   const schema = settingsSchema(key);
@@ -102,8 +102,8 @@ function resolve<K extends SettingsGroup>(key: K, stored: unknown): SettingsOf<K
  * One group.
  *
  * Prefer `getSettingsCached()` on a render path — a header and a footer both calling this one cost
- * two queries, where the cached reader costs one for all seven groups. This exists for route handlers
- * and jobs that genuinely need a single group and no request-scoped memo.
+ * two queries, where the cached reader costs one for every group there is. This exists for route
+ * handlers and jobs that genuinely need a single group and no request-scoped memo.
  */
 export async function getSetting<K extends SettingsGroup>(key: K): Promise<SettingsOf<K>> {
   const row = await readRow(key);
@@ -143,8 +143,8 @@ async function readRow(key: SettingsGroup): Promise<{ value: unknown } | null> {
 /**
  * Every group, in one query.
  *
- * Seven documents is a few kilobytes; issuing seven round trips to fetch them separately costs more
- * than reading the lot. Groups with no row simply take their defaults.
+ * Every group together is a few kilobytes; a round trip each to fetch them separately costs more than
+ * reading the lot. Groups with no row simply take their defaults.
  */
 export async function getSettings(): Promise<SettingsMap> {
   // Same tolerance as `readRow`, and for the same reason: this is called by the site layout, which the

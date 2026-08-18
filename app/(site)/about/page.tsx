@@ -32,6 +32,14 @@
  * NO EDITOR-FACING MESSAGE EVER REACHES A VISITOR. There is deliberately no "this page has not been
  * written yet" — that is a message for the Centre, and the studio's own screens are where it belongs
  * (the same asymmetry `SectionRenderer` applies to a broken block).
+ *
+ * ⚠ THE LEADERSHIP SECTION HAS TWO SOURCES TOO, AND THE CONFIGURED ONE IS ABSOLUTE. The `leadership`
+ * settings group is a curation control: while its `personIds` list holds anything, those people in that
+ * order ARE the section — any kind of person, no cap, and no truncation sentence, because an administrator
+ * who has named eleven people has already answered the question a cap exists to answer. While the list is
+ * empty the section is the automatic query it has always been: FACULTY and SCIENTIST, `LEADERSHIP_LIMIT`
+ * of them, and the sentence that says so when it bites. Empty is the state every installation starts in,
+ * which is what makes the control safe to deploy before anybody has touched it.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * A SERVER COMPONENT throughout; `Reveal` and `CountUp` are the only client pieces.
@@ -59,12 +67,20 @@ import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { resolveSectionData } from "@/lib/sections/resolve";
 import { pageMetadata } from "@/lib/seo";
-import { getSettingsCached } from "@/lib/settings/service";
+import { getSettingCached, getSettingsCached } from "@/lib/settings/service";
 import { truncateWords } from "@/lib/utils";
 import { prerenderSafe } from "@/lib/prerender";
 import { SETTINGS_DEFAULTS } from "@/lib/settings/schema";
 
-/** How many faculty the default page shows. Stated on screen when it bites. */
+/**
+ * How many faculty the AUTOMATIC list shows. Stated on screen when it bites.
+ *
+ * ⚠ IT DOES NOT APPLY TO THE CONFIGURED LIST, and that is the point of the setting rather than an
+ * oversight. A cap answers "this query could return the whole establishment, so where does the page
+ * stop?" — a question a named list has already answered. Capping a curation control would drop the ninth
+ * person an administrator deliberately chose, and there is no honest sentence to print underneath it:
+ * "showing 8 of the 11 you picked" describes a fault, not a decision.
+ */
 const LEADERSHIP_LIMIT = 8;
 
 const BREADCRUMBS = [
@@ -78,6 +94,34 @@ const BREADCRUMBS = [
  * and never rendered.
  */
 const mediaSelect = MEDIA_IMAGE_SELECT satisfies Prisma.MediaAssetSelect;
+
+/**
+ * The columns a leadership card needs — written ONCE, because two different queries now feed the same
+ * cards and the same framing pass.
+ *
+ * ⚠ ONE SELECT RATHER THAN TWO COPIES, and the reason is the shape of the bug it prevents. A column added
+ * to the automatic query and forgotten in the configured one would leave the section perfect on every
+ * installation nobody has curated and quietly wrong on the ones that have — the hardest arrangement to
+ * notice, because each half looks complete on its own and the site that is wrong is the site with an
+ * administrator who cared enough to configure it. It also keeps the two row types identical, which is what
+ * lets `shownPeople` below be either of them without a cast.
+ */
+const personSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  designation: true,
+  department: true,
+  // The portrait's id and its framing beside the joined row: `pictureFromMap` resolves the base
+  // photograph out of the media map BY ID, like any bucket that names an alternate, so a row
+  // with the relation and no id cannot be framed at all (lib/media/screens.ts).
+  photoId: true,
+  photoScreens: true,
+  photo: { select: mediaSelect }
+} satisfies Prisma.PersonSelect;
+
+/** One card's worth of a person, whichever of the two lists it arrived in. */
+type LeadershipPerson = Prisma.PersonGetPayload<{ select: typeof personSelect }>;
 
 /**
  * The `Page` row, memoised for the duration of ONE request.
@@ -195,79 +239,184 @@ export default async function AboutPage() {
 }
 
 /**
+ * The CONFIGURED leadership list: the exact people an administrator named, in the order they named them.
+ *
+ * ⚠ PRISMA ANSWERS AN `in` IN INDEX ORDER, NEVER IN ARGUMENT ORDER. The database returns the matching
+ * rows however its index walk found them, which on a curation control is the worst default there is: the
+ * ordering IS the content of the setting — who is listed first is a statement — and a page that silently
+ * rearranges it reads as a control that does not work rather than as a query with no `ORDER BY`. There is
+ * no column to sort on either, because the order lives in the JSON array and nowhere in the `Person` row,
+ * so the positions the setting gave are what the rows are sorted back into here.
+ *
+ * ⚠ THE PUBLICATION FILTERS STILL APPLY. Choosing somebody in settings does not publish them, and a
+ * draft, a soft-deleted or a hidden profile must not reach the public site through a second door. Those ids
+ * simply resolve to nothing and the person is absent — the same thing that happens to them in every other
+ * listing, which is why nothing is said on screen about it.
+ *
+ * NO `take` AND NO CAP: the ids are already a bounded list — `MAX_LEADERSHIP` is enforced where the
+ * setting is saved — so there is no unbounded payload for a cap to protect against, and nothing to state.
+ *
+ * The settings read costs NOTHING EXTRA. `getSettingCached` goes through the same request-scoped
+ * `getSettingsCached` memo the caller below already awaits, so the two see one settings query between them
+ * and, being one memo, they cannot disagree halfway down the page about which list is in force.
+ */
+async function loadCuratedLeadership(
+  live: ReturnType<typeof liveStatusWhere>
+): Promise<LeadershipPerson[]> {
+  const { personIds } = await getSettingCached("leadership");
+  // The unconfigured site is the common case and must not pay a round trip to be told what is already
+  // known: an empty `in` list matches nothing.
+  if (personIds.length === 0) return [];
+
+  const people = await prisma.person.findMany({
+    where: { ...live, isVisible: true, id: { in: personIds } },
+    select: personSelect
+  });
+
+  // Built from the SETTING rather than from the rows, so an id that resolved to nothing costs a gap in the
+  // numbering and nothing else — the people either side of a deleted colleague keep their places.
+  const position = new Map(personIds.map((id, index) => [id, index] as const));
+  // The fallback cannot fire: every row came back from this very list. It is `personIds.length` rather
+  // than `0` all the same, because a run of equal keys is a sort that leaves the database's own order
+  // untouched — which is precisely the bug this function exists to prevent, wearing a smaller costume.
+  return people.sort(
+    (left, right) =>
+      (position.get(left.id) ?? personIds.length) - (position.get(right.id) ?? personIds.length)
+  );
+}
+
+/**
  * The default page: settings, the faculty, and the corpus as it stands.
  *
- * Split out as its own async component so the builder path above reads as one decision, and so the four
- * reads below are not issued at all on a route the studio has taken over.
+ * Split out as its own async component so the builder path above reads as one decision, and so the reads
+ * below are not issued at all on a route the studio has taken over.
  */
 async function ComposedAboutPage({ title }: { title: string | null }) {
   const live = liveStatusWhere();
 
   /**
    * Guarded, because `next build` renders this page and an unreachable database would fail the whole
-   * deploy. The fallback is the shipped defaults plus empty counts, and the page below already draws
-   * that state honestly — a `revalidate` window replaces it with the real figures. See lib/prerender.ts.
+   * deploy. The fallback is the shipped defaults, no people of either kind and empty counts, and the page
+   * below already draws that state honestly — a `revalidate` window replaces it with the real figures. See
+   * lib/prerender.ts.
    */
-  const [settings, faculty, areaCount, projectCount, publicationCount, peopleCount] =
-    await prerenderSafe(
-      "about",
-      () =>
-        Promise.all([
+  const [
+    settings,
+    curatedLeadership,
+    faculty,
+    areaCount,
+    projectCount,
+    publicationCount,
+    peopleCount
+  ] = await prerenderSafe(
+    "about",
+    () =>
+      Promise.all([
         getSettingsCached(),
+        // BESIDE the automatic query rather than instead of it. Which of the two the page draws is decided
+        // by the very setting this call reads, so choosing first would mean awaiting the settings row
+        // before any of these queries could start — a serial round trip charged to every visitor in order
+        // to save one query on the installations that have curated a list. Both are issued instead, and on
+        // a curated site the nine rows the automatic query returns are simply thrown away.
+        loadCuratedLeadership(live),
         prisma.person.findMany({
-          // FACULTY and SCIENTIST, which is what "leadership" means in a research centre — and the
-          // section is labelled with exactly that, so the heading matches the query rather than implying a
-          // hierarchy the data does not record. `isVisible` is a second, editor-facing switch beside
-          // publication state: somebody can have a citable page and still be kept out of every listing.
+          // The FALLBACK list, in force only while nobody has configured one. FACULTY and SCIENTIST, which
+          // is what "leadership" means in a research centre — and `leadershipBlurb` below says exactly
+          // that, in so many words, whenever this list is the one on screen, so the SENTENCE under the
+          // heading matches the query rather than implying a hierarchy the data does not record. (The
+          // heading itself is fixed on both paths; only the sentence beneath it branches.) `isVisible` is
+          // a second, editor-facing switch beside publication state: somebody can have a citable page and
+          // still be kept out of listings.
           where: { ...live, isVisible: true, kind: { in: ["FACULTY", "SCIENTIST"] } },
-          // The curated order, ties broken on name exactly as `Person.sortOrder` requires, so the
-          // ordering is TOTAL and the row does not reshuffle between requests.
+          // The editors' own order (`Person.sortOrder`), ties broken on name exactly as that column
+          // requires, so the ordering is TOTAL and the row does not reshuffle between requests. It has
+          // nothing to do with the configured order above, which is a different question answered in a
+          // different place.
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
           // One more than the cap, so "did this list stop early?" is a fact rather than a guess.
           take: LEADERSHIP_LIMIT + 1,
-          select: {
-            id: true,
-            slug: true,
-            name: true,
-            designation: true,
-            department: true,
-            // The portrait's id and its framing beside the joined row: `pictureFromMap` resolves the base
-            // photograph out of the media map BY ID, like any bucket that names an alternate, so a row
-            // with the relation and no id cannot be framed at all (lib/media/screens.ts).
-            photoId: true,
-            photoScreens: true,
-            photo: { select: mediaSelect }
-          }
+          select: personSelect
         }),
         prisma.researchArea.count({ where: live }),
         prisma.project.count({ where: live }),
         prisma.publication.count({ where: live }),
         prisma.person.count({ where: { ...live, isVisible: true } })
+      ]),
+    // Positionally matched to the reads above: the shipped defaults, neither leadership list, and zero for
+    // every count. `SETTINGS_DEFAULTS` carries an EMPTY `leadership.personIds`, so a build that fell back
+    // to this takes the automatic path and finds nothing — which the empty state below says out loud.
+    [SETTINGS_DEFAULTS, [], [], 0, 0, 0, 0] as const
+  );
 
-        ]),
-      [SETTINGS_DEFAULTS, [], 0, 0, 0, 0] as const
-    );
+  const { branding, contact, seo, leadership } = settings;
 
-  const { branding, contact, seo } = settings;
+  /**
+   * Which of the two lists IS the section.
+   *
+   * ⚠ THE TEST IS ON THE SETTING, NOT ON THE ROWS IT RESOLVED TO. A configured list whose people have all
+   * been unpublished is an EMPTY leadership section, not a silent return to the automatic query: the
+   * administrator's answer to "who leads this Centre" is still on record, and replacing it with a
+   * different set of faces the moment the last chosen one goes out of publication is the reverse of what
+   * the control is for — and it would do it without a word on the page or a line in a log.
+   */
+  const curated = leadership.personIds.length > 0;
+  const shownPeople: LeadershipPerson[] = curated
+    ? curatedLeadership
+    : faculty.slice(0, LEADERSHIP_LIMIT);
+  // Only the automatic list can stop early — the configured one is taken whole — so the sentence below is
+  // false on the curated path and is not reachable from it. Contract §1.6 cuts both ways: a list that
+  // quietly stops must say so, and a list that did not stop must not claim it did.
+  const facultyTruncated = !curated && faculty.length > LEADERSHIP_LIMIT;
 
-  const facultyTruncated = faculty.length > LEADERSHIP_LIMIT;
-  const shownFaculty = faculty.slice(0, LEADERSHIP_LIMIT);
+  /**
+   * What the section is allowed to claim about the people under it, which can no longer be one sentence.
+   *
+   * The automatic list IS the faculty and the scientists, by construction, so it may say exactly that. The
+   * configured list is whoever an administrator named — a director, a chair, a chief administrator, a
+   * student representative — and describing those people as "the Centre's faculty and scientists" would be
+   * this page asserting something about them it has not checked and cannot. Both sentences end on the same
+   * pointer to the directory, because either way the section is a selection and /people is the whole answer.
+   */
+  /**
+   * The heading, which CANNOT be fixed once the list is curated.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ "LEADERSHIP AND FACULTY" IS A CLAIM ABOUT THE QUERY, AND ONLY THE AUTOMATIC QUERY MAKES IT TRUE.
+   * That one asks for `kind: { in: ["FACULTY", "SCIENTIST"] }`, so the heading and the rows agree by
+   * construction. The curated list has NO kind filter at all — deliberately, because an administrator
+   * naming the people who lead the Centre may name a director, a chief administrator and a student
+   * representative and no faculty member whatsoever, and any mix of categories, including none from a
+   * category, has to work. Keeping the old heading over that list would print the word "faculty" above
+   * a row of people who are not faculty.
+   *
+   * So the automatic path keeps the heading that describes it exactly, and the curated path says the
+   * one thing that is true of any list an administrator can produce.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const leadershipTitle = curated ? "Leadership" : "Leadership and faculty";
+
+  const leadershipBlurb = curated
+    ? "The people the Centre lists as its leadership. Every member of the Centre, including students, staff and visiting researchers, is listed on the people page."
+    : "The Centre's faculty and scientists. Every member of the Centre, including students, staff and visiting researchers, is listed on the people page.";
 
   /**
    * The alternate photographs the shown portraits' framings name, in one query.
    *
-   * ⚠ ONLY THE PORTRAITS THAT ARE DRAWN. The query above deliberately takes one row more than the cap so
-   * the truncation can be stated honestly, and fetching alternates for a face nobody sees would be a
+   * ⚠ ONLY THE PORTRAITS THAT ARE DRAWN. The automatic query deliberately takes one row more than the cap
+   * so the truncation can be stated honestly, and fetching alternates for a face nobody sees would be a
    * query for nothing. Unconditional otherwise, because it costs NO query when nothing is framed — which
    * is nearly always, and a prerender that fell back to `[]` therefore costs nothing (lib/media/framing.ts).
+   *
+   * It reads `shownPeople`, never either list by name, which is what makes it right for whichever of the
+   * two is in force — the configured one included, where every row IS drawn and nothing is spare.
    *
    * The cast is deliberate: `Prisma.JsonValue` carries no shape, the studio's route validates the value
    * with `screenFramingField()` on the way in, and the resolver reads every bucket defensively.
    */
-  const facultyFramings = shownFaculty.map(
+  const shownFramings = shownPeople.map(
     (person) => (person.photoScreens ?? null) as unknown as ScreenFraming | null
   );
-  const facultyFramingMedia = await framingAssets(...facultyFramings);
+  const shownFramingMedia = await framingAssets(...shownFramings);
 
   const tagline = branding.tagline.trim();
   const description = seo.defaultDescription.trim();
@@ -389,8 +538,8 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
         <Reveal>
           <SectionHeading
             eyebrow="Who we are"
-            title="Leadership and faculty"
-            description="The Centre's faculty and scientists. Every member of the Centre, including students, staff and visiting researchers, is listed on the people page."
+            title={leadershipTitle}
+            description={leadershipBlurb}
             link={{ href: "/people", label: "All people at the Centre" }}
             className="mb-10"
           />
@@ -402,12 +551,20 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
           empty={{
             icon: Users,
             headingLevel: 3,
-            title: "No faculty are listed yet",
-            description:
-              "Names appear here once a faculty or scientist record is published in the studio."
+            /*
+              A curated section that draws nothing is not the same emptiness as an uncurated one, and the
+              difference is the entire message. On the automatic path nobody has published a faculty record
+              yet; on the curated path somebody HAS chosen people, and their profiles are not published.
+              Telling a reader of the second that "names appear here once a faculty record is published"
+              describes a Centre that does not exist and a task nobody needs to do.
+            */
+            title: curated ? "Nobody in this section is published" : "No faculty are listed yet",
+            description: curated
+              ? "The people this section lists have no published profile at the moment."
+              : "Names appear here once a faculty or scientist record is published in the studio."
           }}
         >
-          {shownFaculty.map((person, index) => (
+          {shownPeople.map((person, index) => (
             <EntityCard
               key={person.id}
               href={`/people/${person.slug}`}
@@ -417,8 +574,8 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
                  Nothing framed resolves to one band, which `MediaImage` ignores. */
               picture={pictureFromMap(
                 person.photoId,
-                facultyFramings[index],
-                withBaseAsset(facultyFramingMedia, person.photoId, person.photo)
+                shownFramings[index],
+                withBaseAsset(shownFramingMedia, person.photoId, person.photo)
               )}
               variant="portrait"
               eyebrow={person.designation?.trim() || undefined}

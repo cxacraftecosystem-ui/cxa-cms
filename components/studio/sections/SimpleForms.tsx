@@ -39,6 +39,7 @@ import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
 import { LinkDestinationField } from "@/components/studio/fields/LinkField";
+import { LocationMap } from "@/components/studio/fields/LocationMap";
 import { NumberField, ShowcaseFields, showcaseHelp } from "@/components/studio/sections/ShowcaseForm";
 import type { SectionFormProps } from "@/components/studio/sections";
 
@@ -477,11 +478,31 @@ export function MapForm({ data, onChange, onDirty }: SectionFormProps<MapSection
         />
       </div>
 
+      {/*
+        THE MAP, ON THE BLOCK WHOSE ENTIRE PURPOSE IS TO DRAW ONE. This was two number boxes and a
+        sentence telling an editor to go and find the numbers in some other map service — on the one
+        control in the studio that exists to put a pin on a page. `LocationMap` carries MapTiler's
+        tiles and a place search, which is the same map the published block now draws (lib/geo/basemap.ts),
+        so what an editor places a pin on and what a reader sees are the same map.
+
+        ⚠ BOTH NUMBERS IN ONE `update`. Writing them one at a time flashes a half-moved pin, and this
+        payload's "no location chosen yet" is the PAIR being zero — so a half-written pick would read as
+        a real place in the Atlantic for one render.
+      */}
+      <LocationMap
+        latitude={noLocation ? null : data.latitude}
+        longitude={noLocation ? null : data.longitude}
+        ariaLabel={`Map for placing “${data.heading.trim() || "this map block"}”. Click where the place is.`}
+        onPick={(latitude, longitude) =>
+          update({ latitude: Number(latitude), longitude: Number(longitude) })
+        }
+      />
+
       {noLocation ? (
         <HelpText tone="warn">
           No place has been set yet, so the map is not drawn and the address below is shown on its own.
-          Find the Centre in a map service, copy the two numbers it gives, and paste them above — latitude
-          first. Swapping the two puts the pin in the sea.
+          Use the map above to find it, or paste the two numbers — latitude first. Swapping the two puts
+          the pin in the sea.
         </HelpText>
       ) : null}
 

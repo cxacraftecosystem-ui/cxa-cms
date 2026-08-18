@@ -55,7 +55,14 @@ import { getSettings, setSetting } from "@/lib/settings/service";
 
 export const dynamic = "force-dynamic";
 
-/** How many groups one request may carry. There are seven; the cap is protection, not a policy. */
+/**
+ * How many groups one request may carry: exactly as many as there ARE, derived rather than typed out,
+ * so adding a group can never leave a cap behind that refuses a save of everything at once.
+ *
+ * It is protection rather than a policy, and what it protects against is a body full of names that are
+ * no group at all — every one of those is answered with a named refusal in `outcomes` below, so without
+ * a ceiling a thousand invented keys become a thousand sentences assembled and sent back.
+ */
 const MAX_GROUPS_PER_REQUEST = SETTINGS_GROUPS.length;
 
 /**
@@ -163,8 +170,8 @@ const handleWrite = route(async (request: NextRequest) => {
     );
   }
 
-  // Assembled once per request and handed to every `setSetting` call, so seven audit entries from one save
-  // all carry the same actor, address and browser.
+  // Assembled once per request and handed to every `setSetting` call, so every audit entry a single save
+  // produces carries the same actor, address and browser.
   const context = buildAuditContext(request, user);
 
   const outcomes: GroupOutcome[] = [];

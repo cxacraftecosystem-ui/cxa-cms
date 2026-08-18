@@ -1,7 +1,11 @@
 "use client";
 
 /**
- * SettingsForm — one tabbed screen over the seven settings groups, GENERATED FROM THEIR ZOD SCHEMAS.
+ * SettingsForm — one tabbed screen over every settings group, GENERATED FROM THEIR ZOD SCHEMAS.
+ *
+ * (How many groups there are is `SETTINGS_GROUP_KEYS`'s business and is deliberately not counted out in
+ * this file: a tally in a comment is wrong the first time a group is added, and every sentence below that
+ * used to name one had already gone stale by the time the next one arrived.)
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * THE FORM IS DERIVED, NOT WRITTEN OUT. `lib/settings/schema.ts` is the single description of what a
@@ -32,7 +36,7 @@
  * is no partial state in which the site name has changed and the tagline has not.
  *
  * ⚠ THIS SCREEN ANSWERS "IS THIS GROUP UNSAVED", NOT `useAutosave`. That hook holds ONE baseline, taken
- * when it mounts, and one bar here stands over seven documents. Asked about the tab in front of it, a
+ * when it mounts, and one bar here stands over a document per group. Asked about the tab in front of it, a
  * single hook compares the CONTACT document against the BRANDING baseline it froze at mount, so simply
  * changing tab reads as an edit: the bar says "Unsaved changes" with a Discard beside it, the whole-studio
  * leave guard arms over work nobody did, and Save writes an unaltered document — a revision and an audit
@@ -60,7 +64,9 @@ import {
   BRANDING_ACCENT_NOTE,
   FEATURE_FLAGS,
   HERO_MODES,
+  LEADERSHIP_LIST_NOTE,
   MAX_FEATURED_CRAFTS,
+  MAX_LEADERSHIP,
   SEO_INDEXING_NOTE,
   SETTINGS_GROUPS,
   SOCIAL_PLATFORMS,
@@ -228,6 +234,20 @@ const COPY: Record<string, FieldCopy> = {
     label: "What the note says",
     help: "Shown in place of the numbers. Say what is happening and when the counts will be right again.",
     multiline: true
+  },
+
+  /*
+   * The one entry whose sentence is IMPORTED rather than written here, and the reason is the sentence
+   * itself. It says what an empty list does — the About page falls back to every published faculty member
+   * and scientist — which is a fact about that route, not a description of a box. Written out a second
+   * time in this table it would be a second opinion about the fallback, and the copy on this screen would
+   * go on promising the old behaviour for as long as it took somebody to notice. `lib/settings/schema.ts`
+   * owns it, carries it on the field's own `.describe()`, and this is the same arrangement the typesetting
+   * group, `FEATURE_FLAGS` and `SEO_INDEXING_NOTE` are already under.
+   */
+  "leadership.personIds": {
+    label: "Who appears in the Leadership section",
+    help: LEADERSHIP_LIST_NOTE
   },
 
   "footer.columns": {
@@ -467,8 +487,8 @@ export function SettingsForm({ settings, diagnostics, storageReady }: SettingsFo
   /**
    * Which group the most recent request was for.
    *
-   * The hook reports one "saving" and one failure for a bar that stands over seven documents, so the
-   * answer has to be attributed: a reader who presses Save and changes tab must not find the tab they
+   * The hook reports one "saving" and one failure for a bar that stands over every group's document, so
+   * the answer has to be attributed: a reader who presses Save and changes tab must not find the tab they
    * moved to claiming to be saving, nor wearing the other group's error.
    */
   const [requestGroup, setRequestGroup] = useState<SettingsGroup | null>(null);
@@ -549,8 +569,8 @@ export function SettingsForm({ settings, diagnostics, storageReady }: SettingsFo
    * half-typed site name saved four seconds after somebody starts editing is the wrong name on every page
    * of the site at once. What the hook is used for here is the request itself — one at a time, never two
    * in flight — and the two facts only it knows: that one is running, and that the last one failed. Its
-   * own baseline is deliberately ignored, because it can hold exactly one and this screen edits seven
-   * documents behind one bar (see the header).
+   * own baseline is deliberately ignored, because it can hold exactly one and this screen edits every
+   * group's document behind one bar (see the header).
    */
   const autosave = useAutosave<Document>({ data: draft, save, enabled: false });
 
@@ -604,8 +624,8 @@ export function SettingsForm({ settings, diagnostics, storageReady }: SettingsFo
    *
    * Each group saves on its own, so switching tabs keeps a draft rather than throwing it away — which is
    * kind, and also a way to leave the screen believing everything was saved. "2 other groups have unsaved
-   * changes" would send somebody hunting through seven tabs; the names are the difference between a number
-   * and a job.
+   * changes" would send somebody hunting through every tab on the screen; the names are the difference
+   * between a number and a job.
    */
   const unsavedElsewhere = dirtyGroups
     .filter((entry) => entry.key !== group)
@@ -824,6 +844,47 @@ function SettingField({
         onChange={(ids) => onChange(ids)}
         error={error}
         footnote="A craft that is not published will not appear on the homepage, even while it is chosen here."
+      />
+    );
+  }
+
+  // ── The Centre's leadership ──────────────────────────────────────────────────────────────────
+  /*
+   * ⚠ `browse`, WHICH THE CRAFTS PICKER DIRECTLY ABOVE DELIBERATELY DOES NOT PASS. The two lists are
+   * arrived at in opposite ways. Somebody featuring crafts has a craft in mind and types its name, so a
+   * search box is exactly the right control. Somebody naming the Centre's leadership is working down a
+   * roster of colleagues: they know the faces, frequently not the spelling, and cannot type a query for a
+   * name they are trying to remember — a search box in front of a list of one's own staff is a memory
+   * test with the answer hidden behind it. `browse` turns the results panel into a tick list over
+   * everybody of this kind and asks the endpoint for the whole roster rather than for the twenty most
+   * recently edited, which is an order nobody picks a leadership team from. It still states on screen when
+   * even that was not everything, so a list that stops early says so (contract §1.6).
+   *
+   * The cap is read off the SCHEMA first, exactly as the crafts branch reads it: a form that accepts more
+   * than the save will take refuses work that has already been done, and there is only one right number
+   * for that. `MAX_LEADERSHIP` is the fallback because `shape.max` comes out of Zod's internals — if a
+   * version bump ever moved `maxLength`, the picker inheriting the component's own default of 24 would
+   * quietly stop an administrator a sixth of the way through the roster with no explanation on screen.
+   */
+  if (shape.kind === "stringList" && path === "leadership.personIds") {
+    return (
+      <EntityPicker
+        kind="person"
+        browse
+        label={copy.label}
+        help={help}
+        ids={asStringList(value)}
+        max={shape.max ?? MAX_LEADERSHIP}
+        onChange={(ids) => onChange(ids)}
+        error={error}
+        /*
+          WHAT THE ROWS ALREADY SHOW, TRANSLATED INTO WHAT IT COSTS. The panel puts a status chip on every
+          row and writes "Hidden from the site" under anybody switched out of the listings, so repeating
+          either of those here would tell an administrator something they can already see. What it does not
+          say is that the About page filters on BOTH — a chosen person passes only if they are published and
+          visible — and that the section's answer to a name it cannot show is simply to draw one card fewer.
+        */
+        footnote="A person who is not published, or whose “Show in the people lists” switch is off, will not appear on the About page even while they are named here — the rows above say which of the two it is. The section draws one card fewer and says nothing, so an absence on the public page is only findable from this screen."
       />
     );
   }

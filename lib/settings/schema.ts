@@ -24,7 +24,10 @@ import {
 } from "@/lib/typography/typeset";
 
 /**
- * Site settings: eight GROUPS, each one validated JSON document, each one row in `Setting`.
+ * Site settings: a set of GROUPS, each one validated JSON document, each one row in `Setting`.
+ * `SETTINGS_GROUP_KEYS` at the foot of this file is the list of them, and the count is deliberately not
+ * written out here: a number in a comment is a number that stops being true the first time somebody adds
+ * a group, and this header has already been wrong about it once.
  *
  * WHY GROUPS AND NOT KEY/VALUE. A settings table with one row per field makes "read everything the
  * header needs" six round trips and gives the type system nothing to check — `settings.get("siteName")`
@@ -152,6 +155,21 @@ const linkHref = z
 export const MAX_DEPARTMENTS = 24;
 export const MAX_SOCIAL_LINKS = 12;
 export const MAX_FEATURED_CRAFTS = 8;
+
+/**
+ * The leadership list's cap, and the reason it is two orders of magnitude above `MAX_FEATURED_CRAFTS`
+ * is that the two lists are not the same kind of list. Eight featured crafts is a strip on the homepage
+ * that has to FIT; the leadership list is a roster, and a Centre with a hundred faculty is an ordinary
+ * Centre rather than a mistake somebody should be stopped from making.
+ *
+ * ⚠ IT IS ALSO NOT A FREE CHOICE. `MAX_IDS` in `app/api/studio/lookup/route.ts` is what resolves a
+ * chosen list back into names for the studio's picker, and a list longer than that cap comes back SHORT
+ * — every id past it drawn as "this record has been deleted, take it out", which is a refusal that reads
+ * as data loss and invites an administrator to delete real choices. The two numbers must move together,
+ * and 200 is what that route is set to today.
+ */
+export const MAX_LEADERSHIP = 200;
+
 export const MAX_FOOTER_COLUMNS = 5;
 export const MAX_FOOTER_LINKS_PER_COLUMN = 12;
 
@@ -604,6 +622,82 @@ export const homepageSettingsSchema = z.object({
 export type HomepageSettings = z.infer<typeof homepageSettingsSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// leadership
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Who the About page names as the Centre's leadership, and the order it names them in.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHY THIS IS A SETTING RATHER THAN A COLUMN ON `Person`.
+ *
+ * An `isLeadership` flag on the person row would look tidier and would put the decision in the wrong
+ * hands: a person record is EDITOR-and-above through `canManageContent`, so anybody who may correct a
+ * colleague's designation could also write themselves into the Centre's public account of who runs it.
+ * That is not an editorial fact about a colleague, it is an institutional claim, and settings
+ * are ADMINISTRATOR-and-above through `canManageSettings` — which is the entire reason it is sited here.
+ * A column also cannot carry an ORDER without a second column, and `Person.sortOrder` is not available
+ * to borrow: it orders the whole roster on the people page, where a different sequence is the right one.
+ *
+ * WHY IT IS NOT A BLOCK ON A PAGE EITHER. `app/(site)/about/page.tsx` is a HAND-COMPOSED route. The page
+ * builder does not own it — it takes the route over wholesale, only when somebody puts visible blocks on
+ * the `Page` row with the slug "about", and until that happens the leadership section, the corpus figures
+ * and the address are assembled in code from records and from settings. So there is no block on the page
+ * as it ships for this list to live on, and inventing one would hand the same EDITOR tier the decision
+ * again, by a longer route.
+ *
+ * ⚠ AN EMPTY LIST IS NOT AN EMPTY SECTION. Nothing here is required, and a fresh installation has chosen
+ * nobody: the section then falls back to every published, visible FACULTY and SCIENTIST, which is what
+ * that route does today and what it must keep doing. A settings group whose default blanked a section of
+ * the About page would make "we have not opened this screen yet" indistinguishable from "we have no
+ * faculty", and the fallback is also the only sensible answer while somebody is halfway through curating.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * The sentence an administrator reads above the picker, WRITTEN ONCE.
+ *
+ * The studio's settings screen keeps its own table of labels and help text, because a label generated
+ * from a key gives "Personids" — but a SECOND wording of this particular sentence would be a second
+ * opinion about what an empty list does, and the two would drift the first time the About page's fallback
+ * changed. So it is exported like `BRANDING_ACCENT_NOTE` and `SEO_INDEXING_NOTE` before it, carried into
+ * the schema by `.describe()` and rendered verbatim by the form.
+ *
+ * It says all three things the choice actually turns on, because each of them is a question somebody asks
+ * this screen: does the order matter, what happens to everybody I leave out, and what does empty mean.
+ */
+export const LEADERSHIP_LIST_NOTE =
+  "Chosen by hand, and this is the order they appear in on the About page — drag to change it. " +
+  "Anybody left out of this list is still on the people page with everybody else; leaving them out of " +
+  "the Leadership section does not hide them from the site. Leave the list empty and the section falls " +
+  "back to showing every published faculty member and scientist instead.";
+
+export const leadershipSettingsSchema = z.object({
+  /**
+   * Ids, never names. A name changes — somebody's title, somebody's spelling — and a reference written as
+   * a name silently stops matching anybody; the About page then draws a shorter section than the one that
+   * was curated, with nothing on screen to say so.
+   *
+   * The 40-character cap is well clear of a `cuid` (25) and is not aimed at the picker, which can only
+   * ever post an id it was given. It is aimed at the stored document: this is a `Json` column that outlives
+   * the code that wrote it and can arrive from a restore, an import or a hand-edited row, and a cap is what
+   * stops a paragraph pasted into the wrong field being carried around as a "person reference" for years.
+   */
+  personIds: z
+    .array(
+      z.string().trim().min(1).max(40, "That does not look like a person reference.")
+    )
+    .max(
+      MAX_LEADERSHIP,
+      `At most ${MAX_LEADERSHIP} people can be named in the Leadership section.`
+    )
+    .default([])
+    .describe(LEADERSHIP_LIST_NOTE)
+});
+
+export type LeadershipSettings = z.infer<typeof leadershipSettingsSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // features
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -729,6 +823,11 @@ export const SETTINGS_GROUP_KEYS = [
   "social",
   "seo",
   "homepage",
+  // Directly after the homepage rather than among the switches: this group and that one are the two
+  // places an administrator hand-picks WHO AND WHAT the site leads with, and they are looked for
+  // together. It is also the last group that changes what a page says; everything below it changes
+  // whether a page exists at all.
+  "leadership",
   "features",
   "footer"
 ] as const;
@@ -776,6 +875,12 @@ const GROUP_META: Record<SettingsGroup, Omit<SettingsGroupMeta, "key">> = {
     description: "How the homepage opens, the news ticker, and which crafts are featured.",
     icon: "Home"
   },
+  leadership: {
+    label: "Leadership",
+    description:
+      "Who appears in the Leadership section on the About page, and the order they appear in.",
+    icon: "Users"
+  },
   features: {
     label: "Features",
     description: "Which whole sections of the site exist. Turning one off hides its pages and its links.",
@@ -810,6 +915,7 @@ export interface SettingsMap {
   social: SocialSettings;
   seo: SeoSettings;
   homepage: HomepageSettings;
+  leadership: LeadershipSettings;
   features: FeaturesSettings;
   footer: FooterSettings;
 }
@@ -828,6 +934,7 @@ export const SETTINGS_SCHEMAS = {
   social: socialSettingsSchema,
   seo: seoSettingsSchema,
   homepage: homepageSettingsSchema,
+  leadership: leadershipSettingsSchema,
   features: featuresSettingsSchema,
   footer: footerSettingsSchema
 } as const satisfies Record<SettingsGroup, z.AnyZodObject>;
@@ -873,6 +980,7 @@ export const SETTINGS_DEFAULTS: SettingsMap = {
   social: socialSettingsSchema.parse({}),
   seo: seoSettingsSchema.parse({}),
   homepage: homepageSettingsSchema.parse({}),
+  leadership: leadershipSettingsSchema.parse({}),
   features: featuresSettingsSchema.parse({}),
   footer: footerSettingsSchema.parse({})
 };

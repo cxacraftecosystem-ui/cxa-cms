@@ -39,6 +39,8 @@ import type {
  * THREE QUESTIONS, ALL `GET`. A read needs no same-origin assertion (lib/api.ts):
  *
  *   ?type=person&q=anita&limit=20    search by name
+ *   ?type=person&limit=200           the same question with nothing to search for — BROWSE, which is
+ *                                    the one form capped by MAX_BROWSE_LIMIT rather than by the fifty
  *   ?type=person&ids=a,b,c           resolve chosen ids to their titles
  *   ?type=page&path=%2Fabout         is anything published at this address?
  *
@@ -100,17 +102,55 @@ const DEFAULT_LIMIT = 20;
 const MAX_SEARCH_LIMIT = 50;
 
 /**
+ * The most rows a BROWSE will return — a request that carries no `q` at all.
+ *
+ * ⚠ A SEPARATE AND HIGHER NUMBER FROM `MAX_SEARCH_LIMIT`, BECAUSE THE REASON FOR THE FIFTY DOES NOT
+ * REACH THIS FORM. Fifty is where a SEARCH stops being read: somebody typing a name wants one row and
+ * will type another letter long before they scroll past fifty near-misses. A tick list is the opposite
+ * job — EntityPicker's `browse` panel exists so that an editor can work down a whole roster ticking as
+ * they go — and a tick list that stops at fifty is indistinguishable from a studio that holds fifty
+ * records (contract §1.6).
+ *
+ * It is a different shape of query as well, which is what makes the higher number affordable. An empty
+ * term produces no `OR` at all (`searchOr` answers `undefined`), so this is a bounded ordered read with
+ * a `take` on `RECENT_FIRST` — not the `contains` scan across several columns that a text search is,
+ * and that scan is the thing the fifty was protecting the database from in the first place.
+ *
+ * `total` is still counted before either cap (rule 1), so whichever one applied, the panel can still
+ * print how much was left out.
+ */
+const MAX_BROWSE_LIMIT = 200;
+
+/**
  * The most ids one request may ask to resolve.
  *
  * Exceeding it is REFUSED rather than truncated, which is the opposite of the search cap and for a
  * concrete reason: an id that comes back unresolved is displayed as "deleted, take it out", so
  * quietly dropping the tail of the list would invite an editor to tidy away twenty perfectly good
- * picks. A refusal is shown by the picker as a sentence saying nothing has been lost. No field in the
- * studio allows a list this long, so in practice this only ever fires on a malformed request.
+ * picks. A refusal is shown by the picker as a sentence saying nothing has been lost.
+ *
+ * ⚠ IT WAS 100, AND IT MOVED TO 200 BECAUSE A CHOSEN LIST MAY NOW HOLD 200 — the leadership list and
+ * the showcase blocks, whose `ids` cap in lib/sections/schema.ts is this same number. THE TWO MUST MOVE
+ * TOGETHER, IN BOTH DIRECTIONS. A stored list longer than this cap fails nowhere a reader can see it:
+ * the tail simply never resolves, and the picker draws every id past the cap as "deleted, take it out"
+ * — precisely the invitation to throw away good picks that the refusal above was written to prevent.
+ * Letting the schema run ahead of this number makes the endpoint the trap rather than the guard.
+ *
+ * THE QUERY STRING HAS THE ROOM FOR IT. A cuid is 25 characters and its separating comma makes 26, so
+ * 200 of them is about 5.2 KB — comfortably inside the 16 KB request line that Node and Vercel both
+ * allow — and `MAX_IDS_CHARS` below is the schema-level guard that keeps it there, rather than a sum in
+ * a comment that nobody re-does the next time this cap moves.
  */
-const MAX_IDS = 100;
+const MAX_IDS = 200;
 
-/** A cuid is 25 characters; 40 each is generous and stops a pasted document becoming a query string. */
+/**
+ * A cuid is 25 characters; 40 each is generous and stops a pasted document becoming a query string.
+ *
+ * At a `MAX_IDS` of 200 that is an 8 KB ceiling on the `ids` parameter alone — half the request line.
+ * The headroom is what keeps the COUNT refinement below the thing that refuses an over-long list, with
+ * a sentence about how many items were sent that an editor can act on, rather than a web server
+ * dropping the request on its length and answering something nobody can read.
+ */
 const MAX_IDS_CHARS = MAX_IDS * 40;
 
 /** Subtitles are one truncated line on screen, so there is nothing to gain from sending more. */
@@ -176,7 +216,15 @@ const LookupQuery = z.object({
     )
     .optional(),
   path: z.string().trim().max(512, "That address is too long to look up.").optional(),
-  limit: boundedInt("The number of results", 1, MAX_IDS)
+  /**
+   * The ceiling is the LARGER of the two caps that legitimately reach it: `MAX_IDS`, because the
+   * resolve form sends `limit=<ids.length>`, and `MAX_BROWSE_LIMIT`, because a browse panel asks for a
+   * whole roster. Pinning it to either one alone means that the day the other is raised, a picker asks
+   * for a number this schema refuses and a panel that was working answers 400 for a reason nothing on
+   * screen can explain. The two are equal today; the `Math.max` is what keeps that a coincidence
+   * instead of a dependency.
+   */
+  limit: boundedInt("The number of results", 1, Math.max(MAX_IDS, MAX_BROWSE_LIMIT))
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -981,6 +1029,13 @@ export const GET = route(async (request: Request) => {
   // An empty search is "the most recently changed", NOT the whole table: the picker opens with the
   // box empty and has to show something useful without reading every row in the database.
   const term = query.q ?? "";
-  const take = Math.min(toInt(query.limit, DEFAULT_LIMIT), MAX_SEARCH_LIMIT);
+
+  // WHICH CAP APPLIES IS DECIDED BY THE TERM, NEVER BY A FLAG THE CLIENT SENDS. A browse simply IS the
+  // request with nothing to search for, so there is no second parameter for a caller to set wrongly and
+  // no way at all to ask for two hundred rows of a `contains` scan. `DEFAULT_LIMIT` is untouched in
+  // both branches: a panel that wants the whole roster has to ask for it by name, and one that asks for
+  // nothing still gets the twenty it has always been given.
+  const ceiling = term.length === 0 ? MAX_BROWSE_LIMIT : MAX_SEARCH_LIMIT;
+  const take = Math.min(toInt(query.limit, DEFAULT_LIMIT), ceiling);
   return answer(await lookup.search(term, take));
 });

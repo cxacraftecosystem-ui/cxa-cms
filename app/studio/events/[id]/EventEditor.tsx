@@ -74,6 +74,7 @@ import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import { ScreenFramingPanel } from "@/components/studio/fields/ScreenFramingPanel";
 import { RichTextEditor, type EditorMediaKind } from "@/components/studio/editor/RichTextEditor";
+import { LocationMap } from "@/components/studio/fields/LocationMap";
 import type { EditorMediaSelection } from "@/components/studio/editor/extensions";
 import { MediaPicker } from "@/components/studio/media/MediaPicker";
 import type { StudioMediaAsset } from "@/components/studio/media/MediaGrid";
@@ -741,6 +742,30 @@ export function EventEditor({
                     onChange={(next) => setValue((current) => ({ ...current, longitude: next }))}
                   />
                 </div>
+
+                {/*
+                  THE MAP, ON THE ONE SCREEN THAT NEEDS IT MOST. An event's venue is the coordinate an
+                  ordinary editor sets most often, and until now it was two number boxes and nothing
+                  else — so placing a workshop in a village meant looking it up somewhere else, copying
+                  two numbers, and having no way to see whether the pin had landed in the right
+                  district. `LocationMap` carries MapTiler's tiles and a place search; type the village
+                  and the camera goes there, and the pin is still placed by hand.
+
+                  ⚠ BOTH NUMBERS IN ONE `setValue`. Writing them one at a time flashes a half-moved pin
+                  and briefly leaves a pair the checks above would mark as out of range.
+                */}
+                <LocationMap
+                  latitude={value.latitude}
+                  longitude={value.longitude}
+                  ariaLabel={`Map for placing the venue of “${value.title.trim() || "this event"}”. Click where it is held.`}
+                  onPick={(latitude, longitude) =>
+                    setValue((current) => ({
+                      ...current,
+                      latitude: Number(latitude),
+                      longitude: Number(longitude)
+                    }))
+                  }
+                />
 
                 <HelpText>
                   Both coordinates are needed before a map is drawn — one on its own is not a place. Leave

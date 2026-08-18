@@ -8,8 +8,12 @@ import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
 import { SettingsForm } from "./SettingsForm";
 
 /**
- * Settings — the Centre's name and logos, its contact details, its social accounts, what search engines
- * see, how the homepage opens, which whole sections of the site exist, and the footer.
+ * Settings — one screen over every group in `lib/settings/schema.ts`: the values that describe the Centre
+ * and the switches that decide which parts of the site exist at all.
+ *
+ * (Which groups those are is `SETTINGS_GROUP_KEYS`'s business and is deliberately not listed here. An
+ * enumeration in a comment is wrong the first time a group is added and nobody thinks to come back for
+ * it — this one had already lost typesetting before it lost leadership.)
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * `requireStudioCapability(canManageSettings)` IS THE FIRST STATEMENT — administrator only, and it is the same

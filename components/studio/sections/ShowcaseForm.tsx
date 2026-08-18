@@ -30,9 +30,23 @@
  * throw away a hand-picked order that cannot be recovered. The form states that, so nobody avoids the
  * experiment out of fear.
  *
+ * THE MANUAL PANEL IS A TICK LIST AS WELL AS A SEARCH BOX. Every showcase passes `browse` to
+ * `EntityPicker`, which keeps the search box exactly where it was and adds a tick box to each row —
+ * and, while that box is empty, asks for the whole roster instead of the twenty most recently edited
+ * records. Both halves are wanted and neither replaces the other: the search answers "which of our two
+ * hundred publications", the tick list answers "who is even here", and nobody can search for a person
+ * they never thought to type. That second question is the whole job of a curation block ("which six of
+ * our people go on the front page"), and a twenty-row search result cannot answer it. Nothing else
+ * about the control changes — ticking still APPENDS to the chosen list above, which is still the thing
+ * that decides the order.
+ *
  * AND THE LIMIT STILL APPLIES IN MANUAL MODE. `manualShowcase()` slices the hand-picked list to
  * `limit`, so choosing ten items with a limit of six shows six. That is the one combination in this
- * form that silently loses content, so it is the one thing the form warns about outright.
+ * form that silently loses content, so it is the one thing the form warns about outright — and it is
+ * the reason the tick list arrived with that warning rewritten rather than left alone. Ticking thirty
+ * people off a roster is thirty clicks and no thought at all about how many the block was ever going
+ * to draw, so the warning went from a corner an editor had to work at to reach to the ordinary result
+ * of using the control as intended.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
@@ -73,8 +87,24 @@ export interface ShowcaseLike {
   ctaHref: string;
 }
 
-/** `idList(24)` in the schema. The chosen list and the picker have to agree on it. */
-const MAX_IDS = 24;
+/**
+ * `idList(200)` in `lib/sections/schema.ts`. The chosen list and the picker have to agree on it.
+ *
+ * ⚠ THE TWO NUMBERS MUST MOVE TOGETHER, IN THE SAME COMMIT, BECAUSE ONLY ONE OF THEM CAN REFUSE
+ * KINDLY. This one stops the two-hundred-and-first tick in the picker, in a sentence, before anything
+ * leaves the browser. The schema's `idList` is the same figure enforced on the way IN, where "too many"
+ * arrives as a refused save carrying a validation message pinned to a field nobody is looking at. So a
+ * picker set HIGHER than the schema lets an editor tick their way into a block that will not save, and
+ * a picker set LOWER quietly withholds room the schema was perfectly willing to give — and neither
+ * failure names the other file.
+ *
+ * It was 24 for as long as the panel was a search box, and 24 is a sensible ceiling on a list built one
+ * search at a time. It is not a sensible ceiling on a tick list drawn over a whole roster, which is
+ * what `browse` puts in front of an editor below: a department of forty people is an ordinary thing to
+ * work down, and a cap that stops at 24 turns that into an unexplained refusal two-thirds of the way
+ * through.
+ */
+const MAX_IDS = 200;
 
 export interface ShowcaseHelp {
   eyebrow?: string;
@@ -128,7 +158,17 @@ export interface ShowcaseFieldsProps<T extends ShowcaseLike> {
    * happens rather than pointing at a switch that does not exist.
    */
   featuredMeaning: string;
-  /** The schema's `.max()` on `limit`. */
+  /**
+   * The highest figure this block's "at most how many to show" box will accept.
+   *
+   * ⚠ IT IS NO LONGER THE SAME NUMBER AS `MAX_IDS`, AND THE WARNING BELOW IS BUILT ON THAT GAP. The
+   * schema's `showcase({ maxLimit })` is what a saved payload is checked against and now reads 200
+   * everywhere, to match the cap on `ids`; what each caller passes here is what the box on SCREEN will
+   * climb to, and several deliberately stay lower, because how many cards a block was designed to draw
+   * is a layout decision and how many ids may be stored is not. The consequence is that a hand-picked
+   * list can legitimately be longer than this block will ever show, so the figure is read inside the
+   * component as well as handed to the number box — see `limitReachesChoice`.
+   */
   maxLimit: number;
   help: ShowcaseHelp;
   /**
@@ -171,6 +211,21 @@ export function ShowcaseFields<T extends ShowcaseLike>({
 
   const manual = data.mode === "manual";
   const overLimit = manual && data.ids.length > data.limit;
+
+  /**
+   * Whether raising the box below can actually cover everything that has been ticked.
+   *
+   * ⚠ IT CANNOT ALWAYS, AND THE WARNING MUST NOT SEND SOMEBODY AFTER A SETTING THAT WILL NOT GO THAT
+   * FAR. The picker now stops at `MAX_IDS` (200) while `maxLimit` is a per-block figure and several
+   * callers deliberately hold it well below that, because it describes a layout rather than a storage
+   * cap. Ticking more records than such a box will ever accept stopped being a contrived case the
+   * moment the panel became a tick list, and the old advice — "raise the number below" — is then an
+   * instruction
+   * that cannot be carried out: the editor raises it to the ceiling, the warning does not go away, and
+   * they are left hunting the screen for a control that does not exist. So the sentence branches, and
+   * the unreachable half says the ceiling out loud and asks for the only remedies there are.
+   */
+  const limitReachesChoice = data.ids.length <= maxLimit;
 
   return (
     <div className="space-y-5">
@@ -238,6 +293,17 @@ export function ShowcaseFields<T extends ShowcaseLike>({
 
       {manual ? (
         <>
+          {/*
+            `browse` is passed by the SHARED half on purpose, so every showcase gets the tick list in one
+            place and no block type can be left behind on the old affordance. A picker that ticks in one
+            block and only adds in the next teaches an editor that the two are different controls doing
+            different things, which is a worse outcome than either behaviour on its own.
+
+            It ADDS a tick list to the search box rather than replacing it — see this file's header for
+            why both are wanted — and it changes nothing else about the picker: same handler, same
+            `aria-pressed`, same `max`, and ticking still appends to the chosen list above rather than
+            re-sorting an order somebody has already arranged.
+          */}
           <EntityPicker
             kind={kind}
             label={`The ${plural} to show`}
@@ -245,6 +311,7 @@ export function ShowcaseFields<T extends ShowcaseLike>({
             ids={data.ids}
             onChange={(ids) => update({ ids })}
             max={MAX_IDS}
+            browse
             footnote={
               <>
                 If one of these is later unpublished it will not appear on the page, and this list will
@@ -254,11 +321,34 @@ export function ShowcaseFields<T extends ShowcaseLike>({
             }
           />
 
+          {/*
+            The one place this form can silently lose content, so it is stated on screen (contract §1.6)
+            instead of being discovered on the published page. Both figures are named — how many are
+            chosen and how many will be drawn — because "some of these will not appear" leaves an editor
+            counting rows to work out where the line falls, and the line is the only thing they need.
+
+            It also says the leftovers are KEPT. `manualShowcase()` slices for display and touches
+            nothing stored, so an over-long list is a page that shows fewer, never a list that has thrown
+            the extras away; without that sentence the obvious reading of a warning is that something has
+            already been lost and the sensible response is to delete rows in a hurry.
+          */}
           {overLimit ? (
             <HelpText tone="warn">
-              You have chosen {data.ids.length}, but the most this block will show is {data.limit}. Only
-              the first {data.limit} in the list above will appear. Raise the number below, or take some
-              out.
+              You have chosen {data.ids.length} {plural}, but this block shows at most {data.limit}. Only
+              the first {data.limit} in the list above will appear on the page. The rest stay chosen here
+              and are not lost.{" "}
+              {limitReachesChoice ? (
+                <>
+                  Raise the number below to {data.ids.length} to show them all, or take{" "}
+                  {data.ids.length - data.limit} out.
+                </>
+              ) : (
+                <>
+                  This kind of block will not go above {maxLimit}, so not all {data.ids.length} can appear
+                  here: raise the number below to {maxLimit} and take {data.ids.length - maxLimit} out, or
+                  leave them chosen and put the rest in a second block.
+                </>
+              )}
             </HelpText>
           ) : null}
         </>
@@ -274,6 +364,30 @@ export function ShowcaseFields<T extends ShowcaseLike>({
         integer
         inputClassName="max-w-[8rem]"
       />
+
+      {/*
+        ⚠ A BLOCK'S OWN FILTERS DO NOT APPLY TO A HAND-PICKED LIST, AND THAT IS STATED RATHER THAN LEFT
+        TO BE DISCOVERED.
+
+        `manualShowcase` in lib/sections/resolve.ts asks only `id in ids` plus the publication filters —
+        a people block's "Only one group", a project block's stage and a publication block's sort are
+        all skipped, deliberately: somebody who hand-picked a completed project into an "Active work"
+        block chose that, and dropping it for failing a filter they did not think applied would be a
+        disappearance with no explanation.
+
+        The consequence is what needed saying. An editor who sets "Only faculty" and then hand-picks a
+        student gets the student, and until now nothing on the screen told them so — they would have
+        set the filter believing it constrained their picks. It is the same rule as the settings
+        panel's: a control that cannot affect what this block draws must not silently look as though it
+        can (contract §10, read from the other end).
+      */}
+      {children && data.mode === "manual" ? (
+        <HelpText>
+          The choices below do not narrow a hand-picked list — you get exactly the {plural} you chose,
+          in your order, whatever group or sort they belong to. They apply again if you switch back to
+          one of the automatic ways of choosing above.
+        </HelpText>
+      ) : null}
 
       {children}
 
@@ -565,7 +679,19 @@ export function PeopleShowcaseForm({
       plural="people"
       latestMeaning="in the order set on the people page"
       featuredMeaning="People have no featured setting, so this shows whoever is at the top of the order set on the people page. Rearrange them there to change who appears."
-      maxLimit={48}
+      /*
+        ⚠ 200, WHERE EVERY OTHER SHOWCASE KEEPS ITS OWN SMALLER FIGURE, AND THE ASYMMETRY IS THE POINT.
+        This is the block that answers "who leads it", and the number of people in it was asked to be
+        arbitrary — whatever the editor picks is what the page shows. A news block capped at 24 is an
+        editorial judgement about a page nobody wants two hundred articles on; a list of the people who
+        run something is a list whose length is a fact rather than a preference.
+
+        It matches `peopleShowcaseSectionSchema`'s own `maxLimit` in lib/sections/schema.ts, which is
+        the ceiling a SAVED payload is checked against. The two must stay equal: a box that cannot
+        reach the schema's number is a control an editor cannot use, and a box that goes past it is a
+        save that fails validation with a message about a number the form invited them to type.
+      */
+      maxLimit={200}
       help={showcaseHelp(PEOPLE)}
     >
       <Field label="Only one group" help={PEOPLE.kind.description}>

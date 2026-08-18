@@ -62,6 +62,8 @@ import type {
   Marker as MapLibreMarker,
   StyleSpecification
 } from "maplibre-gl";
+
+import { mapTilerStyleUrl, rasterBasemapStyle } from "@/lib/geo/basemap";
 import { Layers, MapPin } from "lucide-react";
 
 import { useReducedMotionPreference } from "@/components/motion";
@@ -75,8 +77,19 @@ import type { MediaLike } from "@/lib/media/url";
 import { cn, truncateWords } from "@/lib/utils";
 
 /** OpenStreetMap's own tiles. Development and low volume only — see the header. */
-const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const TILE_URL = (process.env.NEXT_PUBLIC_MAP_TILE_URL ?? "").trim() || DEFAULT_TILE_URL;
+/**
+ * ⚠ THE BASEMAP IS DECIDED IN `lib/geo/basemap.ts` AND NOT HERE ANY MORE.
+ *
+ * This file used to build its own raster style from `NEXT_PUBLIC_MAP_TILE_URL`, defaulting to
+ * OpenStreetMap's tiles, while the studio's pin picker drew MapTiler's vector ones — so an editor
+ * placed a pin on one map and a reader saw the same place on a different map, in different colours,
+ * with different labels and a different zoom ceiling. One module now answers "what does a map on this
+ * site look like" for both sides, and it keeps the raster source as the fallback for a build with no
+ * MapTiler key, which is a legitimate deployment and must not render a grey rectangle.
+ *
+ * The hand-drawn India outline (components/map/IndiaMap.tsx) is deliberately outside all of this: it
+ * is SVG geometry rather than a basemap, and the boundary it draws is the official depiction.
+ */
 
 /**
  * The clustering grid, in SCREEN pixels.
@@ -316,19 +329,12 @@ export function CraftMap({ points, selectedId, onSelect, label, className }: Cra
 
       if (cancelled) return;
 
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          basemap: {
-            type: "raster",
-            tiles: [TILE_URL],
-            tileSize: 256,
-            // Most raster schemes stop at 19; asking for 20 returns 404s that look like a broken map.
-            maxzoom: 19
-          }
-        },
-        layers: [{ id: "basemap", type: "raster", source: "basemap" }]
-      };
+      /**
+       * MapTiler's vector style when there is a key, the raster fallback when there is not. maplibre
+       * takes either a style URL or a full specification in the same option — see lib/geo/basemap.ts.
+       */
+      const style: string | StyleSpecification =
+        mapTilerStyleUrl() ?? (rasterBasemapStyle() as StyleSpecification);
 
       try {
         map = new maplibre.Map({

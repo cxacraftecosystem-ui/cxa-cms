@@ -29,6 +29,8 @@
  * assertion and benefits from being cache-controllable:
  *
  *   GET /api/studio/lookup?type=person&q=anita&limit=20   → search by name
+ *   GET /api/studio/lookup?type=person&limit=200          → the same question with nothing to search
+ *                                                           for: BROWSE, capped higher — see `browse`
  *   GET /api/studio/lookup?type=person&ids=a,b,c          → resolve chosen ids to titles
  *   GET /api/studio/lookup?type=page&path=%2Fabout        → is there anything at this address?
  *
@@ -45,10 +47,26 @@
  *
  * `FieldBlock`, NOT `Field` — this control is made of buttons, and a `<label>` wrapped round buttons
  * forwards stray clicks into them and folds their text into the accessible name (Field.tsx).
+ *
+ * TWO PANELS, ONE COMPONENT. By default the results list is a SEARCH: type a name, get the twenty best
+ * matches, press one to add it. With the opt-in `browse` prop it becomes a TICK LIST over the whole
+ * roster instead — the same rows, the same toggle, the same cap, drawn with tick boxes and asking the
+ * endpoint for everything rather than for a page of it. That prop's own comment sets out why it is a
+ * change of affordance and not of behaviour, and why nothing moves for a picker that does not pass it.
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Check, ChevronDown, GripVertical, Plus, Search, TriangleAlert, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  GripVertical,
+  Plus,
+  Search,
+  Square,
+  SquareCheck,
+  TriangleAlert,
+  X
+} from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
@@ -139,6 +157,18 @@ export const LOOKUP_NOUNS: Record<LookupKind, { one: string; many: string }> = {
 /** How many search results one panel shows. More than this and nobody reads to the bottom. */
 const SEARCH_LIMIT = 20;
 
+/**
+ * How many a `browse` panel asks for while its search box is empty.
+ *
+ * The same number as `MAX_BROWSE_LIMIT` in app/api/studio/lookup/route.ts, which is the cap that
+ * actually applies — this constant only decides what is ASKED for. Asking for more would be trimmed
+ * there and would buy nothing; asking for less would stop a tick list short of a roster the endpoint
+ * was perfectly willing to send, and the notice under the list would then blame a cap that is not the
+ * real one — a shortened list that lies about why it is short is worse than one that simply says so
+ * (contract §1.6).
+ */
+const BROWSE_LIMIT = 200;
+
 /** Quiet time before a search leaves the browser. Long enough not to fire on every letter. */
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -188,6 +218,38 @@ export interface EntityPickerProps {
   /** An extra sentence under the chosen list — what a showcase says about unpublished picks. */
   footnote?: ReactNode;
   /**
+   * Turn the results panel into a TICK LIST over everything of this kind, instead of a search box with
+   * an "add" button beside each hit.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ OPT-IN, AND ABSENT IS THE STATUS QUO. With `browse` unset this component asks for the same
+   * `SEARCH_LIMIT` rows it has always asked for and draws the same Plus/Check glyph, so the media, file
+   * and page pickers behave and render exactly as they do today. Nothing described below happens to a
+   * picker that did not ask for it.
+   *
+   * IT CHANGES THE AFFORDANCE, NOT THE BEHAVIOUR. The rows already toggle — clicking a chosen row takes
+   * it out again, and `aria-pressed` already tells a screen reader which state it is in. A Plus glyph
+   * describes that badly: "add" is a one-way verb, so somebody working down a list of every member of
+   * staff has no reason to believe a second click undoes the first, and takes the long way round
+   * through the chosen list to remove a mis-tick. A tick box says multi-select, and it is the same
+   * control underneath — same handler, same `aria-pressed`, same `max`, same announcements.
+   *
+   * WHY IT ALSO ASKS A DIFFERENT QUESTION. A tick list over the first twenty rows is not a tick list;
+   * it is a search result wearing tick boxes, and those twenty are the twenty most recently EDITED,
+   * which is not an order anybody picks a roster from. So while the box is empty it asks for
+   * `BROWSE_LIMIT`, and the "showing the first N of M" notice still fires when even that was not
+   * everything — a tick list that quietly stops is indistinguishable from a place with that many
+   * records (contract §1.6).
+   *
+   * THE ORDER STILL COMES FROM THE CHOSEN LIST, NOT FROM THIS PANEL. Ticking APPENDS: `add` does
+   * `onChange([...ids, item.id])`, so the default order is the order they were ticked, and the list
+   * above is what actually decides and still drag-reorders. A tick list that re-sorted what an editor
+   * had already arranged — into table order, or into tick order on every repaint — would be exactly the
+   * curation bug this control exists to prevent.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  browse?: boolean;
+  /**
    * Offer an UPLOAD inside the panel, for the two kinds that have somewhere to upload to.
    *
    * ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -234,6 +296,7 @@ function EntityPickerControl({
   max = 24,
   reorderable = true,
   footnote,
+  browse = false,
   upload = false,
   uploadMediaKind
 }: EntityPickerProps) {
@@ -254,7 +317,22 @@ function EntityPickerControl({
    */
   const [known, setKnown] = useState<Record<string, LookupItem>>({});
 
-  const searchPath = useDebouncedValue(lookupSearchPath(kind, query), SEARCH_DEBOUNCE_MS);
+  /**
+   * "This panel was asked to browse AND the box is empty" — the only state that asks for a whole roster.
+   *
+   * ⚠ IT IS NOT THE SAME FLAG AS `browse`, and collapsing the two would be wrong twice over. The moment
+   * somebody types, the request is a text search again and the endpoint caps it at fifty whatever was
+   * asked for, so sending two hundred would buy nothing and only widen a `contains` scan. More
+   * importantly the truncation notice has to say something different in the two cases: "search above to
+   * reach the rest" is an instruction nobody can follow when they have already searched. The tick boxes
+   * themselves stay in BOTH states, because ticking is still what the rows do.
+   */
+  const browsingAll = browse && query.trim().length === 0;
+
+  const searchPath = useDebouncedValue(
+    lookupSearchPath(kind, query, browsingAll ? BROWSE_LIMIT : SEARCH_LIMIT),
+    SEARCH_DEBOUNCE_MS
+  );
   const search = useResource<LookupResponse>(searchPath);
   const resolve = useResource<LookupResponse>(lookupResolvePath(kind, ids));
 
@@ -481,7 +559,12 @@ function EntityPickerControl({
           </p>
         ) : (
           <>
-            {/* A bounded scroller: twenty rows in a form is a form nobody can see the foot of. */}
+            {/*
+              A bounded scroller: twenty rows in a form is a form nobody can see the foot of, and a
+              `browse` panel can put two hundred here. The height stays the same in both, because the
+              list is meant to be scrolled inside its own box — a tick list allowed to grow to its
+              content would push every field beneath it off the screen and hide the Save button.
+            */}
             <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain">
               {searchItems.map((item) => {
                 const chosen = ids.includes(item.id);
@@ -513,6 +596,8 @@ function EntityPickerControl({
                         blocked && "cursor-not-allowed opacity-60"
                       )}
                     >
+                      {browse ? <TickBox ticked={chosen} /> : null}
+
                       <ItemThumbnail item={item} />
 
                       <span className="min-w-0 flex-1">
@@ -526,25 +611,45 @@ function EntityPickerControl({
                         <StatusBadge status={item.status} size="sm" className="shrink-0" />
                       ) : null}
 
-                      <span className="shrink-0 text-ink-500">
-                        {chosen ? (
-                          <Check aria-hidden="true" className="h-4 w-4 text-purple-700" />
-                        ) : (
-                          <Plus aria-hidden="true" className="h-4 w-4" />
-                        )}
-                      </span>
+                      {/*
+                        The "add" affordance, and only on a panel where adding is what a row does. A
+                        `browse` panel has already drawn a tick box at the head of the row, and a second
+                        glyph at the tail saying the same thing in a different vocabulary is how a reader
+                        ends up hunting for the difference between the two.
+                      */}
+                      {browse ? null : (
+                        <span className="shrink-0 text-ink-500">
+                          {chosen ? (
+                            <Check aria-hidden="true" className="h-4 w-4 text-purple-700" />
+                          ) : (
+                            <Plus aria-hidden="true" className="h-4 w-4" />
+                          )}
+                        </span>
+                      )}
                     </button>
                   </li>
                 );
               })}
             </ul>
 
-            {/* A shortened list says so, always (contract §1.6). */}
+            {/*
+              A shortened list says so, always (contract §1.6) — and it has to say the RIGHT thing. On a
+              browse panel the box is empty by definition, so "type more of the name" is an instruction
+              nobody can follow; the sentence has to point at the search box as the way to reach the rows
+              this list stopped short of, or the reader is left believing the studio holds two hundred.
+            */}
             {searchTruncated ? (
-              <p className="mt-1.5 px-1 text-xs leading-relaxed text-ink-500">
-                Showing the first {searchItems.length} of {searchTotal} matches. Type more of the name to
-                narrow it down.
-              </p>
+              browsingAll ? (
+                <p className="mt-1.5 px-1 text-xs leading-relaxed text-ink-500">
+                  Showing the first {searchItems.length} of {searchTotal} {noun.many}, most recently
+                  changed first. Search above to reach the rest.
+                </p>
+              ) : (
+                <p className="mt-1.5 px-1 text-xs leading-relaxed text-ink-500">
+                  Showing the first {searchItems.length} of {searchTotal} matches. Type more of the name to
+                  narrow it down.
+                </p>
+              )
             ) : null}
           </>
         )}
@@ -690,6 +795,31 @@ function ChosenRow({
         </button>
       </span>
     </li>
+  );
+}
+
+/**
+ * The tick box a `browse` panel draws at the head of every result row.
+ *
+ * A GLYPH, NOT AN `<input type="checkbox">`. The row is already a `<button aria-pressed>`, and a real
+ * checkbox inside a button is a control inside a control: the click lands on both, their two states can
+ * disagree for a frame, and a screen reader announces the row twice. So this is `aria-hidden` decoration
+ * that draws what `aria-pressed` already says — the state is never carried by the picture alone.
+ *
+ * The two glyphs differ in SHAPE and not only in tone: an empty square against a square with a tick in
+ * it. Colour never carries meaning on its own (contract §11), so a reader who cannot tell purple-700
+ * from ink-300 still sees which rows are ticked.
+ *
+ * ⚠ IT LEADS THE ROW RATHER THAN TRAILING IT, and that is the whole point of the prop. A box in the left
+ * margin, in a column with the boxes above and below it, is what makes a list read as a list of things
+ * to tick. The same box at the far right of a row reads as a per-row action button — which is exactly
+ * the impression the Plus glyph gives and that `browse` exists to remove.
+ */
+function TickBox({ ticked }: { ticked: boolean }) {
+  return ticked ? (
+    <SquareCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-purple-700" />
+  ) : (
+    <Square aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-300" />
   );
 }
 
