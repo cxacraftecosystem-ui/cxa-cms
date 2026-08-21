@@ -92,6 +92,29 @@ import { SETTINGS_DEFAULTS } from "@/lib/settings/schema";
  */
 const LEADERSHIP_LIMIT = 8;
 
+/**
+ * Five minutes, matching every other settings-driven public page.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ THIS WAS MISSING, AND ITS ABSENCE IS THE SECOND HALF OF "I CHANGED IT AND NOTHING HAPPENED". This
+ * route reads no request-scoped input, so Next prerendered it at build and served that one copy for the
+ * life of the deployment. Not the leadership list, not the address, not the corpus figures, not a word of
+ * an editor's copy would ever change on it again without a redeploy — /contact carries a note saying
+ * exactly that about itself, and this page, which reads MORE settings than that one, had no window at all.
+ *
+ * ⚠ AND `prerenderSafe` BELOW IS NOT ALLOWED TO BE USED WITHOUT ONE. Its own header states the rule and
+ * the reason: a page whose data read fell back is prerendered WITH THE FALLBACK, and with no revalidation
+ * that snapshot is what visitors get until somebody deploys again. So one bad moment at build time — a
+ * database asleep, a network blip — would have published this page with no leadership, no contact details
+ * and four zeros where the counts go, permanently, with every check green.
+ *
+ * Five minutes rather than something shorter because nothing here is time-critical, and rather than
+ * something longer because a corrected telephone number or a newly named director should appear while the
+ * person who changed it is still at their desk.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export const revalidate = 300;
+
 const BREADCRUMBS = [
   { name: "Home", href: "/" },
   { name: "About", href: "/about" }
@@ -306,7 +329,9 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
   /**
    * Guarded, because `next build` renders this page and an unreachable database would fail the whole
    * deploy. The fallback is the shipped defaults, no people of either kind and empty counts, and the page
-   * below already draws that state honestly — a `revalidate` window replaces it with the real figures. See
+   * below already draws that state honestly, and the `revalidate` window at the top of this file replaces
+   * it with the real figures. ⚠ That window is what makes this call legitimate rather than a permanent
+   * empty page, and until it was added this comment was describing something that did not exist. See
    * lib/prerender.ts.
    */
   const [
