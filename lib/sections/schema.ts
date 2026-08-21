@@ -829,12 +829,75 @@ export const projectShowcaseSectionSchema = showcase({
     .describe("Grid shows cover images. List is denser and better for long lists.")
 });
 
+/**
+ * What "Follow the Centre's leadership list" does, written once and read by the studio form.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ IT EXISTS BECAUSE A SETTING NOBODY CAN POINT A BLOCK AT IS A SETTING THAT REACHES NOTHING, WHICH IS
+ * EXACTLY WHAT HAPPENED. `settings.leadership.personIds` was read in ONE place — the composed default in
+ * app/(site)/about/page.tsx — and that path runs only while no `Page` row with the slug "about" carries
+ * any visible blocks. Every installation that has ever been seeded has such a row, About included, so the
+ * builder took the route over and the section a visitor actually read was a PEOPLE_SHOWCASE block on
+ * "The most recent". An administrator could name six colleagues, save, watch the toast, reload /about and
+ * see six different faces, with nothing anywhere saying why.
+ *
+ * So the list becomes something a BLOCK can follow, and the fix is definitive rather than local: any
+ * people block on any page — the About page's own Leadership section, a "Who leads it" block on a
+ * workshop page, a strip in a footer — can be pointed at the one list, and every one of them changes when
+ * an administrator changes it.
+ *
+ * ⚠ THE BLOCK'S OWN "AT MOST HOW MANY" DOES NOT APPLY IN THIS MODE, and that is the requirement rather
+ * than an omission. The number of people who lead something is a fact somebody has already stated by
+ * naming them; a block that took the first four of six would be dropping two people an administrator
+ * deliberately chose, and "showing 4 of 6" is a sentence describing a fault. The studio form therefore
+ * HIDES the number box in this mode instead of leaving a control on screen that cannot affect what the
+ * block draws (contract §10).
+ *
+ * ⚠ NOR DOES THE "ONLY ONE GROUP" FILTER, for the reason the list exists. Leadership is not a person KIND
+ * — it is a director, a chief administrator, two professors and a student representative, in whatever mix
+ * an institution actually has, including several from one group and none from another. A kind filter over
+ * that list would silently delete whoever did not fit.
+ *
+ * AN EMPTY LIST FALLS BACK TO "THE MOST RECENT", on this block's own filters. Empty is the state every
+ * installation starts in, and a block that drew nothing at all until somebody visited a settings screen
+ * would be a blank section under a heading — the very failure the seed's own note about this block warns
+ * against at length.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export const LEADERSHIP_MODE_NOTE =
+  "Shows the people named in Settings → Leadership, in the order set there. Everyone on that list " +
+  "appears — any mix of groups, and however many there are — so neither the group filter nor the " +
+  "“at most how many” box applies. Only an administrator can change who is on it, which is the point " +
+  "of it: it is one answer to “who runs this Centre”, and every block set this way gives it. While " +
+  "that list is empty this behaves as “The most recent”.";
+
 export const peopleShowcaseSectionSchema = showcase({
   plural: "people",
   latestMeaning: "in the order set on the people page",
   fallbackLimit: 8,
   maxLimit: 200
 }).extend({
+  /**
+   * A FOURTH way of choosing, on this block and no other.
+   *
+   * `.extend()` REPLACES the three-value enum `showcase()` built, which is what keeps the extra option off
+   * the other nine blocks: "the Centre's leadership" is not a way of choosing news items, and an enum wide
+   * enough to store it on a news block is an enum `lib/sections/resolve.ts` would have to answer for on
+   * every record type. Only `PeopleShowcaseSectionData["mode"]` widens, and only the people planner and
+   * the people form read the extra member.
+   *
+   * ⚠ AN OLD PAYLOAD IS UNAFFECTED. The three original words still parse and still mean what they meant,
+   * so every people block already on a page keeps doing exactly what it did — this adds an option nobody
+   * is moved onto.
+   */
+  mode: z
+    .enum(["latest", "featured", "manual", "leadership"])
+    .default("latest")
+    .describe(
+      "How the people are chosen. Latest keeps itself up to date (in the order set on the people page). " +
+        "Featured shows only the ones flagged as featured. Chosen by hand shows exactly the people you " +
+        `pick, in the order you pick them. ${LEADERSHIP_MODE_NOTE}`
+    ),
   kind: z
     .enum(PERSON_KINDS)
     .default("")

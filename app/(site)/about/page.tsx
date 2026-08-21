@@ -33,6 +33,15 @@
  * written yet" — that is a message for the Centre, and the studio's own screens are where it belongs
  * (the same asymmetry `SectionRenderer` applies to a broken block).
  *
+ * ⚠ THE `leadership` SETTING IS NOT ONLY READ HERE, AND ASSUMING IT WAS IS WHAT MADE IT USELESS. This
+ * composed default runs only on the second of the two paths above — no `Page` row, or one with no visible
+ * blocks — and every seeded installation has such a row. So for as long as this was the setting's only
+ * reader, an administrator could name the Centre's leadership, save it, and find /about unchanged, because
+ * the section a visitor was reading came from a PEOPLE_SHOWCASE block that had never heard of it.
+ * `peopleShowcaseSectionSchema` now offers "The Centre's leadership list" as a way of choosing, so the
+ * BLOCK reads the same setting through `leadershipCuration` in lib/sections/resolve.ts. Both paths answer
+ * "who leads the Centre" out of one row; what follows is only about this one.
+ *
  * ⚠ THE LEADERSHIP SECTION HAS TWO SOURCES TOO, AND THE CONFIGURED ONE IS ABSOLUTE. The `leadership`
  * settings group is a curation control: while its `personIds` list holds anything, those people in that
  * order ARE the section — any kind of person, no cap, and no truncation sentence, because an administrator

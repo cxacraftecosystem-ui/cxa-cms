@@ -48,6 +48,21 @@
  * `FieldBlock`, NOT `Field` — this control is made of buttons, and a `<label>` wrapped round buttons
  * forwards stray clicks into them and folds their text into the accessible name (Field.tsx).
  *
+ * THE RESULTS MOVE ON THE KEYSTROKE, AND THE REQUEST STILL WAITS. Those are two different clocks and they
+ * used to be one. The request is debounced, as it must be — a `contains` scan per letter is eight queries
+ * to spell a colleague's name — but the ROWS ALREADY IN THE BROWSER are narrowed on the same terms the
+ * server uses the instant a character is typed, so the panel visibly answers while the authoritative
+ * answer is on its way and replaces itself with it when it lands. Before that, the list sat still for the
+ * debounce plus a round trip, which on a remote database is long enough for an administrator to conclude
+ * the box does nothing and press Enter to make it go — and Enter, in a picker that lives inside record and
+ * section forms, used to reach whatever form was around it. It is now caught here and spent on the only
+ * thing it should mean in a search box: ask now, rather than at the end of the pause.
+ *
+ * ⚠ THE LOCAL NARROWING NEVER SPEAKS AS THE FINAL ANSWER. See `searchItems` for the rule; the short of it
+ * is that "nothing matched" and "showing the first N of M" are both suppressed until the server has
+ * answered the query that is actually in the box, because a preview drawn from a previous answer can be
+ * empty or short for reasons that have nothing to do with what is in the studio (contract §9 and §1.6).
+ *
  * TWO PANELS, ONE COMPONENT. By default the results list is a SEARCH: type a name, get the twenty best
  * matches, press one to add it. With the opt-in `browse` prop it becomes a TICK LIST over the whole
  * roster instead — the same rows, the same toggle, the same cap, drawn with tick boxes and asking the
@@ -55,11 +70,12 @@
  * change of affordance and not of behaviour, and why nothing moves for a picker that does not pass it.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
   GripVertical,
+  LoaderCircle,
   Plus,
   Search,
   Square,
@@ -88,7 +104,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ContentStatus } from "@prisma/client";
 
 import { buildQuery } from "@/lib/client/fetcher";
-import { useDebouncedValue, useResource } from "@/lib/client/useResource";
+import { useResource } from "@/lib/client/useResource";
 import type { MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 import { FieldBlock, useFieldContext } from "@/components/ui/Field";
@@ -169,8 +185,50 @@ const SEARCH_LIMIT = 20;
  */
 const BROWSE_LIMIT = 200;
 
-/** Quiet time before a search leaves the browser. Long enough not to fire on every letter. */
+/**
+ * Quiet time before a search leaves the browser. Long enough not to fire on every letter.
+ *
+ * ⚠ IT IS NOT HOW LONG THE SCREEN WAITS, AND CONFLATING THE TWO IS WHAT MADE THIS BOX FEEL BROKEN. The
+ * rows already on screen are narrowed by what has been typed on the KEYSTROKE — see `settling` below —
+ * so a quarter of a second is what the network waits, not the reader. Before that, three letters into a
+ * colleague's name the panel sat perfectly still for the debounce plus a round trip to the database,
+ * which on a remote one is long enough to conclude the box does nothing and press Enter to make it go.
+ */
 const SEARCH_DEBOUNCE_MS = 250;
+
+/**
+ * A value that follows `wanted` after it has been still for `ms`, and a way to stop waiting.
+ *
+ * `useDebouncedValue` from lib/client/useResource.ts does the first half and nothing can do the second,
+ * which is the whole reason this is here: Enter has to be able to say "now", and a hook that only owns a
+ * timer has no way to be told. Everything else about it is that hook's behaviour, including the rule
+ * about debouncing a STRING rather than an object.
+ *
+ * ⚠ `flush` READS THE LATEST VALUE THROUGH A REF, NOT THROUGH ITS CLOSURE. Bound into the handler at the
+ * render that created it, it would settle whatever the query was one keystroke ago — so Enter would run
+ * the search for "anit" while "anita" was on screen, which is worse than not flushing at all.
+ */
+function useSettledValue(wanted: string, ms: number): readonly [string, () => void] {
+  const [settled, setSettled] = useState(wanted);
+  const latest = useRef(wanted);
+
+  // After every commit, so a handler firing between renders cannot read a stale value.
+  useEffect(() => {
+    latest.current = wanted;
+  });
+
+  useEffect(() => {
+    // Already there — either nothing has been typed, or a flush has just landed it. Arming a timer to
+    // set a value to itself would re-render on every keystroke of a query that has stopped changing.
+    if (settled === wanted) return;
+    const timer = window.setTimeout(() => setSettled(wanted), ms);
+    return () => window.clearTimeout(timer);
+  }, [wanted, ms, settled]);
+
+  const flush = useCallback(() => setSettled(latest.current), []);
+
+  return [settled, flush] as const;
+}
 
 /** Search for records of one kind. `query` may be empty, which asks for the most recent. */
 export function lookupSearchPath(kind: LookupKind, query: string, limit = SEARCH_LIMIT): string {
@@ -329,15 +387,52 @@ function EntityPickerControl({
    */
   const browsingAll = browse && query.trim().length === 0;
 
-  const searchPath = useDebouncedValue(
-    lookupSearchPath(kind, query, browsingAll ? BROWSE_LIMIT : SEARCH_LIMIT),
-    SEARCH_DEBOUNCE_MS
-  );
+  const wantedPath = lookupSearchPath(kind, query, browsingAll ? BROWSE_LIMIT : SEARCH_LIMIT);
+  const [searchPath, flushSearch] = useSettledValue(wantedPath, SEARCH_DEBOUNCE_MS);
   const search = useResource<LookupResponse>(searchPath);
   const resolve = useResource<LookupResponse>(lookupResolvePath(kind, ids));
 
-  const searchItems = useMemo(() => readItems(search.data), [search.data]);
+  const serverItems = useMemo(() => readItems(search.data), [search.data]);
   const resolvedItems = useMemo(() => readItems(resolve.data), [resolve.data]);
+
+  /**
+   * The rows on screen were fetched for a query that is no longer the one in the box.
+   *
+   * BOTH HALVES ARE NEEDED. `searchPath !== wantedPath` is the debounce still counting; `search.isLoading`
+   * is the request that debounce started, still in the air. Leaving either out lets the panel claim to be
+   * finished while it is not — and "finished" is what licenses the two sentences below that assert a
+   * number or a nothing.
+   */
+  const settling = searchPath !== wantedPath || search.isLoading;
+
+  const needle = query.trim().toLowerCase();
+
+  /**
+   * What the panel actually draws: the last answer, narrowed by what has been typed since.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * THIS IS THE "AS I TYPE" HALF, AND IT COSTS NO REQUEST. The endpoint's answer is authoritative and
+   * arrives when it arrives; until then the rows already in the browser are filtered on the same terms
+   * the server uses — a case-insensitive "contains" over the title and the second line — so the list
+   * visibly responds to the keystroke rather than sitting still for a quarter of a second and a round
+   * trip. When the answer lands, `settling` goes false and the server's list replaces this one outright.
+   *
+   * ⚠ IT IS A PREVIEW AND IS NEVER ALLOWED TO SPEAK AS THE FINAL ANSWER. It can only narrow what was
+   * already fetched, so it is exact while that was the whole roster (the `browse` panel's ordinary
+   * state, 200 rows) and a SUBSET otherwise — most visibly when a letter is deleted, where the previous,
+   * narrower answer cannot contain the rows the wider query will bring back. That is why "Nothing
+   * matched" and "showing the first N of M" are both suppressed while `settling`: an empty preview is
+   * not evidence of an empty result (contract §9), and a count taken from a partial list is a number
+   * that will change under the reader's eyes a moment later.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const searchItems = useMemo(() => {
+    if (serverItems === null || !settling || needle.length === 0) return serverItems;
+    return serverItems.filter(
+      (item) =>
+        item.title.toLowerCase().includes(needle) || item.subtitle.toLowerCase().includes(needle)
+    );
+  }, [serverItems, settling, needle]);
 
   useEffect(() => {
     const incoming = [...(resolvedItems ?? []), ...(searchItems ?? [])];
@@ -445,7 +540,14 @@ function EntityPickerControl({
   const missingCount = resolveSettled ? ids.filter((id) => known[id] === undefined).length : 0;
 
   const searchTotal = typeof search.data?.total === "number" ? search.data.total : (searchItems?.length ?? 0);
-  const searchTruncated = searchItems !== null && searchTotal > searchItems.length;
+  /*
+    ⚠ `!settling` IS PART OF THE TEST, NOT AN OPTIMISATION. `searchTotal` belongs to the query the server
+    last answered and `searchItems.length` is a list narrowed locally since, so during a keystroke the two
+    describe different questions and the comparison reports a truncation that is not happening: type one
+    letter into a browse panel and the notice would read "showing the first 3 of 200", which is false in
+    both figures and is exactly the shortened-list untruth the notice exists to prevent (contract §1.6).
+  */
+  const searchTruncated = !settling && searchItems !== null && searchTotal > searchItems.length;
 
   return (
     <div className="min-w-0">
@@ -530,11 +632,47 @@ function EntityPickerControl({
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                /*
+                  ══════════════════════════════════════════════════════════════════════════════════
+                  ENTER MEANS "NOW", AND IT MUST NOT MEAN ANYTHING ELSE.
+
+                  The list already moves on the keystroke, so nobody has to press this — but a search box
+                  is a search box and people press it, and what it did before was whatever the form
+                  around the picker happened to do with a stray submit. This picker sits inside record
+                  editors and section forms; Enter reaching one of those either walks focus out of the
+                  search or commits a save, from a control whose entire job is to look things up.
+
+                  So it is stopped UNCONDITIONALLY — the same rule and the same reasoning as
+                  `PlaceSearchBox`'s — and spent on the one thing the key should do here: stop waiting
+                  out the debounce and ask the server for this query at once.
+                  ══════════════════════════════════════════════════════════════════════════════════
+                */
+                event.preventDefault();
+                event.stopPropagation();
+                flushSearch();
+              }}
               aria-describedby={field?.describedBy}
               placeholder={`Search ${noun.many} by name`}
               autoComplete="off"
-              className="field-input pl-9 [&::-webkit-search-cancel-button]:appearance-none"
+              className="field-input pl-9 pr-9 [&::-webkit-search-cancel-button]:appearance-none"
             />
+
+            {/*
+              That the panel is still catching up, shown rather than implied. The rows beneath have
+              already narrowed, so without this the difference between "these are the matches" and
+              "these are the matches so far" is invisible — and the two sentences that would say it in
+              words are deliberately suppressed while it is true. `aria-hidden` because the live region
+              at the top of the control is what announces state to a screen reader; a spinning glyph
+              announced as well would be the same news twice.
+            */}
+            {settling && needle.length > 0 ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-ink-300"
+              />
+            ) : null}
           </span>
 
           {single ? null : (
@@ -553,9 +691,19 @@ function EntityPickerControl({
           <HelpText tone="error">{search.error.message}</HelpText>
         ) : searchItems.length === 0 ? (
           <p className="px-1 py-3 text-sm text-ink-500">
-            {query.trim().length > 0
-              ? `Nothing matched “${query.trim()}”. Check the spelling, or search for part of the name.`
-              : `There are no ${noun.many} in the studio yet. Add one from its own screen first.`}
+            {/*
+              ⚠ THREE OUTCOMES HERE, NOT TWO, AND THE NEW ONE IS THE POINT OF THE WHOLE CHANGE. An empty
+              list while the panel is still settling is a PREVIEW that found nothing — the rows in the
+              browser did not contain this query, and the rows the server is fetching may well. Saying
+              "nothing matched" there tells an administrator their colleague is not in the system,
+              a quarter of a second before the colleague appears. Loading is not empty (contract §9), and
+              a narrowed local list is a kind of loading.
+            */}
+            {settling
+              ? `Searching ${noun.many} for “${query.trim()}”…`
+              : query.trim().length > 0
+                ? `Nothing matched “${query.trim()}”. Check the spelling, or search for part of the name.`
+                : `There are no ${noun.many} in the studio yet. Add one from its own screen first.`}
           </p>
         ) : (
           <>

@@ -808,10 +808,30 @@ const SEED_PAGES: SeedPage[] = [
          * every time it runs, and it is left for a person. It is not an oversight and it is not a bug in
          * the pass; it is the one block on /about where a script should stop.
          */
+        /*
+         * ⚠ "leadership", NOT "latest", AND THAT REPLACES THE WHOLE ARGUMENT ABOVE RATHER THAN ADDING TO
+         * IT. The note above is kept because the trap it describes is real and still catches other
+         * blocks, but its conclusion — that `latest` is the best a seed can do because it cannot know
+         * the id of anybody's director — stopped being true the moment a people block could FOLLOW the
+         * `leadership` settings group instead of naming ids itself.
+         *
+         * That is the whole point of the mode. A fresh installation seeds this block pointed at a list
+         * that is empty, so it falls back to `latest` and behaves exactly as this literal did before —
+         * the six most recent profiles, which is the "a block that shows the wrong six is fixable, a
+         * block that shows none reads as an institution with no staff" argument above, unchanged. The
+         * difference is what happens NEXT: the moment an administrator names the Centre's leadership on
+         * the settings screen, this section becomes those people, in that order, with nobody having to
+         * find this block in the page builder first. Before, they could name them and watch /about go on
+         * showing six strangers.
+         *
+         * `limit` is left at 6 and is IGNORED while the list is non-empty (`leadershipCuration` in
+         * lib/sections/resolve.ts passes the length of the list instead) — it is what the fallback uses,
+         * and it is what comes back if somebody switches this block to another way of choosing.
+         */
         overrides: {
           heading: "Leadership",
           body: "The people responsible for the Centre's research, its archive and its teaching. The full directory lists everybody, including researchers, students and visiting fellows.",
-          mode: "latest",
+          mode: "leadership",
           limit: 6,
           ids: [],
           ctaLabel: "Everyone at the Centre",

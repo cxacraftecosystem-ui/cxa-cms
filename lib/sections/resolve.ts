@@ -724,6 +724,39 @@ function orderByIds<T extends { id: string }>(rows: readonly T[], ids: readonly 
   return ordered;
 }
 
+/**
+ * "Follow the Centre's leadership list", expressed as a curation this module already knows how to run.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * A NAMED LIST IS A HAND-PICKED LIST WHOSE HAND IS AN ADMINISTRATOR'S. Once the ids are known there is
+ * nothing new to do with them: `manual` already asks `id in (…)` plus the publication filters, already
+ * undoes Postgres's index order with `orderByIds`, and already counts what fell out. So this mode adds no
+ * query, no branch inside the batch and no second ordering rule that could drift away from the first.
+ *
+ * ⚠ THE LIMIT IS THE LENGTH OF THE LIST, WHICH IS THE WHOLE POINT AND NOT AN OVERSIGHT. `manualShowcase`
+ * slices to `curation.limit`, so passing the block's own number would take the first four of six people
+ * an administrator deliberately named — and the block would then print "Showing 4 of 6", a sentence that
+ * describes a fault rather than a decision. The number of people who lead something is a fact somebody
+ * has already stated by naming them, so the list decides its own length and the studio hides the number
+ * box in this mode rather than leaving a control on screen that cannot affect what is drawn.
+ *
+ * ⚠ AND THE BLOCK'S "ONLY ONE GROUP" FILTER IS NOT APPLIED, exactly as it is not applied to any other
+ * hand-picked list. That is what makes any mix of categories work — five faculty and no scientists, a
+ * director and a student representative — which is the requirement this list was asked for under.
+ *
+ * AN EMPTY LIST IS "THE MOST RECENT", on the block's own filters. Empty is the state every installation
+ * starts in; a block that drew nothing until somebody had visited a settings screen would be a blank
+ * section under a heading, which is the failure the seed's note about this very block warns about.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+function leadershipCuration(
+  data: PeopleShowcaseSectionData,
+  personIds: readonly string[]
+): ShowcasePayload {
+  if (personIds.length === 0) return { mode: "latest", limit: data.limit, ids: [] };
+  return { mode: "manual", limit: personIds.length, ids: [...personIds] };
+}
+
 function manualShowcase<T extends { id: string }>(
   pool: readonly T[],
   curation: ShowcasePayload
@@ -925,6 +958,13 @@ async function resolveSectionDataOrThrow(
   const albumPlans: Plan<EmptyFilter>[] = [];
   const galleryImagePlans: Plan<EmptyFilter>[] = [];
   const craftPlans: Plan<CraftFilter>[] = [];
+  /**
+   * People blocks set to "Follow the Centre's leadership list", held back until the setting is read.
+   *
+   * They become ordinary `peoplePlans` a few lines below and take exactly the same queries as any other
+   * people block — see `leadershipCuration`. Nothing downstream of the planner knows this mode exists.
+   */
+  const leadershipPlans: { sectionId: string; data: PeopleShowcaseSectionData }[] = [];
   const mediaIds = new Set<string>();
   /**
    * The metrics some STATS block on this page asked to have counted.
@@ -954,7 +994,26 @@ async function resolveSectionDataOrThrow(
       }
       case "PEOPLE_SHOWCASE": {
         const data = parsed.data as PeopleShowcaseSectionData;
-        planShowcase(peoplePlans, section.id, data, { kind: data.kind });
+        /*
+         * ⚠ THE ONE BLOCK WHOSE CURATION CANNOT BE PLANNED FROM ITS OWN PAYLOAD. "Follow the Centre's
+         * leadership list" names people who are recorded in a SETTING, so the ids are not in `data` and
+         * cannot be until that row has been read. Planning it here would need an `await` inside a loop
+         * that is deliberately synchronous — one pass over the page, then one batched transaction — so
+         * the block is set aside and planned below, after a single settings read shared by all of them.
+         *
+         * `data.mode` is narrowed by this `break` for the line beneath it, which is what lets the payload
+         * be handed on with the three-value `mode` that `planShowcase` takes.
+         */
+        if (data.mode === "leadership") {
+          leadershipPlans.push({ sectionId: section.id, data });
+          break;
+        }
+        planShowcase(
+          peoplePlans,
+          section.id,
+          { mode: data.mode, limit: data.limit, ids: data.ids },
+          { kind: data.kind }
+        );
         break;
       }
       case "PUBLICATION_LIST": {
@@ -1162,6 +1221,24 @@ async function resolveSectionDataOrThrow(
 
       default:
         break;
+    }
+  }
+
+  /**
+   * The people blocks that follow the Centre's leadership list, turned into ordinary plans.
+   *
+   * ONE SETTINGS READ FOR THE WHOLE PAGE, and none at all on a page with no such block — which is every
+   * page today and most pages afterwards. `getSettingCached` is React `cache()`-wrapped, so on a real
+   * render the site layout has already paid for it and this costs nothing; it also swallows an
+   * unreachable database and answers with the shipped defaults rather than throwing, which here means an
+   * empty list and the fallback below (lib/settings/service.ts).
+   */
+  if (leadershipPlans.length > 0) {
+    const { personIds } = await getSettingCached("leadership");
+    for (const plan of leadershipPlans) {
+      planShowcase(peoplePlans, plan.sectionId, leadershipCuration(plan.data, personIds), {
+        kind: plan.data.kind
+      });
     }
   }
 

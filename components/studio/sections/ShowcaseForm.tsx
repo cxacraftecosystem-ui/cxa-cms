@@ -80,7 +80,17 @@ export interface ShowcaseLike {
   eyebrow: string;
   heading: string;
   body: string;
-  mode: "latest" | "featured" | "manual";
+  /**
+   * ⚠ FOUR WORDS HERE, THREE IN MOST PAYLOADS, AND THE WIDER TYPE IS THE CORRECT ONE. Only
+   * `peopleShowcaseSectionSchema` stores `"leadership"`; the other nine keep the three-value enum
+   * `showcase()` builds. A narrower type is assignable to a wider one, so every block still satisfies
+   * this constraint, and the one extra member is what lets `ShowcaseFields` render the fourth option for
+   * the block that offers it without a second copy of this whole form.
+   *
+   * The option is drawn ONLY when `offersLeadership` is passed, so no other block can be put into a mode
+   * its own schema would refuse on save.
+   */
+  mode: "latest" | "featured" | "manual" | "leadership";
   limit: number;
   ids: string[];
   ctaLabel: string;
@@ -172,6 +182,27 @@ export interface ShowcaseFieldsProps<T extends ShowcaseLike> {
   maxLimit: number;
   help: ShowcaseHelp;
   /**
+   * Offer "Follow the Centre's leadership list" as a fourth way of choosing.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ OPT-IN, AND ONLY THE PEOPLE BLOCK PASSES IT, because only `peopleShowcaseSectionSchema` can store
+   * the word. Passing it anywhere else would draw a radio button whose value the save then refuses —
+   * a control that looks like every other control and fails on use, which is worse than no control.
+   *
+   * WHY IT IS A MODE RATHER THAN A SWITCH BESIDE THE PICKER. It is a way of ANSWERING "which people",
+   * mutually exclusive with the other three by construction: a block cannot be both the six an editor
+   * ticked and the six an administrator named. A switch would have to say what happens when both are
+   * set, and every answer to that is a rule somebody has to learn.
+   *
+   * ⚠ IT IS THE ONE MODE AN EDITOR CANNOT FILL IN FROM THIS SCREEN, and the form says so plainly rather
+   * than letting somebody hunt for the list. Settings are ADMINISTRATOR-and-above (`canManageSettings`)
+   * where a page block is EDITOR-and-above, which is the entire reason the list lives there: who leads
+   * the Centre is an institutional claim, not an editorial one. An editor may still point a block at it,
+   * take it off again, and hand-pick instead — what they may not do is rewrite the Centre's answer.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  offersLeadership?: boolean;
+  /**
    * Fields that must be answered BEFORE the way of choosing, because they change what is being chosen.
    * Only the gallery needs it: its `source` decides whether a hand-picked list names albums or
    * individual pictures.
@@ -191,6 +222,7 @@ export function ShowcaseFields<T extends ShowcaseLike>({
   featuredMeaning,
   maxLimit,
   help,
+  offersLeadership = false,
   beforeChoice,
   children
 }: ShowcaseFieldsProps<T>) {
@@ -210,6 +242,16 @@ export function ShowcaseFields<T extends ShowcaseLike>({
   };
 
   const manual = data.mode === "manual";
+  /**
+   * Set by an administrator elsewhere, so this screen shows it and does not edit it.
+   *
+   * ⚠ IT IS READ EVEN WHEN `offersLeadership` IS FALSE, ON PURPOSE. A block saved in this mode and then
+   * opened by a form that no longer offers it must not quietly draw as though it were on "The most
+   * recent" — the radio group would show nothing selected, and the first click on any option would
+   * silently change what the page publishes. The option only APPEARS behind the prop; recognising the
+   * stored value does not, which is the difference between an unavailable choice and a lost one.
+   */
+  const followsLeadership = data.mode === "leadership";
   const overLimit = manual && data.ids.length > data.limit;
 
   /**
@@ -288,8 +330,39 @@ export function ShowcaseFields<T extends ShowcaseLike>({
             label="Exactly these, in this order"
             description={`You choose each one and arrange them. Nothing is added automatically, so this block only changes when you change it.`}
           />
+          {/*
+            Drawn when the block OFFERS this mode or is already IN it. The second half is the one that
+            matters and it is not defensive padding: a radio group with nothing selected is a control
+            that has lost the reader's setting on screen, and the next click on any option would publish
+            a change nobody intended. See `followsLeadership` above.
+          */}
+          {offersLeadership || followsLeadership ? (
+            <ModeOption
+              name={modeName}
+              checked={followsLeadership}
+              onChoose={() => update({ mode: "leadership" })}
+              label="The Centre’s leadership list"
+              description="The people named in Settings → Leadership, in the order set there. Everyone on that list appears, whatever group they are in and however many there are. Only an administrator can change who is on it."
+            />
+          ) : null}
         </div>
       </div>
+
+      {/*
+        WHAT THIS MODE TAKES OVER, SAID WHERE IT IS CHOSEN. Two controls below stop applying the moment
+        this option is selected — the group filter and "at most how many" — and one of them is removed
+        from the screen entirely. A setting that vanishes with no sentence beside it reads as a fault in
+        the form (contract §1.6), and an editor who cannot see the list itself has no way to check any of
+        this for themselves.
+      */}
+      {followsLeadership ? (
+        <HelpText>
+          This block now shows whoever is named in Settings → Leadership, in that order — all of them,
+          whatever group they belong to. Neither the “at most how many” box nor the group filter applies,
+          so the number box is not shown while this is chosen. Anyone on that list whose profile is not
+          published will not appear. While the list is empty this block behaves as “The most recent”.
+        </HelpText>
+      ) : null}
 
       {manual ? (
         <>
@@ -354,16 +427,25 @@ export function ShowcaseFields<T extends ShowcaseLike>({
         </>
       ) : null}
 
-      <NumberField
-        label="At most how many to show"
-        help={help.limit}
-        value={data.limit}
-        onChange={(limit) => update({ limit })}
-        min={1}
-        max={maxLimit}
-        integer
-        inputClassName="max-w-[8rem]"
-      />
+      {/*
+        ⚠ REMOVED RATHER THAN DISABLED IN LEADERSHIP MODE, and the sentence above the fold says why. The
+        list decides its own length there — `leadershipCuration` in lib/sections/resolve.ts passes the
+        number of people named as the limit — so a box promising to cap the block at four would be a
+        control that cannot affect what is drawn, which is exactly what contract §10 forbids leaving on a
+        screen. The stored number is untouched and comes back the moment another mode is chosen.
+      */}
+      {followsLeadership ? null : (
+        <NumberField
+          label="At most how many to show"
+          help={help.limit}
+          value={data.limit}
+          onChange={(limit) => update({ limit })}
+          min={1}
+          max={maxLimit}
+          integer
+          inputClassName="max-w-[8rem]"
+        />
+      )}
 
       {/*
         ⚠ A BLOCK'S OWN FILTERS DO NOT APPLY TO A HAND-PICKED LIST, AND THAT IS STATED RATHER THAN LEFT
@@ -381,11 +463,27 @@ export function ShowcaseFields<T extends ShowcaseLike>({
         panel's: a control that cannot affect what this block draws must not silently look as though it
         can (contract §10, read from the other end).
       */}
-      {children && data.mode === "manual" ? (
+      {children && (manual || followsLeadership) ? (
         <HelpText>
-          The choices below do not narrow a hand-picked list — you get exactly the {plural} you chose,
-          in your order, whatever group or sort they belong to. They apply again if you switch back to
-          one of the automatic ways of choosing above.
+          {manual ? (
+            <>
+              The choices below do not narrow a hand-picked list — you get exactly the {plural} you
+              chose, in your order, whatever group or sort they belong to.
+            </>
+          ) : (
+            /*
+              The same rule, arrived at from the other end and worth its own sentence. A named list is a
+              hand-picked list whose hand is an administrator's, so `leadershipCuration` runs it down the
+              very same path — but an editor reading "a hand-picked list" over a mode where they picked
+              nothing has been told about somebody else's screen, not their own.
+            */
+            <>
+              The choices below do not narrow the leadership list — everyone named in Settings appears,
+              in that order, whatever group they belong to. That is deliberate: leadership is a mix of
+              groups rather than one of them.
+            </>
+          )}{" "}
+          They apply again if you switch back to one of the automatic ways of choosing above.
         </HelpText>
       ) : null}
 
@@ -692,6 +790,13 @@ export function PeopleShowcaseForm({
         save that fails validation with a message about a number the form invited them to type.
       */
       maxLimit={200}
+      /*
+        ⚠ THE ONLY BLOCK THAT PASSES THIS, because it is the only one whose schema can store the word —
+        see `offersLeadership` on `ShowcaseFieldsProps`. It is also the block that made the setting
+        necessary: "Who leads it" on a page, and the Leadership section on /about, are both this block,
+        and until now neither of them could be pointed at the list an administrator had already filled in.
+      */
+      offersLeadership
       help={showcaseHelp(PEOPLE)}
     >
       <Field label="Only one group" help={PEOPLE.kind.description}>

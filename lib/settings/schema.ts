@@ -639,12 +639,19 @@ export type HomepageSettings = z.infer<typeof homepageSettingsSchema>;
  * A column also cannot carry an ORDER without a second column, and `Person.sortOrder` is not available
  * to borrow: it orders the whole roster on the people page, where a different sequence is the right one.
  *
- * WHY IT IS NOT A BLOCK ON A PAGE EITHER. `app/(site)/about/page.tsx` is a HAND-COMPOSED route. The page
- * builder does not own it — it takes the route over wholesale, only when somebody puts visible blocks on
- * the `Page` row with the slug "about", and until that happens the leadership section, the corpus figures
- * and the address are assembled in code from records and from settings. So there is no block on the page
- * as it ships for this list to live on, and inventing one would hand the same EDITOR tier the decision
- * again, by a longer route.
+ * WHY IT IS NOT A BLOCK ON A PAGE EITHER. Storing the list ON a block would hand the same EDITOR tier the
+ * decision again by a longer route, and it would tie one institutional fact to one block on one page — so
+ * a second block asking the same question would be a second, disagreeing answer.
+ *
+ * ⚠ BUT A BLOCK CAN NOW FOLLOW IT, AND UNTIL IT COULD, THIS SETTING REACHED ALMOST NOTHING. The list was
+ * read in exactly one place: the composed default in `app/(site)/about/page.tsx`, which runs only while no
+ * `Page` row with the slug "about" carries visible blocks. Every seeded installation has such a row, so
+ * the builder took the route over and the section a visitor read was a PEOPLE_SHOWCASE block that knew
+ * nothing about any of this. An administrator could name six colleagues, save, reload /about and see six
+ * different faces. `peopleShowcaseSectionSchema` now offers "The Centre's leadership list" as a fourth way
+ * of choosing, so this row drives the block on /about, a "Who leads it" block on a workshop page, and any
+ * other people block pointed at it — one answer, wherever it is asked. The composed default still exists
+ * and still reads this setting; it is simply no longer the only thing that does.
  *
  * ⚠ AN EMPTY LIST IS NOT AN EMPTY SECTION. Nothing here is required, and a fresh installation has chosen
  * nobody: the section then falls back to every published, visible FACULTY and SCIENTIST, which is what
@@ -667,10 +674,12 @@ export type HomepageSettings = z.infer<typeof homepageSettingsSchema>;
  * this screen: does the order matter, what happens to everybody I leave out, and what does empty mean.
  */
 export const LEADERSHIP_LIST_NOTE =
-  "Chosen by hand, and this is the order they appear in on the About page — drag to change it. " +
-  "Anybody left out of this list is still on the people page with everybody else; leaving them out of " +
-  "the Leadership section does not hide them from the site. Leave the list empty and the section falls " +
-  "back to showing every published faculty member and scientist instead.";
+  "Chosen by hand, and this is the order they appear in — drag to change it. It reaches every people " +
+  "block set to “The Centre’s leadership list”, which is how the Leadership section on the About page " +
+  "and any “Who leads it” block on a page are pointed at this one answer. Anybody left out is still on " +
+  "the people page with everybody else; leaving them out of the Leadership section does not hide them " +
+  "from the site. Leave the list empty and those blocks fall back to showing the most recent profiles, " +
+  "and the About page's own built-in section falls back to every published faculty member and scientist.";
 
 export const leadershipSettingsSchema = z.object({
   /**

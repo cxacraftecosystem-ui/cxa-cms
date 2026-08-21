@@ -881,10 +881,21 @@ function SettingField({
           WHAT THE ROWS ALREADY SHOW, TRANSLATED INTO WHAT IT COSTS. The panel puts a status chip on every
           row and writes "Hidden from the site" under anybody switched out of the listings, so repeating
           either of those here would tell an administrator something they can already see. What it does not
-          say is that the About page filters on BOTH — a chosen person passes only if they are published and
-          visible — and that the section's answer to a name it cannot show is simply to draw one card fewer.
+          say is that the public page filters on BOTH — a chosen person passes only if they are published
+          and visible — and that its answer to a name it cannot show is simply to draw one card fewer.
+
+          ⚠ IT NO LONGER PROMISES SILENCE, AND THAT SENTENCE HAD TO GO RATHER THAN BE SOFTENED. It used to
+          end "the section draws one card fewer and says nothing", which was true of the About page's
+          composed default and is NOT true of a people block following this list: `ShowcaseNote` in
+          components/sections/PeopleShowcaseSection.tsx prints "2 chosen people are no longer published and
+          are not shown" under the cards. Both behaviours are defensible; a footnote that asserts one of
+          them is wrong wherever the other is in force, and this list now reaches both.
+
+          It also names WHERE the list takes effect, because that is the question this screen could not
+          answer before: a block has to be set to follow it, and an administrator who has ticked six people
+          and seen no change on /about needs to know that rather than conclude the save failed.
         */
-        footnote="A person who is not published, or whose “Show in the people lists” switch is off, will not appear on the About page even while they are named here — the rows above say which of the two it is. The section draws one card fewer and says nothing, so an absence on the public page is only findable from this screen."
+        footnote="A person who is not published, or whose “Show in the people lists” switch is off, will not appear even while they are named here — the rows above say which of the two it is; the section simply draws one card fewer. This list reaches any people block set to “The Centre’s leadership list”, including the Leadership section on the About page. A block set to one of the other ways of choosing ignores it, so if a page has not changed, check that block’s way of choosing in the page builder."
       />
     );
   }
