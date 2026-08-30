@@ -2392,10 +2392,33 @@ input[type="number"] {
  * while the browser still matches every element whose class list contains the token. That is the
  * whole trick, and it is why this is not written the obvious way.
  *
- * Specificity is (0,1,0) — the same as a single class — so an element declaring `absolute` or its
- * own rung in its class list still wins on source order, which is what the note below asks for.
+ * ⚠ AND `:where()` WRAPS THE WHOLE SELECTOR, WHICH IS THE OTHER HALF OF THE SAME FIX AND WAS MISSING
+ * FROM IT. Without it this rule is (0,1,0) — the same weight as a single class — and the sentence
+ * that used to stand here concluded from that that "an element declaring `absolute` or its own rung
+ * still wins on source order". THAT WAS TRUE ONLY WHILE THE RULE LIVED IN `@layer components`, and
+ * moving it out of the layer is precisely what this note is about: Tailwind emits its utilities where
+ * `@tailwind utilities` sits, on line 3, so a rule outside every layer lands at the FOOT of the
+ * compiled stylesheet — `.absolute` came out at line 1809 and this at 8115. Equal specificity, later
+ * in the file, so `position: relative` beat `absolute` on all 92 files at once and nothing said so.
+ *
+ * WHAT THAT ACTUALLY DID, because "a default became an override" undersells it: every popover, dot,
+ * handle and dropdown whose class list carries the bare `bg-card` token stopped being taken out of
+ * flow and started occupying space. The accessibility menu was the report — "the whole nav bar
+ * widens to match its length" (the header pill measured 911px → 1159px, the panel's own 288px minus
+ * the 40px trigger it replaced) and "the one at the bottom is taking the page further down"
+ * (document height 2117px → 2691px, with the panel dutifully shifted up 624px by `bottom: 100%` and
+ * still paying for its box below). The same one line also had `VideoPlayer`'s picture-in-picture
+ * `fixed` mini player laying out in flow, `IconPicker`'s `sticky` search header not sticking,
+ * `PlaceSearchBox`'s autocomplete pushing the form down, `MapHoverCard` and the numbered step dots
+ * in `TimelineSection` / `ProcessStepsSection` / `ActionStepsSection` / a project's milestone rail
+ * dropped into the text, and every `z-` rung any of them asked for overruled by this 45.
+ *
+ * `:where()` is (0,0,0), so BOTH declarations are defaults again — exactly what the note above
+ * promises — and it costs nothing that was wanted: a card that says nothing still gets `relative`
+ * and rung 45, and the `@apply` evasion is untouched because this is still an attribute selector
+ * rather than a class rule. It must never be unwrapped, and it must never go back inside a layer.
  */
-[class~="bg-card"] {
+:where([class~="bg-card"]) {
   position: relative;
   z-index: 45;
 }
