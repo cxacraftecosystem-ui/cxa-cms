@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { SectionRenderer, sectionsOwnPageTitle } from "@/components/sections/SectionRenderer";
 import { PageHero } from "@/components/site/PageHero";
 import { SectionHeading } from "@/components/site/SectionHeading";
+import { BrandMark } from "@/components/site/SiteBrand";
 import { LinkButton } from "@/components/ui/Button";
 import { getNavigation } from "@/lib/navigation-server";
 import { getPublishedPage, pageMetadataFor } from "@/lib/pages";
@@ -91,7 +92,18 @@ export default async function HomePage() {
   // the renderer asks "does this block render?", and this asks "would anything at all render?". A page
   // whose blocks are all switched off must take the fallback rather than produce an empty <main>.
   const hasContent = sections.some((section) => section.isVisible);
-  if (!hasContent) return <HomeIndex />;
+
+  // The fallback index below is still the landing page, so it carries the corner marks too. Their
+  // order matters less here — `PageHero` does not bleed — but it is kept the same as the branch
+  // below so the two do not have to be reasoned about separately.
+  if (!hasContent) {
+    return (
+      <>
+        <HomeIndex />
+        <LandingCornerMarks />
+      </>
+    );
+  }
 
   // ONE batched pass for every block on the page (lib/sections/resolve.ts). The renderers are pure and
   // never query for themselves, so a four-showcase homepage is one round trip rather than four.
@@ -118,6 +130,10 @@ export default async function HomePage() {
     <>
       {needsTitle ? <h1 className="sr-only">{title}</h1> : null}
       <SectionRenderer sections={sections} resolved={resolved} />
+
+      {/* LAST, and not by taste — see LandingCornerMarks: it is out of flow, but `:first-child` is a
+          DOM test, so an element before this one stops the hero bleeding to the top of the page. */}
+      <LandingCornerMarks />
     </>
   );
 }
@@ -213,5 +229,78 @@ function NavDestination({ node, muted = false }: { node: NavNode; muted?: boolea
     <Link href={node.href} className={className}>
       {node.label}
     </Link>
+  );
+}
+
+/**
+ * ── THE TWO CORNER MARKS: TOP-LEFT AND TOP-RIGHT, ON THIS PAGE ONLY ────────────────────────────
+ *
+ * The Centre's mark in both top corners of the front page, asked for by the owner on 2026-08-30.
+ *
+ * BOTH CORNERS CARRY THE SAME MARK BECAUSE THERE IS ONLY ONE. This product has a single
+ * institutional mark — the eight-point terracotta star `SiteBrand` draws, which is also
+ * `app/icon.svg` and the launcher icon — and no partner or secondary lockup anywhere in the
+ * repository, so a different mark in the right-hand corner would be a claim about the institution
+ * that nobody has made. `branding.logoMediaId` / `logoDarkMediaId` are the eventual home for an
+ * uploaded logo, but nothing on the render path resolves either id to a URL yet (app/(site)/layout.tsx
+ * says so beside the JSON-LD), and wiring that up is a change to the settings pipeline, not to this
+ * page.
+ *
+ * THE MARK IS IMPORTED FROM `SiteBrand`, NEVER COPIED. Its geometry and its three brand-native hex
+ * values already exist in that component, in `app/icon.svg` and in the launcher icon; a hand-copy
+ * here would be a fourth place for them to drift apart.
+ *
+ * WHY THIS LIVES IN THIS FILE AND NOT IN `SiteHeader`. The request is for the LANDING page. The
+ * header pill is mounted by the site layout on every public page, so a pair of marks added beside it
+ * there would appear on all of them.
+ *
+ * ⚠ IT IS RENDERED LAST, AND THAT POSITION IS LOAD-BEARING. `main.page-top > [data-bleed-top]:first-child`
+ * (app/globals.css) is what lets a full-bleed hero take the header clearance onto itself so its
+ * artwork reaches the top of the viewport. `:first-child` is a DOM test and does not care that this
+ * element is out of flow: placed before `<SectionRenderer>` it would stop every hero-led homepage
+ * bleeding, replacing the artwork under the header with a 6rem strip of empty canvas.
+ *
+ * ⚠ `absolute`, NOT `fixed`. The containing block is the site frame's own `relative` wrapper in the
+ * layout, whose top edge is the top of the document — so the marks sit on the same 0.75rem line as
+ * the header pill and then scroll away with the page. `fixed` would pin two logos to the viewport for
+ * the whole scroll, and would additionally have to re-pay `var(--scroll-gutter)` itself the way
+ * `.nav-frame` does, or slide sideways every time a dialog locks the scroll.
+ *
+ * ⚠ `hidden xl:flex` IS THE NON-COLLISION RULE, and the thing it must not collide with is the header
+ * pill. The pill is `w-fit max-w-full` and centred, so it takes whatever width its contents want: with
+ * the shipped six-entry menu that is roughly 950px — a figure ADDED UP from those six labels, the
+ * wordmark and the pill's own padding rather than measured, because there is no way to render a page
+ * here without a database and a browser. Below about 1280px, then, there is no clear air beside the
+ * pill and a corner mark would be painted under its glass: the header is `z-50` and wins. At `xl` the
+ * gutter is roughly 165px a side, several times what a 36px mark inset by 32px occupies. An unusually
+ * long `siteName` or a larger menu widens the pill again and can close that gap even there; the
+ * failure is cosmetic and one-way — the pill paints over an ornament, nothing is hidden or made
+ * unreachable — which is why this rule is a breakpoint and not a measurement.
+ *
+ * The row is `h-14`, the expanded pill's own height (`py-2` around a `min-h-10` control), with
+ * `items-center`, so the marks land on the pill's centre line rather than its top edge. They do NOT
+ * follow the pill when it collapses on scroll: they are not in it, and an ornament that resized with
+ * a menu would read as part of a control it cannot operate.
+ *
+ * No dark-theme branch, and none is missing: the mark carries its own cream tile and three
+ * brand-native hex values that deliberately do not invert (BrandMark's own header argues that).
+ *
+ * DECORATIVE — `aria-hidden` on the row, `pointer-events-none`, and no link. The Centre's name is
+ * already in the accessibility tree from the header wordmark sitting between these two marks, so
+ * naming them would make the first thing announced on the front page the institution's name three
+ * times over. And these boxes overlay the hero: a link here would be an invisible target across the
+ * artwork, and a second route to `/` from the page that already is `/`.
+ */
+function LandingCornerMarks() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 top-3 hidden h-14 items-center justify-between px-8 xl:flex"
+    >
+      {/* `variant` is inert (see BrandMark); `h-9 w-9` is the header lockup's own size, which is what
+          these two are aligned with. */}
+      <BrandMark variant="header" className="h-9 w-9" />
+      <BrandMark variant="header" className="h-9 w-9" />
+    </div>
   );
 }
