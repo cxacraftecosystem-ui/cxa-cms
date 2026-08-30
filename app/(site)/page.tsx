@@ -328,27 +328,43 @@ const SEAL_MASK_STYLE: CSSProperties = {
  * plate is a dark chip holding the white seal at roughly 15:1. Nothing has to know which case it is
  * in, and there is no theme branch — brand colour does not invert (see `BrandMark`'s own header).
  *
- * ⚠ `hidden xl:flex` IS KEPT, AND THE NEW MARKS STRENGTHEN THAT RULE RATHER THAN WEAKEN IT. The
- * designer portal shows its pair from `md`, but its marks sit IN a masthead flex row that reserves
- * their space; these are absolutely positioned beside a centred, content-width header pill which is
- * `z-50` glass and wins every overlap. Clear air either side of the pill, measured on the seeded
- * six-entry menu rather than added up:
+ * ⚠ `hidden 2xl:flex`, AND THE JUMP FROM `xl` WAS BOUGHT WITH A MEASUREMENT ON PRODUCTION RATHER
+ * THAN ON THE SEED. The designer portal shows its pair from `md`, but its marks sit IN a masthead
+ * flex row that reserves their space; these are absolutely positioned beside a centred,
+ * content-width header pill which is `z-50` glass and wins every overlap.
  *
- *      640px  145px        1024px   57px  ← the link strip appears and the pill jumps to 911px
- *      768px  209px        1152px  121px
- *      900px  275px        1280px  185px        1440px  265px        1920px  505px
+ * ⚠ THE PILL'S WIDTH IS CONTENT, AND THE SEEDED DATABASE UNDERSTATES IT BY A THIRD. Measured, both:
+ *
+ *      seeded `siteName` "Centre of Excellence" ………………………………………………………… pill  911px
+ *      the live one, "Centre of Excellence for Unified AI-Enabled Craft
+ *      Ecosystem Platform" ……………………………………………………………………………………………………… pill 1245px
+ *
+ * The pill does not grow with the viewport, so clear air is `(width − pill) / 2` and the live figures
+ * are what this rule has to answer to:
+ *
+ *      1280px   17px  ← both marks painted under the glass
+ *      1440px   97px  ← the seal clears, the DC mark does not
+ *      1536px  145px      1680px  217px      1920px  337px
  *
  * The left mark is the wider of the two — a 600×253 PNG at `h-7` inside `px-2`, about 82px — and it
- * is inset by 32px, so it needs about 114px. That clears at 1280 with 71px to spare, sits inside the
- * noise at 1152, and collides outright at 1024. The 768–900 band has room ONLY because the pill drops
- * its link strip below `lg`, and a rule that appeared at `md`, vanished at `lg` and returned at `xl`
- * would read as a bug to anyone resizing a window. `xl` is the one threshold clear at every width
- * above it. An unusually long `siteName` or a larger menu can still close the gap; that failure is
- * cosmetic and one-way, which is why this stays a breakpoint rather than a measurement.
+ * is inset by 32px, so it needs about 114px, which is `1245 + 2×114 = 1473px` of viewport. Walking
+ * the live page and hit-testing the marks against the pill puts the crossover between 1470 (still
+ * overlapping) and 1480 (clear), which is that arithmetic confirmed rather than restated.
+ *
+ * `xl` (1280) does not pay it, and shipped a first time believing it did: the 911px seed said 185px
+ * of clear air at 1280, production had 17px, and BOTH marks were painted under the glass at the two
+ * commonest desktop widths. `2xl` (1536) is the first Tailwind rung past the crossover, and it
+ * clears with 31px to spare.
+ *
+ * That spare is thin, and it is thin for a reason worth keeping in view: a longer `siteName` or a
+ * seventh menu entry widens the pill again and closes it. The failure stays cosmetic and one-way —
+ * the pill paints over an ornament, nothing is hidden or made unreachable — which is why this is
+ * still a breakpoint and not a measurement taken at runtime. But it is now a breakpoint chosen
+ * against the deployment rather than against the fixture.
  *
  * ⚠ NO RESPONSIVE HEIGHT PAIR, AND ITS ABSENCE IS DELIBERATE. The designer portal writes `h-5 lg:h-7`
  * on the DC mark because its row is live from `md` and genuinely crosses `lg`. This row does not
- * exist below `xl`, so a `lg:` variant here could never lose — it would be a dead class that reads
+ * exist below `2xl`, so a `lg:` variant here could never lose — it would be a dead class that reads
  * as a considered choice. The two heights are stated once, at the values `lg:` would have produced.
  *
  * DECORATIVE, AND STILL SO NOW THAT THE MARKS NAME TWO OTHER INSTITUTIONS. The row keeps
@@ -365,7 +381,7 @@ function LandingCornerMarks() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 top-3 hidden h-14 items-center justify-between px-8 xl:flex"
+      className="pointer-events-none absolute inset-x-0 top-3 hidden h-14 items-center justify-between px-8 2xl:flex"
     >
       {/* TOP-LEFT — the DC Handicrafts mark in its own colours, on the cream plate its red wordmark
           needs to survive any ground. `bg-logo-cream` is this repository's own token
