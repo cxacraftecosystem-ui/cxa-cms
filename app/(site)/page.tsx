@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import { SectionRenderer, sectionsOwnPageTitle } from "@/components/sections/SectionRenderer";
 import { PageHero } from "@/components/site/PageHero";
 import { SectionHeading } from "@/components/site/SectionHeading";
-import { BrandMark } from "@/components/site/SiteBrand";
 import { LinkButton } from "@/components/ui/Button";
 import { getNavigation } from "@/lib/navigation-server";
 import { getPublishedPage, pageMetadataFor } from "@/lib/pages";
@@ -233,63 +233,133 @@ function NavDestination({ node, muted = false }: { node: NavNode; muted?: boolea
 }
 
 /**
- * ── THE TWO CORNER MARKS: TOP-LEFT AND TOP-RIGHT, ON THIS PAGE ONLY ────────────────────────────
+ * ── THE TWO CORNER MARKS: DC HANDICRAFTS TOP-LEFT, IIT KHARAGPUR TOP-RIGHT ─────────────────────
  *
- * The Centre's mark in both top corners of the front page, asked for by the owner on 2026-08-30.
+ * Corrected on 2026-08-31 by the owner: "the top left corner should be the handicraft logo, and the
+ * right side should be white iit kgp logo, just like how it is for the designer portal web
+ * application." What stood here put the Centre's own eight-point star in BOTH corners, arguing that
+ * this product has a single institutional mark and that a different mark on the right would be a
+ * claim nobody had made. That argument was wrong about the FILES rather than about the design — the
+ * two partner marks exist and were simply not in this repository — so the fix is to bring them in.
  *
- * BOTH CORNERS CARRY THE SAME MARK BECAUSE THERE IS ONLY ONE. This product has a single
- * institutional mark — the eight-point terracotta star `SiteBrand` draws, which is also
- * `app/icon.svg` and the launcher icon — and no partner or secondary lockup anywhere in the
- * repository, so a different mark in the right-hand corner would be a claim about the institution
- * that nobody has made. `branding.logoMediaId` / `logoDarkMediaId` are the eventual home for an
- * uploaded logo, but nothing on the render path resolves either id to a URL yet (app/(site)/layout.tsx
- * says so beside the JSON-LD), and wiring that up is a change to the settings pipeline, not to this
- * page.
+ * THE REFERENCE IS THE DESIGN PROTOTYPE WORKSHOP'S MASTHEAD (`components/hero/HeroLanding.tsx` in
+ * the designer-portal repository) and both mechanisms below are copied from it rather than
+ * re-derived. The two files under `public/logos/` are byte-for-byte that repository's, so a
+ * researcher moving between the two products meets the same two seals in the same two corners.
  *
- * THE MARK IS IMPORTED FROM `SiteBrand`, NEVER COPIED. Its geometry and its three brand-native hex
- * values already exist in that component, in `app/icon.svg` and in the launcher icon; a hand-copy
- * here would be a fourth place for them to drift apart.
+ * ⚠ THE TWO MARKS FAIL DIFFERENTLY IF A FILE GOES MISSING, and neither failure reaches a log. A PNG
+ * that never arrives paints Chromium's broken-image glyph inside the cream plate — `alt=""`
+ * suppresses that glyph only for an image with no intrinsic box, and this one carries `width` and
+ * `height` on purpose, because they are what reserves its space before the file lands. A
+ * `mask-image` whose source never arrives masks its box out completely and the corner is simply
+ * empty. That asymmetry is why both paths are declared once, here, and never spelled inline.
+ */
+/*
+ * `name` and `href` are carried on both records and read by neither, ON PURPOSE and not by
+ * oversight. They are what says WHICH institution each file depicts and where its canonical page
+ * is — the two facts a reader of this module would otherwise have to open a binary to recover, and
+ * exactly what the provenance prose recommended at the foot of this header would need if an editor
+ * ever places it. Deleting them saves nothing and loses the only identification these files have.
+ */
+const DC_HANDICRAFTS = {
+  name: "Office of the Development Commissioner (Handicrafts)",
+  href: "https://handicrafts.nic.in/",
+  src: "/logos/dc-handicrafts.png",
+  // Intrinsic dimensions. `w-auto` on the tag is what makes the rendered width follow from `h-7`.
+  width: 600,
+  height: 253
+};
+
+const IIT_KHARAGPUR = {
+  name: "Indian Institute of Technology Kharagpur",
+  href: "https://www.iitkgp.ac.in/",
+  src: "/logos/iit-kharagpur.svg",
+  width: 268,
+  height: 300
+};
+
+/**
+ * The seal, painted through its own alpha rather than drawn.
  *
- * WHY THIS LIVES IN THIS FILE AND NOT IN `SiteHeader`. The request is for the LANDING page. The
- * header pill is mounted by the site layout on every public page, so a pair of marks added beside it
- * there would appear on all of them.
+ * ⚠ IT IS A MASK, NOT A PICTURE, AND THAT IS THE WHOLE REASON THERE IS NO `<img>` ON THE RIGHT. A
+ * page's CSS cannot reach inside an SVG loaded through `<img>` to recolour it, and hand-editing the
+ * file's fills would fork an asset this repository shares byte-for-byte with the designer portal.
+ * Masking the file and painting the box white is the one approach that leaves the file alone.
  *
- * ⚠ IT IS RENDERED LAST, AND THAT POSITION IS LOAD-BEARING. `main.page-top > [data-bleed-top]:first-child`
- * (app/globals.css) is what lets a full-bleed hero take the header clearance onto itself so its
- * artwork reaches the top of the viewport. `:first-child` is a DOM test and does not care that this
- * element is out of flow: placed before `<SectionRenderer>` it would stop every hero-led homepage
- * bleeding, replacing the artwork under the header with a 6rem strip of empty canvas.
+ * Declared at module scope: an object literal in JSX is a new object on every render.
+ */
+const SEAL_MASK = `url("${IIT_KHARAGPUR.src}")`;
+const SEAL_MASK_STYLE: CSSProperties = {
+  maskImage: SEAL_MASK,
+  WebkitMaskImage: SEAL_MASK,
+  maskSize: "contain",
+  WebkitMaskSize: "contain",
+  maskRepeat: "no-repeat",
+  WebkitMaskRepeat: "no-repeat",
+  maskPosition: "center",
+  WebkitMaskPosition: "center",
+  backgroundColor: "#ffffff"
+};
+
+/**
+ * ── THE CORNER MARKS THEMSELVES ────────────────────────────────────────────────────────────────
  *
- * ⚠ `absolute`, NOT `fixed`. The containing block is the site frame's own `relative` wrapper in the
- * layout, whose top edge is the top of the document — so the marks sit on the same 0.75rem line as
- * the header pill and then scroll away with the page. `fixed` would pin two logos to the viewport for
- * the whole scroll, and would additionally have to re-pay `var(--scroll-gutter)` itself the way
- * `.nav-frame` does, or slide sideways every time a dialog locks the scroll.
+ * ⚠ BOTH MARKS SIT ON A PLATE, AND THE RIGHT-HAND PLATE IS THIS REPOSITORY'S OWN ADDITION.
  *
- * ⚠ `hidden xl:flex` IS THE NON-COLLISION RULE, and the thing it must not collide with is the header
- * pill. The pill is `w-fit max-w-full` and centred, so it takes whatever width its contents want: with
- * the shipped six-entry menu that is roughly 950px — a figure ADDED UP from those six labels, the
- * wordmark and the pill's own padding rather than measured, because there is no way to render a page
- * here without a database and a browser. Below about 1280px, then, there is no clear air beside the
- * pill and a corner mark would be painted under its glass: the header is `z-50` and wins. At `xl` the
- * gutter is roughly 165px a side, several times what a 36px mark inset by 32px occupies. An unusually
- * long `siteName` or a larger menu widens the pill again and can close that gap even there; the
- * failure is cosmetic and one-way — the pill paints over an ornament, nothing is hidden or made
- * unreachable — which is why this rule is a breakpoint and not a measurement.
+ * In the designer portal the pair rides a masthead that is ALWAYS dark purple, so only the DC mark
+ * needs a plate — its red wordmark cannot survive a dark ground — and the seal is painted white
+ * straight onto the bar. HERE THE GROUND IS NOT A CONSTANT. It is whatever an administrator has put
+ * at the top of the front page, which is a row in the database rather than a line in this file.
  *
- * The row is `h-14`, the expanded pill's own height (`py-2` around a `min-h-10` control), with
- * `items-center`, so the marks land on the pill's centre line rather than its top edge. They do NOT
- * follow the pill when it collapses on scroll: they are not in it, and an ornament that resized with
- * a menu would read as part of a control it cannot operate.
+ * MEASURED at 1280 / 1440 / 1920 by screenshotting the corner band and averaging its pixels:
  *
- * No dark-theme branch, and none is missing: the mark carries its own cream tile and three
- * brand-native hex values that deliberately do not invert (BrandMark's own header argues that).
+ *   • with the seeded HERO block first (full-bleed, `bg-purple-950`) … rgb(57,21,85)    14.9:1 vs white
+ *   • with that one block switched off in the studio ……………………………………… rgb(247,246,251)   1.08:1 vs white
  *
- * DECORATIVE — `aria-hidden` on the row, `pointer-events-none`, and no link. The Centre's name is
- * already in the accessibility tree from the header wordmark sitting between these two marks, so
- * naming them would make the first thing announced on the front page the institution's name three
- * times over. And these boxes overlay the hero: a link here would be an invisible target across the
- * artwork, and a second route to `/` from the page that already is `/`.
+ * The second figure is the light page canvas, and 1.08:1 is an INVISIBLE MARK. It is not a
+ * hypothetical reachable only by a developer: hiding the hero is one toggle in the studio, the
+ * no-content fallback above renders `PageHero` on that same canvas, and an editor who simply leads
+ * the page with a light block arrives there too.
+ *
+ * So the seal is given a `bg-purple-950` plate, mirroring the cream plate's own logic. That colour
+ * is chosen over any other dark for one property a media query could not buy: IT IS THE HERO'S OWN
+ * GROUND. On a hero-led page the plate is the same colour as what is behind it, so it disappears and
+ * the seal reads bare, exactly as it does in the designer portal; on the light canvas the identical
+ * plate is a dark chip holding the white seal at roughly 15:1. Nothing has to know which case it is
+ * in, and there is no theme branch — brand colour does not invert (see `BrandMark`'s own header).
+ *
+ * ⚠ `hidden xl:flex` IS KEPT, AND THE NEW MARKS STRENGTHEN THAT RULE RATHER THAN WEAKEN IT. The
+ * designer portal shows its pair from `md`, but its marks sit IN a masthead flex row that reserves
+ * their space; these are absolutely positioned beside a centred, content-width header pill which is
+ * `z-50` glass and wins every overlap. Clear air either side of the pill, measured on the seeded
+ * six-entry menu rather than added up:
+ *
+ *      640px  145px        1024px   57px  ← the link strip appears and the pill jumps to 911px
+ *      768px  209px        1152px  121px
+ *      900px  275px        1280px  185px        1440px  265px        1920px  505px
+ *
+ * The left mark is the wider of the two — a 600×253 PNG at `h-7` inside `px-2`, about 82px — and it
+ * is inset by 32px, so it needs about 114px. That clears at 1280 with 71px to spare, sits inside the
+ * noise at 1152, and collides outright at 1024. The 768–900 band has room ONLY because the pill drops
+ * its link strip below `lg`, and a rule that appeared at `md`, vanished at `lg` and returned at `xl`
+ * would read as a bug to anyone resizing a window. `xl` is the one threshold clear at every width
+ * above it. An unusually long `siteName` or a larger menu can still close the gap; that failure is
+ * cosmetic and one-way, which is why this stays a breakpoint rather than a measurement.
+ *
+ * ⚠ NO RESPONSIVE HEIGHT PAIR, AND ITS ABSENCE IS DELIBERATE. The designer portal writes `h-5 lg:h-7`
+ * on the DC mark because its row is live from `md` and genuinely crosses `lg`. This row does not
+ * exist below `xl`, so a `lg:` variant here could never lose — it would be a dead class that reads
+ * as a considered choice. The two heights are stated once, at the values `lg:` would have produced.
+ *
+ * DECORATIVE, AND STILL SO NOW THAT THE MARKS NAME TWO OTHER INSTITUTIONS. The row keeps
+ * `aria-hidden`, `pointer-events-none` and no link. The designer portal's marks ARE links, and the
+ * difference is DOM POSITION rather than taste: its pair is the first thing in its masthead, while
+ * this element is rendered LAST on the page — see the call site, where `:first-child` is a DOM test
+ * and the hero's bleed depends on nothing preceding it. An `sr-only` name here would therefore
+ * announce "Office of the Development Commissioner (Handicrafts)" as the final utterance of the
+ * homepage, detached from anything that explains it, and a link would be an invisible target lying
+ * across the hero artwork. IIT Kharagpur is already named in text in the site footer. These two
+ * boxes are ornament, and the provenance belongs in prose that an editor can place.
  */
 function LandingCornerMarks() {
   return (
@@ -297,10 +367,32 @@ function LandingCornerMarks() {
       aria-hidden="true"
       className="pointer-events-none absolute inset-x-0 top-3 hidden h-14 items-center justify-between px-8 xl:flex"
     >
-      {/* `variant` is inert (see BrandMark); `h-9 w-9` is the header lockup's own size, which is what
-          these two are aligned with. */}
-      <BrandMark variant="header" className="h-9 w-9" />
-      <BrandMark variant="header" className="h-9 w-9" />
+      {/* TOP-LEFT — the DC Handicrafts mark in its own colours, on the cream plate its red wordmark
+          needs to survive any ground. `bg-logo-cream` is this repository's own token
+          (tailwind.config.ts: `logo: { cream: "#FAF9F5" }`) and is character-for-character the
+          designer portal's, so nothing had to be invented or approximated for it. */}
+      <span className="flex items-center justify-center rounded-md bg-logo-cream px-2 py-1.5 shadow-md">
+        {/* eslint-disable-next-line @next/next/no-img-element -- a static file in `public/` drawn at
+            one fixed height in one corner of one page. `next/image` would put the optimiser in front
+            of a 27KB PNG for a width already known at build time, and its generated wrapper would
+            fight this plate's box for no benefit the reader could see. */}
+        <img
+          src={DC_HANDICRAFTS.src}
+          alt=""
+          width={DC_HANDICRAFTS.width}
+          height={DC_HANDICRAFTS.height}
+          className="h-7 w-auto"
+        />
+      </span>
+      {/* TOP-RIGHT — the IIT Kharagpur seal, white, on the dark plate the header above measures. */}
+      <span className="flex items-center justify-center rounded-md bg-purple-950 px-2 py-1.5 shadow-md">
+        {/* `aspect-[268/300]` is the seal's intrinsic ratio, written out IN FULL rather than built
+            from IIT_KHARAGPUR's numbers: Tailwind scans this file for whole class names and cannot
+            interpolate one (contract §5), so an assembled string would compile to nothing and the
+            box would collapse. `mask-size: contain` letterboxes the mark inside it, so the 0.08%
+            rounding off the true 267.538×299.737 can never distort the seal. */}
+        <span className="block aspect-[268/300] h-9" style={SEAL_MASK_STYLE} />
+      </span>
     </div>
   );
 }
