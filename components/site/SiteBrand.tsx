@@ -36,6 +36,13 @@
  * `"use client"` covers the whole file because the door needs a router and two refs. The mark below
  * is pure markup and would happily render on the server, but splitting it into a sixth file to save a
  * few hundred bytes of an SVG that both client trees already pull in is not a trade worth making.
+ *
+ * ⚠ THE MARK IS NOW EXPORTED, AND ITS THIRD CONSUMER IS A SERVER COMPONENT — the landing page's two
+ * corner marks (app/(site)/page.tsx). That does not overturn the paragraph above. Importing a client
+ * module from a server component makes the mark a client REFERENCE, not a second copy, and this
+ * module is already in every public page's bundle through `SiteHeader` in the site layout — so the
+ * corner marks cost no new JavaScript, and splitting the SVG into a file of its own would still only
+ * move the same bytes between two modules.
  */
 
 import { useRef, type MouseEvent as ReactMouseEvent } from "react";
@@ -88,8 +95,14 @@ export interface SiteBrandProps {
  * inverted because its tile was purple and the footer band is `purple-950`, so the tile vanished. A
  * terracotta star has the opposite problem: floated on purple-950 without its cream ground it loses
  * most of its contrast and reads as a smudge. The tile IS the logo here, not a backing plate.
+ *
+ * ⚠ `variant` IS ACCEPTED AND IGNORED, and it is left that way rather than tidied. The mark is
+ * identical in both placements — only the size class the caller passes differs — so every call site
+ * already hands this a value the body never reads. Dropping the parameter is the right cleanup and is
+ * not this change's to make: it would edit `SiteBrand` below, a component on every page of the site,
+ * in the name of a landing-page feature.
  */
-function BrandMark({ className }: { variant: SiteBrandVariant; className?: string }) {
+export function BrandMark({ className }: { variant: SiteBrandVariant; className?: string }) {
   return (
     <svg
       viewBox="0 0 108 108"
