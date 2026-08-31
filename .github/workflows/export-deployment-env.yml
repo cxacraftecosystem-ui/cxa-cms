@@ -1,0 +1,187 @@
+# ==========================================================================================
+# Export the deployment environment for offline keeping.
+#
+# WHERE THIS SITE'S CONFIGURATION ACTUALLY LIVES. Almost all of it is in the Vercel project,
+# not in this repository and not in GitHub secrets: 32 production variables covering the Neon
+# database (pooled and direct), the JWT secret, S3, Google OAuth and CloudConvert. A handful
+# also exist as repository secrets because ci.yml and keep-warm.yml need them.
+#
+# Neither store can be read back by hand — a GitHub secret is write-only, and Vercel values
+# are only visible one at a time in the dashboard. This job reassembles both into one
+# encrypted bundle you can keep offline.
+#
+# WHY THE BUNDLE IS ENCRYPTED. GitHub masks secrets in LOGS but NOT in ARTIFACT CONTENTS.
+# A plaintext artifact would hand the production database URL and the JWT secret to every
+# account with read access to this repository.
+#
+# ⚠ PUSHING TO main DEPLOYS THIS SITE. The Vercel project is git-linked with no ignore
+# command, and vercel.json's buildCommand runs `prisma migrate deploy`. Adding or editing
+# this file therefore triggers a production build and a migration run. That is expected and
+# harmless when no migration is pending, but it is not a no-op — do not push casually.
+#
+# RUN IT LIKE THIS
+#   1. python -c "import secrets; print(secrets.token_urlsafe(40))"
+#   2. Add it as the repository secret ENV_EXPORT_PASSPHRASE.
+#   3. Also add VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID if they are not set.
+#   4. Actions -> this workflow -> Run workflow -> type EXPORT.
+#   5. Download `deployment-env-encrypted`, then locally:
+#        gpg --batch --passphrase '<passphrase>' --output env-bundle.tar.gz \
+#            --decrypt deployment-env.tar.gz.gpg
+#        tar xzf env-bundle.tar.gz
+#   6. Delete the artifact and the ENV_EXPORT_PASSPHRASE secret.
+# ==========================================================================================
+
+name: Export deployment env (offline copy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type EXPORT to confirm you intend to extract live secrets'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse unless the run was confirmed deliberately
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "EXPORT" ]; then
+            echo "::error::Type EXPORT in the confirm input to run this. Nothing was exported."
+            exit 1
+          fi
+
+      - name: Check the passphrase secret exists before reading anything sensitive
+        env:
+          PASSPHRASE: ${{ secrets.ENV_EXPORT_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          [ -n "$PASSPHRASE" ] || { echo "::error::Set an ENV_EXPORT_PASSPHRASE secret first — see the header of this file."; exit 1; }
+          if [ "${#PASSPHRASE}" -lt 16 ]; then
+            echo "::error::ENV_EXPORT_PASSPHRASE is shorter than 16 characters. Use a real random passphrase."
+            exit 1
+          fi
+
+      - name: Collect the Vercel production environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p bundle
+
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::error::VERCEL_TOKEN or VERCEL_PROJECT_ID is unset. Almost all of this site's configuration lives in Vercel, so exporting without them would produce a bundle that is missing the part that matters."
+            exit 1
+          fi
+
+          # The REST API rather than the Vercel CLI: no npm install, no project-link step, and
+          # decrypt=true returns the values a `vercel env pull` would write.
+          url="https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env?decrypt=true"
+          [ -n "$VERCEL_ORG_ID" ] && url="${url}&teamId=${VERCEL_ORG_ID}"
+
+          code="$(curl -sS -o envs.json -w '%{http_code}' -H "Authorization: Bearer ${VERCEL_TOKEN}" "$url")"
+          if [ "$code" != "200" ]; then
+            echo "::error::Vercel API answered ${code} listing project environment variables."
+            exit 1
+          fi
+
+          # PRODUCTION ONLY. A variable can carry a different value for preview and development;
+          # merging the targets produces a file that matches no environment that actually runs.
+          for target in production preview development; do
+            jq -r --arg t "$target" '
+              "# Vercel \($t) environment for cxa-cms. Every value here is live.",
+              "# Snapshot only — Vercel remains the source of truth.",
+              "",
+              (.envs
+               | map(select(.target // [] | index($t)))
+               | sort_by(.key)[]
+               | "\(.key)=\(.value // "<value withheld by the API>")")
+            ' envs.json > "bundle/.env.${target}.local"
+            echo "${target}: $(grep -cE '^[A-Z_][A-Z0-9_]*=' "bundle/.env.${target}.local" || true) variables"
+          done
+          rm -f envs.json
+
+      - name: Collect the repository secrets that ci.yml and keep-warm.yml use
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          out=bundle/github-secrets.env
+          {
+            echo "# Repository secrets, as distinct from the Vercel project variables."
+            echo "# These are what the GitHub workflows read; Vercel values are what the site runs on."
+            echo "# A name appearing in both files may legitimately hold DIFFERENT values."
+            echo ""
+          } > "$out"
+          # Written through the environment, never interpolated into the script text, so a value
+          # containing a quote or a newline cannot break the shell or leak through `ps`.
+          for name in CRON_SECRET DATABASE_URL GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET SITE_URL; do
+            value="${!name-}"
+            if [ -z "$value" ]; then
+              echo "# ${name}=<not set as a repository secret>" >> "$out"
+            else
+              printf '%s=%s\n' "$name" "$value" >> "$out"
+            fi
+          done
+          echo "repository secrets captured: $(grep -cE '^[A-Z_][A-Z0-9_]*=' "$out" || true)"
+
+      - name: Describe what is in the bundle
+        run: |
+          set -euo pipefail
+          cat > bundle/MANIFEST.txt <<'EOF'
+          Deployment environment for cxa-cms.
+
+          .env.production.local   Vercel PRODUCTION variables — what the live site runs on.
+                                  This is the file that matters. Drop it into the repo root
+                                  as .env.production.local; `.gitignore` line 53 (`.env*`)
+                                  already covers it.
+          .env.preview.local      Vercel PREVIEW variables. Preview builds fail when one of
+                                  these is missing, which is worth checking against production.
+          .env.development.local  Vercel DEVELOPMENT variables, if any are defined.
+          github-secrets.env      The five repository secrets ci.yml and keep-warm.yml read.
+                                  A name here may hold a DIFFERENT value from the Vercel one.
+
+          Every one of these is a live credential — the Neon database URL and the JWT secret
+          among them. Store the bundle offline, and rotate anything you believe was exposed.
+          EOF
+          echo "bundle contents:"; find bundle -type f | sort
+
+      - name: Encrypt the bundle
+        env:
+          PASSPHRASE: ${{ secrets.ENV_EXPORT_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tar czf bundle.tar.gz bundle
+          printf '%s' "$PASSPHRASE" | gpg --batch --yes --quiet \
+            --passphrase-fd 0 --pinentry-mode loopback \
+            --symmetric --cipher-algo AES256 \
+            --output deployment-env.tar.gz.gpg bundle.tar.gz
+          echo "encrypted bundle: $(stat -c%s deployment-env.tar.gz.gpg) bytes"
+          echo "sha256 of the ENCRYPTED file: $(sha256sum deployment-env.tar.gz.gpg | cut -d' ' -f1)"
+          rm -rf bundle bundle.tar.gz
+
+      - name: Upload the encrypted bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-env-encrypted
+          path: deployment-env.tar.gz.gpg
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Scrub the workspace
+        if: always()
+        run: rm -rf bundle bundle.tar.gz envs.json deployment-env.tar.gz.gpg
