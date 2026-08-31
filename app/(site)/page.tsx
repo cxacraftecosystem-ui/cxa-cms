@@ -365,50 +365,128 @@ const SEAL_MASK_STYLE: CSSProperties = {
  * ⚠ NO RESPONSIVE HEIGHT PAIR, AND ITS ABSENCE IS DELIBERATE. The designer portal writes `h-5 lg:h-7`
  * on the DC mark because its row is live from `md` and genuinely crosses `lg`. This row does not
  * exist below `2xl`, so a `lg:` variant here could never lose — it would be a dead class that reads
- * as a considered choice. The two heights are stated once, at the values `lg:` would have produced.
+ * as a considered choice. Each mark states ONE height. The DC mark's is the value `lg:` would have
+ * produced; the seal's is no longer, and the next note is why.
  *
- * DECORATIVE, AND STILL SO NOW THAT THE MARKS NAME TWO OTHER INSTITUTIONS. The row keeps
- * `aria-hidden`, `pointer-events-none` and no link. The designer portal's marks ARE links, and the
- * difference is DOM POSITION rather than taste: its pair is the first thing in its masthead, while
- * this element is rendered LAST on the page — see the call site, where `:first-child` is a DOM test
- * and the hero's bleed depends on nothing preceding it. An `sr-only` name here would therefore
- * announce "Office of the Development Commissioner (Handicrafts)" as the final utterance of the
- * homepage, detached from anything that explains it, and a link would be an invisible target lying
- * across the hero artwork. IIT Kharagpur is already named in text in the site footer. These two
- * boxes are ornament, and the provenance belongs in prose that an editor can place.
+ * ⚠ THE SEAL IS `h-[3.375rem]`, AN ARBITRARY VALUE, AND IT HAD TO BE ONE. The instruction was the IIT
+ * mark 50% larger, and 1.5 × `h-9` (2.25rem) is 3.375rem. Tailwind's scale steps 2.25rem straight to
+ * `h-10` (2.5rem), `h-11`, `h-12` and `h-14` (3.5rem) with no rung on 3.375: the nearest are `h-12`
+ * at +33% and `h-14` at +56%, and neither is the number that was asked for. So the number that was
+ * asked for is written out. It is a whole literal class name, which is the only form Tailwind's
+ * scanner can see (contract §5, and the `aspect-[268/300]` note below says the same thing again).
+ *
+ * ⚠ THE SEAL'S PLATE NOW STANDS TALLER THAN THE BAND IT RIDES IN, AND THAT IS THE CHOICE, NOT AN
+ * OVERSIGHT. The row is `h-14` (3.5rem); the seal's plate is 3.375rem of mark plus `py-1.5`, so
+ * 4.125rem, and it hangs 5px past the band top and bottom. Nothing clips — the row is `absolute`, no
+ * ancestor hides its overflow, and this was measured in a browser rather than assumed. The
+ * alternative was to grow the band to fit, which moves the DC mark's centreline down 5px; the DC mark
+ * was not asked to change and must not. `items-center` holds both marks on the band's centreline, so
+ * the seal grows symmetrically about the line the small mark still sits on.
+ *
+ * ⚠ AND THE BIGGER SEAL DOES NOT MOVE THE `2xl` CROSSOVER ARGUED ABOVE. It widens with its height —
+ * 268/300 at 3.375rem is 48px, up from 32px — so the RIGHT mark now wants about 96px of clear air
+ * where it wanted 80px. The LEFT mark is still the binding one at about 114px, which is the number
+ * `2xl` was chosen against, and 96 < 114. The arithmetic above stands unchanged.
+ *
+ * ── LINKED AND HOVERABLE NOW, AND THE OLD REASONING IS WHAT THE NEW SHAPE HAD TO PAY ─────────────
+ *
+ * This row used to carry `aria-hidden`, `pointer-events-none` and no anchors, and its reason has NOT
+ * evaporated: the marks are rendered LAST on the page — see the call site, where `:first-child` is a
+ * DOM test and the hero's bleed depends on nothing preceding it — so a bare `sr-only` name here would
+ * have announced "Office of the Development Commissioner (Handicrafts)" as the homepage's final
+ * utterance, detached from anything that explains it, and an unguarded link would have been an
+ * invisible target lying across the hero artwork.
+ *
+ * ⚠ THE ANSWER IS NOT TO MOVE THE ROW. `main.page-top > [data-bleed-top]:first-child` (globals.css
+ * :456) is what lets a full-bleed hero pay the header clearance inwards instead of stacking below it,
+ * and `:first-child` does not care that this element is out of flow. One node in front of the hero
+ * and every hero-led page loses its bleed. The row stays exactly where it is. Three things buy the
+ * links instead:
+ *
+ *   1. A NAMED LANDMARK rather than two bare links. `<nav aria-label="Institutional affiliations">`
+ *      is what actually answers the objection: the closing words of the page are no longer a ministry
+ *      office arriving from nowhere, they are a landmark that says what the two names are for, and it
+ *      is reachable from a screen reader's landmark list rather than only by reading to the end.
+ *      `aria-hidden` had to come off whatever else happened — a focusable link inside an `aria-hidden`
+ *      subtree is focusable and absent from the accessibility tree at once, which is worse than either
+ *      of the two states it is trying to be. The `<nav>` earns one more thing for free: the print
+ *      block's `nav a[href^="http"]::after { content: none }` (:1666) already exempts navigation from
+ *      the rule that spells an absolute URL after its link, so these two do not print as raw URLs.
+ *   2. `pointer-events-none` STAYS ON THE ROW; each anchor takes `pointer-events-auto`. The objection
+ *      it encoded was about the STRIP, not the marks — the row is a full-width 3.5rem box lying over
+ *      the hero, and only the two plates should ever swallow a click. This keeps that objection rather
+ *      than overruling it.
+ *   3. The hover is a CSS transition, never an inline style and never a script. Both reduced-motion
+ *      blocks near the top of globals.css collapse `transition-duration` on `*`, and neither can
+ *      reach a style attribute — the same reason the designer portal's copy of these marks states in
+ *      its own comment. The focus ring comes free from the global `a:focus-visible` rule (:196), and
+ *      that is why the anchor carries `rounded-md`: the ring's 6px radius then follows the plate it is
+ *      drawn around instead of cutting its corners.
+ *
+ * WHAT IS CONCEDED, PLAINLY, SO THE NEXT READER DOES NOT HAVE TO REDERIVE IT: the marks PAINT at the
+ * top of the page and are REACHED at the bottom of it. That mismatch is what the bleed rule costs and
+ * it does not go away. Walked with real Tab presses at 1536 on the seeded homepage, though, it lands
+ * better than the sentence above sounds: they are the last two stops inside `<main>` — the stop
+ * before them is the page's own "Contact" link, the stop after them is the first link in the FOOTER,
+ * and every stop from there on is footer. So a reader tabbing through arrives at the two institutions
+ * exactly where a colophon would have put them — on the way out of the page, rather than orphaned
+ * past its end. Moving them earlier in the DOM becomes the right fix only once the bleed has a
+ * selector that does not depend on document order.
  */
 function LandingCornerMarks() {
   return (
-    <div
-      aria-hidden="true"
+    <nav
+      aria-label="Institutional affiliations"
       className="pointer-events-none absolute inset-x-0 top-3 hidden h-14 items-center justify-between px-8 2xl:flex"
     >
       {/* TOP-LEFT — the DC Handicrafts mark in its own colours, on the cream plate its red wordmark
           needs to survive any ground. `bg-logo-cream` is this repository's own token
           (tailwind.config.ts: `logo: { cream: "#FAF9F5" }`) and is character-for-character the
           designer portal's, so nothing had to be invented or approximated for it. */}
-      <span className="flex items-center justify-center rounded-md bg-logo-cream px-2 py-1.5 shadow-md">
-        {/* eslint-disable-next-line @next/next/no-img-element -- a static file in `public/` drawn at
-            one fixed height in one corner of one page. `next/image` would put the optimiser in front
-            of a 27KB PNG for a width already known at build time, and its generated wrapper would
-            fight this plate's box for no benefit the reader could see. */}
-        <img
-          src={DC_HANDICRAFTS.src}
-          alt=""
-          width={DC_HANDICRAFTS.width}
-          height={DC_HANDICRAFTS.height}
-          className="h-7 w-auto"
-        />
-      </span>
+      <a
+        href={DC_HANDICRAFTS.href}
+        target="_blank"
+        rel="noreferrer"
+        // `pointer-events-auto` re-arms the one box the row switched off, and the inert strip between
+        // the two marks is left inert. The lift is a CSS transition for the reduced-motion reason in
+        // this component's header — never a `style` prop, which no media query can reach.
+        className="pointer-events-auto flex shrink-0 rounded-md transition hover:-translate-y-0.5 active:translate-y-0"
+      >
+        <span className="flex items-center justify-center rounded-md bg-logo-cream px-2 py-1.5 shadow-md">
+          {/* eslint-disable-next-line @next/next/no-img-element -- a static file in `public/` drawn at
+              one fixed height in one corner of one page. `next/image` would put the optimiser in front
+              of a 27KB PNG for a width already known at build time, and its generated wrapper would
+              fight this plate's box for no benefit the reader could see. */}
+          <img
+            src={DC_HANDICRAFTS.src}
+            alt=""
+            width={DC_HANDICRAFTS.width}
+            height={DC_HANDICRAFTS.height}
+            className="h-7 w-auto"
+          />
+        </span>
+        {/* The name lives HERE and the image keeps `alt=""`, rather than the name going in the `alt`:
+            the link needs an accessible name, and one mark must not be announced twice. */}
+        <span className="sr-only">{DC_HANDICRAFTS.name} — handicrafts.nic.in (opens in a new tab)</span>
+      </a>
       {/* TOP-RIGHT — the IIT Kharagpur seal, white, on the dark plate the header above measures. */}
-      <span className="flex items-center justify-center rounded-md bg-purple-950 px-2 py-1.5 shadow-md">
-        {/* `aspect-[268/300]` is the seal's intrinsic ratio, written out IN FULL rather than built
-            from IIT_KHARAGPUR's numbers: Tailwind scans this file for whole class names and cannot
-            interpolate one (contract §5), so an assembled string would compile to nothing and the
-            box would collapse. `mask-size: contain` letterboxes the mark inside it, so the 0.08%
-            rounding off the true 267.538×299.737 can never distort the seal. */}
-        <span className="block aspect-[268/300] h-9" style={SEAL_MASK_STYLE} />
-      </span>
-    </div>
+      <a
+        href={IIT_KHARAGPUR.href}
+        target="_blank"
+        rel="noreferrer"
+        className="pointer-events-auto flex shrink-0 rounded-md transition hover:-translate-y-0.5 active:translate-y-0"
+      >
+        <span className="flex items-center justify-center rounded-md bg-purple-950 px-2 py-1.5 shadow-md">
+          {/* `aspect-[268/300]` is the seal's intrinsic ratio, written out IN FULL rather than built
+              from IIT_KHARAGPUR's numbers: Tailwind scans this file for whole class names and cannot
+              interpolate one (contract §5), so an assembled string would compile to nothing and the
+              box would collapse. `mask-size: contain` letterboxes the mark inside it, so the 0.08%
+              rounding off the true 267.538×299.737 can never distort the seal. `h-[3.375rem]` is
+              1.5 × the `h-9` this box carried before — the header above has the whole of that sum. */}
+          <span aria-hidden className="block aspect-[268/300] h-[3.375rem]" style={SEAL_MASK_STYLE} />
+        </span>
+        <span className="sr-only">{IIT_KHARAGPUR.name} — iitkgp.ac.in (opens in a new tab)</span>
+      </a>
+    </nav>
   );
 }
