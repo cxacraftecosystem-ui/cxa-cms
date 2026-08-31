@@ -119,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          out=bundle/github-secrets.env
+          out=bundle/.env.github-secrets
           {
             echo "# Repository secrets, as distinct from the Vercel project variables."
             echo "# These are what the GitHub workflows read; Vercel values are what the site runs on."
@@ -151,7 +151,7 @@ jobs:
           .env.preview.local      Vercel PREVIEW variables. Preview builds fail when one of
                                   these is missing, which is worth checking against production.
           .env.development.local  Vercel DEVELOPMENT variables, if any are defined.
-          github-secrets.env      The five repository secrets ci.yml and keep-warm.yml read.
+          .env.github-secrets     The five repository secrets ci.yml and keep-warm.yml read.
                                   A name here may hold a DIFFERENT value from the Vercel one.
 
           Every one of these is a live credential — the Neon database URL and the JWT secret
