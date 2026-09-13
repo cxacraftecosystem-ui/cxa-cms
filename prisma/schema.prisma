@@ -654,6 +654,7 @@ model MediaAsset {
   craftImages        CraftMedia[]
   craftCovers        Craft[]        @relation("CraftCover")
   albumCovers        GalleryAlbum[] @relation("AlbumCover")
+  albumSpines        GalleryAlbum[] @relation("AlbumSpine")
   albumItems         GalleryItem[]
   researchAreaCovers ResearchArea[] @relation("ResearchAreaCover")
 
@@ -1552,6 +1553,22 @@ model GalleryAlbum {
   /// the reason the crop migration gives at length — an out-of-range rectangle must degrade to "no
   /// crop" at render rather than surface to an editor as "something went wrong".
   coverScreens Json?
+  /// The picture drawn on the COLLAPSED card in the gallery listing — the "spine" of the book, which is
+  /// what the shelf shows by default and morphs away from on hover. `coverId` is the EXPANDED picture.
+  ///
+  /// Null is the ordinary state and means "this album has one picture": the shelf falls back to the
+  /// cover and draws exactly what it drew before this column existed. That fallback is the whole
+  /// backwards-compatibility story — every album that predates the spine keeps working, with the
+  /// collapsed card showing a sliver of the cover rather than a blank. A spine is only ever an
+  /// addition, never a requirement, which is why this is nullable rather than backfilled from `coverId`:
+  /// a backfilled value would be indistinguishable from a decision an editor made.
+  spineId      String?
+  /// Optional per-screen framing for the album's spine, exactly as `coverScreens` is for the cover.
+  /// Null means nobody has framed it. Shape and cascade are owned by lib/media/screens.ts and validated
+  /// by Zod at the API boundary; Postgres checks nothing here, for the reason the crop migration gives
+  /// at length — an out-of-range rectangle must degrade to "no crop" at render rather than surface to an
+  /// editor as "something went wrong".
+  spineScreens Json?
   sortOrder    Int       @default(0)
 
   status      ContentStatus @default(DRAFT)
@@ -1562,6 +1579,10 @@ model GalleryAlbum {
   deletedAt DateTime?
 
   cover MediaAsset?   @relation("AlbumCover", fields: [coverId], references: [id], onDelete: SetNull)
+  /// `SetNull` like the cover, and for the same reason: deleting a photograph must not delete the album
+  /// that used it. A null spine falls back to the cover, so the card degrades to its old appearance
+  /// rather than to a hole.
+  spine MediaAsset?   @relation("AlbumSpine", fields: [spineId], references: [id], onDelete: SetNull)
   items GalleryItem[]
   tags  String[]      @default([])
 

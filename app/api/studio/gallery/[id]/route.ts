@@ -81,6 +81,14 @@ const albumBodySchema = z.object({
    * schema and the save would report success.
    */
   coverScreens: screenFramingField(),
+  /**
+   * The SPINE and its framing — the picture the gallery listing draws on a CLOSED card.
+   *
+   * Accepted here for the same reason the cover's framing is: a field this schema does not name is
+   * stripped, and the save then reports success while the editor's choice never reaches the database.
+   */
+  spineId: optionalId(),
+  spineScreens: screenFramingField(),
   sortOrder: boundedInt({ min: -9999, max: 9999, fallback: 0 }),
   status: statusSchema,
   tags: z
@@ -125,6 +133,9 @@ const ALBUM_SELECT = {
    * ══════════════════════════════════════════════════════════════════════════════════════════════
    */
   coverScreens: true,
+  /** Both spine columns, in the snapshot for every reason the block above gives about `coverScreens`. */
+  spineId: true,
+  spineScreens: true,
   sortOrder: true,
   status: true,
   publishedAt: true,
@@ -218,6 +229,11 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
   if (body.coverId !== undefined) {
     await assertMediaAvailable(prisma, body.coverId, { field: "coverId", what: "cover picture" });
   }
+  // Checked separately rather than alongside the cover: the two are different pictures, and an error
+  // naming the wrong field sends an editor to the wrong control.
+  if (body.spineId !== undefined) {
+    await assertMediaAvailable(prisma, body.spineId, { field: "spineId", what: "spine picture" });
+  }
 
   // No `schedulable`: `GalleryAlbum` has only a `status` column.
   const transition = publishTransition(existing, { status: body.status }, user);
@@ -251,6 +267,10 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
             // "the editor cleared the framing" and must reach the column as SQL's idea of nothing.
             ...(body.coverScreens !== undefined
               ? { coverScreens: jsonColumn(body.coverScreens) }
+              : {}),
+            ...(body.spineId !== undefined ? { spineId: body.spineId } : {}),
+            ...(body.spineScreens !== undefined
+              ? { spineScreens: jsonColumn(body.spineScreens) }
               : {}),
             ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
             ...(body.tags !== undefined ? { tags: cleanTags(body.tags) } : {}),

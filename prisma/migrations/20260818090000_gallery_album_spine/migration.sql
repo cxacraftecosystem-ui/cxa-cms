@@ -1,0 +1,61 @@
+-- A second cover for an album: the SPINE, which is what the gallery shelf shows before anyone hovers.
+--
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+-- WHAT THIS IS FOR. `components/ui/expand-on-hover.tsx` draws the gallery listing as a shelf of books:
+-- every album is a tall collapsed sliver that widens to a square when it is hovered, focused or tapped.
+-- Until now both states drew the SAME photograph, so the collapsed sliver was a ~64px-wide vertical
+-- slice taken out of the middle of a landscape cover — a strip of sky, a shoulder, a wall. A picture
+-- composed for a wide card is not a picture that survives being cut to a spine, and no crop of the one
+-- file can be right for both shapes at once.
+--
+-- So an album may now carry two pictures: `spineId` is drawn COLLAPSED and `coverId` is drawn EXPANDED.
+-- The two are separate columns rather than two buckets of `coverScreens`, and that distinction matters:
+-- per-screen framing answers "which part of this photograph, at this WIDTH", and every bucket of it
+-- resolves against one asset chosen for one purpose. This is a different axis entirely — which
+-- photograph, in which STATE — and folding a state into a width bucket would mean a spine that changed
+-- with the viewport and an expanded cover that could not exist below `lg`.
+--
+-- ⚠ NULLABLE, AND DELIBERATELY NOT BACKFILLED. `spineId` null means "this album has one picture", and
+-- the shelf falls back to the cover — drawing exactly what it drew before this migration, for every one
+-- of the existing albums. Backfilling `spineId = coverId` would produce the same pixels today and would
+-- be a lie tomorrow: an editor opening the album would be told a spine had been chosen for them, and
+-- "nobody has chosen" would no longer be expressible. The same argument the crop migration makes for
+-- leaving the rectangle columns null rather than defaulting them to 0/0/1/1.
+--
+-- `spineScreens` mirrors `coverScreens` exactly — the per-screen framing of the spine, as JSONB, with no
+-- CHECK constraint, for the reason 20260817120000_per_screen_framing_columns gives at length: the ranges
+-- are enforced by Zod where a person can be told about them, and the render side treats any unusable
+-- rectangle as "no crop for this bucket". A constraint violation reaches an editor as "something went
+-- wrong on our side", which is false and which this codebase spends a great deal of effort avoiding.
+--
+-- ON DELETE SET NULL, matching `gallery_albums_coverId_fkey`. Deleting a photograph must never delete the
+-- album that used it; the spine simply goes back to null and the card goes back to showing the cover,
+-- which is a graceful degradation rather than a hole.
+--
+-- NO INDEX ON THE FOREIGN KEY, matching the cover. Nothing queries albums BY spine — the column is read
+-- through the album row it sits on — and Postgres does not need one to enforce the constraint. This is
+-- also what `prisma migrate diff` emits, and this file has to match that character for character.
+--
+-- ⚠ WRITTEN BY HAND, for the reason 20260817120000 states: there is no local database on this machine,
+-- so `prisma migrate dev` cannot be run here. This is exactly what Prisma emits for one nullable `String`
+-- relation field plus one nullable `Json` field added to `GalleryAlbum`, with the matching
+-- `albumSpines GalleryAlbum[] @relation("AlbumSpine")` back-relation on `MediaAsset`. THE SCHEMA BLOCKS
+-- MUST LAND IN THE SAME COMMIT — without them `prisma migrate` reports drift in the opposite direction
+-- and `@prisma/client` never exposes the fields, so every read of them is a type error.
+--
+-- PURELY ADDITIVE AND SAFE ON A POPULATED DATABASE. Two nullable columns with no default are a
+-- catalogue-only change on Postgres 11+: no table rewrite, no long lock. Adding the foreign key does take
+-- a brief `SHARE ROW EXCLUSIVE` on both tables to validate, and validating it is instant here because
+-- every existing row has `spineId` NULL and a NULL never violates a foreign key.
+--
+-- ROLLING BACK is `ALTER TABLE "gallery_albums" DROP COLUMN "spineId", DROP COLUMN "spineScreens"` (the
+-- constraint goes with the column). It loses every spine an editor has chosen and returns each album to
+-- one picture in both states, which is where it started.
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+
+-- AlterTable
+ALTER TABLE "gallery_albums" ADD COLUMN     "spineId" TEXT,
+ADD COLUMN     "spineScreens" JSONB;
+
+-- AddForeignKey
+ALTER TABLE "gallery_albums" ADD CONSTRAINT "gallery_albums_spineId_fkey" FOREIGN KEY ("spineId") REFERENCES "media_assets"("id") ON DELETE SET NULL ON UPDATE CASCADE;

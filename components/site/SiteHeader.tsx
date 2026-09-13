@@ -39,6 +39,13 @@
  * carries a real focus trap. Above `lg` the dropdown panels open on hover AND on focus, and their
  * links sit immediately after their trigger in DOM order, so Tab walks straight into an open panel
  * and Escape closes it. A trap there would be wrong: these are disclosures on a page, not modals.
+ *
+ * ONE REGISTER, `openMenuId`, HOLDS EVERY DROPDOWN IN THE PILL — the strip's section menus, keyed by
+ * `NavNode.id`, and the socials menu, keyed by the `SOCIAL_MENU_ID` sentinel. It is one piece of state
+ * rather than one per menu because three behaviours fall out of it and would otherwise each have to be
+ * re-implemented per panel: only one panel is ever open under one pill; the scroll collapse closes
+ * whatever is open (a panel anchored to a pill that is resizing is left hanging under nothing); and a
+ * route change closes it. See `SocialMenu`'s header for the rest of that argument.
  */
 
 import {
@@ -60,7 +67,12 @@ import { ArrowUpRight, ChevronDown, Menu, Search, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { collectHrefs, isActiveHref, resolveActiveHref, type NavNode } from "@/lib/navigation";
-import type { FeatureFlag, FeaturesSettings, BrandingSettings } from "@/lib/settings/schema";
+import type {
+  FeatureFlag,
+  FeaturesSettings,
+  BrandingSettings,
+  SocialSettings
+} from "@/lib/settings/schema";
 import {
   DURATION,
   EASE_OUT,
@@ -71,6 +83,7 @@ import {
 import { AccessibilityMenu } from "@/components/ui/AccessibilityMenu";
 import { SiteBrand } from "@/components/site/SiteBrand";
 import { EXTERNAL_LINK_PROPS, NavSheet } from "@/components/site/NavSheet";
+import { SOCIAL_MENU_ID, SocialMenu } from "@/components/site/SocialMenu";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The numbers
@@ -115,6 +128,12 @@ const FEATURE_ROUTES: ReadonlyArray<{ prefix: string; flag: FeatureFlag }> = [
   { prefix: "/events", flag: "events" },
   { prefix: "/publications", flag: "publications" }
 ];
+
+/**
+ * One frozen empty list, so an unwired `social` prop does not allocate a new array — and hand
+ * `SocialMenu` a new identity — on every render of the header, which is every render of every page.
+ */
+const NO_SOCIAL_LINKS = [] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers
@@ -221,9 +240,19 @@ export interface SiteHeaderProps {
   branding: BrandingSettings;
   items: NavNode[];
   features: FeaturesSettings;
+  /**
+   * `settings.social` — the Centre's own accounts, for the socials dropdown in the control cluster.
+   *
+   * ⚠ OPTIONAL, AND THAT IS A WIRING STATE RATHER THAN A DESIGN. This is a Client Component and cannot
+   * read the settings document itself; the value has to be handed down by `app/(site)/layout.tsx`,
+   * which already reads it for the footer and the Organization JSON-LD. Until that one prop is passed
+   * the menu renders nothing at all, which is exactly what it does on a fresh install with no links
+   * configured — so an unwired header is the empty state, never a broken one.
+   */
+  social?: SocialSettings;
 }
 
-export function SiteHeader({ branding, items, features }: SiteHeaderProps) {
+export function SiteHeader({ branding, items, features, social }: SiteHeaderProps) {
   const pathname = usePathname();
   const reduce = useReducedMotionPreference();
 
@@ -307,6 +336,21 @@ export function SiteHeader({ branding, items, features }: SiteHeaderProps) {
 
   const dismissSheet = useCallback(() => setSheetOpen(false), []);
 
+  /**
+   * The socials menu's two edges of the shared `openMenuId` register.
+   *
+   * `openSocialMenu` writes the sentinel unconditionally — opening one panel closes any other, which
+   * is the whole reason the register is shared. `closeSocialMenu` only clears the register IF IT IS
+   * STILL OURS, exactly as `StripItem`'s blur handler does below: a close that fired late (a blur
+   * landing after another trigger has already claimed the register) would otherwise shut the panel the
+   * reader has just opened.
+   */
+  const openSocialMenu = useCallback(() => setOpenMenuId(SOCIAL_MENU_ID), []);
+  const closeSocialMenu = useCallback(
+    () => setOpenMenuId((current) => (current === SOCIAL_MENU_ID ? null : current)),
+    []
+  );
+
   return (
     <>
       <header className="nav-frame pointer-events-none fixed inset-x-0 top-3 z-50">
@@ -343,6 +387,12 @@ export function SiteHeader({ branding, items, features }: SiteHeaderProps) {
                       // clips an open dropdown panel, so it is lifted while one is open. The two
                       // never overlap in practice: opening a panel takes a pointer or a Tab, and
                       // neither is happening during a scroll.
+                      //
+                      // The register also holds SOCIAL_MENU_ID now, and that panel is OUTSIDE this
+                      // element, so it lifts a clip it never needed. Harmless and deliberately left
+                      // untightened: the clip only matters during the collapse animation, and the
+                      // effect above empties the register on every change of `compact` — so there is
+                      // no frame in which this is both unclipped and animating.
                       openMenuId ? "overflow-visible" : "overflow-hidden"
                     )}
                   >
@@ -368,6 +418,28 @@ export function SiteHeader({ branding, items, features }: SiteHeaderProps) {
               {/* The icon is decorative, so this span IS the link's accessible name. */}
               <span className="sr-only">Search this site</span>
             </Link>
+
+            {/*
+              IN THE CONTROL CLUSTER, NOT IN THE LINK STRIP, and the placement is the design.
+
+              The strip is `hidden lg:block` AND is unmounted by the collapse, so a socials entry put
+              there would be missing on every phone and would vanish the moment the reader scrolled —
+              a destination that quietly stops being listed is the single most repeated bug class in
+              this product's history (contract §1.6, and see MAX_STRIP_ENTRIES above). The cluster is
+              rendered at every width and never collapses. The strip is also the EDITOR'S navigation
+              tree; these accounts come from the settings document and are not rows an editor can
+              reorder into it.
+
+              Between the search control and the accessibility menu because that is the order of
+              decreasing "about the Centre": where to look, who the Centre is elsewhere, then how this
+              browser should render the page.
+            */}
+            <SocialMenu
+              links={social?.links ?? NO_SOCIAL_LINKS}
+              open={openMenuId === SOCIAL_MENU_ID}
+              onOpen={openSocialMenu}
+              onClose={closeSocialMenu}
+            />
 
             <AccessibilityMenu side="bottom" align="end" />
 

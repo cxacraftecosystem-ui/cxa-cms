@@ -19,12 +19,18 @@
  *
  * A Server Component reading Prisma directly. The client pieces are `FilterBar` (with its own
  * Suspense boundary) and the album shelves themselves — `ExpandOnHover` is a hover interaction and
- * cannot be anything else. The shelf receives FINISHED values: cover URLs resolved through `mediaSrc`
+ * cannot be anything else. The shelf receives FINISHED values: picture URLs resolved through `mediaSrc`
  * here on the server, titles, a composed meta line, and — for the few albums somebody has framed per
  * screen size — a `Picture` already resolved by `pictureFromMap`, so the island ships no media plumbing
  * and every album's accessible name is settled before hydration. With no JavaScript the
  * shelf's own `<noscript>` rescue widens the slivers and shows the labels, so the listing is still
  * fully readable (see components/ui/expand-on-hover.tsx).
+ *
+ * TWO PICTURES PER CARD. An album's SPINE is what the collapsed card shows and its COVER is what the
+ * opened one shows — a 4rem sliver and a 24rem square are different photographs, not different crops of
+ * one. Both are resolved here, each falling back to the other, and a spine is handed to the shelf only
+ * when it is genuinely a different file; an album with one picture takes the shelf's single-layer path
+ * and renders exactly as it did before the column existed.
  */
 
 import type { Metadata } from "next";
@@ -61,6 +67,19 @@ const NOUN = { singular: "album", plural: "albums" } as const;
  */
 const SHELF_SIZE = 8;
 
+/**
+ * How many covers are fetched eagerly instead of lazily.
+ *
+ * ⚠ TWO, AND THE NUMBER IS A RULE RATHER THAN A TASTE. `MediaImage`'s own `priority` prop says it in one
+ * line — "only for an image ABOVE THE FOLD; more than one or two per page and none of them is a
+ * priority" — because `priority` emits a `<link rel="preload">`, and a page that preloads a dozen things
+ * has told the browser nothing about which to fetch first. The first shelf is on screen at first paint
+ * under the hero, so its leading cards are the two that genuinely qualify; everything after them stays
+ * lazy on purpose, which is what keeps a twelve-album page from opening twelve connections before the
+ * reader has scrolled.
+ */
+const EAGER_COVERS = 2;
+
 const DESCRIPTION =
   "Photographs from the Centre's events, fieldwork and workshops, gathered into albums. Panoramas and " +
   "virtual tours are marked where an album holds them.";
@@ -96,19 +115,32 @@ const albumCardSelect = {
    */
   coverId: true,
   coverScreens: true,
+  /**
+   * The SPINE — the picture the collapsed card shows — and its own framing, fetched the same way and for
+   * the same reasons as the cover above.
+   *
+   * Null on nearly every album, which is the resting state: the shelf then draws the cover in both
+   * states, exactly as it did before this column existed (see `GalleryAlbum.spineId` in the schema).
+   * Fetching it unconditionally costs one nullable join on a page that is already joining the cover;
+   * fetching it only for albums that have one is not expressible in a single query and would cost a
+   * second round trip to save nothing.
+   */
+  spineId: true,
+  spineScreens: true,
+  spine: { select: MEDIA_IMAGE_SELECT },
   /** The count, not the rows. An album of 300 pictures costs the same to list as one of three. */
   _count: { select: { items: true } }
 } satisfies Prisma.GalleryAlbumSelect;
 
 /**
- * The stored framing, out of its JSONB column.
+ * The stored framing of one of an album's two pictures, out of its JSONB column.
  *
  * A cast rather than a parse. `Prisma.JsonValue` carries no shape, and the render side is built to
  * tolerate that: every member of every bucket is read through optional access and `storedCrop`, so a
  * hand-edited row degrades to "nothing framed" rather than drawing a broken frame (lib/media/screens.ts).
  * The Zod schema at the studio's write boundary is what keeps a row this site wrote honest.
  */
-function coverFraming(value: Prisma.JsonValue | null | undefined): ScreenFraming | null {
+function albumFraming(value: Prisma.JsonValue | null | undefined): ScreenFraming | null {
   return (value ?? null) as unknown as ScreenFraming | null;
 }
 
@@ -225,7 +257,14 @@ export default async function GalleryIndexPage({
    * it per album is how one album ends up guarded wrongly (lib/media/framing.ts).
    */
   const framingMedia = await framingAssets(
-    ...albums.map((album) => coverFraming(album.coverScreens))
+    // BOTH pictures' framings, in one pass. A spine may name alternates exactly as a cover may, and
+    // leaving it out of this census is the failure mode `framingAssets` documents: the bucket's
+    // photograph cannot be resolved, so it INHERITS, and the spine silently draws the wrong picture on
+    // one screen size only. `flatMap` rather than two calls because the ids are de-duplicated inside.
+    ...albums.flatMap((album) => [
+      albumFraming(album.coverScreens),
+      albumFraming(album.spineScreens)
+    ])
   );
 
   const categories = unique(
@@ -274,7 +313,7 @@ export default async function GalleryIndexPage({
    * rather than look like a broken card. 1080 targets the `md` derivative — the expanded card is
    * 384px at its widest, so a 2× screen wants ~768px and `pickVariant` rounds up, never down.
    */
-  const shelfItems: ExpandOnHoverItem[] = albums.map((album) => {
+  const shelfItems: ExpandOnHoverItem[] = albums.map((album, index) => {
     const when = albumMonth(album.happenedOn);
     const count = album._count.items;
     const meta = [
@@ -285,22 +324,75 @@ export default async function GalleryIndexPage({
       .filter(Boolean)
       .join(" · ");
 
+    /**
+     * THE TWO PICTURES, EACH FALLING BACK TO THE OTHER.
+     *
+     * An album may have a cover, a spine, both or neither, and every one of those four has to produce a
+     * card a reader can use. Resolving each side with the other as its fallback is what makes that true
+     * without a branch per case: an album with only a cover (every album that predates the spine column)
+     * shows the cover in both states; an album whose cover was cleared but whose spine remains shows the
+     * spine in both; an album with neither gets the plate. The alternative — letting the expanded face be
+     * null when there is no cover — would open a card onto nothing for an editor who had chosen a
+     * perfectly good spine.
+     */
+    const expandedAsset = album.cover ?? album.spine;
+    const expandedId = album.coverId ?? album.spineId;
+    const expandedScreens = album.cover ? album.coverScreens : album.spineScreens;
+
+    const spineAsset = album.spine ?? album.cover;
+    const spineId = album.spineId ?? album.coverId;
+    const spineScreens = album.spine ? album.spineScreens : album.coverScreens;
+
+    /**
+     * A face, finished here so the client island receives only strings and one resolved `Picture`.
+     *
+     * `pictureFromMap` owns the framing lookup rather than a closure written out here: a bucket whose
+     * photograph is missing from the map must INHERIT rather than blank the picture, and that is the rule
+     * a hand-rolled `assetOf` gets subtly wrong. With nothing framed it returns a single band, which the
+     * shelf ignores in favour of `imageSrc` exactly as before.
+     *
+     * 1080 targets the `md` derivative: the card is 384px at its widest, so a 2× screen wants ~768px and
+     * `pickVariant` rounds up, never down. It is the same width `COVER_TARGET_WIDTH` resolves to on the
+     * framed path, which is the point — the two branches of the shelf must not ask for different files
+     * for the same card (see components/ui/expand-on-hover.tsx, where they used to).
+     */
+    const face = (
+      asset: typeof album.cover,
+      id: string | null,
+      screens: Prisma.JsonValue | null
+    ) => ({
+      imageSrc: mediaSrc(asset, 1080),
+      alt: mediaAlt(asset),
+      /**
+       * The blur, carried through so the shelf's plain branch can draw it.
+       *
+       * It is already on the row — `MEDIA_IMAGE_SELECT` fetches `blurDataUrl` for every picture — and
+       * every other photograph on the site fades up from it. The shelf's hand-rolled `<Image>` was the
+       * one place that dropped it, so covers arrived onto an empty grey card instead of onto a
+       * recognisable smudge of themselves. See `blurDataUrl` on `ExpandOnHoverFace`.
+       */
+      blurDataUrl: asset?.blurDataUrl ?? null,
+      picture: pictureFromMap(id, albumFraming(screens), withBaseAsset(framingMedia, id, asset))
+    });
+
     return {
       href: `/gallery/${album.slug}`,
-      imageSrc: mediaSrc(album.cover, 1080),
-      alt: mediaAlt(album.cover),
+      expanded: face(expandedAsset, expandedId, expandedScreens),
       /**
-       * The framing, resolved HERE because this is the only place that holds both the cover and the
-       * alternates it may name. `pictureFromMap` owns the lookup rather than a closure written out here:
-       * a bucket whose photograph is missing from the map must INHERIT rather than blank the cover, and
-       * that is the rule a hand-rolled `assetOf` gets subtly wrong. With nothing framed it returns a
-       * single band, which the shelf ignores in favour of `imageSrc` exactly as before.
+       * ⚠ A SPINE IS EMITTED ONLY WHEN IT IS A DIFFERENT PHOTOGRAPH, and the test is on the resolved
+       * asset rather than on `album.spineId` being set. An album whose spine and cover are the same
+       * picture — which an editor can produce in two clicks, and which an import can produce by
+       * accident — would otherwise get two identical stacked layers cross-fading a photograph into
+       * itself: pointless work, and at the midpoint of the fade a visibly half-transparent card with the
+       * surface colour showing through. Null here sends the shelf down its single-face path, which is
+       * the markup it drew before the spine existed.
        */
-      picture: pictureFromMap(
-        album.coverId,
-        coverFraming(album.coverScreens),
-        withBaseAsset(framingMedia, album.coverId, album.cover)
-      ),
+      spine:
+        spineAsset && expandedAsset && spineAsset.objectKey !== expandedAsset.objectKey
+          ? face(spineAsset, spineId, spineScreens)
+          : null,
+      /** Only the leading cards of the first shelf, which are the ones on screen — see `EAGER_COVERS`. */
+      priority: index < EAGER_COVERS,
       title: album.title,
       meta
     };

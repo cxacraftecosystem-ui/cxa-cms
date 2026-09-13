@@ -21,6 +21,15 @@
  * that knows nothing about publication state; this page decides what is live, caps the picture so it
  * stays legible, and hands over the sentence that says what was left out. A diagram that quietly draws
  * forty of ninety projects is indistinguishable from a Centre with forty (contract §1.6).
+ *
+ * ⚠ AND THE SAME RULE GOVERNS THE SECTION'S OWN PROSE, WHICH IS WHERE THIS PAGE WAS WRONG. The
+ * "How the areas connect" description promised "every line is a project ... a person sitting between
+ * two areas works across both" no matter what the data held, so a Centre with published areas and no
+ * published project linked to one rendered a row of isolated circles beneath a sentence describing
+ * connections the picture did not contain. The description is now chosen from `edges` — the very list
+ * the figure is drawn from — so the caption cannot outrun the drawing, and `ResearchGraph` refuses to
+ * draw a connection diagram that has no connections at all. Nothing here invents data to fill the gap:
+ * when the Centre has no project↔area↔person links, the page says exactly that.
  */
 
 import type { Metadata } from "next";
@@ -192,6 +201,24 @@ export default async function ResearchIndexPage() {
   let collaboratorsOmitted = 0;
   /** Projects whose area was cut by `AREA_LIMIT` — an edge into it would be a line to nowhere. */
   let projectsOutsideDrawnAreas = 0;
+  /**
+   * Projects the diagram took in that draw NO LINE, because nobody published and visible is on the
+   * team.
+   *
+   * ⚠ COUNTED SO THE NOTE CAN OWN THE ONE WAY AN AREA'S CARD AND ITS NODE CAN DISAGREE. The node's
+   * `detail` states the area's real corpus ("6 projects, 2 publications", the same filtered aggregate
+   * the card above shows), while its `weight` — and therefore its size — is the number of LINES drawn
+   * from it. Those are two different true facts, and they diverge silently in exactly this case: an
+   * area with six published projects, none of which has a published team member, is a node captioned
+   * "6 projects" with nothing attached to it. The cap sentences below explain a divergence caused by
+   * `GRAPH_PROJECT_LIMIT`; without this counter nothing explains one caused by an empty team, and a
+   * reader is left to conclude the diagram is broken (contract §1.6).
+   *
+   * `members.length === 0` is equivalent to `_count.members === 0` here — both sides apply the same
+   * person filter and `take` is 4, so a project with any published visible member returns at least one
+   * row. The length is used because it is the value the edges are actually built from.
+   */
+  let projectsWithNoDrawnTeam = 0;
 
   for (const project of graphProjects) {
     const areaId = project.researchAreaId;
@@ -201,6 +228,7 @@ export default async function ResearchIndexPage() {
     }
 
     collaboratorsOmitted += Math.max(0, project._count.members - project.members.length);
+    if (project.members.length === 0) projectsWithNoDrawnTeam += 1;
 
     for (const member of project.members) {
       const person = member.person;
@@ -246,9 +274,23 @@ export default async function ResearchIndexPage() {
     projectsDrawn: graphProjects.length - projectsOutsideDrawnAreas,
     projectTotal: graphProjectTotal,
     collaboratorsOmitted,
+    projectsWithNoDrawnTeam,
     areasDrawn: areas.length,
     areaTotal
   });
+
+  /**
+   * Whether the diagram has anything to draw, decided HERE and from the SAME edge list the figure is
+   * handed — not guessed at from `areas.length`.
+   *
+   * The section's description used to promise "every line is a project ... a person sitting between
+   * two areas works across both" unconditionally, which is how three isolated circles came to sit
+   * under a sentence describing connections that were not there. The heading TITLE stays fixed
+   * ("How the areas connect" is the name of this section, and a title that changes with the data
+   * makes the page's own anchors and outline move underneath a reader); only the claim changes, and
+   * `ResearchGraph` states the absence itself in the space where the drawing would have been.
+   */
+  const graphHasLines = edges.length > 0;
 
   return (
     <>
@@ -303,7 +345,11 @@ export default async function ResearchIndexPage() {
           <SectionHeading
             eyebrow="The shape of the work"
             title="How the areas connect"
-            description="Every research area is a node; every line is a project, joining an area to one of the people working on it. A person sitting between two areas works across both — which is the fact this diagram exists to show."
+            description={
+              graphHasLines
+                ? "Every research area is a node; every line is a project, joining an area to one of the people working on it. A person sitting between two areas works across both — which is the fact this diagram exists to show."
+                : "This diagram joins each research area to the people working on its projects, so that somebody working across two areas is drawn sitting between them. It is built from published projects, and there are none to build it from yet."
+            }
             className="mb-10"
           />
         </Reveal>
@@ -335,6 +381,7 @@ function buildGraphNote(facts: {
   projectsDrawn: number;
   projectTotal: number;
   collaboratorsOmitted: number;
+  projectsWithNoDrawnTeam: number;
   areasDrawn: number;
   areaTotal: number;
 }): string | null {
@@ -343,6 +390,18 @@ function buildGraphNote(facts: {
   if (facts.projectTotal > facts.projectsDrawn) {
     sentences.push(
       `The diagram draws ${facts.projectsDrawn} of ${facts.projectTotal} published projects that belong to an area, chosen featured-first and then most recently started. Every project is listed on the projects page.`
+    );
+  }
+  /**
+   * ⚠ THE SENTENCE THAT KEEPS A NODE'S CAPTION FROM CONTRADICTING ITS LINES. A project with no
+   * published, visible team member is a project with nobody to draw a line to, so an area can show
+   * fewer connections than its own "N projects" caption claims — and unlike the cap above, nothing
+   * else on the page would account for it. Said here rather than left to be inferred (contract §1.6).
+   */
+  if (facts.projectsWithNoDrawnTeam > 0) {
+    const one = facts.projectsWithNoDrawnTeam === 1;
+    sentences.push(
+      `${countPhrase(facts.projectsWithNoDrawnTeam, "project")} in this diagram ${one ? "has" : "have"} no published team member yet, so ${one ? "it draws" : "they draw"} no line — an area can therefore carry fewer connections here than the number of projects on its card.`
     );
   }
   if (facts.collaboratorsOmitted > 0) {

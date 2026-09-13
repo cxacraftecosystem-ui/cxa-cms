@@ -197,10 +197,22 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <SmoothScroll />
 
       <div className="relative flex min-h-screen flex-col bg-bg-0">
+        {/*
+          `social` is handed down rather than read inside the header because SiteHeader is a Client
+          Component and cannot open the settings document itself. This layout already holds the value
+          for the footer and for the Organization JSON-LD, so passing it costs one prop and no second
+          read.
+
+          The prop is OPTIONAL on purpose, and that is the empty state rather than a bug: with no
+          social settings the menu renders `null`, which is exactly what a fresh install should show.
+          An administrator who has not filled the section in sees no dropdown, not a dropdown with
+          nothing in it.
+        */}
         <SiteHeader
           branding={settings.branding}
           items={navigation.header}
           features={settings.features}
+          social={settings.social}
         />
 
         {/*

@@ -33,19 +33,7 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import type { PageSection } from "@prisma/client";
-import {
-  Facebook,
-  Github,
-  Globe,
-  Instagram,
-  Linkedin,
-  Mail,
-  Phone,
-  Rss,
-  Twitter,
-  Youtube,
-  type LucideIcon
-} from "lucide-react";
+import { Mail, Phone } from "lucide-react";
 
 import { Reveal } from "@/components/motion";
 import { ContactFormSection } from "@/components/sections/ContactFormSection";
@@ -57,7 +45,8 @@ import { prisma } from "@/lib/db";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import type { ContactFormSectionData, MapSectionData } from "@/lib/sections/schema";
 import { pageMetadata } from "@/lib/seo";
-import { SOCIAL_PLATFORMS, type ContactSettings, type SocialLink } from "@/lib/settings/schema";
+import { socialIcon, socialLabel } from "@/lib/socials";
+import type { ContactSettings } from "@/lib/settings/schema";
 import { getSettingsCached } from "@/lib/settings/service";
 
 const CONTACT_PATH = "/contact";
@@ -136,30 +125,20 @@ function syntheticSection(id: string, type: PageSection["type"]): PageSection {
   };
 }
 
-/**
- * lucide icons for the platforms `SOCIAL_PLATFORMS` names, plus `x` as an alias for Twitter.
+/*
+ * THE SLUG -> ICON AND LINK -> NAME RESOLUTION LIVES IN `lib/socials.ts`, NOT HERE.
  *
- * A literal map rather than a lookup by name into the icon set: `platform` is validated as a free-form
- * slug so a network nobody has heard of yet needs no release (lib/settings/schema.ts), and resolving an
- * arbitrary string against a module's exports is both untypeable and a way to ship the whole icon set.
- * Anything unrecognised gets `Globe`, which is what `SOCIAL_FALLBACK_ICON` already says it should.
+ * It used to live here AND in `components/site/SiteFooter.tsx`, and the two copies were keyed on
+ * DIFFERENT THINGS: this one on the platform SLUG (`"linkedin"`, and an `x` alias for Twitter), the
+ * footer's on the lucide EXPORT NAME (`"Linkedin"`, with no alias at all). `socialLinkSchema.platform`
+ * is a free-form slug (lib/settings/schema.ts), so an administrator typing `x` — which is what the
+ * network calls itself now — got the X glyph on THIS page and a featureless Globe in the footer, from
+ * one settings row on one page load. Both copies typechecked. Both linted. Both rendered an icon.
+ *
+ * Adding the header dropdown as a third surface is what forced the merge. One module now answers the
+ * question, and it keeps the better half of each copy: this page's `x` alias, and the footer's
+ * hostname fallback for an unlabelled `other` row.
  */
-const SOCIAL_ICONS: Record<string, LucideIcon> = {
-  linkedin: Linkedin,
-  twitter: Twitter,
-  x: Twitter,
-  youtube: Youtube,
-  instagram: Instagram,
-  facebook: Facebook,
-  github: Github,
-  rss: Rss
-};
-
-function socialLabel(link: SocialLink): string {
-  if (link.label.trim().length > 0) return link.label.trim();
-  const known = SOCIAL_PLATFORMS.find((platform) => platform.value === link.platform);
-  return known?.label ?? link.platform;
-}
 
 /** The postal address, one line per line an administrator typed. */
 function addressLines(contact: ContactSettings): string[] {
@@ -395,7 +374,7 @@ export default async function ContactPage() {
 
             <Reveal as="ul" className="flex flex-wrap gap-3">
               {socialLinks.map((link, index) => {
-                const Icon = SOCIAL_ICONS[link.platform] ?? Globe;
+                const Icon = socialIcon(link.platform);
                 const label = socialLabel(link);
 
                 return (

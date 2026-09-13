@@ -28,33 +28,30 @@
  */
 
 import Link from "next/link";
-import {
-  Facebook,
-  Github,
-  Globe,
-  Instagram,
-  Linkedin,
-  Mail,
-  MapPin,
-  Phone,
-  Rss,
-  Twitter,
-  Youtube,
-  type LucideIcon
-} from "lucide-react";
+import { Mail, MapPin, Phone } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { NavNode } from "@/lib/navigation";
 import { KolamMark } from "@/components/craft/KolamMark";
 import { Reveal } from "@/components/motion/Reveal";
-import {
-  SOCIAL_FALLBACK_ICON,
-  SOCIAL_PLATFORMS,
-  type BrandingSettings,
-  type ContactSettings,
-  type FooterSettings,
-  type SocialLink,
-  type SocialSettings
+/*
+  ⚠ THE SOCIAL ICON MAP AND THE LABEL CASCADE USED TO LIVE IN THIS FILE, and lifting them out is not
+  tidying — it closes a defect. A second, divergent copy sat in app/(site)/contact/page.tsx:147: that
+  one keyed its map on the PLATFORM SLUG and carried an `x: Twitter` row, while this one keyed on the
+  lucide EXPORT NAME reached through `SOCIAL_PLATFORMS` and therefore could not see `x` at all. An
+  administrator who typed `x` — which `socialLinkSchema` accepts, because `platform` is a free-form
+  slug — got the X glyph on /contact and a featureless GLOBE down here, for the same settings row, on
+  the same page load. Adding the header's dropdown as a third surface is what forced the question.
+
+  `lib/socials.ts` is deliberately NOT a `"use client"` module, which is what lets this Server
+  Component and the header's client dropdown import the same implementation rather than each other's.
+*/
+import { socialIcon, socialLabel } from "@/lib/socials";
+import type {
+  BrandingSettings,
+  ContactSettings,
+  FooterSettings,
+  SocialSettings
 } from "@/lib/settings/schema";
 import { AccessibilityMenu } from "@/components/ui/AccessibilityMenu";
 import { NewsletterSignup } from "@/components/site/NewsletterSignup";
@@ -68,25 +65,6 @@ export interface SiteFooterProps {
   /** The `footer` location of the navigation tree, from `getNavigation()`. */
   items: NavNode[];
 }
-
-/**
- * The lucide exports named by `SOCIAL_PLATFORMS`, resolved here.
- *
- * A map rather than a dynamic lookup on the lucide namespace: `icons[name]` would defeat tree-shaking
- * and pull the entire icon set — some 1,500 components — into the bundle of every public page.
- * `Globe` is the documented fallback for a platform nobody has written an icon for (contract §13:
- * lucide, and only lucide).
- */
-const SOCIAL_ICONS: Record<string, LucideIcon> = {
-  Linkedin,
-  Twitter,
-  Youtube,
-  Instagram,
-  Facebook,
-  Github,
-  Rss,
-  Globe
-};
 
 /** Complete literal class strings — a name assembled by concatenation is purged (contract §5). */
 const FOOTER_LINK =
@@ -102,37 +80,6 @@ function isInternalHref(href: string): boolean {
 
 function isWebExternal(href: string): boolean {
   return /^https?:\/\//i.test(href);
-}
-
-function platformMeta(platform: string) {
-  return SOCIAL_PLATFORMS.find((entry) => entry.value === platform);
-}
-
-/**
- * The accessible name for a social link.
- *
- * An icon-only link with no name is unusable — a screen reader announces "link" and stops. The
- * editor's own label wins; failing that the platform's name; failing that the host, because "other"
- * is a picker option ("Something else") and not something to read out loud. `new URL` cannot throw on
- * a value that reached here — `socialLinkSchema` validated it — but the guard costs nothing and a
- * footer is not worth crashing a page over.
- */
-function socialLabel(link: SocialLink): string {
-  if (link.label) return link.label;
-
-  const meta = platformMeta(link.platform);
-  if (meta && meta.value !== "other") return meta.label;
-
-  try {
-    return new URL(link.url).hostname.replace(/^www\./i, "");
-  } catch {
-    return link.platform;
-  }
-}
-
-function socialIcon(platform: string): LucideIcon {
-  const meta = platformMeta(platform);
-  return SOCIAL_ICONS[meta?.icon ?? SOCIAL_FALLBACK_ICON] ?? Globe;
 }
 
 /** The postal address as the lines a person would actually write on an envelope. */
@@ -288,6 +235,16 @@ export function SiteFooter({ branding, contact, social, footer, items }: SiteFoo
                     <li key={`${index}-${link.url}`}>
                       <a
                         href={link.url}
+                        /*
+                          ⚠ THE PAIR IS SPELLED OUT HERE RATHER THAN SPREAD FROM `EXTERNAL_LINK_PROPS`,
+                          AND IT IS NOT AN OVERSIGHT. That constant lives in components/site/NavSheet.tsx,
+                          which is a `"use client"` module — every export of such a module becomes a
+                          CLIENT REFERENCE when a Server Component imports it, and this footer is a
+                          Server Component by design (see the header). Spreading a client reference into
+                          JSX props on the server is the same trap `app/(site)/layout.tsx` records about
+                          the header's feature filter. The values are identical and must stay so:
+                          `noopener` is the security half, `noreferrer` the privacy half.
+                        */
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/80 transition hover:border-gold-400/50 hover:bg-gold-500/10 hover:text-gold-200 focus-visible:!outline-logo-cream"

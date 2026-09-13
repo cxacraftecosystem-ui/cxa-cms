@@ -31,6 +31,16 @@
  * is renamed. The slug is derived there once and then left alone, so a rename never breaks the public
  * download address.
  *
+ * ⚠ A PICTURE IS OFFERED A CROP ONCE IT HAS LANDED, AND THIS USED TO BE THE ONE UPLOAD THAT WAS NOT.
+ * Every other way a picture enters this studio — the library's `UploadQueue`, the `MediaPicker` an
+ * author opens to choose a cover, `MediaDetailPanel` for an asset already stored — opens
+ * `components/studio/ImageCropper` and writes the same five columns. Uploading from inside a picker did
+ * not, so an editor adding a video's poster frame got no preview of what they had just sent and no way
+ * to say which part of it to show. That is not a neutral omission: `MediaImage` draws every asset
+ * `object-cover` inside whatever shape the surface asked for, so "no choice" means trimmed from the
+ * centre, which is the wrong guess for most photographs of a person or an object. The dialog is REUSED
+ * rather than reimplemented — same component, same endpoint, same columns, same degradation rules.
+ *
  * ⚠ IT HANDS BACK AN ID AND NOTHING ELSE. The picker adds that id to its own selection and resolves it
  * through the same lookup every other chip goes through, so an uploaded item and a searched one are the
  * same thing by the time they are on screen. Anything else would be a second code path for displaying a
@@ -39,10 +49,10 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { useCallback, useId, useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Crop, Upload } from "lucide-react";
 
-import { asApiClientError, post } from "@/lib/client/fetcher";
+import { asApiClientError, patch, post } from "@/lib/client/fetcher";
 import { FILE_CREATE_PATH, uploadToFileStore } from "@/lib/client/fileUpload";
 import {
   ACCEPTED_CONTENT_TYPES,
@@ -51,11 +61,14 @@ import {
   kindForContentType,
   summariseFailures,
   uploadFiles,
-  type MediaKindName
+  type MediaKindName,
+  type UploadedMediaAsset
 } from "@/lib/client/upload";
 import { formatBytes } from "@/lib/utils";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { HelpText } from "@/components/studio/HelpText";
+import { ImageCropper, storedCrop, type CropChoice } from "@/components/studio/ImageCropper";
+import { MEDIA_ENDPOINTS, type StudioMediaAsset } from "@/components/studio/media/MediaGrid";
 
 /** The two picker kinds that have an upload path behind them. */
 export type UploadableKind = "file" | "media";
@@ -177,6 +190,92 @@ export function PickerUpload({
   const [announcement, setAnnouncement] = useState("");
 
   /**
+   * THE PICTURE THAT HAS JUST LANDED, AND THE BYTES IT LANDED FROM, kept so its framing can be chosen
+   * here instead of on another screen.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * ⚠ THIS WAS THE ONE IMAGE UPLOAD IN THE STUDIO WITH NO CROP BEHIND IT. `UploadQueue` (the library),
+   * `MediaPicker` (choosing a picture) and `MediaDetailPanel` (an existing asset) all open the same
+   * dialog and write the same five columns; an editor who uploaded a picture from inside a picker —
+   * today, a video's poster frame — got no preview of what they had just sent and no way to say which
+   * part of it the site should show without leaving the form they were in the middle of. Since
+   * `MediaImage` draws every asset `object-cover` inside whatever shape the surface asked for, "no
+   * choice" is not neutral: it means trimmed from the centre, which is the wrong guess for most
+   * photographs.
+   *
+   * ⚠ THE OFFER COMES AFTER THE BYTES LAND, NEVER BEFORE THEY ARE SENT, matching `UploadQueue`'s
+   * ordering and for its reasons: a crop is a display decision that can be changed at any time, so
+   * blocking an upload on a modal buys nothing and leaves the uplink idle; and uploading first means
+   * the preview can use the local `File`, so the picture appears instantly and works even where object
+   * storage has no public base URL configured.
+   *
+   * ⚠ AND THE ID IS HANDED TO THE PICKER IMMEDIATELY, BEFORE ANY OF THIS. The chip must appear the
+   * moment the upload succeeds whether or not the editor ever opens the cropper — the form is
+   * autosaving, and a picture that is only "chosen" once a dialog has been dismissed is a picture that
+   * goes missing when somebody navigates away instead.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  const [cropAsset, setCropAsset] = useState<UploadedMediaAsset | StudioMediaAsset | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropOpen, setCropOpen] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropError, setCropError] = useState<string | null>(null);
+
+  /**
+   * The `blob:` URL for the picture being cropped, created ON OPEN and REVOKED ON CLOSE.
+   *
+   * ⚠ AN UNREVOKED OBJECT URL PINS THE WHOLE FILE IN MEMORY for the lifetime of the document — the same
+   * trap `UploadQueue` documents. Only one picture is ever held here, and only while the dialog is
+   * actually open, which is why this keys on `cropOpen` rather than on the asset.
+   */
+  useEffect(() => {
+    if (!cropOpen || !cropFile) {
+      setCropSrc(null);
+      return;
+    }
+    const url = URL.createObjectURL(cropFile);
+    setCropSrc(url);
+    return () => {
+      URL.revokeObjectURL(url);
+      setCropSrc(null);
+    };
+  }, [cropOpen, cropFile]);
+
+  /**
+   * Store the chosen rectangle against the asset — THE SAME FIVE COLUMNS AND THE SAME ENDPOINT as
+   * `UploadQueue.saveCrop`, `MediaPicker.saveCrop` and `MediaDetailPanel.saveFraming`.
+   *
+   * `null` clears the crop, which is what "show the whole picture" means. The bytes, the derivatives and
+   * the checksum are untouched — a crop is four numbers applied at render — so re-cropping later costs
+   * nothing. The PATCHED row replaces the one held here, so reopening the dialog reopens on what the
+   * database actually stored rather than on what this component hoped it did.
+   */
+  const saveCrop = async (assetId: string, choice: CropChoice | null) => {
+    setCropError(null);
+    try {
+      const updated = await patch<StudioMediaAsset>(MEDIA_ENDPOINTS.detail(assetId), {
+        cropX: choice ? choice.rect.x : null,
+        cropY: choice ? choice.rect.y : null,
+        cropWidth: choice ? choice.rect.width : null,
+        cropHeight: choice ? choice.rect.height : null,
+        cropAspect: choice ? choice.aspectId : null
+      });
+      setCropAsset(updated);
+      setAnnouncement(
+        choice ? "What is shown of the picture has been saved." : "The whole picture will be shown."
+      );
+    } catch (thrown) {
+      // The picture is uploaded and chosen either way, so this is a failure to save a REFINEMENT. Saying
+      // exactly that is what stops an editor assuming the upload itself came apart.
+      setCropError(
+        `The choice could not be saved, so the site will keep showing the whole picture. ${
+          thrown instanceof Error ? asApiClientError(thrown).message : "Try again."
+        }`
+      );
+    }
+  };
+
+  /**
    * The file library takes anything a person might want to download, so the size cap is what
    * constrains it — the same reasoning as `FILE_ACCEPT` in the file library. The media library takes
    * only what the presign route accepts, narrowed to the kind this picker is asking for.
@@ -198,6 +297,13 @@ export function PickerUpload({
       setBusy(true);
       setError(null);
       setFraction(0);
+      // The previous picture's offer goes with it. Leaving it up would invite an editor to crop the file
+      // they uploaded a minute ago while looking at the one they just chose — the same reasoning
+      // `UploadQueue` gives for clearing its own rows when a new batch starts.
+      setCropAsset(null);
+      setCropFile(null);
+      setCropOpen(false);
+      setCropError(null);
       try {
         if (kind === "media") {
           /**
@@ -221,6 +327,20 @@ export function PickerUpload({
             return;
           }
           onUploaded(first.id);
+          /**
+           * Held only for a PICTURE, and only where there are pixels to choose between.
+           *
+           * `kindForContentType` rather than the `mediaKind` prop: the prop says what the picker ASKED
+           * for and this says what actually arrived, and offering to crop a document because the field
+           * was configured for images would open the dialog onto nothing. SVG is excluded for the reason
+           * `UploadQueue` gives — a vector has no pixels to crop and the whole document scales.
+           */
+          const arrived = kindForContentType(file.type);
+          if (arrived === "IMAGE" && file.type !== "image/svg+xml") {
+            setCropAsset(first);
+            setCropFile(file);
+            setCropError(null);
+          }
           setAnnouncement(`${file.name} has been uploaded and chosen.`);
           return;
         }
@@ -269,6 +389,19 @@ export function PickerUpload({
     },
     [kind, onUploaded]
   );
+
+  /**
+   * ⚠ THE TWO ROW SHAPES DIFFER BY ONE FIELD, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT TO CAST
+   * AWAY. A picture that has just landed arrives as `UploadedMediaAsset`, which extends `MediaLike` —
+   * and `MediaLike` omits `cropAspect` on purpose (lib/media/select.ts says why: it records which preset
+   * the editor cropped on, and nothing RENDERS from it). A row that has been through `saveCrop` is a
+   * `StudioMediaAsset`, which carries it. So the preset is read through a presence test instead of an
+   * assertion, and the fallback is exactly right: a picture nobody has cropped has no preset, and the
+   * dialog opening on its default shape is what should happen.
+   */
+  const cropFileName = cropAsset && "fileName" in cropAsset ? cropAsset.fileName : "";
+  const cropAspectId =
+    cropAsset && "cropAspect" in cropAsset ? (cropAsset.cropAspect ?? undefined) : undefined;
 
   if (unavailable) {
     return <HelpText>{unavailable}</HelpText>;
@@ -323,6 +456,60 @@ export function PickerUpload({
           {error}
         </p>
       ) : null}
+
+      {/*
+        THE OFFER, on the picture that has just landed. A plain `<button>` rather than a second label
+        over the file input — this one opens a dialog, not a file chooser, and the two must not look
+        like the same control.
+
+        The wording flips once a rectangle is stored, exactly as it does in the library and the picker,
+        so an editor can tell at a glance whether this picture has been framed or is still showing whole.
+      */}
+      {cropAsset && !busy ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setCropOpen(true)}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-line-200 bg-card px-3 py-1.5 text-sm font-medium text-ink-700 transition hover:border-purple-300 hover:text-purple-700"
+          >
+            <Crop aria-hidden="true" className="h-4 w-4" />
+            {storedCrop(cropAsset) ? "Change what is shown" : "Choose what is shown"}
+          </button>
+
+          <p className="mt-1.5 text-xs leading-relaxed text-ink-500">
+            Optional. The picture is already uploaded and chosen. This decides which part of it the site
+            shows when the space it goes into is a different shape — without a choice it is trimmed from
+            the centre. It can be changed at any time in the media library.
+          </p>
+
+          {cropError ? (
+            <p role="alert" className="mt-1.5 text-sm leading-relaxed text-error-600">
+              {cropError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/*
+        THE SAME DIALOG THE OTHER THREE SURFACES OPEN — `components/studio/ImageCropper`, which returns
+        four fractions and never touches the bytes. Reopening after a save reopens ON the stored
+        rectangle, because `saveCrop` writes the patched row back into `cropAsset`; a rectangle that
+        fails `isUsableCrop` arrives as null and the dialog opens on the whole picture, which is the same
+        degradation the render side makes.
+      */}
+      <ImageCropper
+        open={cropOpen}
+        onClose={() => setCropOpen(false)}
+        src={cropSrc}
+        fileName={cropFileName}
+        initialRect={storedCrop(cropAsset)}
+        initialAspectId={cropAspectId}
+        onApply={(choice) => {
+          const assetId = cropAsset?.id;
+          if (!assetId) return;
+          return saveCrop(assetId, choice);
+        }}
+      />
 
       <span aria-live="polite" className="sr-only">
         {announcement}

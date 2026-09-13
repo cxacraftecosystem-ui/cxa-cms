@@ -57,6 +57,12 @@
  * edges from live rows and passes plain serialisable data. Where it had to cap the graph, it says so in
  * `note`, which is rendered under the drawing — a graph that quietly leaves out half the corpus is
  * indistinguishable from a Centre with half as much work (contract §1.6).
+ *
+ * ⚠ IT REFUSES TO DRAW IN TWO CASES, AND THE SECOND ONE IS THE POINT. No areas is the obvious one. The
+ * one that shipped broken is AREAS WITH NO EDGES: a diagram whose whole subject is what joins its
+ * nodes has nothing to say when nothing joins them, and drawing the nodes anyway produces a picture
+ * that contradicts its own legend. Both return an `EmptyState` that names what is absent. See the
+ * guards in the body — the second carries the full account of the defect.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
@@ -410,6 +416,66 @@ export function ResearchGraph({ nodes, edges, note, label, className }: Research
           title="There is no research graph to draw yet"
           description="The graph appears once at least one research area has been published in the studio. Projects, and the people working on them, are what draw the lines between areas."
         />
+      </div>
+    );
+  }
+
+  /**
+   * ⚠ AREAS WITH NO LINES IS NOT A GRAPH, AND DRAWING IT ANYWAY WAS THE DEFECT THIS GUARD EXISTS FOR.
+   *
+   * The only guard used to be `areaCount === 0` above, so a Centre with published research areas and
+   * no published project joining one to a person rendered N isolated circles — under a section
+   * description promising "every line is a project ... a person sitting between two areas works
+   * across both", and above a legend reading "N research areas, sized by how many collaborations each
+   * carries" beside "0 collaborators".
+   *
+   * Every one of those nodes has `weight === 0`, so `radiusOf` returns the same base radius for all of
+   * them: the legend's single claim about the picture is not merely unsupported, it is contradicted by
+   * the picture, and the result is indistinguishable from a rendering fault or a failed query. That is
+   * contract §1.6 — skipped or absent work is said on screen, never left to be inferred from a blank —
+   * applied to a diagram instead of a list. A reader must not have to guess whether the Centre has no
+   * linked projects or the component broke.
+   *
+   * ⚠ KEYED ON THE DRAWN EDGES, NOT THE `edges` PROP. An edge naming a node absent from `nodes` is
+   * dropped during layout above (deliberately — an assembly mistake should not blank the figure), and
+   * a graph every one of whose edges was dropped has exactly as little to show as one handed none.
+   *
+   * The nodes are NOT lost by returning here: on the one page that renders this component every area
+   * is already a card above the diagram, and the description below names what is missing rather than
+   * leaving a reader to work it out from three circles. The keyboard affordance is not claimed either
+   * — "Tab into the diagram, then use the arrow keys" lives in the legend of the drawn branch, so it
+   * is never advertised for a figure that has no nodes to walk.
+   */
+  if (layout.edges.length === 0) {
+    const oneArea = layout.areaCount === 1;
+    const areaPhrase = `${layout.areaCount} ${
+      oneArea ? "research area is" : "research areas are"
+    } published, and no published project joins ${oneArea ? "it" : "them"} to a person.`;
+    /**
+     * Only reachable through a caller that sent collaborators with no edge to hang them on — which the
+     * research index cannot do, because a collaborator node there exists only because an edge created
+     * it. Said rather than silently swallowed anyway: a node that disappears without explanation is
+     * the same §1.6 failure this guard was added to fix, and a future caller must not be able to
+     * introduce it by accident.
+     */
+    const orphanPhrase =
+      layout.collaboratorCount > 0
+        ? ` ${layout.collaboratorCount} ${
+            layout.collaboratorCount === 1 ? "person is" : "people are"
+          } listed with no published project joining them to an area.`
+        : "";
+
+    return (
+      <div className={cn("flex flex-col gap-4", className)}>
+        <EmptyState
+          icon={Network}
+          headingLevel={3}
+          title="No projects are linked to a research area yet"
+          description={`${areaPhrase} A line in this diagram is a project, drawn from its research area to each person on its team, so the picture appears once a published project names an area and has a published, visible person on it.${orphanPhrase}`}
+        />
+
+        {/* The cap sentence still applies if a cap is what emptied the figure — see the header. */}
+        {note ? <p className="text-sm text-ink-500">{note}</p> : null}
       </div>
     );
   }

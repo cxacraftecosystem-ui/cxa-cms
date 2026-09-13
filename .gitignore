@@ -51,3 +51,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# CodeGraph index — a local cache of this tree, rebuilt on demand and never shared.
+.codegraph/

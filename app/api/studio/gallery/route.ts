@@ -110,6 +110,14 @@ const albumBodySchema = z.object({
    * schema and the save would report success.
    */
   coverScreens: screenFramingField(),
+  /**
+   * The SPINE and its framing — the picture the gallery listing draws on a CLOSED card.
+   *
+   * Accepted here for the same reason the cover's framing is: a field this schema does not name is
+   * stripped, and the save then reports success while the editor's choice never reaches the database.
+   */
+  spineId: optionalId(),
+  spineScreens: screenFramingField(),
   sortOrder: boundedInt({ min: -9999, max: 9999, fallback: 0 }),
   status: statusSchema.default("DRAFT"),
   tags: z
@@ -137,6 +145,11 @@ const ALBUM_SELECT = {
   // `undefined` and `ownColumns()` skips those — and leaving it out meant a cover's framing appeared in no
   // audit diff and survived a rollback that claimed to have replaced everything.
   coverScreens: true,
+  // Both spine columns are in the snapshot, for the reason the cover's framing is: a column absent from
+  // the audit snapshot appears in no diff and survives a rollback that claimed to have replaced
+  // everything.
+  spineId: true,
+  spineScreens: true,
   sortOrder: true,
   status: true,
   publishedAt: true,
@@ -232,6 +245,9 @@ export const POST = route(async (request: Request) => {
 
   await assertSlugAvailable("album", slug);
   await assertMediaAvailable(prisma, body.coverId, { field: "coverId", what: "cover picture" });
+  // Checked separately rather than alongside the cover: the two are different pictures, and an error
+  // naming the wrong field sends an editor to the wrong control.
+  await assertMediaAvailable(prisma, body.spineId, { field: "spineId", what: "spine picture" });
 
   // `GalleryAlbum` has no publishAt column, so it cannot be scheduled — `publishTransition` refuses
   // SCHEDULED and says what to choose instead.
@@ -264,6 +280,8 @@ export const POST = route(async (request: Request) => {
             coverId: body.coverId,
             // Written beside the id it frames, so an album created with a cover already framed keeps it.
             coverScreens: jsonColumn(body.coverScreens),
+            spineId: body.spineId,
+            spineScreens: jsonColumn(body.spineScreens),
             sortOrder: body.sortOrder,
             tags: cleanTags(body.tags),
             status: transition.status,

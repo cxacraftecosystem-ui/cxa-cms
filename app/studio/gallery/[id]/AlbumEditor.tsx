@@ -34,6 +34,18 @@
  * that is not in the album is a picture a visitor never sees next to the ones they do — and offering a
  * second, separate picker for it invites exactly that. A stored cover that is NOT in the album (from an
  * import, or from a picture removed later) is reported rather than hidden, with the way to fix it.
+ *
+ * AND SO IS THE SPINE, ON EXACTLY THE SAME TERMS. An album carries two pictures for the gallery listing:
+ * the COVER is what the card shows once it is opened, and the SPINE is what it shows closed — a tall
+ * narrow sliver, which is a different picture rather than a different crop of one. Both are marked on a
+ * tile with a button, both clear their framing when they move, both are cleared if their picture leaves
+ * the album, and both report a foreign value rather than hiding it. The same photograph may be both.
+ *
+ * ⚠ THE SPINE IS OPTIONAL, AND AN ALBUM WITHOUT ONE IS NOT MISFILLED. Null means "this album has one
+ * picture" and the listing falls back to the cover on the closed card, which is what every album did
+ * before the column existed. Nothing here nags for a spine, and `publishBlockers` deliberately does not
+ * mention it: a requirement that cannot be met by a one-photograph album would block a publish for a
+ * decision nobody needs to make.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * THE ONLY MOTION IS THE LIFT UNDER A DRAGGED TILE. No entrance animation on the grid: an administrator
@@ -44,6 +56,7 @@ import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  Bookmark,
   ChevronLeft,
   ChevronRight,
   GripVertical,
@@ -232,6 +245,17 @@ export interface AlbumDraft {
    * happens to sit at those coordinates (the rule `MediaFramingField` exists to hold for the blocks).
    */
   coverScreens: ScreenFraming | null;
+  /**
+   * The SPINE — the picture the gallery listing shows on a COLLAPSED card, before anyone hovers.
+   *
+   * Null is the ordinary state and means "this album has one picture": the listing falls back to the
+   * cover and draws what it always drew. It is a separate decision from the cover rather than a second
+   * crop of it, because a 4rem sliver and a 24rem square are different pictures, not different
+   * rectangles of one (see `GalleryAlbum.spineId` in prisma/schema.prisma).
+   */
+  spineId: string | null;
+  /** As `coverScreens`, for the spine, and cleared with it for exactly the same reason. */
+  spineScreens: ScreenFraming | null;
   sortOrder: number;
   status: ContentStatus;
   /** ISO instant, read-only. The server stamps it. */
@@ -252,6 +276,8 @@ interface AlbumPayload {
   happenedOn: string | null;
   coverId: string | null;
   coverScreens: ScreenFraming | null;
+  spineId: string | null;
+  spineScreens: ScreenFraming | null;
   sortOrder: number;
   status: ContentStatus;
   tags: string[];
@@ -341,6 +367,10 @@ export function AlbumEditor({
       // Sent on every save beside the id it frames. Null is a real answer the route writes through, so
       // clearing the panel clears the column rather than leaving the last framing in place.
       coverScreens: draft.coverScreens,
+      spineId: draft.spineId,
+      // Sent beside the id it frames, on every save, exactly as the cover's is. Null is a real answer the
+      // route writes through, so clearing the panel clears the column.
+      spineScreens: draft.spineScreens,
       sortOrder: draft.sortOrder,
       status: draft.status,
       tags: draft.tags,
@@ -504,6 +534,10 @@ export function AlbumEditor({
         const removed = current.items[index];
         const remaining = current.items.filter((item) => item.key !== key);
         const losesCover = Boolean(removed && current.coverId === removed.assetId);
+        // The same test for the spine, and it is a SEPARATE one: the two can be different pictures, so
+        // taking one out must not clear the other. Folding them into a single flag is the subtle version
+        // of the bug this whole block exists to prevent.
+        const losesSpine = Boolean(removed && current.spineId === removed.assetId);
         return {
           ...current,
           items: remaining,
@@ -512,7 +546,9 @@ export function AlbumEditor({
           coverId: losesCover ? null : current.coverId,
           // And its framing goes with it: those rectangles are fractions of the photograph that has just
           // left, so keeping them would frame whatever a later cover happens to have at those coordinates.
-          coverScreens: losesCover ? null : current.coverScreens
+          coverScreens: losesCover ? null : current.coverScreens,
+          spineId: losesSpine ? null : current.spineId,
+          spineScreens: losesSpine ? null : current.spineScreens
         };
       });
       setSelectedKey((current) => (current === key ? null : current));
@@ -565,6 +601,10 @@ export function AlbumEditor({
    */
   const coverIsForeign =
     draft.coverId !== null && !items.some((item) => item.assetId === draft.coverId);
+
+  /** The same fault for the spine, reported the same way and for the same reason. */
+  const spineIsForeign =
+    draft.spineId !== null && !items.some((item) => item.assetId === draft.spineId);
 
   const publishBlockers = useMemo(() => {
     const reasons: string[] = [];
@@ -723,6 +763,24 @@ export function AlbumEditor({
                   className="ml-2 !px-2"
                 >
                   Clear the cover
+                </Button>
+              </HelpText>
+            ) : null}
+
+            {spineIsForeign ? (
+              <HelpText tone="warn">
+                The spine recorded for this album is a picture that is not in it, so the listing shows
+                something a visitor cannot find inside the album. Choose one of the pictures below as the
+                spine, or clear it — cleared, the listing shows the cover on the closed card, which is what
+                an album without a spine does.
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  // The framing goes with the picture it was drawn on — see `spineScreens` on `AlbumDraft`.
+                  onClick={() => patchDraft({ spineId: null, spineScreens: null })}
+                  className="ml-2 !px-2"
+                >
+                  Clear the spine
                 </Button>
               </HelpText>
             ) : null}
@@ -1029,6 +1087,33 @@ export function AlbumEditor({
                       </Button>
                     )}
 
+                    {/*
+                      THE SPINE, offered on the same terms as the cover and chosen the same way — from the
+                      album's own pictures, for the reason the file header gives.
+
+                      ⚠ THE SAME PICTURE MAY BE BOTH, and that is allowed rather than prevented. An album
+                      whose one good photograph works at both shapes should not be forced to invent a
+                      second, and the listing already collapses that case back to a single layer (see the
+                      `spine` prop on `ExpandOnHoverItem`). What it must not do is SILENTLY become both,
+                      which is why this is a separate button an editor presses rather than a default.
+                    */}
+                    {draft.spineId === selected.assetId ? (
+                      <p className="flex items-center gap-1.5 text-xs font-medium text-purple-700">
+                        <Bookmark aria-hidden="true" className="h-3.5 w-3.5" />
+                        This is the album spine
+                      </p>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon={Bookmark}
+                        // A new spine starts unframed, for the identical reason the cover does.
+                        onClick={() => patchDraft({ spineId: selected.assetId, spineScreens: null })}
+                      >
+                        Use as the spine
+                      </Button>
+                    )}
+
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1059,12 +1144,34 @@ export function AlbumEditor({
                   */}
                   {draft.coverId === selected.assetId ? (
                     <ScreenFramingPanel
-                      /* See the note on the panel above: the label says which of the two this is. */
-                      label="Framing per screen size, on the gallery listing"
-                      help="Optional. Frame the cover differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size, and the smallest falls back to the picture's own crop. This shows in the gallery listing, where the cover is drawn — the album's own page shows the pictures themselves."
+                      /* See the note on the panel above: the label says which of the three this is. */
+                      label="Framing per screen size, on the expanded card"
+                      help="Optional. Frame the cover differently at each screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size, and the smallest falls back to the picture's own crop. This shows in the gallery listing on the card once it has been opened — the album's own page shows the pictures themselves."
                       mediaId={selected.assetId}
                       value={draft.coverScreens}
                       onChange={(next) => patchDraft({ coverScreens: next })}
+                    />
+                  ) : null}
+
+                  {/*
+                    THE SPINE'S FRAMING, which is a THIRD column and not a variant of the cover's.
+                    `GalleryItem.assetScreens` frames the picture inside the album, `coverScreens` frames
+                    the opened card, and this frames the closed one. A picture that is all three shows all
+                    three panels in this column, which is why every label names the surface rather than
+                    the column.
+
+                    ⚠ AND THIS IS THE ONE THAT MOST NEEDS FRAMING. A spine is roughly 64px wide by 256
+                    tall — about 1:4 — so the default centre crop of a landscape photograph is a vertical
+                    strip out of its middle. An editor who wants a spine to read as a spine will almost
+                    always want to choose that strip, which is what this panel is for.
+                  */}
+                  {draft.spineId === selected.assetId ? (
+                    <ScreenFramingPanel
+                      label="Framing per screen size, on the spine"
+                      help="Optional, and worth doing. The spine is a tall narrow sliver, so without a choice here a wide photograph is cropped to a strip out of its middle. Frame it per screen size, or use a different photograph on narrow screens. Anything left alone inherits from the next smaller size, and the smallest falls back to the picture's own crop. This shows in the gallery listing before a visitor hovers or taps the card."
+                      mediaId={selected.assetId}
+                      value={draft.spineScreens}
+                      onChange={(next) => patchDraft({ spineScreens: next })}
                     />
                   ) : null}
                 </>

@@ -63,19 +63,68 @@ const ROOTS = ["app", "lib", "components", "scripts"];
 const EXTENSIONS = [".ts", ".tsx"];
 
 const SCHEMA = join("prisma", "schema.prisma");
-const MIGRATION = join(
-  "prisma",
-  "migrations",
-  "20260817120000_per_screen_framing_columns",
-  "migration.sql"
-);
+const MIGRATIONS = join("prisma", "migrations");
 
 /**
  * How many framed pictures there are. Asserted rather than trusted: the triples are read out of the schema
- * so a rename cannot rot them, and this number is what catches the opposite mistake — a thirteenth picture
+ * so a rename cannot rot them, and this number is what catches the opposite mistake — a fourteenth picture
  * given a column by somebody who never came here, or a column dropped while its editor stayed.
+ *
+ * Thirteen since `GalleryAlbum.spineScreens` — the framing of an album's SPINE, the picture the gallery
+ * shelf draws on a collapsed card (prisma/migrations/20260818090000_gallery_album_spine). An album is the
+ * one record that now has two framed pictures rather than one, which is why the count moved by one while
+ * the number of MODELS did not.
  */
-const EXPECTED_TRIPLES = 12;
+const EXPECTED_TRIPLES = 13;
+
+/**
+ * Does the migration history create `column` on `table`?
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠ STATEMENT-WISE, NOT LINE-WISE, AND THE DIFFERENCE IS NOT COSMETIC. This used to be a single
+ * `"<table>"[^\n]*"<column>"` regex, which silently assumed the table name and the column name land on
+ * the SAME LINE. That holds only while a migration adds exactly one column per `ALTER TABLE`. Prisma
+ * does not emit that shape: asked for two columns on one table it writes the table once and puts every
+ * column after the first on its own continuation line —
+ *
+ *     ALTER TABLE "gallery_albums" ADD COLUMN     "spineId" TEXT,
+ *     ADD COLUMN     "spineScreens" JSONB;
+ *
+ * — exactly as `20260816190000_media_asset_crop` already does for the five crop columns. So the first
+ * framing column added alongside another on the same table reported "no migration adds it" while the
+ * migration plainly did, and the only ways to quieten it were to hand-write SQL that `prisma migrate
+ * diff` would not have produced, or to delete the assertion. Reading one statement at a time — from
+ * `ALTER TABLE` to its terminating semicolon — matches what Prisma actually writes.
+ *
+ * `CREATE TABLE` counts too: a framed picture on a model added later gets its column in the create
+ * rather than in an alter, and that column exists just as much.
+ *
+ * Table and column names come from the schema parse above and are plain SQL identifiers, so they are
+ * interpolated into the patterns directly; anything that could carry a regex metacharacter would not be
+ * a legal Prisma field name in the first place.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+function migrationAddsColumn(sql: string, table: string, column: string): boolean {
+  /*
+    ⚠ COMMENTS COME OUT FIRST, AND SKIPPING THIS STEP BREAKS THE CHECK IN THE MOST MISLEADING WAY.
+    Every migration in this repository opens with a long `--` header, and those headers QUOTE SQL — the
+    rollback note in 20260817120000 says "ROLLING BACK is `ALTER TABLE … DROP COLUMN` twelve times".
+    Scanning the raw text, the statement matcher starts on that sentence and runs to the next semicolon,
+    which is the end of the first REAL statement — swallowing it, and reporting a column the migration
+    plainly adds as missing. (Observed: `Person.photoScreens`, whose `ALTER TABLE "people"` line is the
+    first one after that header.)
+
+    Line comments only. Prisma emits no block comments and no string literal here contains `--`, so
+    anything cleverer would be guarding against a case this file cannot produce.
+  */
+  const statements =
+    sql
+      .replace(/--[^\n]*/g, "")
+      .match(/(?:ALTER|CREATE) TABLE[\s\S]*?;/g) ?? [];
+  const names = new RegExp(`^(?:ALTER|CREATE) TABLE(?: IF NOT EXISTS)?\\s+"${table}"`);
+  const declares = new RegExp(`"${column}"`);
+  return statements.some((statement) => names.test(statement) && declares.test(statement));
+}
 
 type Rule = "framing-not-selected" | "framing-without-picture";
 
@@ -222,18 +271,42 @@ function readSchema(): SchemaFacts {
     );
   }
 
-  // The columns must exist in the database as well as in the schema, or every select below is a type error
-  // rather than a rendering fault — and the migration header explains at length why the two must agree.
+  /**
+   * The columns must exist in the database as well as in the schema, or every select below is a type error
+   * rather than a rendering fault — and the migration header explains at length why the two must agree.
+   *
+   * ⚠ EVERY MIGRATION, NOT ONE NAMED FILE. This used to read only
+   * `20260817120000_per_screen_framing_columns`, on the assumption that every framing column arrives in
+   * that one change. The thirteenth did not, and could not: `GalleryAlbum.spineScreens` came with the
+   * spine itself, in its own migration, months later. A migration that has already run on a deployed
+   * database MUST NOT be edited — Prisma records its checksum and refuses the whole `migrate deploy` when
+   * it changes — so the only way to satisfy the old rule would have been to break the thing the rule
+   * exists to protect. Concatenating the directory keeps the assertion exactly as strong (the column must
+   * be created by SOME migration in the history) and stops it forcing a corruption to pass.
+   */
   let migration = "";
   try {
-    migration = readFileSync(join(ROOT, MIGRATION), "utf8");
+    const dir = join(ROOT, MIGRATIONS);
+    migration = readdirSync(dir)
+      .filter((entry) => statSync(join(dir, entry)).isDirectory())
+      .map((entry) => {
+        try {
+          return readFileSync(join(dir, entry, "migration.sql"), "utf8");
+        } catch {
+          // A directory with no `migration.sql` is not this check's business to report.
+          return "";
+        }
+      })
+      .join("\n");
   } catch {
-    problems.push(`${MIGRATION} could not be read, so the twelve columns cannot be confirmed to exist.`);
+    migration = "";
+  }
+  if (!migration) {
+    problems.push(`${MIGRATIONS} could not be read, so the framing columns cannot be confirmed to exist.`);
   }
   if (migration) {
     for (const triple of triples) {
-      const added = new RegExp(`"${triple.table}"[^\\n]*"${triple.column}"`);
-      if (!added.test(migration)) {
+      if (!migrationAddsColumn(migration, triple.table, triple.column)) {
         problems.push(
           `${triple.model}.${triple.column} is in the schema but no migration adds "${triple.column}" to ` +
             `"${triple.table}". Prisma will report drift and the client will not expose the field.`

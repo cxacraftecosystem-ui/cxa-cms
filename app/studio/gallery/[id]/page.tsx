@@ -140,6 +140,11 @@ export default async function StudioAlbumPage({ params }: { params: Promise<{ id
             // The cover's per-screen framing, so the panel in the editor opens on what is stored rather
             // than on nothing. Without it every save would post `null` back and quietly clear the framing.
             coverScreens: true,
+            // The spine and ITS framing, for the same two reasons: the editor's buttons need to know
+            // which picture is the spine, and without the framing every save would post `null` back and
+            // quietly clear it.
+            spineId: true,
+            spineScreens: true,
             sortOrder: true,
             status: true,
             publishedAt: true,
@@ -197,6 +202,9 @@ export default async function StudioAlbumPage({ params }: { params: Promise<{ id
      * `/api/studio/gallery/[id]` is what keeps a row this studio wrote honest.
      */
     coverScreens: (album?.coverScreens ?? null) as unknown as ScreenFraming | null,
+    spineId: album?.spineId ?? null,
+    /** The same cast, safe for the same reason as `coverScreens` above. */
+    spineScreens: (album?.spineScreens ?? null) as unknown as ScreenFraming | null,
     sortOrder: album?.sortOrder ?? 0,
     status: album?.status ?? "DRAFT",
     publishedAt: album?.publishedAt ? album.publishedAt.toISOString() : null,
