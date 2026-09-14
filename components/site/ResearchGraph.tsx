@@ -58,11 +58,27 @@
  * `note`, which is rendered under the drawing — a graph that quietly leaves out half the corpus is
  * indistinguishable from a Centre with half as much work (contract §1.6).
  *
- * ⚠ IT REFUSES TO DRAW IN TWO CASES, AND THE SECOND ONE IS THE POINT. No areas is the obvious one. The
- * one that shipped broken is AREAS WITH NO EDGES: a diagram whose whole subject is what joins its
- * nodes has nothing to say when nothing joins them, and drawing the nodes anyway produces a picture
- * that contradicts its own legend. Both return an `EmptyState` that names what is absent. See the
- * guards in the body — the second carries the full account of the defect.
+ * ⚠ NO AREAS IS THE ONLY CASE THAT REFUSES TO DRAW. Areas with NO EDGES still draws every node, and
+ * the LEGEND gives way instead. That rule is the correction of a defect that shipped twice, in
+ * opposite directions:
+ *
+ *   1. FIRST THE CAPTION LIED. Three published areas with no project joining one to a person rendered
+ *      three isolated circles beneath "N research areas, sized by how many collaborations each
+ *      carries" and "0 collaborators; every line is a project". Every node carried `weight === 0`, so
+ *      `radiusOf` returned one base radius for all three: the legend's single claim about the picture
+ *      was not merely unsupported, it was contradicted by the picture.
+ *   2. THEN THE FIX DELETED THE FIGURE. An `if (layout.edges.length === 0) return <EmptyState …/>`
+ *      guard stood here, so a Centre with three published research areas showed NO NODES AT ALL. Those
+ *      areas are real, published rows; blanking them throws away the true half of the drawing to
+ *      repair the false half, and it was rejected.
+ *
+ * The remedy is the honest one: DRAW THE NODES AND STOP CLAIMING THE LINES. With no edges the legend
+ * drops "sized by how many collaborations each carries" and "every line is a project", the
+ * "0 collaborators" chip does not render, the arrow-key instruction is withheld unless there is
+ * somewhere for an arrow to go — and ONE line under the figure (`emptyEdgesNote`, worded by the page,
+ * which is the half that knows what is published and where it is edited) says that nothing joins them
+ * yet and where an editor enters the missing link. Naming what is absent AND what would change it is
+ * contract §1.6; removing the drawing never was.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
@@ -117,6 +133,16 @@ export interface ResearchGraphProps {
    * collaborators than exist, and say where the rest can be read.
    */
   note?: string | null;
+  /**
+   * The sentence shown under the figure WHEN NO LINE IS DRAWN — why nothing joins these nodes, and
+   * where the link is entered.
+   *
+   * It is the caller's to write because this component holds no opinion about what is published (see
+   * the header): "no published project names one of these areas" and "the projects have no published
+   * team member" are the same empty picture here and two different remedies to the editor. The
+   * component decides only WHEN it appears, from the edges it actually drew.
+   */
+  emptyEdgesNote?: string | null;
   /** Names the figure — "How the research areas connect". */
   label?: string;
   className?: string;
@@ -267,6 +293,12 @@ function placeCollaborator(
 function radiusOf(node: ResearchGraphNode): number {
   // Sub-linear and capped on purpose: an area with forty collaborations would otherwise be a disc that
   // swallows its neighbours. The size is a hint; the number is in the label and in the list.
+  //
+  // ⚠ WEIGHT 0 IS THE BASE RADIUS, so a graph with no edges is a row of identically-sized discs. That
+  // is correct and deliberately not special-cased — it is the truthful drawing of "every node carries
+  // the same number of connections, namely none". What must not happen is a legend claiming the sizes
+  // MEAN something while they are all equal, which is the defect described in the header; the legend
+  // below therefore conditions that claim on there being at least one edge.
   const weight = Math.max(0, node.weight);
   return node.kind === "area" ? 15 + Math.min(weight, 10) * 1.4 : 5.5 + Math.min(weight, 5) * 0.9;
 }
@@ -305,7 +337,14 @@ const KIND_WORD: Record<ResearchGraphNodeKind, string> = {
  */
 const DEFAULT_ACCENT = "oklch(0.47 0.198 305)";
 
-export function ResearchGraph({ nodes, edges, note, label, className }: ResearchGraphProps) {
+export function ResearchGraph({
+  nodes,
+  edges,
+  note,
+  emptyEdgesNote,
+  label,
+  className
+}: ResearchGraphProps) {
   const reduce = useReducedMotionPreference();
 
   /** The node under the pointer or holding focus. Null means "nothing picked out". */
@@ -421,64 +460,15 @@ export function ResearchGraph({ nodes, edges, note, label, className }: Research
   }
 
   /**
-   * ⚠ AREAS WITH NO LINES IS NOT A GRAPH, AND DRAWING IT ANYWAY WAS THE DEFECT THIS GUARD EXISTS FOR.
+   * Whether a single line was DRAWN — keyed on the laid-out edges, not on the `edges` prop.
    *
-   * The only guard used to be `areaCount === 0` above, so a Centre with published research areas and
-   * no published project joining one to a person rendered N isolated circles — under a section
-   * description promising "every line is a project ... a person sitting between two areas works
-   * across both", and above a legend reading "N research areas, sized by how many collaborations each
-   * carries" beside "0 collaborators".
-   *
-   * Every one of those nodes has `weight === 0`, so `radiusOf` returns the same base radius for all of
-   * them: the legend's single claim about the picture is not merely unsupported, it is contradicted by
-   * the picture, and the result is indistinguishable from a rendering fault or a failed query. That is
-   * contract §1.6 — skipped or absent work is said on screen, never left to be inferred from a blank —
-   * applied to a diagram instead of a list. A reader must not have to guess whether the Centre has no
-   * linked projects or the component broke.
-   *
-   * ⚠ KEYED ON THE DRAWN EDGES, NOT THE `edges` PROP. An edge naming a node absent from `nodes` is
-   * dropped during layout above (deliberately — an assembly mistake should not blank the figure), and
-   * a graph every one of whose edges was dropped has exactly as little to show as one handed none.
-   *
-   * The nodes are NOT lost by returning here: on the one page that renders this component every area
-   * is already a card above the diagram, and the description below names what is missing rather than
-   * leaving a reader to work it out from three circles. The keyboard affordance is not claimed either
-   * — "Tab into the diagram, then use the arrow keys" lives in the legend of the drawn branch, so it
-   * is never advertised for a figure that has no nodes to walk.
+   * An edge naming a node absent from `nodes` is dropped during layout above (deliberately: an
+   * assembly mistake should not change what the figure claims about itself), and a graph every one of
+   * whose edges was dropped has exactly as little to show as one handed none. Everything downstream
+   * that describes the lines — the two legend claims, the sentence under the figure — reads this, so
+   * the caption is derived from the same list the drawing is, and the two cannot disagree.
    */
-  if (layout.edges.length === 0) {
-    const oneArea = layout.areaCount === 1;
-    const areaPhrase = `${layout.areaCount} ${
-      oneArea ? "research area is" : "research areas are"
-    } published, and no published project joins ${oneArea ? "it" : "them"} to a person.`;
-    /**
-     * Only reachable through a caller that sent collaborators with no edge to hang them on — which the
-     * research index cannot do, because a collaborator node there exists only because an edge created
-     * it. Said rather than silently swallowed anyway: a node that disappears without explanation is
-     * the same §1.6 failure this guard was added to fix, and a future caller must not be able to
-     * introduce it by accident.
-     */
-    const orphanPhrase =
-      layout.collaboratorCount > 0
-        ? ` ${layout.collaboratorCount} ${
-            layout.collaboratorCount === 1 ? "person is" : "people are"
-          } listed with no published project joining them to an area.`
-        : "";
-
-    return (
-      <div className={cn("flex flex-col gap-4", className)}>
-        <EmptyState
-          icon={Network}
-          headingLevel={3}
-          title="No projects are linked to a research area yet"
-          description={`${areaPhrase} A line in this diagram is a project, drawn from its research area to each person on its team, so the picture appears once a published project names an area and has a published, visible person on it.${orphanPhrase}`}
-        />
-
-        {/* The cap sentence still applies if a cap is what emptied the figure — see the header. */}
-        {note ? <p className="text-sm text-ink-500">{note}</p> : null}
-      </div>
-    );
-  }
+  const hasEdges = layout.edges.length > 0;
 
   const onKeyDown = (event: ReactKeyboardEvent<SVGSVGElement>) => {
     const count = layout.order.length;
@@ -687,22 +677,60 @@ export function ResearchGraph({ nodes, edges, note, label, className }: Research
         The legend. Size and shape already separate the two kinds and the areas carry their names, so
         nothing here rests on colour alone (contract §11) — this says what the reader is looking at and
         how to drive it.
+
+        ⚠ EVERY CLAIM ABOUT THE LINES IS CONDITIONED ON `hasEdges`, AND THAT CONDITION IS THE FIX. Both
+        of the original sentences — "sized by how many collaborations each carries" and "every line is a
+        project" — describe a drawing that HAS lines. With none, `radiusOf` gives every node the same
+        base radius and there is not a stroke on screen, so both would be contradicted by the picture
+        they caption (see the header). The figure is not what gives way; these words are.
       */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-500">
         <span className="inline-flex items-center gap-2">
           <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full bg-purple-700" />
-          {layout.areaCount} {layout.areaCount === 1 ? "research area" : "research areas"}, sized by
-          how many collaborations each carries
+          {layout.areaCount} {layout.areaCount === 1 ? "research area" : "research areas"}
+          {hasEdges
+            ? ", sized by how many collaborations each carries"
+            : ", all drawn the same size because none has a connection yet"}
         </span>
-        <span className="inline-flex items-center gap-2">
-          <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-surface-300" />
-          {layout.collaboratorCount}{" "}
-          {layout.collaboratorCount === 1 ? "collaborator" : "collaborators"}; every line is a project
-        </span>
-        <span>Tab into the diagram, then use the arrow keys to move between nodes.</span>
+
+        {/* Withheld at zero rather than reading "0 collaborators" beside a swatch for a kind of node
+            that is nowhere in the picture. The line under the figure owns the absence, and says what
+            would change it — which a count of nothing cannot. */}
+        {layout.collaboratorCount > 0 ? (
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-surface-300" />
+            {layout.collaboratorCount}{" "}
+            {layout.collaboratorCount === 1 ? "collaborator" : "collaborators"}
+            {hasEdges ? "; every line is a project" : ""}
+          </span>
+        ) : null}
+
+        {/* The keyboard affordance is advertised only when an arrow key has somewhere to go. The roving
+            index still works with one node — it is reached by Tab like any other link — but "use the
+            arrow keys to move between nodes" beside a single node is an instruction that does nothing,
+            and a reader who tries it learns to distrust the rest of the legend. */}
+        {layout.order.length > 1 ? (
+          <span>Tab into the diagram, then use the arrow keys to move between nodes.</span>
+        ) : null}
       </div>
 
-      {/* The sentence that owns the cap — see the header. */}
+      {/*
+        THE ONE LINE THAT OWNS AN EMPTY PICTURE: why nothing joins these nodes, and where it is put in.
+        Short on purpose — the nodes above are the content, and this is a footnote to them, not a
+        replacement for them.
+
+        The words come from the caller because this component cannot know why: `emptyEdgesNote` is
+        written by the page that decided what was live. The fallback claims only what is visible from
+        here, so a future caller that forgets the prop still says something true rather than nothing.
+      */}
+      {!hasEdges ? (
+        <p className="text-sm text-ink-500">
+          {emptyEdgesNote ?? "Nothing in this data joins one node to another, so no line is drawn."}
+        </p>
+      ) : null}
+
+      {/* The sentence that owns the cap — see the header. It still applies when the figure drew no
+          line: a cap can be the very reason it drew none. */}
       {note ? <p className="text-sm text-ink-500">{note}</p> : null}
     </div>
   );

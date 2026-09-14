@@ -28,9 +28,10 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * NOT `"use client"`, AND THAT IS LOAD-BEARING. Its consumers are a Server Component (`SiteFooter`) and
- * a Client Component (`SocialMenu`, inside the header pill). A directive here would make every export a
- * client reference the moment the footer imported it, which is the exact trap `app/(site)/layout.tsx`
- * records against `SiteHeader`'s feature filter — a plain module can be imported by both.
+ * a Client Component (`SiteHeader`, which hangs these accounts off the Contact entry of the nav tree).
+ * A directive here would make every export a client reference the moment the footer imported it, which
+ * is the exact trap `app/(site)/layout.tsx` records against `SiteHeader`'s feature filter — a plain
+ * module can be imported by both.
  *
  * THE ICONS ARE `lucide-react` AND ONLY `lucide-react` (contract §13). There is no brand-logo set in
  * this repository and adding one is explicitly out of bounds, so "its own brand logo" means lucide's
@@ -54,6 +55,7 @@ import {
   SOCIAL_PLATFORMS,
   type SocialLink
 } from "@/lib/settings/schema";
+import type { NavNode } from "@/lib/navigation";
 
 /**
  * The lucide exports named by `SOCIAL_PLATFORMS[].icon`, resolved by hand.
@@ -147,4 +149,60 @@ export function socialLabel(link: SocialLink): string {
   } catch {
     return link.platform;
   }
+}
+
+/**
+ * The prefix on every id this module mints, so a social row can never be mistaken for a menu row.
+ *
+ * The header's `openMenuId` register and its `aria-current` resolution are both keyed on `NavNode.id`,
+ * and every OTHER id in that tree is either a database cuid or a `withSyntheticIds` key (`d-h-0`).
+ * Neither can begin with a double underscore, so no navigation row an editor creates can collide with
+ * one of these — an editor cannot name a menu entry that makes the header think a social link is the
+ * current page.
+ */
+export const SOCIAL_NAV_ID_PREFIX = "__social:";
+
+/**
+ * The Centre's accounts as CHILDREN OF A NAV ENTRY — the shape the header's existing dropdown renders.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHY A `NavNode[]` AND NOT A COMPONENT: THE SOCIALS ARE NOT A SECOND KIND OF MENU.
+ *
+ * They were, briefly — a standalone `SocialMenu` button sat in the header's control cluster beside
+ * Search, with its own open/close contract, its own outside-pointerdown listener and its own panel. It
+ * rendered correctly and it was still wrong: the navigation already had a Contact entry, and the
+ * Centre's accounts are ways of reaching the Centre. Two affordances for one idea is two things for a
+ * reader to learn and two implementations to keep in step.
+ *
+ * Returning DATA instead means there is nothing to keep in step. `components/site/SiteHeader.tsx` hangs
+ * these nodes on the Contact entry's children and every behaviour follows from the code that was
+ * already there: `StripItem`'s hover-and-focus disclosure on desktop, `NavSheet`'s always-expanded
+ * child list on a phone, the Escape that closes the panel without closing the sheet, the focus that
+ * returns to the trigger, `EXTERNAL_LINK_PROPS` and the spoken "(opens in a new tab)" on every outbound
+ * row, both themes, and the reduced-motion branch. None of it is re-implemented here.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠ CALL THIS FROM CLIENT CODE ONLY. `icon` is a React component, and a Server Component that put one
+ * of these nodes into a Client Component's props would hit "Functions cannot be passed directly to
+ * Client Components". The rule and the reason are spelled out on `NavNode.icon` itself
+ * (lib/navigation.ts); this module is importable from both sides, so the warning belongs on both.
+ */
+export function socialNavChildren(links: readonly SocialLink[]): NavNode[] {
+  return links.map((link, index) => ({
+    // Position AND value, exactly as the footer keys its list (components/site/SiteFooter.tsx:235):
+    // `social.links` is an editor-ordered array with no ids of its own, and two rows pointing at the
+    // same URL would otherwise share a React key and swap their contents when one is reordered.
+    id: `${SOCIAL_NAV_ID_PREFIX}${index}:${link.url}`,
+    label: socialLabel(link),
+    href: link.url,
+    // Unconditionally external, because `socialLinkSchema.url` is `externalUrl` — an absolute http(s)
+    // address is the only thing that can be stored here (lib/settings/schema.ts:467). This is what
+    // routes the row through the renderers' external branch: a plain `<a>` rather than `next/link`,
+    // `EXTERNAL_LINK_PROPS`, the arrow glyph and the spoken warning.
+    isExternal: true,
+    icon: socialIcon(link.platform),
+    // The tree is two levels deep by design (lib/navigation.ts's header) and these ARE the second
+    // level. A social account has nothing underneath it in any case.
+    children: []
+  }));
 }

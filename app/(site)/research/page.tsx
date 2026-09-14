@@ -27,9 +27,19 @@
  * two areas works across both" no matter what the data held, so a Centre with published areas and no
  * published project linked to one rendered a row of isolated circles beneath a sentence describing
  * connections the picture did not contain. The description is now chosen from `edges` — the very list
- * the figure is drawn from — so the caption cannot outrun the drawing, and `ResearchGraph` refuses to
- * draw a connection diagram that has no connections at all. Nothing here invents data to fill the gap:
- * when the Centre has no project↔area↔person links, the page says exactly that.
+ * the figure is drawn from — so the caption cannot outrun the drawing.
+ *
+ * ⚠ BUT THE FIGURE IS NEVER BLANKED TO REPAIR A CAPTION, AND THAT WAS THE SECOND MISTAKE. The first
+ * attempt at the above had `ResearchGraph` return an `EmptyState` when `edges.length === 0`, so a
+ * Centre with three published research areas rendered NO NODES AT ALL — real, published rows deleted
+ * from the page to avoid describing them wrongly. The areas are always drawn; the words give way. See
+ * the header of components/site/ResearchGraph.tsx for the drawing half of that rule, and
+ * `buildNoLinesNote()` below for the sentence that replaces the claim — it names the studio screen
+ * where the missing link is entered, because "nothing is connected yet" with no remedy is half a fact
+ * (contract §1.6).
+ *
+ * Nothing here invents data to fill the gap: when the Centre has no project↔area↔person links, the
+ * page says exactly that.
  */
 
 import type { Metadata } from "next";
@@ -270,8 +280,11 @@ export default async function ResearchIndexPage() {
     detail: `${countPhrase(area._count.projects, "project")}, ${countPhrase(area._count.publications, "publication")}`
   }));
 
+  /** Projects the diagram took in — those whose area survived `AREA_LIMIT`. Two sentences read it. */
+  const projectsDrawn = graphProjects.length - projectsOutsideDrawnAreas;
+
   const graphNote = buildGraphNote({
-    projectsDrawn: graphProjects.length - projectsOutsideDrawnAreas,
+    projectsDrawn,
     projectTotal: graphProjectTotal,
     collaboratorsOmitted,
     projectsWithNoDrawnTeam,
@@ -280,15 +293,18 @@ export default async function ResearchIndexPage() {
   });
 
   /**
-   * Whether the diagram has anything to draw, decided HERE and from the SAME edge list the figure is
+   * Whether the diagram has anything to JOIN, decided HERE and from the SAME edge list the figure is
    * handed — not guessed at from `areas.length`.
    *
    * The section's description used to promise "every line is a project ... a person sitting between
    * two areas works across both" unconditionally, which is how three isolated circles came to sit
    * under a sentence describing connections that were not there. The heading TITLE stays fixed
    * ("How the areas connect" is the name of this section, and a title that changes with the data
-   * makes the page's own anchors and outline move underneath a reader); only the claim changes, and
-   * `ResearchGraph` states the absence itself in the space where the drawing would have been.
+   * makes the page's own anchors and outline move underneath a reader); only the claim changes.
+   *
+   * ⚠ THE NODES ARE DRAWN EITHER WAY. This flag chooses words, never whether the figure appears — see
+   * the header. `ResearchGraph` reaches the same conclusion from the edges it actually laid out and
+   * trims its own legend to match; this decides only the sentence above the drawing and the one below.
    */
   const graphHasLines = edges.length > 0;
 
@@ -348,7 +364,11 @@ export default async function ResearchIndexPage() {
             description={
               graphHasLines
                 ? "Every research area is a node; every line is a project, joining an area to one of the people working on it. A person sitting between two areas works across both — which is the fact this diagram exists to show."
-                : "This diagram joins each research area to the people working on its projects, so that somebody working across two areas is drawn sitting between them. It is built from published projects, and there are none to build it from yet."
+                : // Deliberately makes no claim about WHY it is bare. There are two reasons (no project
+                  // names one of these areas; the projects that do have nobody published on them), the
+                  // note under the figure states whichever one is true, and a second guess here would
+                  // be the same "caption outran the drawing" defect in a new place.
+                  "Every research area below is a node, and a line would be a project joining an area to one of the people working on it. Nothing joins them yet, so the areas are drawn on their own."
             }
             className="mb-10"
           />
@@ -358,6 +378,9 @@ export default async function ResearchIndexPage() {
           nodes={[...areaNodes, ...collaboratorNodes.values()]}
           edges={edges}
           note={graphNote}
+          // Only read when the figure draws no line, and built unconditionally because it is a couple
+          // of string comparisons — cheaper than the branch that would avoid it.
+          emptyEdgesNote={buildNoLinesNote({ projectsDrawn, areasDrawn: areas.length })}
           label="How the research areas connect"
         />
       </section>
@@ -416,6 +439,52 @@ function buildGraphNote(facts: {
   }
 
   return sentences.length > 0 ? sentences.join(" ") : null;
+}
+
+/**
+ * The line under a diagram that drew no line: WHY nothing joins the areas, and WHERE the missing half
+ * is entered. Rendered by `ResearchGraph` only when it laid out no edge at all.
+ *
+ * ⚠ IT NAMES THE SCREEN, NOT "add some projects". The owner's question about the blank figure was
+ * literally "where do people enter the details for it through the ui?", and a page that states an
+ * absence without naming its remedy has answered half of contract §1.6. Every screen and field named
+ * below was checked against the studio, not remembered:
+ *
+ *   • "Research area" — the single-select picker in app/studio/projects/[id]/ProjectEditor.tsx:591,
+ *     holding `researchAreaIds` and sent as `Project.researchAreaId` (:245). That column is what the
+ *     `researchAreaId: { not: null }` filter above selects on.
+ *   • "Team" — the section at ProjectEditor.tsx:734, whose people picker (:739) writes `ProjectMember`
+ *     rows through `members` (:257). Those rows are the `members` relation queried above.
+ *   • `/studio/projects/new` is the SAME route as an existing project, with the id `new`
+ *     (app/studio/projects/[id]/page.tsx:20) — which is why "open or create one" is one instruction
+ *     rather than two.
+ *
+ * Both halves must also be LIVE to draw a line, which is why the second case mentions the person's own
+ * profile: the query above filters projects with `liveStatusWhere()` and members with
+ * `{ person: { ...live, isVisible: true } }`, so a published project full of draft profiles draws
+ * nothing. That is the single most confusing way for this figure to come up empty, and it is the one an
+ * editor is least likely to guess.
+ *
+ * ⚠ IT IS WRITTEN TO READ SENSIBLY TO A VISITOR AS WELL, BECAUSE THIS PAGE CANNOT TELL THE TWO APART.
+ * Showing an editor-only instruction only to editors would mean reading the session cookie —
+ * `currentClaims()` in lib/auth/current-user.ts calls `cookies()` — and a Server Component that reads a
+ * cookie is rendered per request, which would throw away the ISR cache this page is explicitly built
+ * around (`export const revalidate = 300` above, and the `prerenderSafe` argument that depends on it).
+ * Making a public index page dynamic to hide one sentence is the wrong trade, so the sentence is
+ * phrased as a statement of how the diagram is fed: true and informative to a reader wondering why the
+ * picture is bare, precise enough for an editor to act on. It links nowhere for the same reason — no
+ * other page under (site) links into /studio, middleware.ts gates that tree, and a public link to a
+ * gated screen is a dead end for everyone who is not signed in.
+ */
+function buildNoLinesNote(facts: { projectsDrawn: number; areasDrawn: number }): string {
+  const oneArea = facts.areasDrawn === 1;
+
+  if (facts.projectsDrawn === 0) {
+    return `No published project names ${oneArea ? "this research area" : "one of these research areas"} yet, so there is no line to draw. A project is given both in the studio, under Projects: open or create one, choose its Research area, then add its Team.`;
+  }
+
+  const oneProject = facts.projectsDrawn === 1;
+  return `${countPhrase(facts.projectsDrawn, "published project")} ${oneProject ? "belongs" : "belong"} to ${oneArea ? "this area" : "these areas"}, but no published, visible person is on ${oneProject ? "its team" : "any of their teams"}, so there is no line to draw. A project's people are added in the studio, under Projects: open it and fill in Team — and somebody is drawn here only once their own profile is published and visible.`;
 }
 
 /**

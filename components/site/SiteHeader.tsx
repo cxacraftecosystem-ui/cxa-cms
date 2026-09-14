@@ -40,12 +40,23 @@
  * links sit immediately after their trigger in DOM order, so Tab walks straight into an open panel
  * and Escape closes it. A trap there would be wrong: these are disclosures on a page, not modals.
  *
- * ONE REGISTER, `openMenuId`, HOLDS EVERY DROPDOWN IN THE PILL — the strip's section menus, keyed by
- * `NavNode.id`, and the socials menu, keyed by the `SOCIAL_MENU_ID` sentinel. It is one piece of state
- * rather than one per menu because three behaviours fall out of it and would otherwise each have to be
- * re-implemented per panel: only one panel is ever open under one pill; the scroll collapse closes
- * whatever is open (a panel anchored to a pill that is resizing is left hanging under nothing); and a
- * route change closes it. See `SocialMenu`'s header for the rest of that argument.
+ * ONE REGISTER, `openMenuId`, HOLDS EVERY DROPDOWN IN THE PILL, keyed by `NavNode.id` — and there is
+ * exactly ONE KIND of dropdown in here, a `StripItem`'s. It is one piece of state rather than one per
+ * menu because three behaviours fall out of it and would otherwise each have to be re-implemented per
+ * panel: only one panel is ever open under one pill; the scroll collapse closes whatever is open (a
+ * panel anchored to a pill that is resizing is left hanging under nothing); and a route change closes
+ * it.
+ *
+ * THE CENTRE'S SOCIAL ACCOUNTS HANG OFF THE CONTACT ENTRY. THEY ARE NOT A MENU OF THEIR OWN.
+ *
+ * They were, for one revision: a standalone `SocialMenu` button sat in the control cluster below,
+ * beside Search, with a second open/close contract, a second outside-pointerdown listener and a second
+ * panel. The navigation already had a Contact entry, and the Centre's accounts are ways of reaching the
+ * Centre — so that was two affordances for one idea, which is two things for a reader to learn and two
+ * implementations to keep in step. `withSocialsUnderContact` below now appends them to that entry's
+ * CHILDREN and nothing else here knows they are special: the strip renders them as a nav dropdown, the
+ * sheet renders them as nav children, and both were already written. That helper carries the argument
+ * in full, including what happens when an editor has removed the Contact entry.
  */
 
 import {
@@ -67,10 +78,12 @@ import { ArrowUpRight, ChevronDown, Menu, Search, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { collectHrefs, isActiveHref, resolveActiveHref, type NavNode } from "@/lib/navigation";
+import { socialNavChildren } from "@/lib/socials";
 import type {
   FeatureFlag,
   FeaturesSettings,
   BrandingSettings,
+  SocialLink,
   SocialSettings
 } from "@/lib/settings/schema";
 import {
@@ -83,7 +96,6 @@ import {
 import { AccessibilityMenu } from "@/components/ui/AccessibilityMenu";
 import { SiteBrand } from "@/components/site/SiteBrand";
 import { EXTERNAL_LINK_PROPS, NavSheet } from "@/components/site/NavSheet";
-import { SOCIAL_MENU_ID, SocialMenu } from "@/components/site/SocialMenu";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The numbers
@@ -130,10 +142,31 @@ const FEATURE_ROUTES: ReadonlyArray<{ prefix: string; flag: FeatureFlag }> = [
 ];
 
 /**
- * One frozen empty list, so an unwired `social` prop does not allocate a new array — and hand
- * `SocialMenu` a new identity — on every render of the header, which is every render of every page.
+ * One frozen empty list, so an unwired `social` prop does not allocate a NEW array on every render of
+ * the header — which is every render of every page.
+ *
+ * The IDENTITY is the point, not the emptiness: this value is a dependency of the `useMemo` that builds
+ * the rendered nav tree, and a bare `[]` written at the call site would be a different array on every
+ * pass, so the memo would recompute on exactly the renders it exists to skip — every scroll collapse,
+ * every route change. The recomputation is cheap only while the list is empty, because
+ * `withSocialsUnderContact` hands back the tree it was given untouched; that is an accident of today's
+ * implementation, not a guarantee, and it stops being true the moment that function grows.
  */
 const NO_SOCIAL_LINKS = [] as const;
+
+/**
+ * The Contact page's address, and the entry the socials hang off.
+ *
+ * ⚠ RESTATED HERE RATHER THAN IMPORTED, AND THE ALTERNATIVE IS WORSE. `/contact` is a CODE route
+ * (`app/(site)/contact/page.tsx`, which spells it as its own `CONTACT_PATH`), and the repository
+ * already restates it in every list that needs it — the studio's link picker (LinkField.tsx:75), the
+ * navigation editor's code-owned addresses (NavigationEditor.tsx:184), the health check
+ * (lib/health.ts:202), the smoke run (scripts/smoke.ts:138). Importing one of those here would drag a
+ * studio module, or a `server-only` one, into the public header's client bundle to read a six-character
+ * string. What it is matched against is data, not code: `navigation.header` is an editor-managed list,
+ * so this is compared with whatever href an administrator gave their Contact entry.
+ */
+const CONTACT_HREF = "/contact";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers
@@ -201,6 +234,81 @@ function firstMatchingId(nodes: NavNode[], activeBase: string | null): string | 
   return null;
 }
 
+/**
+ * Is this the editor's Contact entry?
+ *
+ * Matched on the HREF, never on the label: `navigation.header` is an editor-managed list, the label is
+ * free text and may be in any language or say "Get in touch", but the destination is the code route at
+ * `app/(site)/contact/page.tsx` and an entry that does not point there is not the Contact entry
+ * whatever it calls itself.
+ *
+ * The trailing-slash trim is the one spelling difference that is invisible to a reader and fatal to a
+ * string comparison: `/contact/` and `/contact` are the same page to Next's router and to anybody
+ * typing into the studio's link field, and without this the socials would silently fail to appear for
+ * an administrator who typed one extra character. `baseOf` has already removed any `?query` or
+ * `#fragment`, so `/contact#form` is this entry too.
+ *
+ * ⚠ AN EXTERNAL ENTRY IS NOT ELIGIBLE, and that is an accessibility constraint rather than fussiness.
+ * `StripItem` puts `aria-expanded`/`aria-controls` on its INTERNAL branch only (the `<Link>` below) —
+ * an external trigger is a plain `<a>` with neither. Hanging a disclosure on one would open a panel
+ * that no screen reader has been told about, so an editor who has ticked "opens in a new tab" on their
+ * Contact row gets no socials in the header rather than an unannounced panel.
+ */
+function isContactEntry(node: NavNode): boolean {
+  if (node.isExternal) return false;
+  const base = baseOf(node.href);
+  return (base.length > 1 ? base.replace(/\/+$/, "") : base) === CONTACT_HREF;
+}
+
+/**
+ * Append the Centre's social accounts to the Contact entry's children.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE SOCIALS ARE A NAV DROPDOWN BECAUSE THEY ARE MADE OF NAV NODES. THERE IS NO SECOND MECHANISM.
+ *
+ * Everything the reader gets from this is code that was already here and is already exercised by every
+ * other menu: `StripItem`'s hover-AND-focus disclosure with its chevron, its Escape (which closes the
+ * panel, swallows the key so the nav sheet does not also close, and returns focus to the trigger), its
+ * blur-out-of-group close, `NavSheet`'s always-expanded child list at phone widths, the external branch
+ * of both renderers with `EXTERNAL_LINK_PROPS` and the spoken "(opens in a new tab)", both themes and
+ * the reduced-motion branch. The previous revision re-implemented the first half of that list in a
+ * standalone `SocialMenu` — which is the file this function replaced.
+ *
+ * TOP LEVEL ONLY. The tree is two levels deep by design (lib/navigation.ts's header says why), so these
+ * nodes can only ever be somebody's children. A `/contact` entry that an editor has nested under
+ * another section is therefore skipped rather than grown: hanging children on a child would build a
+ * third level that the strip cannot render at all and that the sheet would nest illegally.
+ *
+ * APPENDED, NEVER PREPENDED. If an editor has given Contact its own children — "Visit us", "Press
+ * office" — those are the rows they wrote and they come first.
+ *
+ * ⚠ NO CONTACT ENTRY MEANS NO SOCIALS IN THE HEADER, DELIBERATELY, AND IT IS NOT CONTRACT §1.6.
+ * That rule is about DESTINATIONS IN THE SITE'S NAVIGATION TREE quietly ceasing to be listed. These
+ * accounts are not in that tree — they are settings, they are drawn on every page of the site by
+ * `SiteFooter`, and /contact lists them again in full. The alternative is a standalone trigger that
+ * appears only when the header has no Contact entry: the exact second mechanism this change exists to
+ * delete, and one that would then live on the least-travelled path in the product, where nobody would
+ * ever see it break.
+ *
+ * ⚠ CALLED AFTER `resolveActiveHref` AND `firstMatchingId`, NEVER BEFORE — see the call site. Those two
+ * resolve "which entry is the current page" over the tree, and every href minted here is an absolute
+ * `https://` URL. Feeding them foreign origins is at best wasted work and at worst a social row that
+ * claims `aria-current="page"`.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+function withSocialsUnderContact(nodes: NavNode[], links: readonly SocialLink[]): NavNode[] {
+  // A fresh install has no social links, and the overwhelming majority of renders take this line: the
+  // identity of `nodes` is preserved, so the memo below returns the tree the strip is already showing.
+  if (links.length === 0) return nodes;
+
+  const index = nodes.findIndex(isContactEntry);
+  const contact = index < 0 ? undefined : nodes[index];
+  if (!contact) return nodes;
+
+  const grown: NavNode = { ...contact, children: [...contact.children, ...socialNavChildren(links)] };
+  return nodes.map((node, at) => (at === index ? grown : node));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Class recipes — complete literal strings, never assembled (contract §5)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -241,13 +349,15 @@ export interface SiteHeaderProps {
   items: NavNode[];
   features: FeaturesSettings;
   /**
-   * `settings.social` — the Centre's own accounts, for the socials dropdown in the control cluster.
+   * `settings.social` — the Centre's own accounts, appended to the CONTACT entry's children by
+   * `withSocialsUnderContact` above and rendered by the same code as every other nav dropdown.
    *
    * ⚠ OPTIONAL, AND THAT IS A WIRING STATE RATHER THAN A DESIGN. This is a Client Component and cannot
    * read the settings document itself; the value has to be handed down by `app/(site)/layout.tsx`,
    * which already reads it for the footer and the Organization JSON-LD. Until that one prop is passed
-   * the menu renders nothing at all, which is exactly what it does on a fresh install with no links
-   * configured — so an unwired header is the empty state, never a broken one.
+   * the Contact entry keeps exactly the children the editor gave it — which is also what a fresh
+   * install with no social links configured shows, so an unwired header is the empty state, never a
+   * broken one.
    */
   social?: SocialSettings;
 }
@@ -271,6 +381,22 @@ export function SiteHeader({ branding, items, features, social }: SiteHeaderProp
   const currentId = useMemo(
     () => firstMatchingId(visibleItems, activeBase),
     [visibleItems, activeBase]
+  );
+
+  const socialLinks = social?.links ?? NO_SOCIAL_LINKS;
+
+  /**
+   * The tree that is actually rendered — by the strip AND the sheet, from one value, so the two cannot
+   * disagree about what the menu holds at two widths of the same page.
+   *
+   * ⚠ BUILT AFTER `activeBase` AND `currentId`, AND THE ORDER IS LOAD-BEARING. Both of those resolve
+   * "which entry is the current page" over `visibleItems` — the tree with nothing hung on it — so the
+   * absolute `https://` hrefs this adds never reach `resolveActiveHref`, and no social row can claim
+   * `aria-current="page"`. `withSocialsUnderContact`'s header carries the rest of the argument.
+   */
+  const navItems = useMemo(
+    () => withSocialsUnderContact(visibleItems, socialLinks),
+    [visibleItems, socialLinks]
   );
 
   // See MAX_STRIP_ENTRIES: too many sections and the strip stands down at every width rather than
@@ -336,21 +462,6 @@ export function SiteHeader({ branding, items, features, social }: SiteHeaderProp
 
   const dismissSheet = useCallback(() => setSheetOpen(false), []);
 
-  /**
-   * The socials menu's two edges of the shared `openMenuId` register.
-   *
-   * `openSocialMenu` writes the sentinel unconditionally — opening one panel closes any other, which
-   * is the whole reason the register is shared. `closeSocialMenu` only clears the register IF IT IS
-   * STILL OURS, exactly as `StripItem`'s blur handler does below: a close that fired late (a blur
-   * landing after another trigger has already claimed the register) would otherwise shut the panel the
-   * reader has just opened.
-   */
-  const openSocialMenu = useCallback(() => setOpenMenuId(SOCIAL_MENU_ID), []);
-  const closeSocialMenu = useCallback(
-    () => setOpenMenuId((current) => (current === SOCIAL_MENU_ID ? null : current)),
-    []
-  );
-
   return (
     <>
       <header className="nav-frame pointer-events-none fixed inset-x-0 top-3 z-50">
@@ -386,18 +497,20 @@ export function SiteHeader({ branding, items, features, social }: SiteHeaderProp
                       // links rather than as text spilling out of a shrinking box — but it also
                       // clips an open dropdown panel, so it is lifted while one is open. The two
                       // never overlap in practice: opening a panel takes a pointer or a Tab, and
-                      // neither is happening during a scroll.
+                      // neither is happening during a scroll. The effect above also empties the
+                      // register on every change of `compact`, so there is no frame in which this is
+                      // both unclipped and animating.
                       //
-                      // The register also holds SOCIAL_MENU_ID now, and that panel is OUTSIDE this
-                      // element, so it lifts a clip it never needed. Harmless and deliberately left
-                      // untightened: the clip only matters during the collapse animation, and the
-                      // effect above empties the register on every change of `compact` — so there is
-                      // no frame in which this is both unclipped and animating.
+                      // EVERY panel the register can name is a descendant of this element — including
+                      // the socials, which are children of the Contact entry rather than a menu of
+                      // their own (see the file header). While that was briefly untrue this class
+                      // pair lifted a clip for a panel that hung outside it, which was harmless only
+                      // by luck.
                       openMenuId ? "overflow-visible" : "overflow-hidden"
                     )}
                   >
                     <ul className="flex items-center gap-0.5 px-1">
-                      {visibleItems.map((item) => (
+                      {navItems.map((item) => (
                         <StripItem
                           key={item.id}
                           node={item}
@@ -420,27 +533,20 @@ export function SiteHeader({ branding, items, features, social }: SiteHeaderProp
             </Link>
 
             {/*
-              IN THE CONTROL CLUSTER, NOT IN THE LINK STRIP, and the placement is the design.
+              NO SOCIALS CONTROL SITS HERE, AND THE EMPTY SPACE IS THE FIX.
 
-              The strip is `hidden lg:block` AND is unmounted by the collapse, so a socials entry put
-              there would be missing on every phone and would vanish the moment the reader scrolled —
-              a destination that quietly stops being listed is the single most repeated bug class in
-              this product's history (contract §1.6, and see MAX_STRIP_ENTRIES above). The cluster is
-              rendered at every width and never collapses. The strip is also the EDITOR'S navigation
-              tree; these accounts come from the settings document and are not rows an editor can
-              reorder into it.
+              A standalone `SocialMenu` button stood between Search and the accessibility menu for one
+              revision. It is gone because the navigation already had a Contact entry and the Centre's
+              accounts belong under it (file header, and `withSocialsUnderContact` above) — two ways
+              into one idea is one too many.
 
-              Between the search control and the accessibility menu because that is the order of
-              decreasing "about the Centre": where to look, who the Centre is elsewhere, then how this
-              browser should render the page.
+              The strip's `hidden lg:block` and its collapse are not a reason to bring it back. Below
+              `lg` the sheet lists every child of every entry, which is the route every other nav
+              destination already takes; and the collapse withdraws the WHOLE navigation while the
+              reader is moving down the page, one upward flick from having it back (see the header).
+              The socials now ride with About and Research rather than in a lane of their own, which is
+              the entire point of the change.
             */}
-            <SocialMenu
-              links={social?.links ?? NO_SOCIAL_LINKS}
-              open={openMenuId === SOCIAL_MENU_ID}
-              onOpen={openSocialMenu}
-              onClose={closeSocialMenu}
-            />
-
             <AccessibilityMenu side="bottom" align="end" />
 
             <button
@@ -472,7 +578,7 @@ export function SiteHeader({ branding, items, features, social }: SiteHeaderProp
       <NavSheet
         open={sheetOpen}
         id={sheetId}
-        items={visibleItems}
+        items={navItems}
         activeBase={activeBase}
         currentId={currentId}
         onDismiss={dismissSheet}
@@ -502,8 +608,17 @@ interface StripItemProps {
  * links sit immediately after their trigger in DOM order, Tab walks into an open panel and out the
  * far side without any of that machinery.
  *
- * The trigger stays a real `<Link>` to the section, so the group heading is itself a destination
- * rather than a control that only opens something.
+ * THE TRIGGER STAYS A REAL `<Link>` TO THE SECTION, so the group heading is itself a destination rather
+ * than a control that only opens something — and that is also what makes HOVER-to-open safe, which is
+ * worth stating because the property is easy to lose. A trigger that opens on hover and TOGGLES on
+ * click cannot be pressed: the pointer is by definition over the element when the click lands, so the
+ * click closes the panel and the very next pointer event reopens it. An anchor has somewhere to go, so
+ * its click navigates instead of toggling. The deleted `SocialMenu` had to be click-only for exactly
+ * this reason; hanging the socials on Contact — whose trigger is a link to /contact and still is —
+ * dissolves the problem rather than working around it.
+ *
+ * A child may carry an `icon` (`NavNode.icon`, lib/navigation.ts). Only the synthesised social rows do
+ * today; every entry an editor typed leaves it undefined.
  */
 function StripItem({ node, activeBase, currentId, openMenuId, setOpenMenuId }: StripItemProps) {
   const reduce = useReducedMotionPreference();
@@ -608,7 +723,20 @@ function StripItem({ node, activeBase, currentId, openMenuId, setOpenMenuId }: S
               // its way down. The padding is transparent and bridges it.
               className="absolute left-0 top-full z-10 w-64 pt-3"
             >
-              <ul className="flex flex-col gap-0.5 rounded-lg border border-line-200 bg-card p-1.5 shadow-panel">
+              {/*
+                THE HEIGHT CEILING IS NOT DECORATIVE — IT IS THE ONLY WAY OUT OF A TALL PANEL.
+
+                This element is `absolute` under a `fixed` pill, so a panel longer than the viewport
+                cannot be scrolled to: the page scrolls beneath it and the rows below the fold are
+                simply unreachable. That was one editor away before the socials arrived (a section may
+                hold 12 children — MAX_CHILDREN, app/studio/navigation/NavigationEditor.tsx:133) and is
+                now two: Contact may carry 12 of its own plus 12 accounts (MAX_SOCIAL_LINKS,
+                lib/settings/schema.ts:156), which is 24 rows and around 960px of panel.
+
+                `overscroll-contain` stops a wheel that reaches the end of this list from continuing
+                into the page behind and scrolling the article out from under the open menu.
+              */}
+              <ul className="flex max-h-[min(70vh,28rem)] flex-col gap-0.5 overflow-y-auto overscroll-contain rounded-lg border border-line-200 bg-card p-1.5 shadow-panel">
                 {node.children.map((child) => {
                   const childActive = isActiveHref(child.href, activeBase);
                   const childClass = cn(
@@ -618,10 +746,18 @@ function StripItem({ node, activeBase, currentId, openMenuId, setOpenMenuId }: S
                       : "text-ink-700 hover:bg-surface-100 hover:text-ink-900"
                   );
 
+                  // Capitalised because JSX reads a lowercase tag name as an HTML element. Set only on
+                  // the synthesised social rows (`NavNode.icon`, lib/navigation.ts); an editor's own
+                  // entries leave it undefined and render exactly as they always have.
+                  const ChildIcon = child.icon;
+
                   return (
                     <li key={child.id}>
                       {child.isExternal ? (
                         <a href={child.href} {...EXTERNAL_LINK_PROPS} className={childClass}>
+                          {ChildIcon ? (
+                            <ChildIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
+                          ) : null}
                           <span className="min-w-0 flex-1 truncate">{child.label}</span>
                           <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
                           <span className="sr-only">(opens in a new tab)</span>
@@ -632,6 +768,9 @@ function StripItem({ node, activeBase, currentId, openMenuId, setOpenMenuId }: S
                           aria-current={child.id === currentId ? "page" : undefined}
                           className={childClass}
                         >
+                          {ChildIcon ? (
+                            <ChildIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
+                          ) : null}
                           <span className="min-w-0 flex-1 truncate">{child.label}</span>
                         </Link>
                       )}

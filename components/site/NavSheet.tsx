@@ -318,8 +318,23 @@ function SheetLink({ node, level, activeBase, currentId, onNavigate }: SheetLink
       : "text-ink-700 hover:bg-surface-100 hover:text-ink-900"
   );
 
+  /**
+   * Capitalised because JSX reads a lowercase tag name as an HTML element rather than a component.
+   *
+   * Set only on the Centre's social accounts, which reach this sheet as CHILDREN OF THE CONTACT ENTRY
+   * (`NavNode.icon`, lib/navigation.ts; hung on the tree by `withSocialsUnderContact` in
+   * components/site/SiteHeader.tsx). They are drawn here by the same row as every other child, which is
+   * the point of hanging them there — this sheet is the ONLY menu below `lg`, so without that they
+   * would be a set of links that exists on a laptop and nowhere else.
+   *
+   * ⚠ `aria-hidden`, because the label beside it already says which account this is: an announced icon
+   * would read the name twice.
+   */
+  const Icon = node.icon;
+
   const body = (
     <>
+      {Icon ? <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-500" /> : null}
       <span className="min-w-0 flex-1 truncate">{node.label}</span>
       {node.isExternal ? (
         <>

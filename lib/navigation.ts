@@ -12,11 +12,39 @@
  * administrator can immediately edit what they see.
  */
 
+/**
+ * `import type`, NOT a value import, and that is load-bearing rather than a style choice.
+ *
+ * This module is imported by `prisma/seed.ts`, which is a plain Node script (lib/navigation-server.ts
+ * states that constraint in its own header and splits itself from this file over it). A value import
+ * would make every run of the seed load `lucide-react` — a React package — to read a list of labels and
+ * hrefs. A type-only import is erased at compile time, so nothing but the type crosses.
+ */
+import type { LucideIcon } from "lucide-react";
+
 export interface NavNode {
   id: string;
   label: string;
   href: string;
   isExternal: boolean;
+  /**
+   * A glyph drawn beside the label — the ONE field on this type that is not a column in the database.
+   *
+   * It exists because the Centre's social accounts are rendered as CHILDREN OF THE CONTACT ENTRY
+   * rather than as a menu of their own (`socialNavChildren`, lib/socials.ts, hung on the tree by
+   * `withSocialsUnderContact`, components/site/SiteHeader.tsx). Those rows want their platform's glyph
+   * — that is what makes a social row recognisable at a glance, and it is the same glyph the footer and
+   * /contact already draw, resolved once in lib/socials.ts. Every other entry leaves this undefined and
+   * renders exactly as it always has.
+   *
+   * ⚠ SYNTHESISED ON THE CLIENT, NEVER READ FROM THE DATABASE, AND IT CANNOT BE OTHERWISE. The value is
+   * a React component, and `SiteHeader` is a Client Component that receives its `items` as props from a
+   * Server Component (`app/(site)/layout.tsx`). A server that set this field would hand a FUNCTION
+   * across the serialization boundary — "Functions cannot be passed directly to Client Components" —
+   * and take the whole site down with it. `getNavigation` (lib/navigation-server.ts) and
+   * `withSyntheticIds` below both leave it unset, and must continue to.
+   */
+  icon?: LucideIcon;
   children: NavNode[];
 }
 
