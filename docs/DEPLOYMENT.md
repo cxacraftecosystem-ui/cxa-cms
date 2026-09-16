@@ -64,6 +64,9 @@ Set these for **Production**, **Preview** and **Development** unless a row says 
 | `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_FORCE_PATH_STYLE`, `S3_SSE_ALGORITHM` | runtime | Only for non-AWS storage (R2, Backblaze, MinIO). |
 | `CRON_SECRET` | runtime | Vercel Cron sends it for you. §1.7. |
 | `MEDIA_PURGE_AFTER_DAYS` | runtime | Defaults to 30. |
+| `LOG_ARCHIVE_DESTINATION_IS_PRIVATE` | runtime | ⚠ **A precondition, not a preference, and it defaults to refusing.** Unset, `/api/cron/logs-archive` archives **nothing** every night and a log drain would be refused too — so the 90-day retention clause 4 obliges is being met by Postgres alone, with no object-storage evidence. Set it only once the bucket policy excludes `files/logs/*` from anonymous `GetObject`, because that is what it asserts. `OPERATIONS.md` §3. |
+| `ACCESS_LOG_ENABLED`, `ACCESS_LOG_RETENTION_DAYS` | runtime | Default `true` and `180`. Off, no `access_logs` row is written for anything; below 90 the retention variable **throws**, because 90 is the term in the undertaking and not a preference. |
+| `VERCEL_LOG_DRAIN_SECRET`, `VERCEL_LOG_DRAIN_VERIFY` | runtime | **Pro plan only** — Log Drains do not exist on Hobby, so leaving both blank is correct here. `OPERATIONS.md` §9. |
 | `GOOGLE_*`, `MICROSOFT_*`, `YAHOO_*` | runtime | Each optional and independent. `docs/SIGN-IN.md`. |
 | `SEED_ADMIN_*`, `SEED_MASTER_ADMIN_EMAILS` | — | **Do not set on Vercel.** The seed is not part of the build; run it once from your own machine against the production database (§1.8). |
 
@@ -176,31 +179,48 @@ Notes on that block:
   refused rather than killed — `DERIVE_MAX_BYTES` and `CHECKSUM_MAX_BYTES` in those routes already state
   their skips on screen.
 - **Nothing else has an entry, on purpose.** `app/api/studio/reindex/route.ts` sets `maxDuration = 300`
-  in the route file itself, which Vercel honours; the two cron routes cap their own work per run
-  (`MAX_ASSETS_PER_RUN`) so the default clock is ample; every other route is a database query.
+  in the route file itself, which Vercel honours; each of the three cron routes caps its own work per
+  run (`MAX_ASSETS_PER_RUN` in the purge, `MAX_DAYS_PER_RUN`/`MAX_ROWS_PER_RUN` in `logs-archive`) so
+  the default clock is ample; every other route is a database query. ⚠ If `logs-archive` ever starts
+  failing a large day on the clock rather than on its own budget, the entry it needs is `maxDuration`,
+  not memory — it streams a day a page at a time and never holds more than `ROWS_PER_PART` rows.
 
 ### 1.7 Cron
 
 ```json
-{ "path": "/api/cron/publish", "schedule": "*/10 * * * *" }
-{ "path": "/api/cron/purge",   "schedule": "17 3 * * *" }
+{ "path": "/api/cron/purge",        "schedule": "17 3 * * *" }
+{ "path": "/api/cron/logs-archive", "schedule": "41 3 * * *" }
 ```
 
-Both confirmed against the routes that exist. What each does is in `OPERATIONS.md` §3 — read it, because
-the publish job is a convenience and the index re-sync inside it is not.
+**That is the whole `crons` array, and there is a third cron route that is not in it.**
+`/api/cron/publish` runs every five minutes from **`.github/workflows/keep-warm.yml`**, not from here
+— the Hobby plan rejects the deploy outright with `Hobby accounts are limited to daily cron jobs` for
+any schedule that fires more than once a day, so the ten-minute job had to move somewhere else and
+the two daily slots went to the jobs that cannot be run any other way. `ARCHITECTURE.md` §3.2 is the
+long version, including what GitHub's best-effort scheduler costs in accuracy. Confirmed against
+`vercel.json`, that workflow, and the routes that exist. What each job does is in `OPERATIONS.md` §3.
 
 - **`CRON_SECRET` must be set as an environment variable.** Vercel Cron then sends
   `Authorization: Bearer <CRON_SECRET>`, which is exactly what `assertCronAuthorised` expects. Without
   it the endpoints refuse every request and log why — the safe direction.
 - **Never use the `?secret=` query form on a scheduler that can set a header.** It exists for schedulers
-  that cannot, and every proxy in between logs it.
-- **The purge time is deliberately `03:17`, not `03:00`.** Schedules are in **UTC**; 03:17 UTC is
-  mid-morning in India, which is fine for a job that only deletes bytes already past their retention
-  window. The odd minute keeps it off the hour, where every other scheduled job on the platform queues up.
-- ⚠ **A ten-minute schedule needs a paid plan.** Vercel's free tier allows roughly one cron invocation
-  per day. On a free plan the publish job effectively does not run: nothing is published early or left
-  readable past its date — publication is resolved on every read — but the studio's status column drifts
-  out of step, and withdrawn pages keep coming back from search by name until it does run.
+  that cannot, and every proxy in between logs it. Our own log drain receiver is one of those proxies
+  and now redacts it (`OPERATIONS.md` §9), which is a backstop and not a reason to use the query form.
+- ⚠ **`logs-archive` has two preconditions that are not environment variables you can guess at.**
+  `LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true` — which is an assertion that the bucket policy excludes
+  `files/logs/*` from anonymous `GetObject` — and a lifecycle rule of **at least 90 days** on that
+  prefix, with no shorter bucket-wide rule applying to it. Without the first the job archives nothing,
+  nightly, while returning 200. Without the second the bucket deletes the evidence on its own schedule
+  and the job still reports success. Both are in `OPERATIONS.md` §3 and in `.env.example`.
+- **The times are deliberately `03:17` and `03:41`, not `03:00`.** Schedules are in **UTC**; that is
+  mid-morning in India, which is fine for a job that deletes bytes already past their retention window
+  and for one that copies closed days. The odd minutes keep them off the hour, where every other
+  scheduled job on the platform queues up, and apart from each other.
+- ⚠ **A ten-minute schedule needs a paid plan, and that is why `publish` is not in the array.**
+  Vercel's free tier allows roughly one cron invocation per day. On Pro, add
+  `{ "path": "/api/cron/publish", "schedule": "*/10 * * * *" }` back and drop the curl step from
+  `keep-warm.yml`; Vercel's scheduler is not best-effort, is not disabled by 60 days of repository
+  inactivity, and does not need the Neon compute woken first.
 
 ### 1.8 First deployment
 
@@ -319,18 +339,27 @@ any log.
 - `preload` is deliberately absent. Submitting a domain to the browsers' preload list is close to
   irreversible and belongs to whoever owns the domain.
 
-### 2.5 Scheduling the two jobs yourself
+### 2.5 Scheduling the three jobs yourself
 
 **Nothing in the container runs them.** `vercel.json`'s schedule applies to Vercel only, and there is no
-in-process timer anywhere in this codebase (deliberately — see `lib/runtime.ts`). A host crontab:
+in-process timer anywhere in this codebase (deliberately — see `lib/runtime.ts`). A host crontab — and
+here there is no plan limit, so `publish` goes back on its ten-minute schedule:
 
 ```cron
-*/10 * * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/publish >/dev/null
-17   3 * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/purge  >/dev/null
+*/10 * * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/publish      >/dev/null
+17   3 * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/purge        >/dev/null
+41   3 * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/logs-archive >/dev/null
 ```
 
 `-f` matters: without it `curl` exits 0 on a 403 and a refused job looks like a successful one. Read
 `OPERATIONS.md` §3 for what each job does and what stops working without it.
+
+⚠ **`-f` is not enough for `logs-archive`.** It answers **200** when it archives nothing because
+`LOG_ARCHIVE_DESTINATION_IS_PRIVATE` is unset, so `curl` is happy and the compliance archive is empty.
+That state is reported on the studio's diagnostics panel and written to `audit_logs` every night it
+happens, which is where to check it — not in the exit status. The MinIO default policy in
+`docker/minio-public-read.json` grants anonymous `GetObject` on the **whole bucket**, so on this path
+the flag is a real piece of work and not a formality.
 
 ### 2.6 One process, and what a second one costs
 
@@ -355,7 +384,7 @@ rewrite; until one is registered, prefer one larger container to two smaller one
 |---|---|---|
 | **Rate limits** — sign-in, second factor, password links, contact form, event registration, search, suggestions, view beacon, counted downloads | **Per copy of the app.** The real limit is the configured number × however many copies are running, and a newly started copy allows a full fresh allowance. A speed bump, not a ceiling. | **Exact, with one process.** Multiplied by the replica count if you run more (§2.6). |
 | **Cold starts** | Real. After a quiet period the next request rebuilds the storage client, the JWT signing key and each sign-in provider's key set — commonly a second or two on the first sign-in of the morning. No data is affected. | None. The process stays warm; those caches are built once at start-up. |
-| **Cron** | Declared in `vercel.json` and run by the platform, which supplies the `Authorization` header from `CRON_SECRET`. Ten-minute schedules need a paid plan (§1.7). | **Nothing runs them.** A host crontab, systemd timer or external scheduler, with the header set by hand (§2.5). |
+| **Cron** | **Split across two schedulers.** The two daily jobs are declared in `vercel.json` and run by the platform, which supplies the `Authorization` header from `CRON_SECRET`; `/api/cron/publish` runs from `.github/workflows/keep-warm.yml`, because Hobby rejects any schedule finer than daily (§1.7). | **Nothing runs any of them.** One host crontab covers all three, with the header set by hand (§2.5). |
 | **Logs** | Per invocation, in the platform dashboard, retained for a period the plan decides. `console.warn` from the rate limiter's bucket-ceiling message and `[cron]` lines land here. Not files; not greppable across a month unless you forward them somewhere. | `docker compose logs -f app`, or whatever the daemon's logging driver is pointed at. One continuous stream, and yours to rotate. |
 | **Sticky in-memory state** | Nothing survives. Rate-limit buckets, the rebuild-in-progress guard (`__cxaReindexState`) and every `let cached…` are rebuilt per copy and lost on each cold start. Two administrators can start two index rebuilds at once. | Survives for the life of the process. The rebuild guard works; the limiter counts correctly; a restart resets both. |
 | **Database connections** | One pool **per copy**, with the number of copies changing under load. `DATABASE_URL` must be a pooler (§1.4). | One pool, one process. A direct connection is fine. |

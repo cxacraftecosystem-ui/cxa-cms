@@ -6,6 +6,10 @@
     {
       "path": "/api/cron/purge",
       "schedule": "17 3 * * *"
+    },
+    {
+      "path": "/api/cron/logs-archive",
+      "schedule": "41 3 * * *"
     }
   ],
   "functions": {

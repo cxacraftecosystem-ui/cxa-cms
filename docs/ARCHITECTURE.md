@@ -434,6 +434,7 @@ flowchart LR
     end
     subgraph vj["vercel.json — crons"]
         v1["/api/cron/purge — '17 3 * * *'"]
+        v2["/api/cron/logs-archive — '41 3 * * *'"]
     end
     gh --> app["The deployment"]
     vj --> app
@@ -442,16 +443,18 @@ flowchart LR
 The reason is blunt: **the Vercel Hobby plan refuses any cron that fires more than once a day** — the
 deploy is rejected outright with `Hobby accounts are limited to daily cron jobs` — so a page an
 editor scheduled for 10:00 would not appear until the following night. `/api/cron/purge` stays in
-`vercel.json`, because daily is all it ever wanted. The workflow's own header records three things it
+`vercel.json`, because daily is all it ever wanted, and `/api/cron/logs-archive` joined it there for
+the same reason. The workflow's own header records three things it
 cannot do, and they are worth reading before relying on it: GitHub's scheduler is best-effort and
 routinely fires ten to sixty minutes late, so scheduled publishing is accurate to roughly a quarter
 of an hour rather than to the minute; a compute that never sleeps burns about 730 compute-hours in a
 30-day month, which is past what a free Neon plan includes; and **GitHub silently disables scheduled
 workflows in a repository with no activity for 60 days**.
 
-> `DEPLOYMENT.md` §1.7 still describes both crons as `vercel.json` entries with the publish job on
-> `*/10 * * * *`. That is the arrangement this repository shipped with; the file above supersedes it
-> for the publish job only. Update §1.7 when you next touch it.
+> `DEPLOYMENT.md` §1.7 and `OPERATIONS.md` §3 now describe this arrangement rather than the one the
+> repository shipped with: three cron routes, two of them in `vercel.json` and the publish job here.
+> They also name `logs-archive`'s two infrastructure preconditions, which are not in either file's
+> `crons` array and cannot be — a bucket policy and a lifecycle rule are not things code can set.
 
 ### 3.3 The editing loop, and why a published page is treated differently
 

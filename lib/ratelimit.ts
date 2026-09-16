@@ -129,6 +129,28 @@ export const RATE_LIMITS = {
   searchLog: { limit: 5, windowSeconds: 10 * 60 },
   /** The view beacon. One per article read; anything beyond this is not a reader. */
   views: { limit: 40, windowSeconds: 10 * 60 },
+
+  /**
+   * ACCESS-LOG WRITES FOR ANONYMOUS REFUSALS, per (IP, path, status) — consumed by
+   * `recordAccess` in lib/requestLog.ts with a hand-built key, the way `searchLog` above is, rather
+   * than by a route through `enforceRateLimit`.
+   *
+   * ⚠ IT IS NOT A LIMIT ON REQUESTS. Nothing here refuses anything; it caps how many ROWS one
+   * stranger repeating one refusal may add to `access_logs`. The distinction matters because the two
+   * are usually the same thing and here they are not: `/api/cron/*` answers a wrong secret with a 403
+   * that touches no database, and `/api/auth/login` answers a throttled attempt with a 429 that
+   * touches no database — and then `route()` writes a row for each, because both prefixes are
+   * always-logged. So a flood that the application is correctly refusing at zero cost still buys the
+   * attacker one indexed INSERT per connection, in the table whose exhaustion would take down the
+   * `AuditLog` writes inside `mutateWithHistory` with it. That is a write primitive handed to a
+   * stranger by the compliance mechanism itself.
+   *
+   * Thirty per ten minutes per (IP, path, status) is far more than any person produces — a human
+   * mistyping a password reaches the `login` limit of twenty first, and those rows are recorded
+   * whole. It leaves a flood plainly visible as a steady heartbeat of rows rather than as a complete
+   * transcript; lib/requestLog.ts states what is lost and why that trade was taken.
+   */
+  accessLogRefusal: { limit: 30, windowSeconds: 10 * 60 },
   /** Counted downloads. Each one costs a storage HEAD and a signature. */
   download: { limit: 30, windowSeconds: 10 * 60 },
 

@@ -2078,3 +2078,118 @@ model NewsletterDelivery {
   @@index([subscriberId])
   @@map("newsletter_deliveries")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The access log
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// ONE ROW PER REQUEST THAT REACHED A ROUTE HANDLER. Written by `route()` (lib/api.ts) through
+/// lib/requestLog.ts. This is the clause-4 surface: "which address asked for what, when, and what did
+/// it get" — the question `audit_logs` cannot answer, because an audit row only exists where something
+/// CHANGED and reconnaissance changes nothing.
+///
+/// ══════════════════════════════════════════════════════════════════════════════════════════════
+/// WHY THIS IS NOT MORE `AuditLog` ROWS. Four reasons, and the first is the one that decides it.
+///
+///  1. **`lib/audit.ts`'s central rule is that the log entry and the change it describes are written in
+///     the SAME transaction.** An access row has no change and therefore no transaction to join — it is
+///     written after the response has already been built, and in the normal case after it has been
+///     flushed. Putting rows with no such guarantee into `audit_logs` would reduce that invariant from
+///     "always" to "mostly", and an invariant that holds mostly is one nobody can reason from during the
+///     incident it exists for.
+///
+///  2. **The columns do not fit.** `before`/`after` are entity snapshots; every access row would carry
+///     two NULL Json columns and an `entityType` of "Request", which is not an entity. `AuditAction`
+///     would need a member that is not an action.
+///
+///  3. **Volume would degrade the screen that is supposed to be read.** `/studio/audit` and the five
+///     query sites in lib/provenance.ts run unfiltered `count` and `groupBy` over `createdAt` ranges.
+///     One row per API request is roughly two orders of magnitude more rows, and the cost lands on the
+///     master-admin surface clause 4 actually wants somebody looking at every week.
+///
+///  4. **The retention policies are opposites and cannot share a table.** Audit rows are content
+///     provenance and are kept indefinitely — lib/provenance.ts answers "has this ever been restored"
+///     over the whole history. Access rows serve a 90-day-minimum obligation and are purged on a
+///     window. One table cannot carry both without a per-row rule that the next person to write a
+///     `deleteMany` will not know about.
+///
+/// The two are CORRELATED, not deduplicated: an audit row says what changed, an access row says a
+/// request arrived and what it got. A save produces both, and that is not a double-write — dropping the
+/// access row for audited requests would delete precisely the record that distinguishes "the usual
+/// editor saved from the usual address" from "the same account, from an address it has never used".
+/// Join on (actorId, path, at) within a few milliseconds.
+///
+/// ⚠ WHAT IS DELIBERATELY ABSENT: request bodies, response bodies, cookies, `Authorization`, and every
+/// header except `User-Agent`. A body carries credentials by definition on `/api/auth/*`, and a log read
+/// by more people than the users table is has to be incapable of holding one rather than merely
+/// careful. `query` is stored with its VALUES scrubbed — see `scrubQuery` in lib/requestLog.ts.
+/// ══════════════════════════════════════════════════════════════════════════════════════════════
+model AccessLog {
+  /// ⚠ AN INTEGER, NOT `cuid()`, AND IT IS THE ONLY MODEL HERE THAT DEVIATES.
+  ///
+  /// Every other model is addressed by a URL an editor can paste, so an unguessable id is worth its 25
+  /// bytes. Nothing addresses an access row: it is written once, read in ranges, and deleted by age. What
+  /// a range read DOES need is a stable cursor, and `at` cannot be one — thousands of rows share a
+  /// millisecond, so "everything after the last row I sent" is not expressible in it. A monotonic id is,
+  /// which is what makes a paginated 90-day export to CIC resumable instead of duplicating or skipping
+  /// rows at every page boundary. `Int` and not `BigInt` because `JSON.stringify` THROWS on a BigInt and
+  /// would take out `NextResponse.json` on any screen that ever lists these; int4 leaves room for two
+  /// billion requests, which at this site's volume is measured in decades.
+  id Int @id @default(autoincrement())
+
+  /// When the request STARTED, passed in explicitly rather than defaulted, because the insert happens
+  /// after the response is flushed — `now()` would date every row by however long the handler took plus
+  /// however long the write waited. The default is a backstop for a caller that forgets.
+  at DateTime @default(now())
+
+  method String
+  /// Path only. Scrubbed and length-capped: it is attacker-controlled, and a path is the one part of a
+  /// request a stranger gets to choose the bytes of.
+  path   String
+  /// The query string with every VALUE scrubbed, or null when there was none. The names are kept — that
+  /// a request carried `token` is the fact an incident needs; the token itself is the thing that must
+  /// never be here.
+  query  String?
+
+  status     Int
+  /// `ApiErrorBody.code` for a refusal — "forbidden", "rate_limited", "validation_failed". Null on a
+  /// success. Stored because a status alone does not separate "wrong password" from "too many attempts",
+  /// and those are different incidents.
+  errorCode  String?
+  durationMs Int
+
+  /// ⚠ NO FOREIGN KEY TO `users`, unlike `AuditLog.actorId`, and deliberately.
+  ///
+  /// `AuditLog.actor` is `ON DELETE SET NULL`, which on a table of this volume turns deleting one user
+  /// into an UPDATE across every row they ever produced — millions of row locks in one statement, on the
+  /// hottest-written table in the schema, inside whatever transaction the delete is already holding.
+  /// Worse, it would work: the id an auditor needs to answer "everything this account did" is exactly
+  /// what the cascade erases, at exactly the moment — an account being removed — when somebody is most
+  /// likely to ask. `actorEmail` is denormalised for the same reason it is on `AuditLog`, and here the
+  /// id is denormalised too. The cost is that `actorId` can name a user that no longer exists, which is
+  /// the correct thing for a log to say.
+  actorId    String?
+  actorEmail String?
+
+  /// Leftmost `x-forwarded-for`, falling back to `x-real-ip` — `clientIp()` in lib/api.ts, the same
+  /// function the audit context and the rate limiter use. Evidence for an incident review, never an
+  /// authorisation input: see the note on that function.
+  ipAddress String?
+  /// Capped at 512 characters at the write site, matching lib/audit.ts.
+  userAgent String?
+
+  /// THREE INDEXES, AND THE ONES THAT WERE LEFT OUT MATTER AS MUCH. Every index is paid for on every
+  /// insert, and this table is inserted into on every request, so each one has to earn a question.
+  ///   • `at` — the retention delete (`at < cutoff`) and every "the last N hours" read.
+  ///   • `actorId, at` — "everything this account did, in this window". Serves `actorId` alone too.
+  ///   • `ipAddress, at` — "everything from this address, in this window". This is the brute-force
+  ///     question, and it is the one the rate limiter cannot answer because its buckets are in memory
+  ///     and per-instance.
+  /// NOT indexed: `status` and `path`. "Every 401 last week" and "who hit /api/studio/users" both arrive
+  /// with a date range attached, so they ride the `at` index and filter; giving each its own index would
+  /// nearly double the write cost of the table to save a bounded scan on a query nobody runs hourly.
+  @@index([at])
+  @@index([actorId, at])
+  @@index([ipAddress, at])
+  @@map("access_logs")
+}

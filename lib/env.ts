@@ -167,6 +167,116 @@ export function mediaPurgeAfterDays(): number {
 }
 
 /**
+ * The floor the retention window may not go below, in days.
+ *
+ * Not a preference. The hosting undertaking signed with IIT KGP's Computer and Informatics Centre
+ * requires website logs to be "retained for a MINIMUM OF 90 DAYS and made available to CIC upon
+ * request", and clause 5 makes non-compliance grounds for deactivating the site. A number below this
+ * is not a configuration choice, it is a breach, so it is refused rather than accepted quietly.
+ */
+export const ACCESS_LOG_RETENTION_FLOOR_DAYS = 90;
+
+/**
+ * The default access-log window, as a named constant because a SECOND module needs the number.
+ *
+ * `archiveScanDays()` in lib/logArchive.ts falls back to it when `accessLogRetentionDays()` throws on
+ * a malformed value — an archiver must not stop scanning because a number it only uses to bound a
+ * loop was mistyped. Exported rather than copied for the reason `LOG_RETENTION_FLOOR_DAYS` states at
+ * length about the two 90s: two hand-maintained copies of a retention number are one edit away from
+ * a system that enforces one value in one place and a different one in another, and reports success
+ * from both.
+ */
+export const ACCESS_LOG_RETENTION_DEFAULT_DAYS = 180;
+
+/**
+ * How long a row in `access_logs` survives before a purge job may delete it.
+ *
+ * 180 BY DEFAULT, NOT 90, AND THE GAP IS THE POINT. 90 is the obligation; a window set AT the
+ * obligation has no margin at all — one cron run that fails over a long weekend, one deploy that
+ * forgets to register the job, one clock skew, and the oldest rows the undertaking promises are
+ * already gone. Ninety days of margin costs a few hundred megabytes and buys the difference between
+ * "we keep 90 days" and "we can PROVE we kept 90 days", which is the only version of the claim that
+ * survives being asked for evidence.
+ *
+ * Below the floor it THROWS rather than clamping. Clamping would mean an administrator who set 30
+ * believed the site kept 30 days while it kept 90, and the first person to discover the disagreement
+ * would be whoever was reconciling a log export against what had been filed with CIC. `readInt`
+ * already throws on a malformed or non-positive value, for the reason spelled out at its definition.
+ *
+ * ⚠ THIS IS THE THIRD RETENTION RULE IN THE APPLICATION AND NO TWO OF THEM ARE THE SAME. Media and
+ * file BYTES: `mediaPurgeAfterDays()` above, 30 days, deliberately independent of the row's soft
+ * delete. Sessions: 7 days, hardcoded in `pruneExpiredSessions()` (lib/auth/session.ts). Access logs:
+ * this one, 180. `AuditLog` is a fourth case and is on NO window at all — it is content provenance,
+ * read by lib/provenance.ts over the whole history, and purging it would silently break "has this
+ * ever been restored". app/studio/recycle-bin/page.tsx already warns in capitals that two of these
+ * are different rules; a third is a reason to name them all in one place, not to hope the reader
+ * remembers.
+ */
+export function accessLogRetentionDays(): number {
+  const days = readInt("ACCESS_LOG_RETENTION_DAYS", ACCESS_LOG_RETENTION_DEFAULT_DAYS);
+  if (days < ACCESS_LOG_RETENTION_FLOOR_DAYS) {
+    throw new Error(
+      `ACCESS_LOG_RETENTION_DAYS is ${days}, below the ${ACCESS_LOG_RETENTION_FLOOR_DAYS}-day minimum ` +
+        "the IIT KGP hosting undertaking requires. Raise it, or remove it to use the 180-day default."
+    );
+  }
+  return days;
+}
+
+/**
+ * Whether `route()` writes an `access_logs` row at all. ON unless explicitly switched off.
+ *
+ * ⚠ SWITCHING THIS OFF BREAKS A BINDING UNDERTAKING, so it defaults to true and its being false is
+ * REPORTED in the diagnostics panel below rather than left to be discovered. It exists for one
+ * situation, which is not hypothetical on a free database tier: the log insert starts failing for
+ * every request — storage exhausted, connection limit reached — and each request then pays a doomed
+ * round trip and a console line for nothing. The write is already structurally unable to fail a
+ * request (lib/requestLog.ts never throws), so this is not a safety valve for correctness; it is the
+ * lever that stops the bleeding without a deploy, and it is meant to be put back the same day.
+ *
+ * The other case it covers is a systematic 4xx on a high-traffic public endpoint. `/api/public/views`
+ * is called once per public page view, and the scope rule in lib/requestLog.ts logs a public request
+ * only when it was refused — so an endpoint that starts refusing every call turns that rule into a
+ * row per page view.
+ */
+export function accessLogEnabled(): boolean {
+  return readBool("ACCESS_LOG_ENABLED", true);
+}
+
+/**
+ * Has an operator stated that the log archive's destination is NOT anonymously readable?
+ *
+ * ⚠ IT DEFAULTS TO "NO", AND EVERYTHING THAT WRITES UNDER `files/logs/` IS EXPECTED TO REFUSE ON IT.
+ * The media bucket grants anonymous `s3:GetObject` on every key (docker/minio-public-read.json, and
+ * docker-compose.yml says a real S3 bucket "needs the same care"), while archive keys are derived
+ * from a date on purpose so a reader can fetch a range without listing. Anonymous GetObject plus a
+ * derivable key is publication. `archiveDestinationPrivacy()` in lib/logArchive.ts wraps this with
+ * the sentence that names the bucket policy and the fix; both the nightly archive job and the log
+ * drain receiver refuse until this says yes.
+ *
+ * ⚠ IT RETURNS A MALFORMED VALUE RATHER THAN THROWING ON IT, WHICH DIVERGES FROM `readBool` ABOVE ON
+ * PURPOSE. `readBool` throws on an unrecognised value and is right to: silently substituting a
+ * default is how a 30-minute token TTL becomes 30 days. Here the substituted default is INACTION —
+ * nothing is written and the reason is reported — so it cannot cause the harm that doctrine exists
+ * to prevent, and a throw inside a cron job would take the whole run down before `runCronJob` writes
+ * the line that explains what is wrong. The caller gets `malformed` so the difference between "set to
+ * nonsense" and "never set" reaches the operator, which is the part that decides what they do next.
+ */
+export function logArchiveDestinationIsPrivate(): {
+  confirmed: boolean;
+  malformed: boolean;
+  raw: string;
+} {
+  const raw = process.env.LOG_ARCHIVE_DESTINATION_IS_PRIVATE?.trim().toLowerCase() ?? "";
+  if (["1", "true", "yes", "on"].includes(raw)) return { confirmed: true, malformed: false, raw };
+  return {
+    confirmed: false,
+    malformed: raw.length > 0 && !["0", "false", "no", "off"].includes(raw),
+    raw
+  };
+}
+
+/**
  * Every configuration problem the app can detect, as sentences. Rendered by the CMS's Settings →
  * Diagnostics panel so an administrator sees "media uploads are disabled because S3_BUCKET is not
  * set" instead of discovering it when an upload fails at 90%.
@@ -204,6 +314,82 @@ export function configurationWarnings(): string[] {
   }
   if (isProduction() && !read("NEXT_PUBLIC_SITE_URL")) {
     warnings.push("NEXT_PUBLIC_SITE_URL is not set — canonical URLs and sitemap entries will be wrong.");
+  }
+  /**
+   * The request log, which is the only thing standing behind clause 4 of the hosting undertaking.
+   *
+   * ⚠ WRAPPED, BECAUSE BOTH ACCESSORS THROW ON PURPOSE. `accessLogEnabled()` throws on a value that is
+   * not a boolean and `accessLogRetentionDays()` throws below the 90-day floor — and this function is
+   * rendered by a panel whose whole job is to list configuration problems. An unhandled throw here
+   * would replace that list with a 500, hiding every other warning behind the one that shouted
+   * loudest. So the message becomes a warning like any other, which is what the reader needed anyway.
+   */
+  try {
+    if (!accessLogEnabled()) {
+      warnings.push(
+        "ACCESS_LOG_ENABLED is off, so no record is being kept of requests to the studio or to the " +
+          "authentication routes. The IIT KGP hosting undertaking requires website logs to be retained " +
+          "for at least 90 days and produced to CIC on request; while this is off there is nothing to " +
+          "produce."
+      );
+    } else {
+      // Called for its throw, not its value: an out-of-range window is a problem to report here rather
+      // than one for the purge job to hit at 03:17 where nobody is watching.
+      accessLogRetentionDays();
+    }
+  } catch (error) {
+    warnings.push(error instanceof Error ? error.message : String(error));
+  }
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE LOG ARCHIVE, WHICH IS INERT BY DEFAULT AND UNTIL THIS EXISTED SAID SO NOWHERE DURABLE.
+   *
+   * `logs-archive` runs nightly, takes the `!privacy.confirmed` early return, returns 200 with
+   * `processed: 0`, and writes its explanation into a `[cron]` console line that Vercel's Hobby plan
+   * discards after ONE HOUR — which is the exact retention problem the archive exists to solve. The
+   * flag is in no `.env.example` (it is now) and in no deployment doc (it is now), so the realistic
+   * path was: deploy, never set it, and discover nine months later that the mechanism standing behind
+   * a signed undertaking had never written a byte. Nothing was broken on screen; the panel built to
+   * list configuration problems reported a clean configuration.
+   *
+   * That is what this entry is for. It is not a preference an administrator might reasonably leave
+   * alone — it is a precondition, and its default is refusal.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  if (storageConfigured()) {
+    const privacy = logArchiveDestinationIsPrivate();
+    if (!privacy.confirmed) {
+      warnings.push(
+        (privacy.malformed
+          ? `LOG_ARCHIVE_DESTINATION_IS_PRIVATE is "${privacy.raw}", which is not a yes, so `
+          : "LOG_ARCHIVE_DESTINATION_IS_PRIVATE is not set, so ") +
+          "the nightly log archive is writing NOTHING and no platform log drain delivery would be " +
+          "retained either. The IIT KGP hosting undertaking requires website logs to be retained for " +
+          "at least 90 days and produced to CIC on request. The rows themselves are safe — nothing " +
+          "deletes them — but there is no archive in object storage. Give the bucket a policy that " +
+          "excludes files/logs/* from anonymous GetObject (or give the archive a private bucket of " +
+          "its own), then set LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true and the next runs back-fill " +
+          "every pending day inside the scan window."
+      );
+    }
+  }
+  /*
+   * A drain that is configured against a deployment that cannot store anything. This is the warning
+   * lib/drains.ts's own header asked for, in the words it asked for.
+   *
+   * ⚠ NOTE WHICH DIRECTION IS WARNED ABOUT. Not "storage is configured but VERCEL_LOG_DRAIN_SECRET is
+   * not" — drains are a Pro feature and this team is on Hobby, so that warning would be permanently
+   * true on every correctly-behaving deployment, and a panel with a red line nobody can ever clear is
+   * a panel operators stop reading. The combination below is different: somebody has deliberately set
+   * a drain secret, which means a drain either exists or is about to, and every delivery it makes
+   * will be refused with a 503 until storage is configured.
+   */
+  if (read("VERCEL_LOG_DRAIN_SECRET") && !storageConfigured()) {
+    warnings.push(
+      "VERCEL_LOG_DRAIN_SECRET is set but object storage is not, so every platform log drain " +
+        "delivery is being refused with a 503 and no platform logs are being retained. Vercel flags " +
+        "the drain once 80% of deliveries fail; set S3_BUCKET, S3_REGION and the access keys."
+    );
   }
   return warnings;
 }

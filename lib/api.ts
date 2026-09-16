@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { ZodError, type ZodSchema } from "zod";
+import { recordAccess } from "@/lib/requestLog";
 
 /**
  * Route-handler plumbing: one error shape, one success shape, one place that turns a thrown thing
@@ -143,16 +144,125 @@ export function describeZodError(error: ZodError): {
   };
 }
 
-/** Wrap a route handler so every throw becomes a well-formed response. */
+/**
+ * The `Request` Next passed, if there is one.
+ *
+ * DUCK-TYPED RATHER THAN `instanceof Request`, and the difference is not pedantry: `instanceof` is
+ * identity against one class object, and a runtime that ends up with two copies of the WHATWG fetch
+ * classes — a polyfill loaded beside the built-in, a bundler resolving `undici` twice — answers false
+ * for a perfectly good request. The failure would be silent and total: every row would simply stop
+ * being written, with nothing in any log to say why.
+ *
+ * It returns null rather than throwing for the handlers declared with no parameters at all
+ * (`route(async () => …)` — app/api/auth/me, app/api/public/stats, app/api/studio/account). Next passes
+ * the request to those too, so they are logged like any other; the null branch is for a caller that is
+ * not Next.
+ */
+function requestFrom(args: unknown[]): Request | null {
+  const candidate = args[0];
+  if (!candidate || typeof candidate !== "object") return null;
+  const maybe = candidate as { url?: unknown; method?: unknown; headers?: { get?: unknown } };
+  if (typeof maybe.url !== "string" || typeof maybe.method !== "string") return null;
+  if (!maybe.headers || typeof maybe.headers.get !== "function") return null;
+  return candidate as Request;
+}
+
+/**
+ * The `ApiErrorBody.code` that went out with this response, for the access log.
+ *
+ * Read off the ERROR where there was one, because that is the authoritative answer — an `ApiError`
+ * carries a code chosen by the call site (`write_failed`, `bad_object_key`, `token_expired`) that no
+ * amount of staring at a status can recover.
+ *
+ * Where there was no throw and the status is still a refusal, the status is all there is. That case is
+ * real and it is the important one: `enforceRateLimit` in lib/ratelimit.ts RETURNS its 429 rather than
+ * throwing it, so a credential-stuffing sweep arrives here as a returned response with no error
+ * object. `defaultCodeForStatus` gives it "rate_limited", which is the same string the body carries.
+ *
+ * ⚠ THE RESPONSE BODY IS NEVER READ TO FIND OUT. A `NextResponse` body is a stream and reading it here
+ * would consume it, so the caller would receive an empty response — a logging change that broke every
+ * API call in the application.
+ */
+function errorCodeFor(error: unknown, status: number): string | null {
+  if (status < 400) return null;
+  if (error instanceof ApiError) return error.code;
+  if (error instanceof ZodError) return "validation_failed";
+  if (error) return "server_error";
+  return defaultCodeForStatus(status);
+}
+
+/**
+ * Wrap a route handler so every throw becomes a well-formed response — AND so every request to the
+ * protected surface leaves a row in `access_logs`.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * WHY THE LOGGING IS HERE AND NOWHERE ELSE. This function is a genuine chokepoint: all 91 route files
+ * under `app/api/studio` call it, so do the eight under `app/api/auth`, and so does every public and
+ * cron route. One edit covers 168 exported HTTP methods, and a route added next year is covered the
+ * moment it is written, because writing it without `route()` is not something anybody does here.
+ *
+ * The alternatives were considered and rejected:
+ *
+ *   • MIDDLEWARE cannot do it. It runs on the Edge, where Prisma does not run at all — see the header
+ *     of middleware.ts. Logging from there means an HTTP call to something that can write, which is an
+ *     extra function invocation per request on a plan that counts them, and a self-inflicted
+ *     amplification vector the moment somebody floods `/api/studio/*` while signed out.
+ *   • A `app/studio/**` LAYOUT would log page renders, but Next prefetches studio links on hover, so
+ *     every hovered link would become a logged "view" — and a screen render changes nothing anyway.
+ *     Every studio state change already passes through here.
+ *
+ * ⚠ THE COST IS ONE INSERT, DEFERRED. `recordAccess` hands the write to `after()`, so the reader waits
+ * for the handler and not for the log; it is not a subrequest, and it never throws — see the long note
+ * at the top of lib/requestLog.ts. This function's promise to its 113 callers is that it returns a
+ * response, and nothing added here may weaken that.
+ *
+ * ⚠ IT IS NOT A SECOND AUDIT TRAIL AND MUST NOT BECOME ONE. Nothing here writes an `AuditLog` row. A
+ * mutation that already writes one through lib/audit.ts gets exactly the row it always got, in the
+ * same transaction, plus a transport record in a different table with different columns. The two are
+ * correlated on `(actorId, path, at)`, never deduplicated: suppressing the access row for audited
+ * requests would delete precisely the record that separates "the usual editor saved from the usual
+ * address" from "the same account, from an address it has never used".
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
 export function route<Args extends unknown[]>(
   handler: (...args: Args) => Promise<NextResponse> | NextResponse
 ) {
   return async (...args: Args): Promise<NextResponse> => {
+    const startedAt = Date.now();
+    let response: NextResponse;
+    let thrown: unknown = null;
+
     try {
-      return await handler(...args);
+      response = await handler(...args);
     } catch (error) {
-      return toErrorResponse(error);
+      thrown = error;
+      response = toErrorResponse(error);
     }
+
+    // Both branches, deliberately. A log that only records the requests that succeeded answers the one
+    // question nobody has to ask.
+    //
+    // ⚠ THE STATUS IS CHECKED FOR EXISTENCE EVEN THOUGH IT CANNOT BE ABSENT. `response` is typed
+    // `NextResponse` and all 113 call sites typecheck, so it always has one. The guard is here because
+    // everything below this line runs AFTER the handler has already succeeded: a `TypeError` thrown
+    // while logging would convert a save that completed into a 500, for a reason that has nothing to do
+    // with the save, and this function's single promise to its callers is that it returns a response.
+    const request = requestFrom(args);
+    if (request && typeof response?.status === "number") {
+      recordAccess({
+        request,
+        status: response.status,
+        errorCode: errorCodeFor(thrown, response.status),
+        startedAt,
+        // `clientIp` and `userAgent` are the ones directly below, the same two `buildAuditContext`
+        // uses — so an access row and an audit row for the same request cannot disagree about where it
+        // came from.
+        ipAddress: clientIp(request),
+        userAgent: userAgent(request)
+      });
+    }
+
+    return response;
   };
 }
 
