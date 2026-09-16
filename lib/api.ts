@@ -247,19 +247,41 @@ export function route<Args extends unknown[]>(
     // everything below this line runs AFTER the handler has already succeeded: a `TypeError` thrown
     // while logging would convert a save that completed into a 500, for a reason that has nothing to do
     // with the save, and this function's single promise to its callers is that it returns a response.
-    const request = requestFrom(args);
-    if (request && typeof response?.status === "number") {
-      recordAccess({
-        request,
-        status: response.status,
-        errorCode: errorCodeFor(thrown, response.status),
-        startedAt,
-        // `clientIp` and `userAgent` are the ones directly below, the same two `buildAuditContext`
-        // uses — so an access row and an audit row for the same request cannot disagree about where it
-        // came from.
-        ipAddress: clientIp(request),
-        userAgent: userAgent(request)
-      });
+    // ⚠ THE PARAGRAPH ABOVE IS A PROMISE, AND IT NEEDS THIS `try` TO BE TRUE. It was written without
+    // one, and the omission took a production deployment down within the hour — not at runtime, where
+    // the argument was framed, but during `next build`.
+    //
+    // `app/api/public/stats/route.ts` is `dynamic = "force-static"`, so Next PRERENDERS it at build
+    // time and its own comment says it "reads NOTHING from the request" because touching request data
+    // opts a handler out of caching. During that prerender there is no real request: Next substitutes
+    // a sentinel whose private fields refuse to be read, and `clientIp(request)` — evaluated as an
+    // ARGUMENT, so before `recordAccess` can guard anything of its own — threw
+    //     TypeError: Cannot read private member #state from an object whose class did not declare it
+    // out of `Reflect.get`. The build worker exited 1 and the deploy failed, having already applied
+    // its migration. A logging line broke a build for a route that deliberately logs nothing.
+    //
+    // So the whole block is guarded, arguments included. Two properties follow, and both are wanted:
+    // a statically prerendered route records no access row (correct — nobody accessed it; the build
+    // did), and a logging fault of ANY kind at runtime costs the log line and never the response.
+    // `console.warn` and not silence: a log that has stopped writing must be discoverable without an
+    // audit being the thing that discovers it.
+    try {
+      const request = requestFrom(args);
+      if (request && typeof response?.status === "number") {
+        recordAccess({
+          request,
+          status: response.status,
+          errorCode: errorCodeFor(thrown, response.status),
+          startedAt,
+          // `clientIp` and `userAgent` are the ones directly below, the same two `buildAuditContext`
+          // uses — so an access row and an audit row for the same request cannot disagree about where it
+          // came from.
+          ipAddress: clientIp(request),
+          userAgent: userAgent(request)
+        });
+      }
+    } catch (loggingFailure) {
+      console.warn("[access-log] request not recorded", loggingFailure);
     }
 
     return response;
