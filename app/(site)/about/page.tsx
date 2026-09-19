@@ -77,7 +77,6 @@ import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { resolveSectionData } from "@/lib/sections/resolve";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingCached, getSettingsCached } from "@/lib/settings/service";
-import { truncateWords } from "@/lib/utils";
 import { prerenderSafe } from "@/lib/prerender";
 import { SETTINGS_DEFAULTS } from "@/lib/settings/schema";
 
@@ -614,9 +613,14 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
               variant="portrait"
               eyebrow={person.designation?.trim() || undefined}
               title={person.name}
-              description={
-                person.department?.trim() ? truncateWords(person.department, 90) : undefined
-              }
+              /*
+                Printed whole. This slot cut the department to ninety characters for a long time, with
+                no note saying why — and the number measured nothing: it was the same ninety in a
+                four-column grid at 2xl as on a phone, so a card with room to spare showed an ellipsis,
+                which reads as a rendering fault rather than as a placing. Every other people card on
+                the site prints the value as stored; this one now agrees with them.
+              */
+              description={person.department?.trim() || undefined}
             />
           ))}
         </CardGrid>

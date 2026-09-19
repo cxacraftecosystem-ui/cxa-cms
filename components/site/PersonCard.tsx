@@ -27,7 +27,6 @@ import { TagList } from "@/components/site/TagList";
 import { PERSON_KIND_LABELS } from "@/lib/people/groups";
 import type { Picture } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
-import { truncateWords } from "@/lib/utils";
 
 /**
  * The columns a card reads.
@@ -77,39 +76,24 @@ export function personTenure(person: {
 const INTEREST_LIMIT = 3;
 
 /**
- * How much of a department a card's meta row carries, in characters.
+ * ⚠ THE DEPARTMENT IS PRINTED WHOLE, AND A CHARACTER LIMIT ON IT WAS A MISTAKE THAT SHIPPED.
  *
- * ⚠ `Person.department` IS FREE TEXT AND ONE OF THE SPELLINGS IN IT IS 199 CHARACTERS LONG. It is the
- * Centre's own name written the way a funder's letterhead writes it — the unit, then "at IIT Kharagpur",
- * then the Office, the Ministry and the Government that pay for it — and twenty of the thirty profiles
- * carry it. `EntityCard`'s meta row is a wrapping flex row at
- * `text-xs` with NO clamp of any kind: a four-column card inside the shell leaves it about 260px, which
- * is roughly forty characters a line, so 199 of them are five lines of grey between the designation and
- * the interests rail. And because the cards in a grid row are `h-full`, they are five lines on every
- * OTHER card in that row as well — one long department makes the whole row of portraits tall.
+ * This file briefly cut it to seventy characters with `truncateWords`, because one department at this
+ * Centre is 199 characters long — the unit, then "at IIT Kharagpur", then the Office, the Ministry and
+ * the Government that fund it — and five lines of grey in a card's meta row makes every other card in
+ * that `h-full` row as tall.
  *
- * SO THE CUT IS IN THE STRING, AND IT IS NEVER `line-clamp-*`. A CSS clamp hides the tail from a sighted
- * reader while leaving the whole of it in the accessibility tree, so the two disagree about what the
- * card says (EntityCard's own note on `description`). `truncateWords` cuts on a word boundary and says
- * so with an ellipsis — the on-screen statement that something was dropped (contract §1.6) — and the
- * value in full is one tap away on the profile the card already links to.
+ * The limit was wrong because IT MEASURED NOTHING. A character count is fixed and a card is not: this
+ * row is drawn in a four-column grid at 2xl, three columns at lg, full width on a phone and a 16rem
+ * rail in a showcase block, and seventy characters was sized against the narrowest of those. Every
+ * wider card then showed an ellipsis with room to spare, which reads as a rendering fault — the tail
+ * is missing and the space it would have occupied is visibly there.
  *
- * 70 IS TWO LINES, AND IT IS ALSO WHERE THE UNIT'S OWN NAME ENDS. The narrowest slot this row is drawn
- * in is not the grid but the 16rem showcase rail (components/sections/PeopleShowcaseSection.tsx), which
- * is about thirty-five characters a line; seventy is two of them there and a little under two in the
- * grid. The ten or so extra characters a grid card could afford buy nothing anyway: they land inside
- * "at IIT Kharagpur" and leave the line reading "…Platform at IIT…", which a reader takes for a
- * rendering fault rather than for a placing. Stopping where the Centre's name stops says where somebody
- * works; the funding clause after it is a fact for the page about them, not for a card in a grid of
- * twenty-four.
- *
- * ⚠ THIS RUNS IN THE BROWSER ON `/people`, AND THAT IS NOT A BREACH OF THE RULE. "Truncate on the
- * server" is shorthand for "cut the text, not the pixels": the directory filters in the browser and
- * therefore re-renders these cards there, and `lib/utils` carries zero imports precisely so a helper
- * like this one can be reached from a Client Component, an RSC and `tsx` alike (lib/utils.ts's header).
- * Either way the DOM holds exactly the characters the reader is shown.
+ * A shorter department needs no cut, and the long one is long because of a funding clause that belongs
+ * in the prose about the Centre rather than in a field printed under twenty people's names. That is an
+ * editorial fix in Studio → People, on one value, and it is the right place for it — not a number in a
+ * component pretending to know how wide a card is.
  */
-export const DEPARTMENT_META_LIMIT = 70;
 
 export interface PersonCardProps {
   person: PersonCardPerson;
@@ -209,10 +193,7 @@ export function PersonCard({
       meta={
         person.department || tenure ? (
           <>
-            {/* As much of the placing as a card can carry, cut out loud — see DEPARTMENT_META_LIMIT. */}
-            {person.department ? (
-              <span>{truncateWords(person.department, DEPARTMENT_META_LIMIT)}</span>
-            ) : null}
+            {person.department ? <span>{person.department}</span> : null}
             {tenure ? <span className="tabular-nums">{tenure}</span> : null}
           </>
         ) : undefined

@@ -296,25 +296,6 @@ function profileLinks(person: PersonRecord): ProfileLink[] {
 // Metadata
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * How much of the department the fallback sentence below may spend, in characters.
- *
- * ⚠ THE SENTENCE HAS A BUDGET IT DOES NOT OWN. `pageMetadata` cuts every description at 160 characters
- * (lib/seo.ts), and the sentence here is a name, a designation and a department: with the Centre's
- * canonical spelling — 199 characters on its own — the cut lands somewhere inside the Ministry and the
- * sentence loses its own full stop, so the page's description ends mid-address rather than at the end
- * of a thought. Cutting the department HERE spends the budget deliberately: a name and a designation
- * take perhaps eighty characters between them, which leaves about seventy for the placing and keeps
- * the full stop.
- *
- * Seventy is also where the Centre's own name ends, so the sentence reads "…, Centre of Excellence for
- * Unified AI-Enabled Craft Ecosystem Platform…" rather than trailing off inside "at IIT Kharagpur".
- *
- * ⚠ THIS IS THE `description`, NOT THE `department` PROPERTY. The JSON-LD below carries the department
- * in full and must go on doing so — structured data is read by a machine and has no layout to protect.
- */
-const SUMMARY_DEPARTMENT_LIMIT = 70;
-
 /** The one-line summary used for the meta description and the JSON-LD. */
 function personSummary(person: PersonRecord): string {
   const bio = person.bio?.trim();
@@ -324,12 +305,10 @@ function personSummary(person: PersonRecord): string {
   if (rich) return rich;
 
   // No biography at all: the designation and department are still a truthful sentence, and a card with
-  // no description is a card most platforms render as a bare grey rectangle. The placing is shortened
-  // so the sentence survives the 160-character cut intact — see SUMMARY_DEPARTMENT_LIMIT.
-  const placing = person.department?.trim()
-    ? truncateWords(person.department, SUMMARY_DEPARTMENT_LIMIT)
-    : null;
-  const role = [person.designation, placing].filter(Boolean).join(", ");
+  // no description is a card most platforms render as a bare grey rectangle. Nothing is shortened here
+  // — `pageMetadata` cuts the finished description at 160 characters (lib/seo.ts), which is one cut in
+  // one place rather than two that have to agree about where a sentence ends.
+  const role = [person.designation, person.department].filter(Boolean).join(", ");
   return role ? `${person.name} — ${role}.` : person.name;
 }
 
