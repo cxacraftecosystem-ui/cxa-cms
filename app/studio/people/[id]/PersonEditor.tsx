@@ -22,7 +22,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ContentStatus, PersonKind } from "@prisma/client";
 import { ImagePlus, Trash2 } from "lucide-react";
@@ -39,7 +39,7 @@ import { Select } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/ToastProvider";
-import { PERSON_KIND_GROUPS, PERSON_KIND_ORDER } from "@/components/site/PersonCard";
+import { PERSON_KIND_GROUPS, PERSON_KIND_ORDER } from "@/lib/people/groups";
 import { DeleteButton } from "@/components/studio/DeleteButton";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
@@ -124,6 +124,20 @@ export interface PersonEditorProps {
   storageReady: boolean;
   canPublish: boolean;
   canDelete: boolean;
+  /**
+   * The departments already in use, ONE PER REAL UNIT — offered under the field so spellings converge.
+   *
+   * ⚠ ONLY THE SERVER CAN KNOW THESE: they are a `distinct` read over every profile's `department`, put
+   * through `groupDepartments` so the four spellings of one Centre arrive as one suggestion rather than
+   * four (app/studio/people/[id]/page.tsx, lib/people/departments.ts).
+   *
+   * ⚠ A SUGGESTION LIST, NOT A CLOSED ONE. The control stays a free-text `<input>` with a `<datalist>`:
+   * a department this Centre has never had before must remain typeable without a code change, and the
+   * public directory groups the spellings at render time in any case.
+   */
+  departmentSuggestions: readonly string[];
+  /** True when the vocabulary query stopped short of every spelling in use. Said on screen. */
+  departmentSuggestionsTruncated: boolean;
 }
 
 const ENDPOINT = {
@@ -211,10 +225,21 @@ export function PersonEditor({
   siteUrl,
   storageReady,
   canPublish,
-  canDelete
+  canDelete,
+  departmentSuggestions,
+  departmentSuggestionsTruncated
 }: PersonEditorProps) {
   const router = useRouter();
   const { toast } = useToast();
+
+  /**
+   * The `<datalist>`'s DOM id.
+   *
+   * `useId` rather than a literal: two person editors on one document is not a thing today, but a
+   * duplicate id is the kind of fault that works perfectly until the day it does not, and the hook costs
+   * nothing.
+   */
+  const departmentListId = `${useId()}departments`;
 
   const [value, setValue] = useState<PersonFormValue>(initialValue);
   const [saved, setSaved] = useState<PersonFormValue>(initialValue);
@@ -420,12 +445,37 @@ export function PersonEditor({
           />
         </Field>
 
-        <Field label="Department or unit" help="Optional. Shown under the job title.">
+        <Field
+          label="Department or unit"
+          help={
+            departmentSuggestions.length === 0
+              ? "Optional. Shown under the job title."
+              : departmentSuggestionsTruncated
+                ? "Optional. Shown under the job title. Start typing to pick one already in use. There are more departments than this list holds, so it stops partway through the alphabet — type the name if you do not see it."
+                : "Optional. Shown under the job title. Start typing to pick one already in use, so the same department is written the same way everywhere."
+          }
+        >
           <Input
             value={value.department}
             onChange={(event) => update({ department: event.target.value })}
+            // The suggestions are offered, never enforced. See `departmentSuggestions`.
+            list={departmentSuggestions.length > 0 ? departmentListId : undefined}
           />
         </Field>
+
+        {/*
+          THE `<datalist>` IS A SIBLING OF THE `Field`, NOT A CHILD OF IT, and that is not tidiness:
+          `Field` renders a real `<label>`, and a `<label>` folds every named descendant into the
+          control's accessible name (components/ui/Field.tsx). A list of forty department names inside it
+          would be read out as part of the field's name.
+        */}
+        {departmentSuggestions.length > 0 ? (
+          <datalist id={departmentListId}>
+            {departmentSuggestions.map((department) => (
+              <option key={department} value={department} />
+            ))}
+          </datalist>
+        ) : null}
 
         {/*
           ⚠ BOTH DATES STAY `YYYY-MM-DD` STRINGS AND NOTHING HERE PARSES THEM. `DateField` is

@@ -341,8 +341,9 @@ broken when you are trying to hit a row).
 app/
   layout.tsx                 root: fonts, boot script, the two global providers
   (site)/                    public website
-    layout.tsx  page.tsx  about/  research/  people/  publications/  projects/
+    layout.tsx  page.tsx  about/  research/  publications/  projects/
     gallery/  events/  news/  craft-explorer/  contact/  search/  [...slug]/
+    people/                  page.tsx · [slug]/ · group/[group]/ — see below
   studio/                    the CMS (noindex, no public link)
     layout.tsx  login/  page.tsx  pages/  people/  research/  projects/
     publications/  news/  events/  gallery/  crafts/  media/  files/
@@ -352,10 +353,33 @@ app/
 components/
   motion/     providers/  ui/        site/      sections/   studio/
 lib/
-  auth/  storage/  media/  sections/  settings/  search/  client/
+  auth/  storage/  media/  sections/  settings/  search/  client/  people/
 prisma/
 docs/
 ```
+
+**`people/` is the one `(site)` section whose children are written out, because it is the one with a
+code route below its first segment.** Four files copy this block by hand — `RESERVED_PREFIXES` in
+`app/(site)/[...slug]/page.tsx` (the prefixes the page builder may not shadow), `CODE_OWNED_ROUTES`
+and `UNCHECKABLE_COLLECTIONS` in `app/studio/page.tsx`, their twins in
+`app/studio/navigation/NavigationEditor.tsx`, and the pair in `lib/health.ts`. Each says in its own
+header that it is kept in step with this listing by hand, because **nothing in Next can enumerate a
+route tree at run time** — there is no import that would keep them honest, so this block is what they
+are copied from.
+
+Every one of those sets compares **first segments**, so a route one segment deeper is invisible to all
+of them. `/people` is already a section whose children are database-backed (`/people/a-sharma`), which
+puts it on the *uncheckable* list — so `/people/group/faculty` would have been reported to an
+administrator as "not checked" when it is in fact one of exactly eight addresses the code owns. The
+navigation editor asks `isPersonGroupPath()` from `lib/people/groups.ts` ahead of that test instead:
+a predicate reading the same eight slugs the pages are built from, rather than a ninth copy of them
+here that could quietly disagree.
+
+⚠ **The `group` segment is load-bearing and is not decoration.** `/people/[slug]` is a person's
+profile and a slug is free text an editor types, so had the groups been addressed at `/people/faculty`
+a profile slugged `faculty` would have collided with one — and a static segment beats a dynamic one
+(§13b), so the collision would have taken the *profile* off the site silently. Two segments deep,
+nothing is reserved and nothing had to be.
 
 **Naming.** Components `PascalCase.tsx`, hooks `useThing.ts`, libraries `kebab-case.ts` or
 `camelCase.ts` matching what is already there. Route segments are lowercase kebab.
@@ -388,6 +412,34 @@ that merely reads the database is a Server Component and must stay one.
 | `lib/storage/derivatives.ts` | `generateDerivatives`, `probeImage`, `generateBlurDataUrl`, `DERIVABLE_MIME_TYPES`, `isSvg` |
 | `lib/media/url.ts` | `publicObjectUrl`, `mediaSrc`, `ogImageUrl`, `mediaAlt`, `pickVariant`, `VARIANT_LABELS`, `VARIANT_WIDTHS` |
 | `lib/media/video.ts` | `isVideoObjectKey`, `isCaptionsObjectKey`, `resolveEmbedTarget`, `videoSettingsSchema`, `readVideoSettings`, `defaultVideoSettings`, `videoSettingsMediaIds`, `providerHonours`, `EMBED_PROVIDERS`, `EMBED_ASPECT_RATIOS` |
+| `lib/people/groups.ts` | `PERSON_KIND_ORDER`, `PERSON_KIND_LABELS`, `PERSON_KIND_GROUPS`, `PEOPLE_PATH`, `PEOPLE_GROUP_PREFIX`, `PERSON_GROUP_SLUGS`, `PERSON_GROUP_DESCRIPTIONS`, `personGroupPath`, `personGroupFromSlug`, `isPersonGroupPath`, `peopleGroupNavChildren`, `PersonGroupCount` |
+| `lib/people/departments.ts` | `groupDepartments`, `departmentCanonicalMap`, `canonicalDepartment`, `canonicalDepartmentLabels`, `DepartmentGroup` |
+| `lib/people/roster.ts` | **server-only** — `listablePersonWhere`, `ROSTER_SELECT`, `ROSTER_CAP`, `loadRoster`, `listablePeopleByGroup`, `Roster`, `RosterPerson` |
+
+**The three `lib/people/` modules are one decision each, and each is a decision you must not take
+again in a component.**
+
+- **`groups.ts` is the roster's vocabulary and it has no runtime imports at all** — its two imports
+  (`PersonKind`, `NavNode`) are types and are erased. That is the whole reason it sits in `lib/`: the
+  labels used to live in `components/site/PersonCard.tsx`, and the reorder route and the profile's OG
+  image had each already paid to avoid importing a *card* — one by keeping a second copy, one by
+  dropping the label from the share card altogether. Import it from an API route, an OG route, a
+  Server Component, a Client Component or a `tsx` script; it costs all five the same nothing.
+  ⚠ `PERSON_GROUP_SLUGS` holds
+  **addresses, not labels**: they are written out rather than slugified from `PERSON_KIND_GROUPS`,
+  because improving a label must never rename a public URL.
+- **`departments.ts` deduplicates `Person.department` by meaning**, elects one of the *supplied*
+  spellings, and has zero imports for the same reason. It never invents a string. A filter built by
+  putting that column through a `Set` is the bug it exists to prevent — see `DATA-MODEL.md` §3.
+- **`roster.ts` is the only definition of "a person who appears in a public list"**:
+  `listablePersonWhere()` is `{ ...liveStatusWhere(), isVisible: true }`, and both halves are separate
+  editor switches. That pair was written out by hand in four places before this module existed.
+
+**A helper that is absent from this table gets written a second time**, and the second copy is the one
+that stops agreeing with the first. That is not hypothetical here: *nine* files in this repository
+decompose to NFD and strip the combining marks for themselves — and one of them spells the class as a
+literal `U+0300`–`U+036F` range where the other eight use `\p{Diacritic}`, which is a strictly wider
+set. Nothing has gone wrong yet; nothing would say so if it had.
 
 **Do not add `clsx`, `tailwind-merge`, `next-themes`, a second toast library, or a second icon set.**
 Icons are `lucide-react`, and only `lucide-react`.
@@ -463,6 +515,11 @@ such call sites shipped here at once, including the relation picker used by ever
 - `Prisma.JsonNull`, never a bare `null`, when writing a nullable `Json` column.
 - Prisma `Decimal` arrives over JSON as a **string** — nothing in this schema uses Decimal for
   exactly that reason; keep it that way.
+- A public list of people is `listablePersonWhere()`, never `liveStatusWhere()` on its own —
+  `isVisible` is a second, independent editor switch and dropping it puts a withdrawn profile back on
+  a roster.
+- `Person.department` is free text. A `Set` over the column offers four spellings of one Centre as
+  four filter options; fold it through `lib/people/departments.ts` first. See `DATA-MODEL.md` §3.
 - Media `url`/`objectKey` may be absent by entitlement — never assume a variant exists.
 - `uploadMedia` reports partial failure: **inspect the failed list and name the files that did not
   make it**. Treating a resolved promise as success silently loses files.

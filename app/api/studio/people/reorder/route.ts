@@ -7,6 +7,7 @@ import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { PERSON_KIND_GROUPS } from "@/lib/people/groups";
 import { canManageContent } from "@/lib/permissions";
 import { buildAuditContext, fieldProblem, parseStudioJson } from "@/lib/studio/crud";
 import { unique } from "@/lib/utils";
@@ -95,29 +96,6 @@ const PERSON_KINDS = [
   "DC_HANDICRAFTS"
 ] as const satisfies readonly PersonKind[];
 
-/**
- * The plural group names, for the sentences this handler writes.
- *
- * ⚠ A deliberate second copy of `PERSON_KIND_GROUPS` in components/site/PersonCard.tsx. That module is a CARD
- * — importing it here to read a label would pull a renderer and the components under it into an API route,
- * which is the wrong dependency for the sake of a handful of strings (`app/api/studio/research/route.ts` refuses the
- * same import for the same reason). Being a total `Record<PersonKind, string>` is what stops the two drifting:
- * a new group is a compile error in both files.
- *
- * Written out rather than derived from the enum because "Faculty" and "Staff" are already plural,
- * "Alumnus" pluralises to "Alumni" and "DC, Handicrafts" is one office — a naive `${label}s` gets four of
- * the eight wrong.
- */
-const GROUP_LABELS: Record<PersonKind, string> = {
-  FACULTY: "Faculty",
-  SCIENTIST: "Scientists",
-  RESEARCHER: "Researchers",
-  STUDENT: "Students",
-  STAFF: "Staff",
-  VISITOR: "Visitors",
-  ALUMNUS: "Alumni",
-  DC_HANDICRAFTS: "DC, Handicrafts"
-};
 
 const orderBody = z.object({
   // One `message` rather than Zod's default, which lists every enum value back at the reader. The group
@@ -145,7 +123,7 @@ export const POST = route(async (request: Request) => {
 
   const body = await parseStudioJson(request, orderBody);
   const kind: PersonKind = body.kind;
-  const groupLabel = GROUP_LABELS[kind];
+  const groupLabel = PERSON_KIND_GROUPS[kind];
 
   // A duplicate would be written twice and leave somebody else with no position at all.
   const ids = unique(body.ids);
@@ -186,7 +164,7 @@ export const POST = route(async (request: Request) => {
     const other = elsewhere[0];
     throw conflict(
       other
-        ? `“${other.name}” is in ${GROUP_LABELS[other.kind]}, not ${groupLabel}, so that order cannot be saved. Somebody's group is a field on their own profile and dragging cannot change it. Reload the page and try again — nothing has been moved.`
+        ? `“${other.name}” is in ${PERSON_KIND_GROUPS[other.kind]}, not ${groupLabel}, so that order cannot be saved. Somebody's group is a field on their own profile and dragging cannot change it. Reload the page and try again — nothing has been moved.`
         : `One of the profiles in that order is no longer here — it may have been moved to the recycle bin while your screen was open. Reload the page and try the move again. Nothing has been moved.`
     );
   }

@@ -54,3 +54,10 @@ next-env.d.ts
 
 # CodeGraph index — a local cache of this tree, rebuilt on demand and never shared.
 .codegraph/
+
+# What `scripts/merge-departments.ts --write` saves before it rewrites a department: every affected
+# profile's id, slug, name and previous department. Every word of it is already public on the website
+# and it is still production data, which has no business in a repository's history — and the one time
+# anybody wants this file is the one time the merge went wrong, which is not a moment to be reading a
+# commit. The script prints the path it wrote; move it somewhere safe.
+/.backups

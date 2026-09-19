@@ -88,6 +88,7 @@ import { richTextExcerpt, parseRichText } from "@/lib/richtext";
 import { absoluteUrl, eventJsonLd, pageMetadata, serializeJsonLd } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { prerenderParams } from "@/lib/prerender";
+import { truncateWords } from "@/lib/utils";
 
 /** Five minutes: short enough that "under way now" and the remaining places are close to true. */
 export const revalidate = 300;
@@ -97,6 +98,30 @@ export const revalidate = 300;
  * to true, so an event outside the window renders on its first request and is cached from then on.
  */
 const PRERENDER_LIMIT = 300;
+
+/**
+ * How much of a speaker's department the credit under their name carries, in characters.
+ *
+ * ⚠ A CREDIT IS ONE LINE OF CONTEXT, AND `Person.department` IS FREE TEXT WITH NO LENGTH TO RELY ON.
+ * The spelling of the Centre's own name that lib/people/departments.ts elects as canonical is 199
+ * characters — it carries the Office, the Ministry and the Government that fund the Centre as well as
+ * the unit itself. The credit below sets it at `text-sm` in a two-column grid inside this page's
+ * `minmax(0,1fr)` column, beside a 56px portrait: about 316px, or roughly forty-four characters a line.
+ * The designation takes the first line and part of the second, and an untouched department then adds
+ * four or five more — a speaker entry that is mostly the name of a ministry, repeated for every speaker
+ * on the bill.
+ *
+ * 70 IS ABOUT TWO LINES OF THAT COLUMN AND IT IS WHERE THE UNIT'S OWN NAME ENDS. A credit answers two
+ * questions — who is this, and where are they from — and the name of the Centre answers the second one
+ * completely; the funding clause after it answers neither. Cutting a few characters later would leave
+ * the line reading "…Platform at IIT…", which reads as a rendering fault rather than as a placing.
+ *
+ * ⚠ IN THE STRING, NEVER IN A `line-clamp`. A CSS clamp hides the tail from a sighted reader while a
+ * screen reader still announces all 199 characters, so the two disagree about what the page says
+ * (components/site/EntityCard.tsx). The speaker's own profile — linked from the name above, whenever
+ * the profile is public — carries the department in full.
+ */
+const SPEAKER_DEPARTMENT_LIMIT = 70;
 
 /**
  * Everything `<MediaImage>` needs, named locally because four selects in this file want it. The list
@@ -759,7 +784,13 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                           {person.designation?.trim() ? (
                             <p className="mt-1 text-sm leading-snug text-ink-500">
                               {person.designation}
-                              {person.department?.trim() ? `, ${person.department}` : ""}
+                              {/* The placing, cut out loud — see SPEAKER_DEPARTMENT_LIMIT. The
+                                  designation is never cut: it is the half of the credit that says what
+                                  this person does, and it is the half an editor writes deliberately
+                                  rather than the one they paste from a letterhead. */}
+                              {person.department?.trim()
+                                ? `, ${truncateWords(person.department, SPEAKER_DEPARTMENT_LIMIT)}`
+                                : ""}
                             </p>
                           ) : null}
                         </div>

@@ -73,7 +73,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/ToastProvider";
-import { PERSON_KIND_GROUPS, PERSON_KIND_ORDER } from "@/components/site/PersonCard";
+import { PERSON_KIND_GROUPS, PERSON_KIND_ORDER } from "@/lib/people/groups";
 import { HelpText } from "@/components/studio/HelpText";
 import { RowActions } from "@/components/studio/RowActions";
 
@@ -545,6 +545,21 @@ function PersonBoardRow({
         >
           {person.name}
         </Link>
+        {/*
+          ⚠ THIS LINE IS CLIPPED BY CSS, AND IT IS THE ONE PLACE ON EITHER SIDE OF THE PRODUCT THAT
+          SHOULD BE. The site cuts a department in the STRING with `truncateWords`, because a clamp
+          hides the tail from a sighted reader while a screen reader announces all 199 characters of it
+          and the two then disagree about what the card says (components/site/EntityCard.tsx). Here that
+          disagreement is the feature: this is the screen an editor uses to find WHICH of four spellings
+          of one Centre a row carries, and text cut on the server is gone from the page — not clipped,
+          not in the DOM, not findable with the browser's own find-in-page, not readable aloud. A board
+          that shortened the evidence would hide exactly what lib/people/departments.ts exists to
+          surface.
+
+          `truncate` keeps every row one line tall, which is what makes thirty of them scannable, and
+          the join puts the designation FIRST so the half that survives the clip is the half that says
+          what this person does. The value in full is one click away in the editor beside it.
+        */}
         <span className="mt-0.5 block truncate text-xs text-ink-500">
           {[person.designation, person.department].filter(Boolean).join(" · ") || "No job title"}
         </span>

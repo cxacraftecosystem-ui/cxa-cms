@@ -140,6 +140,26 @@ const PUBLIC_OK = [
   "/projects",
   "/publications",
   "/people",
+  /*
+   * One of the eight per-group roster pages, because `/people` renders without ever touching them.
+   * `app/(site)/people/group/[group]/page.tsx` is a dynamic segment, reached from the header submenu
+   * and from one group page to the next, so the whole family could 404 while the directory above it
+   * went on serving happily — the same shape of failure as the preview route in §1b, which was a
+   * working front end aimed at a 404 for an entire release.
+   *
+   * ⚠ FACULTY BECAUSE IT IS THE ONE GROUP CERTAIN TO BE OCCUPIED: thirteen of the thirty profiles in
+   * the production database are faculty, and §7b below re-orders that same group for exactly that
+   * reason. Any other slug would be a check whose subject could legitimately be empty tomorrow.
+   *
+   * ⚠ AND A PASS HERE IS NOT EVIDENCE THAT ANYBODY IS LISTED. An empty group is a REAL page: it
+   * answers 200 with an `EmptyState` and `noIndex` metadata rather than a 404, deliberately, because
+   * the grade exists whether or not somebody holds it. So this line proves the route resolves and the
+   * page renders, and nothing whatever about the roster. If a change to the roster ever empties the
+   * faculty, this check stays green over a page with no one behind it — do not read it as a headcount,
+   * and do not "strengthen" it into one here, where the fix for an empty group is an editor's work and
+   * not a test's.
+   */
+  "/people/group/faculty",
   "/craft-explorer",
   "/gallery",
   "/news",
@@ -168,7 +188,7 @@ const PUBLIC_OK = [
  *
  *   • `/about` served three prompts to the public ("Write the text for this section.", "Add what
  *     happened", "Add a date") — the defect this check was written for. **Now repaired**: its blocks
- *     were restored from the seed's own copy by `--repair-placeholder-prose`, and every one of the 15
+ *     were restored from the seed's own copy by `--repair-placeholder-prose`, and every one of the 16
  *     paths in `PUBLIC_OK` is clean, so the suite is green rather than red.
  *   • `/contact` carries TWO prompts in its stored payload ("Add a line about how long a reply
  *     usually takes.", "Add the postal address") and its renderer prints NEITHER. Invisible here, and
@@ -200,16 +220,41 @@ const PUBLIC_OK = [
  *   • a synthetic body carrying one prompt verbatim → the scan REPORTS it (the rule is not vacuous);
  *   • the seeded homepage's finished CTA "Write to the Centre" → NOT reported (no false positive, and
  *     this is the case the substring rule below exists to get right);
- *   • all 15 live paths in `PUBLIC_OK` → none reported.
+ *   • all 16 live paths in `PUBLIC_OK` → none reported. ⚠ FIFTEEN OF THOSE WERE MEASURED against a
+ *     running server; `/people/group/faculty` joined the list afterwards and nobody has yet watched it
+ *     scan. It renders no section blocks at all — its prose is the group description compiled into
+ *     lib/people/groups.ts, plus roster rows or an `EmptyState` — so there is nothing from this
+ *     vocabulary for it to carry, but that is an argument and not a measurement. Confirm it on the
+ *     next live run.
  *
  * ⚠ Re-prove the first of those whenever this vocabulary or `promptsServedIn` changes. A green suite
  * over a clean site is evidence of nothing on its own.
  *
- * ⚠ THE COUNT IS 15 AND IT IS LOAD-BEARING, WHICH IS WHY THE EARLIER "16" IS CORRECTED HERE RATHER THAN
- * QUIETLY OVERWRITTEN. `PUBLIC_OK` contributes TWO checks per path, so the total this file reports —
- * "PASS — 136 checks", the number the unconditional-assertion note below depends on being stable — only
- * adds up at 15. A reader who trusted 16 would go hunting for a path that is not in the list, and the
- * next person to add one has to move both numbers together: one path is two checks.
+ * ⚠ THE COUNT IS 16 AND IT IS LOAD-BEARING, WHICH IS WHY EVERY CORRECTION TO IT IS MADE IN THE OPEN
+ * RATHER THAN QUIETLY OVERWRITTEN — first the earlier "16" that should have been 15, and now the total
+ * printed beside it. `PUBLIC_OK` contributes TWO checks per path, so adding `/people/group/faculty`
+ * moved the list from 15 to 16 and the run by two. One path is two checks, and the numbers move
+ * together; a reader who trusts a stale one goes hunting for a path that is not in the list.
+ *
+ * ⚠ AND THE "136" THAT STOOD HERE WAS ALREADY WRONG BEFORE THAT PATH WAS ADDED, which is the more
+ * useful half of this note. Counted out of the source, the assertions are: 32 for `PUBLIC_OK`, 9 for
+ * `PUBLIC_404`, 3 for the preview block, 5 for the shut studio (three redirects and the two on the
+ * anonymous API body), 5 for sign-in and the credential oracle, 1 for the cross-origin POST, 28 studio
+ * screens, 1 parameterised screen, 33 studio endpoints, 8 for the author tier, 2 for the unreachable
+ * slug, 9 for the content lifecycle and 2 for sign-out — 138. That is 136 + the two this path just
+ * added, so 136 was the honest total for the file AS IT WAS WHEN §7b DID NOT YET EXIST. §7b, the people
+ * re-order, then landed with SEVEN checks of its own and nobody moved the number.
+ *
+ * ⚠ SO THE TOTAL IS NOW A PAIR RATHER THAN A NUMBER, and it depends on the DATA:
+ *
+ *   • **145 checks** wherever the faculty has two or more names — every real installation, and
+ *     certainly this Centre's, where thirteen of the thirty profiles are faculty;
+ *   • **139 checks** where §7b takes its skip branch, which spends a single `check(true, …)` where the
+ *     re-order would have spent seven.
+ *
+ * That branch is the only thing keeping the suite from reporting one figure, and it is a §7b problem —
+ * the fix is to make both of its branches assert the same number of times, not to touch this list.
+ * Until somebody does it, quote the pair and say which database you counted on.
  *
  * ⚠ NO PATH IS EXCLUDED FROM THE SCAN, and that is deliberate. `/robots.txt`, `/sitemap.xml` and
  * `/manifest.webmanifest` cannot plausibly carry a section prompt, but they are cheap, they were
@@ -399,9 +444,17 @@ async function main(): Promise<void> {
 
       /*
        * ⚠ BOTH ASSERTIONS RUN UNCONDITIONALLY, even when the status was not 200. Skipping the second
-       * one on a bad status would make the total check count depend on whether the run passed, and
-       * "PASS — 136 checks" is only meaningful if 136 is the same number every time. An error body
-       * carries no prompts, so the extra assertion costs a passing check and never a spurious failure.
+       * one on a bad status would make the total check count depend on whether the run PASSED, and a
+       * printed total is only worth reading if the same suite over the same site always reports the
+       * same number. An error body carries no prompts, so the extra assertion costs a passing check
+       * and never a spurious failure.
+       *
+       * ⚠ THE TOTAL THIS PROTECTS IS NO LONGER THE "136" THIS NOTE USED TO QUOTE. It is 145 checks
+       * where §7b can re-order the faculty and 139 where it skips — the arithmetic, and why the figure
+       * was stale rather than mistyped, is written out under `PLACEHOLDER_PROMPTS` above. This loop
+       * contributes 32 of them: two for each of the 16 paths in `PUBLIC_OK`. So the promise made here
+       * still holds — the count does not move with SUCCESS — and it is now the weaker half of one the
+       * file no longer keeps, because the count does move with the roster.
        */
       const served = promptsServedIn(text);
       check(

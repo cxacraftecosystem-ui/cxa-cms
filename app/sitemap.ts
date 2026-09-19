@@ -1,4 +1,6 @@
 import type { MetadataRoute } from "next";
+import { personGroupPath } from "@/lib/people/groups";
+import { listablePeopleByGroup, listablePersonWhere } from "@/lib/people/roster";
 import { prisma } from "@/lib/db";
 import { siteUrl } from "@/lib/env";
 import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
@@ -95,7 +97,13 @@ async function readCollections(): Promise<{
         where: { ...livePublishableWhere(), seoNoIndex: true },
         select: { slug: true }
       }),
-      prisma.person.findMany({ where: { ...liveStatusWhere(), isVisible: true }, select }),
+      /*
+       * `listablePersonWhere()` rather than the pair written out, which is what this line used to hold —
+       * and the comment on app/(site)/people/page.tsx used to say "app/sitemap.ts applies the identical
+       * pair", which is a promise kept by hand until somebody edits one of them. It is one function now
+       * (lib/people/roster.ts), and the group counts above read the same one.
+       */
+      prisma.person.findMany({ where: listablePersonWhere(), select }),
       prisma.researchArea.findMany({ where: liveStatusWhere(), select }),
       prisma.project.findMany({ where: liveStatusWhere(), select }),
       prisma.publication.findMany({ where: liveStatusWhere(), select }),
@@ -296,6 +304,34 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: owned?.updatedAt ?? new Date(),
       changeFrequency: route.changeFrequency,
       priority: route.priority
+    });
+  }
+
+  /**
+   * The person-group pages — `/people/group/faculty` and its seven siblings.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * CODE ROUTES, LIKE THE LISTINGS ABOVE, BUT LISTED CONDITIONALLY — and the condition is the same one
+   * the page's own metadata applies. All eight pages EXIST whether or not anybody is in the group (the
+   * route is built from the `PersonKind` enum, not from records), but a group with nobody in it sends
+   * `noIndex` rather than advertising a page of nothing. Advertising it here would contradict the page's
+   * own `<head>`, which is the sitemap equivalent of listing a 404.
+   *
+   * ⚠ `listablePeopleByGroup` IS THE SAME READ THE HEADER MENU USES, deduped by React `cache()`, and it
+   * swallows its own failure — so an unreachable database omits these entries exactly as it omits the
+   * collections below, rather than throwing out of a function that has already committed to returning a
+   * sitemap.
+   *
+   * Priority 0.7, one rung under `/people` (0.8): each is a real entry point to part of the roster, and
+   * none of them is the way into all of it.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   */
+  for (const group of await listablePeopleByGroup()) {
+    entries.push({
+      url: `${base}${personGroupPath(group.kind)}`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.7
     });
   }
 

@@ -85,6 +85,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+import { isPersonGroupPath } from "@/lib/people/groups";
 import { apiFetch } from "@/lib/client/fetcher";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
@@ -216,6 +217,14 @@ function verdictFor(href: string, knownPaths: ReadonlySet<string>): LinkVerdict 
   const base = trimmed.split("?")[0]?.split("#")[0] ?? "";
   if (base.length === 0) return "other";
   if (CODE_OWNED_ROUTES.has(base)) return "internal-ok";
+  /*
+   * The person-group pages are code routes too, but they are the only ones with a segment BELOW a
+   * section that is otherwise unverifiable — `/people/<anyone>` cannot be checked without a query, and
+   * `/people/group/faculty` can, because the eight addresses are an enum (lib/people/groups.ts). Asked
+   * before the section test so an administrator who types one is told it is right rather than "not
+   * checked".
+   */
+  if (isPersonGroupPath(base)) return "internal-ok";
   if (UNCHECKABLE_SECTIONS.has(base.split("/")[1] ?? "")) return "internal-unchecked";
   if (knownPaths.has(base)) return "internal-ok";
   return "internal-missing";

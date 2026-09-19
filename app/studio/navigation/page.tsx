@@ -198,6 +198,24 @@ export default async function StudioNavigationPage() {
         </HelpText>
       ) : null}
 
+      {/*
+        TWO LISTS ON THE LIVE SITE ARE NOT ON THIS SCREEN, AND SAYING SO IS CHEAPER THAN THE BUG REPORT.
+
+        The header hangs the Centre's social accounts under Contact and its person groups under People
+        (components/site/SiteHeader.tsx). Both are synthesised from settings and from the roster rather
+        than stored as menu rows, so they cannot be edited, reordered or removed here — and a People
+        entry showing no children on this screen while the live site opens a panel of eight reads
+        exactly like a screen that is not saving. The neutral tone, not `warn`: nothing is wrong here,
+        and the two loud tones bring a warning glyph with them (components/studio/HelpText.tsx).
+      */}
+      <HelpText className="mt-5">
+        Two lists are added to the menu automatically and are not shown below: the Centre&rsquo;s social
+        accounts appear under <strong>Contact</strong>, and the groups of people — Faculty, Researchers,
+        Alumni and the rest — appear under <strong>People</strong>. The groups follow the roster, so a
+        group appears in the menu once somebody is published into it. Social accounts are edited in
+        Settings.
+      </HelpText>
+
       <NavigationEditor navigation={navigation} livePagePaths={livePagePaths} />
     </div>
   );

@@ -88,6 +88,30 @@ const MEMBERSHIP_SCAN_LIMIT = 200;
 const RELATED_LIMIT = 6;
 
 /**
+ * How much of a person's department the people grid below carries, in characters.
+ *
+ * ⚠ `Person.department` IS FREE TEXT, and the spelling of the Centre's own name that
+ * lib/people/departments.ts elects as canonical runs to 199 characters: the unit, the institute, and
+ * then the Office, the Ministry and the Government that fund it. `EntityCard`'s `description` slot
+ * carries no clamp — in a four-column grid inside the shell it is about 260px of `text-sm`, roughly
+ * thirty-seven characters a line — so the value untouched is five or six lines of body copy under a
+ * portrait, and since the cards in a row are `h-full` it is five or six lines of height on every other
+ * card beside it.
+ *
+ * 90 BECAUSE /about ALREADY CUTS THIS EXACT SLOT TO 90 (app/(site)/about/page.tsx): the same card, the
+ * same four-column grid, the same column of the same table. One value shortened to two different
+ * lengths on two pages is a difference a reader can see and cannot explain. Unlike the meta row on
+ * `PersonCard`, this is the card's main line of prose, and at ninety the cut still reaches "IIT
+ * Kharagpur" — on a page about a research area, the institute earns the extra half line.
+ *
+ * ⚠ THE CUT IS IN THE STRING, NOT IN CSS. A `line-clamp` hides the tail from a sighted reader and
+ * leaves the whole of it in the accessibility tree, so the two disagree about what the card says
+ * (components/site/EntityCard.tsx). `truncateWords` cuts on a word boundary and says so with an
+ * ellipsis, and the profile the card links to carries the department in full.
+ */
+const DEPARTMENT_CARD_LIMIT = 90;
+
+/**
  * Everything `<MediaImage>` needs.
  *
  * `variants` is not optional: without it `pickVariant` has nothing to choose from and every image falls
@@ -583,7 +607,12 @@ export default async function ResearchAreaPage({ params }: AreaPageProps) {
               variant="portrait"
               title={person.name}
               eyebrow={person.designation?.trim() || undefined}
-              description={person.department?.trim() || undefined}
+              // The placing, cut out loud rather than clamped — see DEPARTMENT_CARD_LIMIT.
+              description={
+                person.department?.trim()
+                  ? truncateWords(person.department, DEPARTMENT_CARD_LIMIT)
+                  : undefined
+              }
               meta={
                 <span className="tabular-nums">
                   {projectCount} {projectCount === 1 ? "project" : "projects"} in this area

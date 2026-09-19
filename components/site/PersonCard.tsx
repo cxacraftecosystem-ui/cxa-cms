@@ -1,14 +1,18 @@
 /**
- * PersonCard — one member of the Centre, as a card, plus the vocabulary every screen that lists people
- * shares.
+ * PersonCard — one member of the Centre, as a card.
  *
  * NO `"use client"` AND NO SERVER-ONLY IMPORT, on purpose. The card itself is presentational and
  * renders identically in a Server Component and inside a client tree — which is load-bearing here,
  * because `/people` filters its roster in the browser and therefore renders these cards from a Client
  * Component, while `/people/[slug]` and the section renderers want them on the server. A module with
- * neither directive can be reached from both; a `"use client"` here would make the label maps below
- * unreachable from a Server Component (an exported constant from a client module is a client
- * reference, and reading a property off one on the server throws).
+ * neither directive can be reached from both.
+ *
+ * ⚠ THE GROUP VOCABULARY IS NO LONGER HERE. `PERSON_KIND_ORDER`, `PERSON_KIND_LABELS` and
+ * `PERSON_KIND_GROUPS` moved to lib/people/groups.ts, which that file's header explains in full: two
+ * callers had already been forced to write their own copy of the words rather than import a CARD, and
+ * the site header — a Client Component on every page — was about to become the third. This file now
+ * imports them like everybody else. Anything that wants the words and not the card should import from
+ * lib/people/groups.ts directly.
  *
  * PORTRAITS ARE 4/5, NOT THE CARD'S DEFAULT 3/4. A portrait photograph of a person is taller than it
  * is wide by more than a third, and 3/4 crops the top of the head off often enough to be worth
@@ -20,70 +24,10 @@ import type { PersonKind } from "@prisma/client";
 
 import { EntityCard, type EntityCardHeadingLevel } from "@/components/site/EntityCard";
 import { TagList } from "@/components/site/TagList";
+import { PERSON_KIND_LABELS } from "@/lib/people/groups";
 import type { Picture } from "@/lib/media/screens";
 import type { MediaLike } from "@/lib/media/url";
-
-/**
- * The group order for the whole product: the Development Commissioner first, faculty next, alumni last.
- *
- * ⚠ IT NO LONGER MATCHES THE DECLARATION ORDER OF THE `PersonKind` ENUM, and that is the point. It once
- * did, so a Postgres `ORDER BY kind` happened to produce the same sequence; `DC_HANDICRAFTS` was
- * appended at the END of the enum (a plain `ALTER TYPE … ADD VALUE`, see the migration) and belongs at
- * the HEAD of the roster, so the two orders have diverged. Every page groups from this array rather
- * than in SQL, which is why that divergence costs nothing — grouping in code is what made the enum free
- * to be appended to.
- *
- * DC, Handicrafts heads the list rather than sitting among the staff grades because it is an office of
- * the Ministry of Textiles rather than a rank of Centre employment, and a reader looking for it is
- * looking for the Centre's line to craft policy. That is a presentation decision and lives ONLY here:
- * moving the group is a one-line edit in this array, with no migration and no other file touched.
- */
-export const PERSON_KIND_ORDER: readonly PersonKind[] = [
-  "DC_HANDICRAFTS",
-  "FACULTY",
-  "SCIENTIST",
-  "RESEARCHER",
-  "STUDENT",
-  "STAFF",
-  "VISITOR",
-  "ALUMNUS"
-];
-
-/** Singular — a chip beside one person's name, or the eyebrow on their profile. */
-export const PERSON_KIND_LABELS: Record<PersonKind, string> = {
-  FACULTY: "Faculty",
-  SCIENTIST: "Scientist",
-  RESEARCHER: "Researcher",
-  STUDENT: "Student",
-  STAFF: "Staff",
-  VISITOR: "Visitor",
-  ALUMNUS: "Alumnus",
-  // "DC" is not expanded. It is how the office is written on every letterhead and how anyone looking
-  // for it would scan a roster; "Development Commissioner (Handicrafts)" is the expansion and belongs
-  // in the person's `designation`, which is what that free-text field is for. The comma is part of the
-  // title, not a list separator.
-  DC_HANDICRAFTS: "DC, Handicrafts"
-};
-
-/**
- * Plural — a group heading and a filter option.
- *
- * Kept separate from the singular map rather than pluralised by adding an "s": "Faculty" and "Staff"
- * are already plural, "Alumnus" pluralises to "Alumni", and an office does not pluralise at all. A
- * naive `${label}s` gets four of the eight wrong on the most visible heading on the page.
- */
-export const PERSON_KIND_GROUPS: Record<PersonKind, string> = {
-  FACULTY: "Faculty",
-  SCIENTIST: "Scientists",
-  RESEARCHER: "Researchers",
-  STUDENT: "Students",
-  STAFF: "Staff",
-  VISITOR: "Visitors",
-  ALUMNUS: "Alumni",
-  // Identical to the singular label on purpose: there is one Development Commissioner (Handicrafts) at
-  // a time, so "DCs, Handicrafts" would be a heading for a group that cannot have two members.
-  DC_HANDICRAFTS: "DC, Handicrafts"
-};
+import { truncateWords } from "@/lib/utils";
 
 /**
  * The columns a card reads.
@@ -131,6 +75,42 @@ export function personTenure(person: {
 
 /** How many interests fit on a card before the honest "+N more" chip takes over. */
 const INTEREST_LIMIT = 3;
+
+/**
+ * How much of a department a card's meta row carries, in characters.
+ *
+ * ⚠ `Person.department` IS FREE TEXT AND ONE OF THE SPELLINGS IN IT IS 199 CHARACTERS LONG. It is the
+ * Centre's own name written the way a funder's letterhead writes it — the unit, then "at IIT Kharagpur",
+ * then the Office, the Ministry and the Government that pay for it — and it is now the spelling
+ * lib/people/departments.ts elects as canonical, so it is what the studio's datalist offers an editor
+ * and what the roster will increasingly carry. `EntityCard`'s meta row is a wrapping flex row at
+ * `text-xs` with NO clamp of any kind: a four-column card inside the shell leaves it about 260px, which
+ * is roughly forty characters a line, so 199 of them are five lines of grey between the designation and
+ * the interests rail. And because the cards in a grid row are `h-full`, they are five lines on every
+ * OTHER card in that row as well — one long department makes the whole row of portraits tall.
+ *
+ * SO THE CUT IS IN THE STRING, AND IT IS NEVER `line-clamp-*`. A CSS clamp hides the tail from a sighted
+ * reader while leaving the whole of it in the accessibility tree, so the two disagree about what the
+ * card says (EntityCard's own note on `description`). `truncateWords` cuts on a word boundary and says
+ * so with an ellipsis — the on-screen statement that something was dropped (contract §1.6) — and the
+ * value in full is one tap away on the profile the card already links to.
+ *
+ * 70 IS TWO LINES, AND IT IS ALSO WHERE THE UNIT'S OWN NAME ENDS. The narrowest slot this row is drawn
+ * in is not the grid but the 16rem showcase rail (components/sections/PeopleShowcaseSection.tsx), which
+ * is about thirty-five characters a line; seventy is two of them there and a little under two in the
+ * grid. The ten or so extra characters a grid card could afford buy nothing anyway: they land inside
+ * "at IIT Kharagpur" and leave the line reading "…Platform at IIT…", which a reader takes for a
+ * rendering fault rather than for a placing. Stopping where the Centre's name stops says where somebody
+ * works; the funding clause after it is a fact for the page about them, not for a card in a grid of
+ * twenty-four.
+ *
+ * ⚠ THIS RUNS IN THE BROWSER ON `/people`, AND THAT IS NOT A BREACH OF THE RULE. "Truncate on the
+ * server" is shorthand for "cut the text, not the pixels": the directory filters in the browser and
+ * therefore re-renders these cards there, and `lib/utils` carries zero imports precisely so a helper
+ * like this one can be reached from a Client Component, an RSC and `tsx` alike (lib/utils.ts's header).
+ * Either way the DOM holds exactly the characters the reader is shown.
+ */
+export const DEPARTMENT_META_LIMIT = 70;
 
 export interface PersonCardProps {
   person: PersonCardPerson;
@@ -230,7 +210,10 @@ export function PersonCard({
       meta={
         person.department || tenure ? (
           <>
-            {person.department ? <span>{person.department}</span> : null}
+            {/* As much of the placing as a card can carry, cut out loud — see DEPARTMENT_META_LIMIT. */}
+            {person.department ? (
+              <span>{truncateWords(person.department, DEPARTMENT_META_LIMIT)}</span>
+            ) : null}
             {tenure ? <span className="tabular-nums">{tenure}</span> : null}
           </>
         ) : undefined
