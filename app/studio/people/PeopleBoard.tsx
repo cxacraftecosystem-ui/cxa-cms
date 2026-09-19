@@ -550,11 +550,11 @@ function PersonBoardRow({
           SHOULD BE. The site cuts a department in the STRING with `truncateWords`, because a clamp
           hides the tail from a sighted reader while a screen reader announces all 199 characters of it
           and the two then disagree about what the card says (components/site/EntityCard.tsx). Here that
-          disagreement is the feature: this is the screen an editor uses to find WHICH of four spellings
-          of one Centre a row carries, and text cut on the server is gone from the page — not clipped,
-          not in the DOM, not findable with the browser's own find-in-page, not readable aloud. A board
-          that shortened the evidence would hide exactly what lib/people/departments.ts exists to
-          surface.
+          disagreement is the feature: this is the screen an editor uses to find WHICH spelling of a
+          department a row carries, and text cut on the server is gone from the page — not clipped, not
+          in the DOM, not findable with the browser's own find-in-page, not readable aloud. Keeping
+          department names consistent is done HERE, by reading them, and a board that shortened the
+          evidence would hide the thing somebody came to this screen to check.
 
           `truncate` keeps every row one line tall, which is what makes thirty of them scannable, and
           the join puts the designation FIRST so the half that survives the clip is the half that says

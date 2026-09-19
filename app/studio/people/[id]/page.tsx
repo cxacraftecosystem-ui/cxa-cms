@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 
-import { canonicalDepartmentLabels } from "@/lib/people/departments";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { siteUrl, storageConfigured } from "@/lib/env";
@@ -31,20 +30,6 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Person"
 };
-
-/**
- * How many departments are offered under the "Department or unit" field.
- *
- * There has to be a number — the query is `distinct` over a free-text column and an institute may have
- * hundreds — and past a few dozen a suggestion list stops being a help and becomes a second problem.
- * When it IS reached the editor says so on screen rather than stopping silently (contract §1.6).
- *
- * ⚠ THE CAP IS APPLIED BEFORE THE DEDUPLICATION, NOT AFTER, AND IT CANNOT BE OTHERWISE: `distinct` and
- * `take` are one query, and which spellings mean the same unit is a question only JavaScript can answer
- * (lib/people/departments.ts). So the list may hold FEWER than this many suggestions — the near
- * duplicates collapse into one another — and the sentence on screen says "spellings", not "departments".
- */
-const DEPARTMENT_SUGGESTION_LIMIT = 200;
 
 /** A day as `<input type="date">` wants it. UTC throughout, so a date never shifts by one. */
 function toDateInput(value: Date | null): string {
@@ -98,26 +83,9 @@ export default async function StudioPersonPage({
   const { id } = await params;
   const isNew = id === "new";
 
-  /**
-   * The departments already in use, for the suggestion list on the field below.
-   *
-   * ⚠ READ HERE RATHER THAN FETCHED BY THE EDITOR, which is the house rule for a vocabulary list and
-   * also contract §9: a Server Component reads the database directly, and only an interactive screen
-   * whose list can change under the reader fetches over HTTP. The album editor's category list is the
-   * same shape (app/studio/gallery/[id]/page.tsx).
-   *
-   * ⚠ NOT FILTERED TO PUBLISHED OR VISIBLE PEOPLE. This is the vocabulary an editor has been using, and a
-   * colleague still in draft is exactly whose spelling the next editor should be offered. Soft-deleted
-   * rows ARE excluded: a department that only survives in the recycle bin is not one anybody should be
-   * nudged towards.
-   *
-   * It runs for `/studio/people/new` too, where it matters most — a new profile is where a fifth
-   * spelling of one Centre gets typed.
-   */
-  const [person, departmentRows] = await Promise.all([
-    isNew
+  const person = isNew
     ? null
-    : prisma.person.findFirst({
+    : await prisma.person.findFirst({
         where: { id, deletedAt: null },
         select: {
           id: true,
@@ -150,32 +118,9 @@ export default async function StudioPersonPage({
           photo: { select: { ...MEDIA_IMAGE_SELECT_WITH_ID, fileName: true } },
           _count: { select: { projects: true, publications: true, events: true } }
         }
-      }),
-    prisma.person.findMany({
-      where: { deletedAt: null, NOT: { department: null } },
-      select: { department: true },
-      distinct: ["department"],
-      orderBy: { department: "asc" },
-      take: DEPARTMENT_SUGGESTION_LIMIT + 1
-    })
-  ]);
+      });
 
   if (!isNew && !person) notFound();
-
-  /**
-   * One suggestion per real unit, not one per spelling.
-   *
-   * `canonicalDepartmentLabels` groups the spellings that mean the same department and returns the most
-   * descriptive of each (lib/people/departments.ts). Offering the raw `distinct` list instead is what
-   * produced four spellings of this Centre's own name in the first place: every editor picked whichever
-   * of them the list happened to show first.
-   */
-  const departmentSuggestions = canonicalDepartmentLabels(
-    departmentRows.slice(0, DEPARTMENT_SUGGESTION_LIMIT).map((row) => row.department)
-  );
-
-  // `take: LIMIT + 1`, so "there are more" is a fact rather than a guess about whether the cap was hit.
-  const departmentSuggestionsTruncated = departmentRows.length > DEPARTMENT_SUGGESTION_LIMIT;
 
   const photo: EditorMedia | null = person?.photo
     ? { ...person.photo, variants: person.photo.variants }
@@ -267,8 +212,6 @@ export default async function StudioPersonPage({
         storageReady={storageConfigured()}
         canPublish={canPublish(user)}
         canDelete={canManageContent(user)}
-        departmentSuggestions={departmentSuggestions}
-        departmentSuggestionsTruncated={departmentSuggestionsTruncated}
       />
     </div>
   );

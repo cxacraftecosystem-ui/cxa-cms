@@ -103,7 +103,7 @@ const PRERENDER_LIMIT = 300;
  * How much of a speaker's department the credit under their name carries, in characters.
  *
  * ⚠ A CREDIT IS ONE LINE OF CONTEXT, AND `Person.department` IS FREE TEXT WITH NO LENGTH TO RELY ON.
- * The spelling of the Centre's own name that lib/people/departments.ts elects as canonical is 199
+ * The spelling of the Centre's own name that twenty of these profiles carry is 199
  * characters — it carries the Office, the Ministry and the Government that fund the Centre as well as
  * the unit itself. The credit below sets it at `text-sm` in a two-column grid inside this page's
  * `minmax(0,1fr)` column, beside a 56px portrait: about 316px, or roughly forty-four characters a line.

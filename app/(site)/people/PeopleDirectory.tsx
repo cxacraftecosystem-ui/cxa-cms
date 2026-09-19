@@ -28,7 +28,6 @@ import { FilterX, SearchX, TriangleAlert, Users } from "lucide-react";
 
 import { CardGrid } from "@/components/site/CardGrid";
 import { PersonCard, type PersonCardPerson } from "@/components/site/PersonCard";
-import { canonicalDepartment, groupDepartments } from "@/lib/people/departments";
 import { PERSON_KIND_GROUPS, PERSON_KIND_ORDER, personGroupPath } from "@/lib/people/groups";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -121,39 +120,36 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
   }, [people]);
 
   /**
-   * The department facet, DEDUPLICATED BY MEANING — one option per real unit, not one per spelling.
+   * The departments in the roster: one option per distinct value in the column.
    *
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   * THE LIST AND THE FILTER ARE BUILT FROM ONE VALUE, AND THAT IS THE WHOLE POINT OF THIS MEMO.
+   * ⚠ THE OPTIONS AND THE FILTER BOTH READ THE COLUMN AS IT IS STORED, AND THERE IS NO MATCHING
+   * BETWEEN THEM — deliberately, and this is the second implementation of this list rather than the
+   * first. A version that grouped near-duplicate spellings by rule lived here briefly: it elected a
+   * canonical spelling, and the filter compared against that instead of against the column. It worked
+   * on the eight spellings the database happened to hold and fell apart on the ninth, because deciding
+   * that "CSE" and "Computer Science and Engineering" are one department is not a string problem.
    *
-   * `department` is free text an editor types, and thirty people typing the name of one Centre produced
-   * four spellings of it. A facet built by putting the column through a `Set` offered all four: a reader
-   * who picked one was shown a quarter of the people who work there, with nothing on screen saying the
-   * other three existed. `groupDepartments` (lib/people/departments.ts) elects ONE of those spellings —
-   * always one an editor actually wrote, and the most descriptive of them — and reports which others
-   * mean the same thing.
+   * A Centre this size has a handful of units and thirty profiles. Keeping their names consistent is
+   * an editor's job in Studio → People, where somebody can see which spelling is right — not a
+   * similarity score recomputed in every reader's browser. So two spellings of one department are two
+   * options here and two halves of one group of people, visibly, which is the state that gets
+   * corrected rather than hidden.
    *
-   * ⚠ SO THE COMPARISON BELOW MUST READ `canonical`, NEVER `person.department`. An option list of elected
-   * values compared against the raw column with `===` matches only the people who happen to carry the
-   * elected spelling — a filter that returns a plausible-looking WRONG answer rather than an error. The
-   * map returned here is what both halves read, which is why they cannot drift apart.
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   *
-   * The facets still come from the LOADED roster, so every option in them leads somewhere. A department
-   * list built from a separate query could offer a department whose only member is on the far side of
-   * the cap — a filter that returns nothing, with no way for the reader to know why.
+   * The facets come from the LOADED roster, so every option in them leads somewhere. A department list
+   * built from a separate query could offer a department whose only member is on the far side of the
+   * cap — a filter that returns nothing, with no way for the reader to know why.
    */
-  const departmentFacet = useMemo(() => {
-    const groups = groupDepartments(people.map((person) => person.department));
-    const canonicalBySpelling = new Map<string, string>();
-    for (const group of groups) {
-      for (const variant of group.variants) canonicalBySpelling.set(variant, group.canonical);
-    }
-    return {
-      options: sortLabels(groups.map((group) => group.canonical)),
-      canonicalBySpelling
-    };
-  }, [people]);
+  const departments = useMemo(
+    () =>
+      sortLabels(
+        new Set(
+          people
+            .map((person) => person.department?.trim() ?? "")
+            .filter((value) => value.length > 0)
+        )
+      ),
+    [people]
+  );
 
   const interests = useMemo(
     () =>
@@ -185,15 +181,7 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
 
     return people.filter((person) => {
       if (kind && person.kind !== kind) return false;
-      // The ELECTED spelling of this person's department, not the one their row happens to carry. See
-      // `departmentFacet`: comparing the raw column against an elected option hides everybody who
-      // spelled it differently.
-      if (
-        department &&
-        canonicalDepartment(person.department, departmentFacet.canonicalBySpelling) !== department
-      ) {
-        return false;
-      }
+      if (department && (person.department?.trim() ?? "") !== department) return false;
       if (
         foldedInterest &&
         !(person.researchInterests ?? []).some((value) => fold(value) === foldedInterest)
@@ -206,7 +194,7 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
       const text = haystack.get(person.id) ?? "";
       return needle.split(" ").every((word) => text.includes(word));
     });
-  }, [people, haystack, query, kind, department, interest, departmentFacet]);
+  }, [people, haystack, query, kind, department, interest]);
 
   const groups = useMemo<KindGroup[]>(() => {
     const byKind = new Map<PersonKind, DirectoryPerson[]>();
@@ -272,10 +260,10 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
             />
           </Field>
 
-          {departmentFacet.options.length > 0 ? (
+          {departments.length > 0 ? (
             <Field label="Department" className="sm:w-56">
               <Select
-                options={departmentFacet.options.map((value) => ({ value, label: value }))}
+                options={departments.map((value) => ({ value, label: value }))}
                 placeholder="All departments"
                 value={department}
                 onChange={(event) => setDepartment(event.target.value)}

@@ -818,7 +818,7 @@ what appears on screen to what they just typed.
 
 ### 6.5 The verification layers
 
-`npm run check` = `typecheck` + `lint` + `route-check` + `departments-check` + `media-select-check` +
+`npm run check` = `typecheck` + `lint` + `route-check` + `media-select-check` +
 `screens-check` + `media-render-check` + `framing-select-check` + `video-check` + `font-check` +
 `theme-check`. CI
 (`.github/workflows/ci.yml`) runs the first three ahead of everything else, because they fail in
@@ -837,7 +837,6 @@ NON-FUNCTIONAL with every gate green:
 
 | Check | Blind spot it closes |
 |---|---|
-| `departments-check` | Whether two spellings of a unit's name are the same unit. `Person.department` is free text and both ways of being wrong are silent: a missed merge offers one department as two filter options and shows a reader a fraction of its people, a false merge takes a real unit off the list altogether. The rules are closed lists of word forms, so a single word added to one can move an entry between those two failures — and neither shows up in a typecheck, a lint or a screenshot. |
 | `media-select-check` | A media column added to `MediaAsset` and fetched by none of the queries that draw it — `MediaLike` makes every field optional, so "not selected" and "not set" are one shape. |
 | `screens-check` | The per-screen framing resolver's own cascade, collapse and degradation. |
 | `media-render-check` | What `MediaImage` actually *emits* — a resolver with no consumer looks identical to a consumer with no resolver from every other gate. |

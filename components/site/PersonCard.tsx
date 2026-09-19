@@ -81,9 +81,8 @@ const INTEREST_LIMIT = 3;
  *
  * ⚠ `Person.department` IS FREE TEXT AND ONE OF THE SPELLINGS IN IT IS 199 CHARACTERS LONG. It is the
  * Centre's own name written the way a funder's letterhead writes it — the unit, then "at IIT Kharagpur",
- * then the Office, the Ministry and the Government that pay for it — and it is now the spelling
- * lib/people/departments.ts elects as canonical, so it is what the studio's datalist offers an editor
- * and what the roster will increasingly carry. `EntityCard`'s meta row is a wrapping flex row at
+ * then the Office, the Ministry and the Government that pay for it — and twenty of the thirty profiles
+ * carry it. `EntityCard`'s meta row is a wrapping flex row at
  * `text-xs` with NO clamp of any kind: a four-column card inside the shell leaves it about 260px, which
  * is roughly forty characters a line, so 199 of them are five lines of grey between the designation and
  * the interests rail. And because the cards in a grid row are `h-full`, they are five lines on every

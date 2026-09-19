@@ -413,11 +413,10 @@ that merely reads the database is a Server Component and must stay one.
 | `lib/media/url.ts` | `publicObjectUrl`, `mediaSrc`, `ogImageUrl`, `mediaAlt`, `pickVariant`, `VARIANT_LABELS`, `VARIANT_WIDTHS` |
 | `lib/media/video.ts` | `isVideoObjectKey`, `isCaptionsObjectKey`, `resolveEmbedTarget`, `videoSettingsSchema`, `readVideoSettings`, `defaultVideoSettings`, `videoSettingsMediaIds`, `providerHonours`, `EMBED_PROVIDERS`, `EMBED_ASPECT_RATIOS` |
 | `lib/people/groups.ts` | `PERSON_KIND_ORDER`, `PERSON_KIND_LABELS`, `PERSON_KIND_GROUPS`, `PEOPLE_PATH`, `PEOPLE_GROUP_PREFIX`, `PERSON_GROUP_SLUGS`, `PERSON_GROUP_DESCRIPTIONS`, `personGroupPath`, `personGroupFromSlug`, `isPersonGroupPath`, `peopleGroupNavChildren`, `PersonGroupCount` |
-| `lib/people/departments.ts` | `groupDepartments`, `departmentCanonicalMap`, `canonicalDepartment`, `canonicalDepartmentLabels`, `DepartmentGroup` |
 | `lib/people/roster.ts` | **server-only** — `listablePersonWhere`, `ROSTER_SELECT`, `ROSTER_CAP`, `loadRoster`, `listablePeopleByGroup`, `Roster`, `RosterPerson` |
 
-**The three `lib/people/` modules are one decision each, and each is a decision you must not take
-again in a component.**
+**Both `lib/people/` modules are one decision each, and each is a decision you must not take again in
+a component.**
 
 - **`groups.ts` is the roster's vocabulary and it has no runtime imports at all** — its two imports
   (`PersonKind`, `NavNode`) are types and are erased. That is the whole reason it sits in `lib/`: the
@@ -428,9 +427,6 @@ again in a component.**
   ⚠ `PERSON_GROUP_SLUGS` holds
   **addresses, not labels**: they are written out rather than slugified from `PERSON_KIND_GROUPS`,
   because improving a label must never rename a public URL.
-- **`departments.ts` deduplicates `Person.department` by meaning**, elects one of the *supplied*
-  spellings, and has zero imports for the same reason. It never invents a string. A filter built by
-  putting that column through a `Set` is the bug it exists to prevent — see `DATA-MODEL.md` §3.
 - **`roster.ts` is the only definition of "a person who appears in a public list"**:
   `listablePersonWhere()` is `{ ...liveStatusWhere(), isVisible: true }`, and both halves are separate
   editor switches. That pair was written out by hand in four places before this module existed.
@@ -518,8 +514,10 @@ such call sites shipped here at once, including the relation picker used by ever
 - A public list of people is `listablePersonWhere()`, never `liveStatusWhere()` on its own —
   `isVisible` is a second, independent editor switch and dropping it puts a withdrawn profile back on
   a roster.
-- `Person.department` is free text. A `Set` over the column offers four spellings of one Centre as
-  four filter options; fold it through `lib/people/departments.ts` first. See `DATA-MODEL.md` §3.
+- `Person.department` is free text and NOTHING normalises it. The directory's Department filter lists
+  the distinct values in the column, so two spellings of one department are two options and two halves
+  of one group of people. The remedy is to correct the profiles, not to match strings at render time —
+  a rule-based canonicaliser lived here for one commit and is gone. See `DATA-MODEL.md` §3.
 - Media `url`/`objectKey` may be absent by entitlement — never assume a variant exists.
 - `uploadMedia` reports partial failure: **inspect the failed list and name the files that did not
   make it**. Treating a resolved promise as success silently loses files.

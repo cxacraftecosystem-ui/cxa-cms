@@ -91,7 +91,7 @@ const RELATED_LIMIT = 6;
  * How much of a person's department the people grid below carries, in characters.
  *
  * ⚠ `Person.department` IS FREE TEXT, and the spelling of the Centre's own name that
- * lib/people/departments.ts elects as canonical runs to 199 characters: the unit, the institute, and
+ * twenty of these profiles carry runs to 199 characters: the unit, the institute, and
  * then the Office, the Ministry and the Government that fund it. `EntityCard`'s `description` slot
  * carries no clamp — in a four-column grid inside the shell it is about 260px of `text-sm`, roughly
  * thirty-seven characters a line — so the value untouched is five or six lines of body copy under a

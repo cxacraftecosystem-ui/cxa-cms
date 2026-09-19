@@ -307,7 +307,7 @@ because both are true: the citation must print the author list **exactly as publ
 the co-authors who have never been near this CMS, while "papers by this person" needs a join. One
 cannot be derived from the other.
 
-### `Person.department` is free text, and is deduplicated by MEANING at read time
+### `Person.department` is free text, and nothing normalises it
 
 `department` is a nullable `String` with no enum, no lookup table and no unique index, and that is a
 decision rather than an omission. The units the Centre's people belong to are not the Centre's to
@@ -316,38 +316,38 @@ without anybody telling this CMS, and contract §10 forbids making a field manda
 answerable — an editor filing a visitor at nine on a Monday cannot be made to wait for an
 administrator to create a row first.
 
-**The cost of that is paid at read time, and it is real.** Thirty people typing the name of *this*
-Centre produced four spellings of it, and one department three. The four are written out verbatim in
-`lib/people/departments.ts`'s header; `scripts/departments-check.ts` holds every spelling the database
-actually carries as a case, which is why it runs in `npm run check` rather than living in a comment. A
-"Department" facet built by putting the column through a `Set` therefore offers one real unit as four
-options, and a reader who picks one is shown a quarter of the people who work there with nothing on
-screen saying the other three exist — which is the contract §1.6 failure arriving through the data
-rather than through a `take`.
+**The cost of that is paid in the data, and it is paid by an editor.** Thirty people typing the name
+of *this* Centre produced four spellings of it, and one department three — so the directory's
+Department facet, which lists the distinct values in the column, offered one real unit as four
+options, and a reader who picked one was shown a quarter of the people who work there.
 
-`lib/people/departments.ts` is the answer and it works on the **values**, never on the table. It groups
-the spellings that denote one unit and elects one of them — always one of the supplied strings,
-character for character, the most descriptive rather than the shortest or the most popular. It is
-deliberately conservative: "Computer Science" is not "Computer Science and Engineering", and every
-merge rule is a closed list, because a false merge hides a whole unit from the directory and is
-invisible in review.
+⚠ **THE ANSWER IS TO CORRECT THE PROFILES, AND IT IS DELIBERATELY NOT CODE.** A rule-based
+canonicaliser lived in `lib/people/departments.ts` for one commit: it folded articles, abbreviations,
+plurals, acronyms and trailing affiliation clauses, elected the most descriptive spelling of each
+group, and passed forty-three cases over the spellings the database actually held. It was deleted.
+Two reasons, and the second is the one that matters:
 
-⚠ **Three things follow for anyone writing a new query against this column.**
+- **It did not generalise.** Given five real units written the way a roster actually accumulates them
+  — `CSE`, `Computer Sc. and Engg.`, `HSS Department`, `RMSOEE` — it produced **sixteen** groups.
+  Deciding that `CSE` and `Computer Science and Engineering` are one department is not a string
+  problem, and the word lists that made it work on eight spellings were a description of those eight.
+- **The roster is thirty people.** A Centre this size has a handful of units. Keeping their names
+  consistent is a few minutes of an editor's attention in Studio → People, where somebody can see
+  which spelling is right — not a similarity score recomputed in every reader's browser, with a false
+  merge waiting in it to hide a real department from the directory where nobody would notice.
 
-- **`DISTINCT department` is a list of SPELLINGS, not of units**, and so is a `groupBy` count over it.
-  Both are inputs to `groupDepartments()`, never answers in themselves.
-- **An equality filter matches one spelling.** Build the option list and the comparison from **one**
-  call to `departmentCanonicalMap()`: canonical options compared with `===` against the raw column
-  match only the people who happen to carry the elected spelling, and the rest vanish with no way to
-  find them. `canonicalDepartment(value, map)` is the per-row half of that pair.
-- **Nothing rewrites the column, ever.** The studio trims on write (`app/api/studio/people/route.ts`)
-  and stores what was typed; there is no migration, no merge job and no canonical column to keep in
-  step. The election is recomputed on every read, which is what makes correcting a spelling in the
-  studio take effect at once and lose nothing — and it is why both surfaces that show these values
-  compute them independently: the public directory in the browser
-  (`app/(site)/people/PeopleDirectory.tsx`) and the studio editor's suggestion `<datalist>` on the
-  server (`app/studio/people/[id]/page.tsx`). That `<datalist>` is a suggestion list and not a closed
-  one, for the same reason the column is free text in the first place.
+So: **two spellings of one department are two options in the filter and two halves of one group of
+people, visibly.** That is the state that gets corrected. A facet that quietly merged them would be a
+facet nobody ever fixed.
+
+⚠ **Two things follow for anyone writing a new query against this column.**
+
+- **`DISTINCT department` is a list of spellings**, which — the column being kept tidy by hand — is
+  also a list of units. It stops being one the moment somebody types a fifth spelling, and the place
+  that shows is the Department filter on `/people`.
+- **Nothing rewrites the column.** The studio trims on write (`app/api/studio/people/route.ts`) and
+  stores what was typed. There is no migration, no merge job and no canonical column to keep in step,
+  which is what makes correcting a spelling in the studio take effect at once and lose nothing.
 
 ### `Tag` is shared; `Category` is not
 
