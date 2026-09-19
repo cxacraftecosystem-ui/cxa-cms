@@ -22,6 +22,22 @@ a visitor rather than by the compiler. `Announcement` needs a third, `activeAnno
 `lib/announcements.ts`, because its window is `isActive` / `startsAt` / `endsAt` and not a
 `ContentStatus` at all.
 
+**Where a model gates on a PAIR of conditions, the pair gets a name too.** `Person` is the one that
+does: publication is one switch and `isVisible` — the editor's "show this person in the directory" — is
+a second, entirely independent one. A profile can be published, so its own page resolves and citations
+of it keep working, while being kept off every roster; apply one condition without the other and that
+switch means nothing. The pair is `listablePersonWhere()` in `lib/people/roster.ts`, and it is
+`{ ...liveStatusWhere(), isVisible: true }` — read it from there rather than writing it out, because
+this one is not merely a filter somebody might forget. A roster page and the header menu's per-group
+count taken with two different predicates produce a menu entry that leads to an empty page, or hide a
+group that has people in it, and neither is visible to anybody who is not comparing the two.
+
+⚠ **Several reads still spell that pair out inline** — `app/sitemap.ts`'s per-person list,
+`app/(site)/people/[slug]/page.tsx`, its `opengraph-image.tsx` and the people branches of
+`lib/sections/resolve.ts` among them. They predate the function and they agree with it today. Each is
+a conversion waiting for the next time somebody is in that file; not one of them is a licence to write
+another.
+
 The only writer of a real `DELETE` is `/api/cron/purge`, and only for media soft-deleted longer than
 `MEDIA_PURGE_AFTER_DAYS` (30 by default).
 
@@ -267,7 +283,7 @@ erDiagram
 |---|---|---|---|
 | `Page` | **yes** | no | `livePublishableWhere()` |
 | `Post` | **yes** | yes | `livePublishableWhere()` |
-| `Person` | no | no | `liveStatusWhere()`; ordered by `sortOrder`, which is the promise its help text makes |
+| `Person` | no | no | `listablePersonWhere()` — `liveStatusWhere()` **and** `isVisible`, see §0; ordered by `sortOrder`, which is the promise its help text makes |
 | `ResearchArea` | no | no | `liveStatusWhere()`; `sortOrder` |
 | `Project` | no | yes | `liveStatusWhere()`; also `state: PROPOSED / ACTIVE / COMPLETED / ON_HOLD`, a *different* axis from `status` |
 | `Publication` | no | yes | `liveStatusWhere()`; `year` + `kind` are the indexed pair |
@@ -290,6 +306,48 @@ the work running?). A project-showcase block filters on `state` and is *still* s
 because both are true: the citation must print the author list **exactly as published**, including
 the co-authors who have never been near this CMS, while "papers by this person" needs a join. One
 cannot be derived from the other.
+
+### `Person.department` is free text, and is deduplicated by MEANING at read time
+
+`department` is a nullable `String` with no enum, no lookup table and no unique index, and that is a
+decision rather than an omission. The units the Centre's people belong to are not the Centre's to
+define: an institute department, a ministry office, a visiting artisan's own guild. That list changes
+without anybody telling this CMS, and contract §10 forbids making a field mandatory where it is not
+answerable — an editor filing a visitor at nine on a Monday cannot be made to wait for an
+administrator to create a row first.
+
+**The cost of that is paid at read time, and it is real.** Thirty people typing the name of *this*
+Centre produced four spellings of it, and one department three. The four are written out verbatim in
+`lib/people/departments.ts`'s header; `scripts/departments-check.ts` holds every spelling the database
+actually carries as a case, which is why it runs in `npm run check` rather than living in a comment. A
+"Department" facet built by putting the column through a `Set` therefore offers one real unit as four
+options, and a reader who picks one is shown a quarter of the people who work there with nothing on
+screen saying the other three exist — which is the contract §1.6 failure arriving through the data
+rather than through a `take`.
+
+`lib/people/departments.ts` is the answer and it works on the **values**, never on the table. It groups
+the spellings that denote one unit and elects one of them — always one of the supplied strings,
+character for character, the most descriptive rather than the shortest or the most popular. It is
+deliberately conservative: "Computer Science" is not "Computer Science and Engineering", and every
+merge rule is a closed list, because a false merge hides a whole unit from the directory and is
+invisible in review.
+
+⚠ **Three things follow for anyone writing a new query against this column.**
+
+- **`DISTINCT department` is a list of SPELLINGS, not of units**, and so is a `groupBy` count over it.
+  Both are inputs to `groupDepartments()`, never answers in themselves.
+- **An equality filter matches one spelling.** Build the option list and the comparison from **one**
+  call to `departmentCanonicalMap()`: canonical options compared with `===` against the raw column
+  match only the people who happen to carry the elected spelling, and the rest vanish with no way to
+  find them. `canonicalDepartment(value, map)` is the per-row half of that pair.
+- **Nothing rewrites the column, ever.** The studio trims on write (`app/api/studio/people/route.ts`)
+  and stores what was typed; there is no migration, no merge job and no canonical column to keep in
+  step. The election is recomputed on every read, which is what makes correcting a spelling in the
+  studio take effect at once and lose nothing — and it is why both surfaces that show these values
+  compute them independently: the public directory in the browser
+  (`app/(site)/people/PeopleDirectory.tsx`) and the studio editor's suggestion `<datalist>` on the
+  server (`app/studio/people/[id]/page.tsx`). That `<datalist>` is a suggestion list and not a closed
+  one, for the same reason the column is free text in the first place.
 
 ### `Tag` is shared; `Category` is not
 
@@ -485,6 +543,29 @@ calls this for every page the build renders and a throw here failed the whole bu
 Next happened to prerender first. `prisma/seed.ts` writes the same defaults as real rows, so an
 administrator can immediately edit what they see.
 
+**Two child lists in the header are not rows here at all.** The Centre's social accounts hang under
+Contact (`socialNavChildren`, `lib/socials.ts`) and the roster's non-empty person groups hang under
+People (`peopleGroupNavChildren`, `lib/people/groups.ts`); `components/site/SiteHeader.tsx` mints both
+as plain `NavNode`s and appends them to whichever entry the administrator gave that href. Neither
+belongs in this table, and for the same reason: **a row an administrator can edit is a row an
+administrator can be wrong about.** The socials are already one setting on one screen, and a second
+copy of them as menu rows would let the header say one thing and the settings another; a group's
+address is a code route with exactly eight possible values and nobody types it. Being nodes rather
+than a second kind of menu is what gets them everything the existing dropdown already does — the
+hover-and-focus disclosure, the phone sheet's always-expanded child list, Escape, focus restoration,
+the active-page treatment, both themes and the reduced-motion branch — with nothing re-implemented.
+
+⚠ **The two are injected on opposite sides of `resolveActiveHref`, and the order is load-bearing.**
+The groups go in **before** it: they are pages on this site and must be eligible for the active-page
+treatment. The socials go in **after** it: they are foreign origins, and handing an `https://` URL to
+a path matcher is at best wasted work. The header's own comments say so at both call sites.
+
+⚠ **An empty group is offered no menu entry and still has a page.** `listablePeopleByGroup()` omits
+the groups nobody is in, so the submenu leads only to somebody; `app/(site)/people/group/[group]`
+exists for all eight regardless, because an address that survives and a menu entry that leads
+somewhere are different promises. That is not the §1.6 truncation rule either — nothing is hidden,
+because an empty group has nothing in it to hide.
+
 ### `Setting` is one row per group
 
 `key` is a group name, `value` is that whole group's JSON, and `lib/settings/schema.ts` holds a Zod
@@ -581,7 +662,7 @@ existed.
 | `AuditAction` | 14 values, from `CREATE` to `ROLLBACK` | `lib/audit.ts` |
 | `SectionType` | 32 values | `lib/sections/registry.ts` for the palette, `lib/sections/schema.ts` for the payloads |
 | `MediaKind` | `IMAGE` `VIDEO` `AUDIO` `DOCUMENT` `MODEL_3D` `PANORAMA` | The three upload allow-lists |
-| `PersonKind` | `FACULTY` `SCIENTIST` `RESEARCHER` `STUDENT` `STAFF` `VISITOR` `ALUMNUS` | People showcase's `kind` filter |
+| `PersonKind` | `FACULTY` `SCIENTIST` `RESEARCHER` `STUDENT` `STAFF` `VISITOR` `ALUMNUS` `DC_HANDICRAFTS` | People showcase's `kind` filter. ⚠ Declaration order is **not** roster order — `DC_HANDICRAFTS` was appended by `ALTER TYPE … ADD VALUE` and belongs at the head; `PERSON_KIND_ORDER` in `lib/people/groups.ts` decides the order, the labels and the eight `/people/group/<slug>` addresses |
 | `ProjectStatus` | `PROPOSED` `ACTIVE` `COMPLETED` `ON_HOLD` | ⚠ the project's own life cycle, **not** publication |
 | `PublicationKind` | 10 values, `JOURNAL_ARTICLE` … `REPORT` | `lib/citation.ts` decides the citation form per kind |
 | `EventMode` | `IN_PERSON` `ONLINE` `HYBRID` | |

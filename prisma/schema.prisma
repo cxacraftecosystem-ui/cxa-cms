@@ -780,11 +780,13 @@ model FileVersion {
 
 /// The groups the roster is divided into. Adding one is a value here, a migration, and a set of
 /// hand-written mirrors in TypeScript. Most of them announce themselves: a `Record<PersonKind, …>`
-/// (`PERSON_KIND_LABELS` and `_GROUPS` in components/site/PersonCard.tsx, `GROUP_LABELS` in
-/// app/api/studio/people/reorder/route.ts) and a tuple with `satisfies readonly PersonKind[]` (the
-/// `PERSON_KINDS` in the three app/api/studio/people routes) are both compile errors when a value is
-/// missing. Two are NOT, and are the ones to check by hand: `PERSON_KIND_ORDER` in PersonCard.tsx,
-/// which decides what a reader sees, and the `PERSON_KINDS` in lib/sections/schema.ts with its
+/// (`PERSON_KIND_LABELS` and `_GROUPS`, both in lib/people/groups.ts) and a tuple with
+/// `satisfies readonly PersonKind[]` (the `PERSON_KINDS` in the three app/api/studio/people routes)
+/// are both compile errors when a value is missing. Two are NOT, and are the ones to check by hand:
+/// `PERSON_KIND_ORDER` in lib/people/groups.ts, which decides what a reader sees — as do
+/// `PERSON_GROUP_SLUGS` and `PERSON_GROUP_DESCRIPTIONS` beside it, which give the group its page and
+/// are total records and therefore do announce themselves — and the `PERSON_KINDS` in
+/// lib/sections/schema.ts with its
 /// matching `PersonFilter` in lib/sections/resolve.ts, which cannot use `satisfies` because they
 /// carry an extra "" for "no filter".
 ///
@@ -803,8 +805,8 @@ enum PersonKind {
   /// ── Appended, and appended DELIBERATELY AT THE END ───────────────────────
   /// Appending is a plain `ALTER TYPE … ADD VALUE`; placing it where it reads best in the roster
   /// would need `… BEFORE 'FACULTY'`, which is the same migration with one more way to get it wrong.
-  /// Nothing on screen is ordered by this enum — `PERSON_KIND_ORDER` in components/site/PersonCard.tsx
-  /// decides that, and it puts this group first.
+  /// Nothing on screen is ordered by this enum — `PERSON_KIND_ORDER` in lib/people/groups.ts decides
+  /// that, and it puts this group first.
   ///
   /// The Development Commissioner (Handicrafts): an office of the Ministry of Textiles, not a grade of
   /// Centre employment, which is why it is its own group rather than a `designation` string on STAFF.

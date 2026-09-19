@@ -23,6 +23,12 @@ import { Reveal } from "@/components/motion/Reveal";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { CardGrid } from "@/components/site/CardGrid";
 import { EntityCard } from "@/components/site/EntityCard";
+/*
+ * The LIMIT, not the card. This block draws a person its own way (see `PersonCard` below — it takes the
+ * page's media map and has no interests rail), but the meta row it draws is the same `EntityCard` row,
+ * so the length a department is cut to has to be the same number. See the constant's own note.
+ */
+import { DEPARTMENT_META_LIMIT } from "@/components/site/PersonCard";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
@@ -33,6 +39,7 @@ import {
   type ResolvedSectionData
 } from "@/lib/sections/resolve";
 import type { PeopleShowcaseSectionData } from "@/lib/sections/schema";
+import { truncateWords } from "@/lib/utils";
 
 export interface PeopleShowcaseSectionProps {
   data: PeopleShowcaseSectionData;
@@ -217,7 +224,19 @@ function PersonCard({
       title={person.name}
       // The designation is what a reader is looking for after the name; the department places them.
       description={showRole ? (person.designation ?? undefined) : undefined}
-      meta={person.department ? <span>{person.department}</span> : undefined}
+      /*
+       * ⚠ THE PLACING IS CUT, AND THIS BLOCK IS THE SLOT THE NUMBER WAS MEASURED AGAINST. A department
+       * is free text, and the Centre's own canonical spelling runs to 199 characters — five lines of
+       * `text-xs` in a 16rem rail card, which then sets the height of every card in the rail, because a
+       * flex row stretches its items. The cut is in the string rather than in a `line-clamp`, so what a
+       * screen reader announces and what a sighted reader sees are the same words, and the ellipsis
+       * says out loud that there is more (contract §1.6) — the profile the card links to has all of it.
+       */
+      meta={
+        person.department ? (
+          <span>{truncateWords(person.department, DEPARTMENT_META_LIMIT)}</span>
+        ) : undefined
+      }
     />
   );
 }

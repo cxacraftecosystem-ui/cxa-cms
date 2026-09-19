@@ -19,10 +19,12 @@
  * editor HAS uploaded a portrait, the page's own metadata should keep preferring it (see
  * `generatedCardUrl` in lib/og/card.tsx) — this card is what replaces the card that says nothing.
  *
- * THE PERSON'S `kind` IS NOT SHOWN. "Faculty" or "Alumnus" would be useful, but the vocabulary for it
- * (`PERSON_KIND_LABELS`) lives in a component module that drags a good part of the site's card stack
- * into a route which runs cold, once per crawler, to draw eight words. The designation an editor typed
- * is more specific than the enum anyway.
+ * THE PERSON'S `kind` IS NOT SHOWN, AND THE REASON IS NOW ONLY THE SECOND OF THE TWO IT USED TO BE.
+ * The vocabulary for it (`PERSON_KIND_LABELS`) no longer lives in a component module that would drag
+ * the site's card stack into a route which runs cold, once per crawler, to draw eight words — it is in
+ * lib/people/groups.ts, which costs nothing to import. What still stands is the editorial reason: the
+ * designation an editor typed ("Professor of Industrial Design") is more specific than the enum
+ * ("Faculty"), and there is room on this card for one of them.
  */
 
 import { ImageResponse } from "next/og";
@@ -68,6 +70,25 @@ export default async function PersonSocialCard({ params }: CardProps) {
    * The designation is what a reader looks for immediately after the name, so it takes the subtitle and
    * the department follows it below. When there is no designation the department is promoted rather than
    * printed twice — a card reading "Physics" on both lines looks like a rendering fault.
+   *
+   * ⚠ BOTH ARE HANDED OVER WHOLE, AND THAT IS THE DECISION, NOT AN OVERSIGHT. `Person.department` is
+   * free text whose canonical spelling of the Centre's own name runs to 199 characters
+   * (components/site/PersonCard.tsx), and every card and credit on the SITE now shortens it — but this
+   * surface already has a budget of its own, measured against a frame that cannot grow. `card()` cuts a
+   * promoted department to `SUBTITLE_LIMIT` at 30px inside a 900px box, and `footerLine` gives the one
+   * beside the institution's name whatever is left of the footer's 86 characters, dropping it entirely
+   * rather than printing a stub too short to be a placing (lib/og/card.tsx). Cutting here as well would
+   * put a second, shorter and unmeasured limit in front of that one: the 630px card would then be laid
+   * out for a string it never receives, and two files would have to agree about a number only one of
+   * them can see.
+   *
+   * ⚠ ONE READING THAT FOLLOWS FROM IT, LEFT AS IT IS: most of the roster's department IS this Centre,
+   * so the footer of most of these cards says the institution's name and then most of it again —
+   * "Centre of Excellence · Centre of Excellence for Unified AI-Enabled Craft Ecosystem…". It is
+   * repetitive rather than wrong, and the alternative — dropping a department that begins with the site
+   * name — is a special case that would silently blank the placing of the people whose placing really
+   * is the Centre. If it is ever worth solving it belongs in `footerLine`, where the footer is built,
+   * and not in one of the five routes that feed it.
    */
   const designation = person?.designation?.trim() || null;
   const department = person?.department?.trim() || null;

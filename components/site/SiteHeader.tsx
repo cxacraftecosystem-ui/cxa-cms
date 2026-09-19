@@ -47,6 +47,21 @@
  * panel anchored to a pill that is resizing is left hanging under nothing); and a route change closes
  * it.
  *
+ * TWO LISTS ARE SYNTHESISED ONTO THE EDITOR'S TREE, AND NEITHER IS A SECOND KIND OF MENU.
+ *
+ * `withPeopleGroups` hangs the Centre's person groups — Faculty, Researchers, Alumni — off the PEOPLE
+ * entry, and `withSocialsUnderContact` hangs the Centre's accounts off CONTACT. Both mint plain
+ * `NavNode`s, so the strip, the sheet, the active-page treatment and the keyboard routes below are the
+ * only implementations of any of it.
+ *
+ * ⚠ THEY ARE INJECTED AT OPPOSITE ENDS OF THE MEMO CHAIN IN `SiteHeader`, AND THAT IS LOAD-BEARING: the
+ * groups are pages on this site and must reach `resolveActiveHref`; the socials are foreign origins and
+ * must not. Each function's own header carries the argument; the chain says so again at both call sites.
+ *
+ * ⚠ NEITHER LIST IS VISIBLE IN THE STUDIO'S NAVIGATION EDITOR, which shows the rows an administrator
+ * owns. That screen now says so in as many words, because a People entry with no children on the editing
+ * screen and a panel of eight on the live site is otherwise read as a bug.
+ *
  * THE CENTRE'S SOCIAL ACCOUNTS HANG OFF THE CONTACT ENTRY. THEY ARE NOT A MENU OF THEIR OWN.
  *
  * They were, for one revision: a standalone `SocialMenu` button sat in the control cluster below,
@@ -78,6 +93,7 @@ import { ArrowUpRight, ChevronDown, Menu, Search, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { collectHrefs, isActiveHref, resolveActiveHref, type NavNode } from "@/lib/navigation";
+import { peopleGroupNavChildren, type PersonGroupCount } from "@/lib/people/groups";
 import { socialNavChildren } from "@/lib/socials";
 import type {
   FeatureFlag,
@@ -155,6 +171,13 @@ const FEATURE_ROUTES: ReadonlyArray<{ prefix: string; flag: FeatureFlag }> = [
 const NO_SOCIAL_LINKS = [] as const;
 
 /**
+ * The same frozen empty list for the person groups, and for the identical reason: it is a dependency of
+ * the memo that grows the nav tree, and a bare `[]` written at the call site would be a different array
+ * on every render — so the memo would recompute on exactly the renders it exists to skip.
+ */
+const NO_PEOPLE_GROUPS = [] as const;
+
+/**
  * The Contact page's address, and the entry the socials hang off.
  *
  * ⚠ RESTATED HERE RATHER THAN IMPORTED, AND THE ALTERNATIVE IS WORSE. `/contact` is a CODE route
@@ -167,6 +190,17 @@ const NO_SOCIAL_LINKS = [] as const;
  * so this is compared with whatever href an administrator gave their Contact entry.
  */
 const CONTACT_HREF = "/contact";
+
+/**
+ * The directory's address, and the entry the person groups hang off.
+ *
+ * ⚠ RESTATED HERE RATHER THAN IMPORTED FROM lib/people/groups.ts, FOR THE REASON `CONTACT_HREF` ABOVE
+ * GIVES ABOUT ITSELF — and the reason is the comparison, not the bundle: what this is matched against is
+ * DATA. `navigation.header` is an editor-managed list, so this is compared with whatever href an
+ * administrator typed into their People row, exactly as `/contact` is. (The groups' own addresses DO come
+ * from that module, through `peopleGroupNavChildren`: those are code routes and nobody types them.)
+ */
+const PEOPLE_HREF = "/people";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers
@@ -309,6 +343,75 @@ function withSocialsUnderContact(nodes: NavNode[], links: readonly SocialLink[])
   return nodes.map((node, at) => (at === index ? grown : node));
 }
 
+/**
+ * Is this the editor's People entry?
+ *
+ * The same test as `isContactEntry`, in the same words and for the same reasons: matched on the HREF and
+ * never on the label (the row is editor data and may say "Our team" or be in another language), trailing
+ * slash trimmed (`/people/` and `/people` are the same page to Next's router and to anybody typing into
+ * the studio's link field), top level only, and an external entry is not eligible — `StripItem` puts
+ * `aria-expanded`/`aria-controls` on its INTERNAL branch alone, so hanging a disclosure on an external
+ * row would open a panel no screen reader has been told about.
+ */
+function isPeopleEntry(node: NavNode): boolean {
+  if (node.isExternal) return false;
+  const base = baseOf(node.href);
+  return (base.length > 1 ? base.replace(/\/+$/, "") : base) === PEOPLE_HREF;
+}
+
+/**
+ * Append the Centre's person groups to the People entry's children.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE SAME MECHANISM AS THE SOCIALS, INJECTED AT THE OPPOSITE END OF THE MEMO CHAIN — AND THAT
+ * DIFFERENCE IS THE WHOLE OF WHAT IS NEW HERE.
+ *
+ * `withSocialsUnderContact` runs AFTER `resolveActiveHref`/`firstMatchingId`, because every href it
+ * mints is an absolute `https://` URL and feeding foreign origins to "which entry is the current page?"
+ * is at best wasted work and at worst a social row claiming `aria-current="page"`.
+ *
+ * These nodes are the exact opposite: `/people/group/faculty` is a page on this site, and it MUST reach
+ * `collectHrefs`. Longest base wins, so with the groups in the tree a reader on /people/group/faculty
+ * lights the Faculty row and the People trigger takes the in-section treatment; without them the
+ * resolution stops at `/people` and the PARENT claims to be the current page on a page it is not.
+ *
+ * So the tree is grown in two passes, and the call sites are ordered accordingly. Neither pass may move.
+ *
+ * APPENDED, NEVER PREPENDED, and an editor's own People children come first — the socials rule, for the
+ * same reason: those are the rows somebody wrote.
+ *
+ * TOP LEVEL ONLY. The tree is two levels deep by design (lib/navigation.ts), so a People entry an editor
+ * has nested under another section is skipped rather than grown: hanging children on a child builds a
+ * third level the strip cannot render and the sheet would nest illegally.
+ *
+ * ⚠ A DUPLICATE IS POSSIBLE AND IS NOT AN ERROR. An administrator may hand-type `/people/group/faculty`
+ * as a child row of their own; the injected row then sits beside it. `firstMatchingId` gives
+ * `aria-current` to the first in DOM order and the other keeps only the visual treatment, which is the
+ * same resolution the shipped "Archive → Craft Explorer" pair already gets. Removing the editor's row
+ * would be worse: it is a destination they chose to list.
+ *
+ * ⚠ NO GROUPS MEANS NO SUBMENU, AND THE PEOPLE ENTRY BEHAVES EXACTLY AS IT DID BEFORE THIS EXISTED —
+ * a plain link, no chevron, no panel (`StripItem` gates all three on `children.length`). That is the
+ * state on a fresh installation, on a Centre with nobody published, and whenever the database could not
+ * be read (lib/people/roster.ts falls back to an empty list rather than throwing in the site layout).
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+function withPeopleGroups(nodes: NavNode[], groups: readonly PersonGroupCount[]): NavNode[] {
+  // The identity of `nodes` is preserved when there is nothing to add, so the memo below returns the
+  // tree the strip is already showing rather than an equal one that re-renders it.
+  if (groups.length === 0) return nodes;
+
+  const index = nodes.findIndex(isPeopleEntry);
+  const people = index < 0 ? undefined : nodes[index];
+  if (!people) return nodes;
+
+  const grown: NavNode = {
+    ...people,
+    children: [...people.children, ...peopleGroupNavChildren(groups)]
+  };
+  return nodes.map((node, at) => (at === index ? grown : node));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Class recipes — complete literal strings, never assembled (contract §5)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -360,9 +463,32 @@ export interface SiteHeaderProps {
    * broken one.
    */
   social?: SocialSettings;
+  /**
+   * Which groups of people have at least one listable profile — the submenu under the People entry.
+   *
+   * ⚠ PLAIN, SERIALISABLE DATA ONLY, AND THAT IS A HARD BOUNDARY RATHER THAN A STYLE. This is a Client
+   * Component receiving props from a Server Component, and `NavNode.icon` is a React COMPONENT — a
+   * server that minted finished nav nodes would hand a FUNCTION across the serialization boundary and
+   * take the whole site down with it (lib/navigation.ts says so on the field itself). So the server
+   * sends `{ kind, count }` and the nodes are built here, beside the socials.
+   *
+   * ⚠ OPTIONAL, AND THE EMPTY CASE IS THE RESTING STATE RATHER THAN A FAULT. Absent or empty, the People
+   * entry is the plain link it has always been — which is what a fresh installation, a Centre with
+   * nobody published, and a database that could not be read all correctly show.
+   *
+   * The counts are read by `listablePeopleByGroup` (lib/people/roster.ts) with the SAME predicate the
+   * group pages use, which is what stops the menu offering a group whose page turns out to be empty.
+   */
+  peopleGroups?: readonly PersonGroupCount[];
 }
 
-export function SiteHeader({ branding, items, features, social }: SiteHeaderProps) {
+export function SiteHeader({
+  branding,
+  items,
+  features,
+  social,
+  peopleGroups
+}: SiteHeaderProps) {
   const pathname = usePathname();
   const reduce = useReducedMotionPreference();
 
@@ -374,13 +500,28 @@ export function SiteHeader({ branding, items, features, social }: SiteHeaderProp
   const sheetId = useId();
 
   const visibleItems = useMemo(() => filterNavByFeatures(items, features), [items, features]);
+
+  /**
+   * The tree WITH the person groups on it — and everything below resolves against this one, not against
+   * `visibleItems`.
+   *
+   * ⚠ BEFORE `activeBase`, WHERE THE SOCIALS ARE DELIBERATELY AFTER. `withPeopleGroups` carries the full
+   * argument; the short version is that these hrefs are pages on this site, so they must be in
+   * `collectHrefs` for longest-base-wins to resolve `/people/group/faculty` to the FACULTY row rather
+   * than stopping at `/people` and marking the parent as the current page.
+   */
+  const groupedItems = useMemo(
+    () => withPeopleGroups(visibleItems, peopleGroups ?? NO_PEOPLE_GROUPS),
+    [visibleItems, peopleGroups]
+  );
+
   const activeBase = useMemo(
-    () => resolveActiveHref(pathname, collectHrefs(visibleItems)),
-    [pathname, visibleItems]
+    () => resolveActiveHref(pathname, collectHrefs(groupedItems)),
+    [pathname, groupedItems]
   );
   const currentId = useMemo(
-    () => firstMatchingId(visibleItems, activeBase),
-    [visibleItems, activeBase]
+    () => firstMatchingId(groupedItems, activeBase),
+    [groupedItems, activeBase]
   );
 
   const socialLinks = social?.links ?? NO_SOCIAL_LINKS;
@@ -389,18 +530,25 @@ export function SiteHeader({ branding, items, features, social }: SiteHeaderProp
    * The tree that is actually rendered — by the strip AND the sheet, from one value, so the two cannot
    * disagree about what the menu holds at two widths of the same page.
    *
-   * ⚠ BUILT AFTER `activeBase` AND `currentId`, AND THE ORDER IS LOAD-BEARING. Both of those resolve
-   * "which entry is the current page" over `visibleItems` — the tree with nothing hung on it — so the
-   * absolute `https://` hrefs this adds never reach `resolveActiveHref`, and no social row can claim
-   * `aria-current="page"`. `withSocialsUnderContact`'s header carries the rest of the argument.
+   * ⚠ THE TREE IS GROWN IN TWO PASSES, AT OPPOSITE ENDS OF THIS CHAIN, FOR OPPOSITE REASONS. The person
+   * groups go on ABOVE, before `activeBase`, because they are pages on this site and must take part in
+   * "which entry is the current page". The socials go on HERE, after it, because every href they mint is
+   * an absolute `https://` URL: feeding foreign origins to `resolveActiveHref` is at best wasted work and
+   * at worst a social row claiming `aria-current="page"`. Neither call may move to the other end.
+   * `withPeopleGroups` and `withSocialsUnderContact` each carry the rest of their own argument.
    */
   const navItems = useMemo(
-    () => withSocialsUnderContact(visibleItems, socialLinks),
-    [visibleItems, socialLinks]
+    () => withSocialsUnderContact(groupedItems, socialLinks),
+    [groupedItems, socialLinks]
   );
 
   // See MAX_STRIP_ENTRIES: too many sections and the strip stands down at every width rather than
   // silently dropping the ones that do not fit.
+  //
+  // ⚠ COUNTED ON `visibleItems` — the tree before anything is hung on it — and it must stay that way.
+  // The limit is about how many TOP-LEVEL entries fit across a 1024px pill; children live in a panel and
+  // cost no width at all. Counting the grown tree would stand the strip down at every width on a default
+  // installation the moment the People entry gained a submenu.
   const stripFits = visibleItems.length > 0 && visibleItems.length <= MAX_STRIP_ENTRIES;
 
   const { scrollY } = useScroll();
@@ -730,8 +878,10 @@ function StripItem({ node, activeBase, currentId, openMenuId, setOpenMenuId }: S
                 cannot be scrolled to: the page scrolls beneath it and the rows below the fold are
                 simply unreachable. That was one editor away before the socials arrived (a section may
                 hold 12 children — MAX_CHILDREN, app/studio/navigation/NavigationEditor.tsx:133) and is
-                now two: Contact may carry 12 of its own plus 12 accounts (MAX_SOCIAL_LINKS,
-                lib/settings/schema.ts:156), which is 24 rows and around 960px of panel.
+                now THREE: Contact may carry 12 of its own plus 12 accounts (MAX_SOCIAL_LINKS,
+                lib/settings/schema.ts:156), which is 24 rows and around 960px of panel; and People may
+                carry 12 of its own plus one row per person group (eight — `PERSON_KIND_ORDER`,
+                lib/people/groups.ts), which is 20.
 
                 `overscroll-contain` stops a wheel that reaches the end of this list from continuing
                 into the page behind and scrolling the article out from under the open menu.

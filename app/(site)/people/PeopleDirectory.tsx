@@ -22,16 +22,14 @@
  */
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { PersonKind } from "@prisma/client";
 import { FilterX, SearchX, TriangleAlert, Users } from "lucide-react";
 
 import { CardGrid } from "@/components/site/CardGrid";
-import {
-  PERSON_KIND_GROUPS,
-  PERSON_KIND_ORDER,
-  PersonCard,
-  type PersonCardPerson
-} from "@/components/site/PersonCard";
+import { PersonCard, type PersonCardPerson } from "@/components/site/PersonCard";
+import { canonicalDepartment, groupDepartments } from "@/lib/people/departments";
+import { PERSON_KIND_GROUPS, PERSON_KIND_ORDER, personGroupPath } from "@/lib/people/groups";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field } from "@/components/ui/Field";
@@ -123,21 +121,39 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
   }, [people]);
 
   /**
-   * The facets come from the LOADED roster, so every option in them leads somewhere. A department list
-   * built from a separate query could offer a department whose only member is on the far side of the
-   * cap — a filter that returns nothing, with no way for the reader to know why.
+   * The department facet, DEDUPLICATED BY MEANING — one option per real unit, not one per spelling.
+   *
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE LIST AND THE FILTER ARE BUILT FROM ONE VALUE, AND THAT IS THE WHOLE POINT OF THIS MEMO.
+   *
+   * `department` is free text an editor types, and thirty people typing the name of one Centre produced
+   * four spellings of it. A facet built by putting the column through a `Set` offered all four: a reader
+   * who picked one was shown a quarter of the people who work there, with nothing on screen saying the
+   * other three existed. `groupDepartments` (lib/people/departments.ts) elects ONE of those spellings —
+   * always one an editor actually wrote, and the most descriptive of them — and reports which others
+   * mean the same thing.
+   *
+   * ⚠ SO THE COMPARISON BELOW MUST READ `canonical`, NEVER `person.department`. An option list of elected
+   * values compared against the raw column with `===` matches only the people who happen to carry the
+   * elected spelling — a filter that returns a plausible-looking WRONG answer rather than an error. The
+   * map returned here is what both halves read, which is why they cannot drift apart.
+   * ══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * The facets still come from the LOADED roster, so every option in them leads somewhere. A department
+   * list built from a separate query could offer a department whose only member is on the far side of
+   * the cap — a filter that returns nothing, with no way for the reader to know why.
    */
-  const departments = useMemo(
-    () =>
-      sortLabels(
-        new Set(
-          people
-            .map((person) => person.department?.trim() ?? "")
-            .filter((value) => value.length > 0)
-        )
-      ),
-    [people]
-  );
+  const departmentFacet = useMemo(() => {
+    const groups = groupDepartments(people.map((person) => person.department));
+    const canonicalBySpelling = new Map<string, string>();
+    for (const group of groups) {
+      for (const variant of group.variants) canonicalBySpelling.set(variant, group.canonical);
+    }
+    return {
+      options: sortLabels(groups.map((group) => group.canonical)),
+      canonicalBySpelling
+    };
+  }, [people]);
 
   const interests = useMemo(
     () =>
@@ -169,7 +185,15 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
 
     return people.filter((person) => {
       if (kind && person.kind !== kind) return false;
-      if (department && (person.department?.trim() ?? "") !== department) return false;
+      // The ELECTED spelling of this person's department, not the one their row happens to carry. See
+      // `departmentFacet`: comparing the raw column against an elected option hides everybody who
+      // spelled it differently.
+      if (
+        department &&
+        canonicalDepartment(person.department, departmentFacet.canonicalBySpelling) !== department
+      ) {
+        return false;
+      }
       if (
         foldedInterest &&
         !(person.researchInterests ?? []).some((value) => fold(value) === foldedInterest)
@@ -182,7 +206,7 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
       const text = haystack.get(person.id) ?? "";
       return needle.split(" ").every((word) => text.includes(word));
     });
-  }, [people, haystack, query, kind, department, interest]);
+  }, [people, haystack, query, kind, department, interest, departmentFacet]);
 
   const groups = useMemo<KindGroup[]>(() => {
     const byKind = new Map<PersonKind, DirectoryPerson[]>();
@@ -248,10 +272,10 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
             />
           </Field>
 
-          {departments.length > 0 ? (
+          {departmentFacet.options.length > 0 ? (
             <Field label="Department" className="sm:w-56">
               <Select
-                options={departments.map((value) => ({ value, label: value }))}
+                options={departmentFacet.options.map((value) => ({ value, label: value }))}
                 placeholder="All departments"
                 value={department}
                 onChange={(event) => setDepartment(event.target.value)}
@@ -345,7 +369,18 @@ export function PeopleDirectory({ people, truncated, cap, total }: PeopleDirecto
                 index > 0 ? "mt-4" : undefined
               )}
             >
-              {group.label}
+              {/*
+                THE HEADING IS A LINK TO THE GROUP'S OWN PAGE, which is the same destination the header
+                menu offers and the only one reachable from here without going back to the menu. The
+                number beside it is how many matched the FILTERS above — the page behind the link is the
+                whole group — so the link carries the name and never the count.
+              */}
+              <Link
+                href={personGroupPath(group.kind)}
+                className="rounded-sm transition hover:text-ink-900"
+              >
+                {group.label}
+              </Link>
               <span className="ml-2 font-sans font-normal normal-case tracking-normal text-ink-300">
                 {group.people.length}
               </span>

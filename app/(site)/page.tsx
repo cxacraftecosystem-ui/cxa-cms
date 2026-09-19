@@ -149,6 +149,18 @@ export default async function HomePage() {
  *
  * The menu is small by design (at most two levels, contract §8 of lib/navigation.ts) and nothing here
  * caps it, so there is no truncation to declare.
+ *
+ * ⚠ THE TWO SYNTHESISED CHILD LISTS ARE NOT HERE, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT. The
+ * header hangs the Centre's social accounts under Contact and its person groups under People
+ * (components/site/SiteHeader.tsx), both in the BROWSER — so this grid shows the menu an administrator
+ * configured and not the two lists the header grows for itself. Contact has behaved this way since the
+ * socials arrived and People now joins it.
+ *
+ * The reason to leave it that way is what this section is: the main SECTIONS of the site, one panel per
+ * section, and the groups of people are parts of one of them. A reader who wants Faculty rather than
+ * People is one hover away in the header and one click away on /people, where every group heading links
+ * to its own page. Listing eight more rows in a "where to begin" grid answers a question nobody arriving
+ * on a homepage is asking yet.
  */
 async function HomeIndex() {
   const [branding, navigation] = await Promise.all([getSettingCached("branding"), getNavigation()]);

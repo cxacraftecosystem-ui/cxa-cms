@@ -37,6 +37,7 @@
 import { useId, useMemo, useState } from "react";
 import { ArrowUpRight, ExternalLink, FileText, Mail, Phone, Search } from "lucide-react";
 
+import { isPersonGroupPath } from "@/lib/people/groups";
 import { buildQuery } from "@/lib/client/fetcher";
 import { useDebouncedValue, useResource } from "@/lib/client/useResource";
 import { ctaSectionSchema } from "@/lib/sections/schema";
@@ -193,7 +194,10 @@ function LinkDestinationControl({
    */
   const bare = shape === "internal" ? bareInternalPath(value) : "";
   const firstSegment = bare.split("/")[1] ?? "";
-  const isBuiltIn = BUILT_IN_PATHS.includes(bare);
+  // `isPersonGroupPath` covers the eight `/people/group/<slug>` addresses, which are code routes with
+  // no `Page` row — exactly what `BUILT_IN_PATHS` is for, except that they are enumerable rather than
+  // hand-listed, so they are asked rather than repeated (lib/people/groups.ts).
+  const isBuiltIn = BUILT_IN_PATHS.includes(bare) || isPersonGroupPath(bare);
   const insideBuiltInSection = !isBuiltIn && BUILT_IN_SECTIONS.includes(firstSegment);
   const verifiable = shape === "internal" && !isBuiltIn && !insideBuiltInSection;
 

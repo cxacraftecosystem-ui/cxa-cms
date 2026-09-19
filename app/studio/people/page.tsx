@@ -9,10 +9,7 @@ import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
-import {
-  PERSON_KIND_GROUPS,
-  PERSON_KIND_ORDER
-} from "@/components/site/PersonCard";
+import { PERSON_KIND_GROUPS, PERSON_KIND_ORDER } from "@/lib/people/groups";
 import { FilterToolbar } from "@/components/studio/FilterToolbar";
 import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
@@ -26,7 +23,7 @@ import { PeopleBoard, type PersonRow } from "./PeopleBoard";
  * a researcher one, because a profile speaks for a person (lib/permissions.ts). It throws rather than
  * rendering (contract §1.8).
  *
- * THE GROUPS AND THEIR ORDER COME FROM `components/site/PersonCard.tsx`, which is the vocabulary the
+ * THE GROUPS AND THEIR ORDER COME FROM `lib/people/groups.ts`, which is the vocabulary the
  * whole product shares. That module deliberately carries no `"use client"` so both halves can read it;
  * a second copy of the group order here would eventually put alumni above faculty on one screen only.
  *

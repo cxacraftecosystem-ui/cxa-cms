@@ -22,7 +22,7 @@ import { BreadcrumbJsonLd, Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { CardGrid } from "@/components/site/CardGrid";
 import { EntityCard } from "@/components/site/EntityCard";
 import { formatCentreDate } from "@/components/site/EventDateBlock";
-import { PERSON_KIND_LABELS, personTenure } from "@/components/site/PersonCard";
+import { personTenure } from "@/components/site/PersonCard";
 import { ProseArticle } from "@/components/site/ProseArticle";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { TagList } from "@/components/site/TagList";
@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/Badge";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { personInitials } from "@/components/site/PersonCard";
 import { liveStatusWhere } from "@/lib/content";
+import { PERSON_KIND_LABELS } from "@/lib/people/groups";
 import { prisma } from "@/lib/db";
 import { publicationDisplayVenue } from "@/lib/citation";
 import { framingAssets, withBaseAsset } from "@/lib/media/framing";
@@ -295,6 +296,25 @@ function profileLinks(person: PersonRecord): ProfileLink[] {
 // Metadata
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * How much of the department the fallback sentence below may spend, in characters.
+ *
+ * ⚠ THE SENTENCE HAS A BUDGET IT DOES NOT OWN. `pageMetadata` cuts every description at 160 characters
+ * (lib/seo.ts), and the sentence here is a name, a designation and a department: with the Centre's
+ * canonical spelling — 199 characters on its own — the cut lands somewhere inside the Ministry and the
+ * sentence loses its own full stop, so the page's description ends mid-address rather than at the end
+ * of a thought. Cutting the department HERE spends the budget deliberately: a name and a designation
+ * take perhaps eighty characters between them, which leaves about seventy for the placing and keeps
+ * the full stop.
+ *
+ * Seventy is also where the Centre's own name ends, so the sentence reads "…, Centre of Excellence for
+ * Unified AI-Enabled Craft Ecosystem Platform…" rather than trailing off inside "at IIT Kharagpur".
+ *
+ * ⚠ THIS IS THE `description`, NOT THE `department` PROPERTY. The JSON-LD below carries the department
+ * in full and must go on doing so — structured data is read by a machine and has no layout to protect.
+ */
+const SUMMARY_DEPARTMENT_LIMIT = 70;
+
 /** The one-line summary used for the meta description and the JSON-LD. */
 function personSummary(person: PersonRecord): string {
   const bio = person.bio?.trim();
@@ -304,8 +324,12 @@ function personSummary(person: PersonRecord): string {
   if (rich) return rich;
 
   // No biography at all: the designation and department are still a truthful sentence, and a card with
-  // no description is a card most platforms render as a bare grey rectangle.
-  const role = [person.designation, person.department].filter(Boolean).join(", ");
+  // no description is a card most platforms render as a bare grey rectangle. The placing is shortened
+  // so the sentence survives the 160-character cut intact — see SUMMARY_DEPARTMENT_LIMIT.
+  const placing = person.department?.trim()
+    ? truncateWords(person.department, SUMMARY_DEPARTMENT_LIMIT)
+    : null;
+  const role = [person.designation, placing].filter(Boolean).join(", ");
   return role ? `${person.name} — ${role}.` : person.name;
 }
 
@@ -473,6 +497,15 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
     "@type": "Person",
     name: person.name,
     ...(person.designation ? { jobTitle: person.designation } : {}),
+    /*
+     * ⚠ THE DEPARTMENT GOES IN WHOLE HERE, AND NOTHING MAY EVER TRUNCATE IT. Every card and credit on
+     * the site now shortens this column, because it is free text and the Centre's canonical spelling of
+     * its own name runs to 199 characters (components/site/PersonCard.tsx). Structured data is the one
+     * place with no layout to protect: it is read by a machine that is trying to match this person to
+     * an organisation, and an `Organization.name` ending in an ellipsis matches nothing — worse, it
+     * publishes a name the Centre does not have. `description` above is a summary and is cut; this is
+     * an identifier and is not.
+     */
     ...(person.department ? { department: { "@type": "Organization", name: person.department } } : {}),
     worksFor: {
       "@type": "ResearchOrganization",
@@ -551,7 +584,34 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
             {person.designation ? (
               <p className="mt-4 text-lg leading-relaxed text-ink-700">{person.designation}</p>
             ) : null}
-            {person.department ? <p className="mt-1 text-base text-ink-500">{person.department}</p> : null}
+            {/*
+              ⚠ THE DEPARTMENT IS PRINTED HERE IN FULL, AND THIS IS THE ONLY PLACE ON THE SITE THAT
+              DOES. Every card, credit and share card shortens it — it is free text, and the Centre's
+              canonical spelling of its own name runs to 199 characters, naming the institute, the
+              Office, the Ministry and the Government that fund it (components/site/PersonCard.tsx).
+              None of that is padding: it is the placing an author writes under their name on a paper,
+              and this is the page ABOUT this person, where a fact about them belongs whole. A profile
+              that ended its own department in an ellipsis and offered nowhere to read the rest would
+              be the one page on the site where the truncation had no way back.
+
+              SO THE JOB HERE IS LAYOUT, NOT LENGTH. Three classes, each for one line of the three this
+              can now run to:
+
+                • `prose-measure` — the site's single reading measure (68ch, globals.css). The `1fr`
+                  half of this hero's `[18rem_1fr]` grid is around 850px on a wide screen, which sets
+                  16px text to roughly a hundred characters a line; this is the longest string on the
+                  page and the one that would show it.
+                • `leading-relaxed` — the leading every other paragraph on the site has. Default leading
+                  is invisible on the single line this used to be and cramped on three.
+                • `text-pretty` — a 199-character value otherwise ends on one orphaned word ("India").
+                  Not `text-balance`: that is for headings, and browsers stop applying it past a handful
+                  of lines (components/sections/HeroSection.tsx).
+            */}
+            {person.department ? (
+              <p className="prose-measure mt-1 text-pretty text-base leading-relaxed text-ink-500">
+                {person.department}
+              </p>
+            ) : null}
             {tenure ? (
               <p className="mt-3 text-sm tabular-nums text-ink-500">
                 {/* An alumnus reads as a closed range; a current member shows no end date, which is

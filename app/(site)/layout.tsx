@@ -9,6 +9,7 @@ import type { NavNode } from "@/lib/navigation";
 import { organizationJsonLd, serializeJsonLd, webSiteJsonLd } from "@/lib/seo";
 import { getSettingsCached } from "@/lib/settings/service";
 import { getNavigation } from "@/lib/navigation-server";
+import { listablePeopleByGroup } from "@/lib/people/roster";
 import type {
   FeatureFlag,
   FeaturesSettings,
@@ -165,8 +166,21 @@ function organizationNode(settings: SettingsMap): Record<string, unknown> {
 }
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
-  // One round trip for both, deduped by React `cache()` if a child asks again in the same request.
-  const [settings, navigation] = await Promise.all([getSettingsCached(), getNavigation()]);
+  /**
+   * One round trip for all three, each deduped by React `cache()` if a child asks again in the same
+   * request — which a group page does: it names its sibling groups from the same counts the header menu
+   * is built from, and pays for one query rather than two.
+   *
+   * ⚠ NONE OF THESE MAY THROW, because this layout renders for EVERY page — including every page the
+   * build prerenders, where an unreachable database would otherwise fail the whole deploy on whichever
+   * page Next happened to render first. `getNavigation` learnt that the expensive way and records it in
+   * its own header; `listablePeopleByGroup` falls back the same way, to an empty list.
+   */
+  const [settings, navigation, peopleGroups] = await Promise.all([
+    getSettingsCached(),
+    getNavigation(),
+    listablePeopleByGroup()
+  ]);
 
   return (
     <>
@@ -213,6 +227,13 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           items={navigation.header}
           features={settings.features}
           social={settings.social}
+          /*
+            The person groups that have somebody in them, for the submenu under People — plain
+            `{ kind, count }` rows and nothing else. A finished `NavNode` would be the wrong thing to
+            send: `NavNode.icon` is a React component, and a function cannot cross this boundary
+            (lib/navigation.ts). The header mints the nodes itself, beside the social ones.
+          */
+          peopleGroups={peopleGroups}
         />
 
         {/*
