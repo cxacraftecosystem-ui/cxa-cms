@@ -6,7 +6,8 @@ import { ExternalLink } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
-import { siteUrl, storageConfigured } from "@/lib/env";
+import { storageConfigured } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { canManageContent } from "@/lib/permissions";
@@ -227,7 +228,7 @@ export default async function StudioEventPage({
       }
     : blankEvent();
 
-  const origin = siteUrl().replace(/\/+$/, "");
+  const origin = (await requestSiteUrl()).replace(/\/+$/, "");
   const live = event ? isLive(event) : false;
   const now = new Date();
   /**

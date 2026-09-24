@@ -3,7 +3,8 @@ import type { Role } from "@prisma/client";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
-import { siteUrl, storageConfigured } from "@/lib/env";
+import { storageConfigured } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import { ROLES_DESCENDING, canAuthor, hasRank } from "@/lib/permissions";
 import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
@@ -113,7 +114,7 @@ export default async function StudioNewArticlePage() {
         authorName={user.name}
         user={user}
         storageReady={storageConfigured()}
-        siteOrigin={siteUrl().replace(/\/+$/, "")}
+        siteOrigin={(await requestSiteUrl()).replace(/\/+$/, "")}
       />
     </div>
   );

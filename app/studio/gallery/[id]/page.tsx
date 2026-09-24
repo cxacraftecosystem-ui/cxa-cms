@@ -5,7 +5,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageContent, canPublish } from "@/lib/permissions";
-import { siteUrl, storageConfigured } from "@/lib/env";
+import { storageConfigured } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
@@ -236,7 +237,7 @@ export default async function StudioAlbumPage({ params }: { params: Promise<{ id
         // the server gives cannot disagree (contract §1.7).
         canPublish={canPublish(user)}
         storageReady={storageConfigured()}
-        siteUrl={siteUrl()}
+        siteUrl={await requestSiteUrl()}
         categorySuggestions={categorySuggestions}
       />
     </div>

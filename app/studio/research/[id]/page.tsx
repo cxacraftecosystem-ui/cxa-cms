@@ -4,7 +4,8 @@ import { ExternalLink } from "lucide-react";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
-import { siteUrl, storageConfigured } from "@/lib/env";
+import { storageConfigured } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageResearch, canPublish } from "@/lib/permissions";
@@ -199,7 +200,7 @@ export default async function StudioResearchAreaPage({
       <ResearchAreaEditor
         areaId={area?.id ?? null}
         initialValue={initialValue}
-        siteUrl={siteUrl()}
+        siteUrl={await requestSiteUrl()}
         // The file store not being set up is a real state on a fresh installation. The picker says so
         // rather than failing silently at the moment somebody tries to upload.
         storageReady={storageConfigured()}

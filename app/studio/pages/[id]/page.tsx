@@ -8,7 +8,8 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { buildQuery } from "@/lib/client/fetcher";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
-import { siteName, siteUrl, storageConfigured } from "@/lib/env";
+import { siteName, storageConfigured } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { PAGE_PREVIEW_QUERY_KEY, pagePath, pagePreviewToken } from "@/lib/pages";
 import { canManageStructure } from "@/lib/permissions";
@@ -161,7 +162,7 @@ export default async function StudioPageEditorPage({
     [PAGE_PREVIEW_QUERY_KEY]: pagePreviewToken(page.slug)
   })}`;
 
-  const origin = siteUrl().replace(/\/+$/, "");
+  const origin = (await requestSiteUrl()).replace(/\/+$/, "");
   const live = isLive(page);
   const publicPath = pagePath(page.slug);
 

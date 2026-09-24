@@ -5,7 +5,7 @@ import type { ContentStatus, EventMode, Prisma, RegistrationStatus } from "@pris
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import { framingAssets, withBaseAsset } from "@/lib/media/framing";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
@@ -261,7 +261,7 @@ export default async function StudioEventsPage({
         total={total}
         page={currentPage}
         pageSize={PAGE_SIZE}
-        siteOrigin={siteUrl().replace(/\/+$/, "")}
+        siteOrigin={(await requestSiteUrl()).replace(/\/+$/, "")}
         filtersActive={query.length > 0 || status !== null || mode !== null || when.length > 0}
         timeZoneLabel={centreZoneName(now, "long") || CENTRE_TIME_ZONE}
       />

@@ -6,7 +6,7 @@ import type { ContentStatus, Prisma } from "@prisma/client";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import { framingAssets, withBaseAsset } from "@/lib/media/framing";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
@@ -276,7 +276,7 @@ export default async function StudioNewsPage({
         total={total}
         page={currentPage}
         pageSize={PAGE_SIZE}
-        siteOrigin={siteUrl().replace(/\/+$/, "")}
+        siteOrigin={(await requestSiteUrl()).replace(/\/+$/, "")}
         filtersActive={
           query.length > 0 || status !== null || categoryFilter.length > 0 || tagFilter.length > 0
         }

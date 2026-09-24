@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { CookieOptions } from "./cookies";
 import { ACCESS_REFUSED_MESSAGE } from "./access";
 import { isOAuthProvider, type OAuthProviderName } from "./oauth";
+import { originFromHeaders } from "@/lib/request-origin";
 
 /**
  * Everything the TWO HALVES of a provider sign-in must agree about, in one module.
@@ -77,16 +78,6 @@ export function safeStudioPath(raw: string | null | undefined): string {
 // The origin this deployment is actually reached at
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A header a chain of proxies may have appended to. The ORIGINAL value is the leftmost one. */
-function firstHeaderValue(value: string | null): string | null {
-  if (!value) return null;
-  const first = value.split(",")[0]?.trim();
-  return first && first.length > 0 ? first : null;
-}
-
-/** Hostname, optionally with a port or in IPv6 brackets. Anything else is not a host. */
-const HOST_SHAPE = /^[A-Za-z0-9._~\-[\]:%]{1,255}$/;
-
 /**
  * The origin to build `redirect_uri` and same-site redirects from.
  *
@@ -106,19 +97,7 @@ const HOST_SHAPE = /^[A-Za-z0-9._~\-[\]:%]{1,255}$/;
  * half-parsed host concatenated into a URL is how a header becomes a redirect target.
  */
 export function requestOrigin(request: NextRequest): string {
-  const url = new URL(request.url);
-
-  const forwardedProto = firstHeaderValue(request.headers.get("x-forwarded-proto"))?.toLowerCase();
-  const protocol =
-    forwardedProto === "https" || forwardedProto === "http"
-      ? forwardedProto
-      : url.protocol.replace(/:$/, "");
-
-  const forwardedHost = firstHeaderValue(request.headers.get("x-forwarded-host"));
-  const host = forwardedHost && HOST_SHAPE.test(forwardedHost) ? forwardedHost : url.host;
-
-  if (!HOST_SHAPE.test(host)) return url.origin;
-  return `${protocol}://${host}`;
+  return originFromHeaders(request.headers, new URL(request.url));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

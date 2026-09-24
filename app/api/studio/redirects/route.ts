@@ -4,7 +4,7 @@ import { assertSameOrigin, badRequest, conflict, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
 import { mutateWithHistory } from "@/lib/audit";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/env";
+import { originFromHeaders } from "@/lib/request-origin";
 import { canManageStructure } from "@/lib/permissions";
 import { buildAuditContext, found, parseStudioJson, parseStudioQuery } from "@/lib/studio/crud";
 
@@ -235,7 +235,7 @@ export const GET = route(async (request: NextRequest) => {
     limit,
     chains: describeChains(all),
     /** So a client can show the full address a reader would type. */
-    origin: siteUrl()
+    origin: originFromHeaders(request.headers, new URL(request.url))
   });
 });
 

@@ -7,7 +7,8 @@ import type { Role } from "@prisma/client";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
-import { siteUrl, storageConfigured } from "@/lib/env";
+import { storageConfigured } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ROLES_DESCENDING, canAuthor, canEditRecord, hasRank } from "@/lib/permissions";
@@ -177,7 +178,7 @@ export default async function StudioArticlePage({
     readingMinutes: post.readingMinutes ?? 0
   };
 
-  const origin = siteUrl().replace(/\/+$/, "");
+  const origin = (await requestSiteUrl()).replace(/\/+$/, "");
   const live = isLive(post);
   const publicPath = `/news/${post.slug}`;
 

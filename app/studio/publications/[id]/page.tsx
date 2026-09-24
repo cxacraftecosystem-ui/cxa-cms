@@ -4,7 +4,7 @@ import { ExternalLink } from "lucide-react";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -191,7 +191,7 @@ export default async function StudioPublicationPage({
       <PublicationEditor
         publicationId={publication?.id ?? null}
         initialValue={initialValue}
-        siteUrl={siteUrl()}
+        siteUrl={await requestSiteUrl()}
         projects={publication?.projects ?? []}
         canPublish={canPublish(user)}
         canDelete={canManageResearch(user)}

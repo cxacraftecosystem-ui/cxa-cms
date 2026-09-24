@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
-import { siteName, siteUrl, storageConfigured } from "@/lib/env";
+import { siteName, storageConfigured } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import { canManageStructure } from "@/lib/permissions";
 import { CENTRE_TIME_ZONE } from "@/components/site/EventDateBlock";
 import { HelpText } from "@/components/studio/HelpText";
@@ -86,7 +87,7 @@ export default async function StudioNewPagePage() {
         isSystem={false}
         // No preview and no history: neither exists until the row does.
         previewUrl={null}
-        siteOrigin={siteUrl().replace(/\/+$/, "")}
+        siteOrigin={(await requestSiteUrl()).replace(/\/+$/, "")}
         siteName={siteName()}
         revisions={[]}
         user={user}

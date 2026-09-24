@@ -4,7 +4,8 @@ import { ExternalLink } from "lucide-react";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
-import { siteUrl, storageConfigured } from "@/lib/env";
+import { storageConfigured } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import type { ScreenFraming } from "@/lib/media/screens";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageContent, canPublish } from "@/lib/permissions";
@@ -208,7 +209,7 @@ export default async function StudioPersonPage({
       <PersonEditor
         personId={person?.id ?? null}
         initialValue={initialValue}
-        siteUrl={siteUrl()}
+        siteUrl={await requestSiteUrl()}
         storageReady={storageConfigured()}
         canPublish={canPublish(user)}
         canDelete={canManageContent(user)}

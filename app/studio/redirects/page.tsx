@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageStructure } from "@/lib/permissions";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
-import { siteUrl } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -378,7 +378,7 @@ export default async function StudioRedirectsPage({
     if (hops.length > 0) chains.push({ source, hops: [...hops, current], loops });
   }
 
-  const origin = siteUrl();
+  const origin = (await requestSiteUrl());
 
   return (
     <div className="mx-auto w-full max-w-[84rem] space-y-6">

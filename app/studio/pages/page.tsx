@@ -5,7 +5,7 @@ import type { ContentStatus, Prisma } from "@prisma/client";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { isLive } from "@/lib/content";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/env";
+import { requestSiteUrl } from "@/lib/request-origin";
 import { pagePath } from "@/lib/pages";
 import { canManageStructure } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
@@ -232,7 +232,7 @@ export default async function StudioPagesPage({
         total={total}
         page={currentPage}
         pageSize={PAGE_SIZE}
-        siteOrigin={siteUrl().replace(/\/+$/, "")}
+        siteOrigin={(await requestSiteUrl()).replace(/\/+$/, "")}
         filtersActive={query.length > 0 || status !== null}
         // The same predicate the DELETE handler checks. Hiding the control is for the reader's benefit;
         // the handler refusing it is the boundary (contract §1.7).
