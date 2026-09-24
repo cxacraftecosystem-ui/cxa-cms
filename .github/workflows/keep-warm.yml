@@ -82,8 +82,12 @@ jobs:
           # psql verbatim fails instantly with `invalid URI query parameter` — which looks exactly
           # like a dead database and is nothing of the kind. Strip them; keep sslmode and
           # channel_binding, which libpq does understand and Neon does require.
+          #
+          # One parameter per pass, keeping the delimiter IN FRONT of it and dropping the one after:
+          # a single `g` pass that removed the leading `?` too broke the moment `pgbouncer` came first
+          # (`…/postgres?pgbouncer=true&sslmode=require` became database `postgres&sslmode=require`).
           PG_URL=$(printf '%s' "${DATABASE_URL}" \
-            | sed -E 's/([?&])(pgbouncer|connection_limit|pool_timeout)=[^&]*//g; s/\?&/?/; s/[?&]$//')
+            | sed -E ':a; s/([?&])(pgbouncer|connection_limit|pool_timeout)=[^&]*&?/\1/; ta; s/[?&]$//')
 
           # Three attempts with a widening pause. A FIRST failure against a suspended compute is the
           # expected case, not the exceptional one: Neon accepts the connection only once the instance
