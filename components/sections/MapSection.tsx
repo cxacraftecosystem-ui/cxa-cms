@@ -36,7 +36,7 @@
  *
  * THE LIBRARY AND ITS STYLESHEET ARE LOADED INSIDE THE EFFECT, not at the top of the file.
  * `SectionRenderer` imports every renderer statically, so a top-level `import "maplibre-gl"` would
- * put ~800 KB of WebGL mapping code and ~25 KB of CSS into the bundle of every page on the site,
+ * put ~1 MB of WebGL mapping code and ~80 KB of CSS into the bundle of every page on the site,
  * including the ones with no map on them. Deferring the import to the effect is also what makes this
  * `ssr: false` — nothing touches `window` until after mount.
  *
@@ -56,6 +56,7 @@ import type { PageSection } from "@prisma/client";
 import type { Map as MapLibreMap, StyleSpecification } from "maplibre-gl";
 
 import { basemapAttribution, mapTilerStyleUrl, rasterBasemapStyle } from "@/lib/geo/basemap";
+import { maplibreWorkerUrl } from "@/lib/geo/maplibreWorker";
 import { ExternalLink, MapPin } from "lucide-react";
 
 import { Reveal } from "@/components/motion";
@@ -177,6 +178,10 @@ export function MapCanvas({
       }
 
       if (cancelled) return;
+
+      // Before the first `new Map()`: inside a bundle maplibre cannot find its own worker, and the map
+      // would draw nothing. See lib/geo/maplibreWorker.ts.
+      maplibre.setWorkerUrl(maplibreWorkerUrl());
 
       /**
        * MapTiler's vector style when there is a key, the raster fallback when there is not.

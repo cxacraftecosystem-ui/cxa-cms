@@ -34,7 +34,7 @@
  *
  * `maplibre-gl` AND ITS STYLESHEET ARE IMPORTED INSIDE THE EFFECT. That is what makes this component
  * `ssr: false` without a `next/dynamic` wrapper: nothing touches `window` until after mount, and the
- * ~800 KB of WebGL mapping code is not in the bundle of any page that has no map on it. A
+ * ~1 MB of WebGL mapping code is not in the bundle of any page that has no map on it. A
  * `next/dynamic(…, { ssr: false })` cannot be used from the Server Component that renders this page
  * at all, so the deferral has to live here — the same decision, and the same reasoning, as
  * MapSection.
@@ -64,6 +64,7 @@ import type {
 } from "maplibre-gl";
 
 import { mapTilerStyleUrl, rasterBasemapStyle } from "@/lib/geo/basemap";
+import { maplibreWorkerUrl } from "@/lib/geo/maplibreWorker";
 import { Layers, MapPin } from "lucide-react";
 
 import { useReducedMotionPreference } from "@/components/motion";
@@ -328,6 +329,10 @@ export function CraftMap({ points, selectedId, onSelect, label, className }: Cra
       }
 
       if (cancelled) return;
+
+      // Before the first `new Map()`: inside a bundle maplibre cannot find its own worker, and the map
+      // would draw nothing. See lib/geo/maplibreWorker.ts.
+      maplibre.setWorkerUrl(maplibreWorkerUrl());
 
       /**
        * MapTiler's vector style when there is a key, the raster fallback when there is not. maplibre

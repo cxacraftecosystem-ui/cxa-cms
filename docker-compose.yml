@@ -31,7 +31,16 @@ name: cxa-portal
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # The MAJOR production runs: Supabase is on PostgreSQL 17 and offers no 18, so neither does this
+    # (nor CI's service container, .github/workflows/ci.yml).
+    #
+    # ⚠ A VOLUME CREATED BY AN OLDER MAJOR WILL NOT START UNDER THIS ONE. This image was 16 until
+    # 2026-10; a `postgres-data` volume from then holds a PG16 cluster, and PG17 refuses it with
+    # "database files are incompatible with server" and a restart loop. `docker compose down -v`, then
+    # `up -d --build`, and the migrate service re-seeds it — after a pg_dump first if the local data
+    # matters. The mount below stays correct for 17; from 18 the image declares its volume at
+    # /var/lib/postgresql (PGDATA becomes /var/lib/postgresql/18/docker), so the mount moves with it.
+    image: postgres:17-alpine
     container_name: cxa-postgres-compose
     environment:
       POSTGRES_USER: postgres

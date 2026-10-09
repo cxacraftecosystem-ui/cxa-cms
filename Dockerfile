@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 # CxA Centre of Excellence — multi-stage image.
 #
@@ -21,15 +21,23 @@
 # needed `--platform=linuxmusl`. Each is a separate thing to get right, each fails at RUN time rather than
 # build time, and each fails with a message about an ELF header that says nothing about musl. Debian slim
 # costs about 40 MB more and removes both problems.
+#
+# ⚠ THE BASE IMAGE IS SPELLED OUT ON ALL FOUR `FROM` LINES, AND ITS MAJOR FOLLOWS `engines.node` IN
+# package.json. That field is what CI (setup-node reads it) and Vercel run, so an image on another
+# major tests a runtime production does not have. It used to be one `ARG NODE_VERSION` interpolated
+# into each `FROM`; Dependabot reads `FROM` lines literally and skips one containing `${…}`, so the
+# image was invisible to the update that exists to keep it current. Change all four together. Node 26
+# waits until Vercel offers it; .github/dependabot.yml holds the major back until then.
+#
+# `trixie` (Debian 13) is named rather than implied. Debian 12 bookworm's regular security support
+# ended on 2026-07-11, and the codename-less `node:24-slim` still resolves to bookworm.
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-
-ARG NODE_VERSION=22
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 # Stage 1 — deps
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-FROM node:${NODE_VERSION}-bookworm-slim AS deps
+FROM node:24-trixie-slim AS deps
 
 WORKDIR /app
 
@@ -67,7 +75,7 @@ RUN npm ci --no-audit --no-fund
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 # Stage 2 — builder
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-FROM node:${NODE_VERSION}-bookworm-slim AS builder
+FROM node:24-trixie-slim AS builder
 
 WORKDIR /app
 
@@ -156,7 +164,7 @@ RUN npm run build
 # Run once by compose, to completion, before the app starts. It needs the full dependency tree because
 # it runs the Prisma CLI and `tsx`; that is exactly why it cannot be the runtime image.
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-FROM node:${NODE_VERSION}-bookworm-slim AS migrator
+FROM node:24-trixie-slim AS migrator
 
 WORKDIR /app
 
@@ -196,7 +204,7 @@ CMD ["sh", "-c", "npx prisma migrate deploy && npm run seed"]
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 # Stage 4 — runtime
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+FROM node:24-trixie-slim AS runtime
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
@@ -209,7 +217,7 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# node:bookworm-slim already ships an unprivileged `node` account (uid 1000). Reusing it is one fewer
+# node:24-trixie-slim already ships an unprivileged `node` account (uid 1000). Reusing it is one fewer
 # thing to get wrong than inventing another, and the server needs to write nothing on disk.
 USER node
 

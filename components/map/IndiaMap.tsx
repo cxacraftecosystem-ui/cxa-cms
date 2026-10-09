@@ -15,7 +15,7 @@
  * Everything the picture says is said again by `MapPlaceList` beside it, a real list with real
  * counts and real links; a keyboard or screen-reader user gets the better interface of the two.
  *
- * NO MAPPING LIBRARY. maplibre already earns its quarter-megabyte in the craft explorer's real
+ * NO MAPPING LIBRARY. maplibre already earns its megabyte in the craft explorer's real
  * basemap; here the whole geometry is 18 KiB of string and one `<path>`. Nothing re-renders on a
  * pointer move except the hover card.
  *

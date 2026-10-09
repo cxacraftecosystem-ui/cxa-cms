@@ -26,12 +26,15 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Named, not `ubuntu-latest`, which GitHub moves on its own schedule (it still meant 24.04 when
+    # 26.04 had been generally available for weeks). A runner change is then a reviewed diff.
+    runs-on: ubuntu-26.04
     timeout-minutes: 25
 
     services:
       postgres:
-        image: postgres:16-alpine
+        # Production's major (Supabase runs PostgreSQL 17 and offers no 18); docker-compose.yml matches.
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -65,11 +68,16 @@ jobs:
       # disabled (lib/env.ts `configurationWarnings`), and CI is the right place to prove that holds.
 
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to commit SHAs, the release tag in the comment. A tag can be moved to other code; a SHA
+      # cannot. .github/dependabot.yml proposes the next pin when the tag moves.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          # `engines.node` in package.json, the one statement of the runtime: Vercel reads the same
+          # field, and the Dockerfile's base image follows it. A number written here instead drifted
+          # (CI ran 22 while production ran 24).
+          node-version-file: package.json
           cache: npm
 
       - name: Install

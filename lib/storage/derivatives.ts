@@ -34,8 +34,16 @@ type DerivativeFormat = (typeof FORMATS)[number];
 /**
  * Quality per format. AVIF is set lower than WebP ON PURPOSE — the two scales are not comparable,
  * and AVIF at 50 is visually equivalent to WebP at 78 while being roughly 30% smaller.
+ *
+ * ⚠ THAT EQUIVALENCE WAS MEASURED UNDER SSIM TUNING, AND `AVIF_TUNE` IS WHAT KEEPS IT TRUE. sharp 0.35
+ * made SSIMULACRA2-based `iq` the default tuning for lossy AVIF, and `iq` maps a quality number to a
+ * different quantizer, so the same 50 is no longer the same picture at the same size: on four of
+ * public/craft/sheets at 1280 px, the default came out 17–27% smaller than SSIM. SSIM is what every
+ * earlier derivative was encoded with (sharp 0.33's libheif 1.18 defaulted to it). To move to `iq`,
+ * re-measure `QUALITY.avif` against WebP at 78 under it, and delete `AVIF_TUNE` in that change.
  */
 const QUALITY: Record<DerivativeFormat, number> = { avif: 50, webp: 78 };
+const AVIF_TUNE = "ssim";
 
 const MIME: Record<DerivativeFormat, string> = { avif: "image/avif", webp: "image/webp" };
 
@@ -152,7 +160,7 @@ export async function generateDerivatives(input: {
 
         const buffer =
           format === "avif"
-            ? await resized.avif({ quality: QUALITY.avif, effort: 4 }).toBuffer()
+            ? await resized.avif({ quality: QUALITY.avif, effort: 4, tune: AVIF_TUNE }).toBuffer()
             : await resized.webp({ quality: QUALITY.webp, effort: 4 }).toBuffer();
 
         const outputMeta = await sharp(buffer).metadata();

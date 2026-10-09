@@ -3,9 +3,9 @@ name: motion
 description: Declarative animation in this repo — the one reduced-motion hook and the two switches it unions, the spring and duration tokens you must not invent numbers beside, the variants factories, Reveal and its noscript rescue, the public-site rule that reduced motion changes durations and never the initial state, Lenis, and the traps that have shipped here. Load before adding or changing ANY declarative animation.
 ---
 
-# Motion (framer-motion v12) — the declarative half
+# Motion (framer-motion v14) — the declarative half
 
-`framer-motion@12.43.0` is installed and **is** Motion — the library was renamed to `motion` at v12 and
+`framer-motion@14.0.0` is installed and **is** Motion — the library was renamed to `motion` at v12 and
 `framer-motion` remains a published alias of the same code. **Do not add the `motion` package
 alongside it**: two copies of one library means two `MotionConfig` contexts, two reduced-motion
 subscriptions and layout animations that fight. Import from `framer-motion`, which is what every file
@@ -175,7 +175,7 @@ styles always win and the rescue only applies where nothing will animate.
 - **framer's `useReducedMotion()`** — sees only the OS switch. Always `useReducedMotionPreference()`.
 - **Branching `initial` on `reduce` on a `(site)` route** — a flash, because the value is `false` for the
   first render by design.
-- **Adding the `motion` package** — it is the same library as the installed `framer-motion@12`.
+- **Adding the `motion` package** — it is the same library as the installed `framer-motion@14`.
 - **Inline `transition={{ … }}`** — invisible to the preference. Use a factory.
 - **Centring a framer-animated element with a translate class** — framer writes an inline `transform`
   and the class loses. Centre with margins.

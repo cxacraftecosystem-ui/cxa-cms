@@ -30,6 +30,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type * as maplibregl from "maplibre-gl";
 
 import { mapTilerConfigured, mapTilerStyleUrl } from "@/lib/geo/basemap";
+import { maplibreWorkerUrl } from "@/lib/geo/maplibreWorker";
 import { PlaceSearchBox } from "@/components/studio/fields/PlaceSearchBox";
 import type { PlaceHit } from "@/lib/geo/placeSearch";
 
@@ -60,7 +61,12 @@ export function loadMapLibre(): Promise<MapLibre> {
     // The stylesheet ships separately; without it the canvas renders but every control is unstyled.
     import("maplibre-gl/dist/maplibre-gl.css")
   ])
-    .then(([module]) => module)
+    .then(([module]) => {
+      // Before any caller's first `new Map()`: inside a bundle maplibre cannot find its own worker,
+      // and the map would draw nothing. See lib/geo/maplibreWorker.ts.
+      module.setWorkerUrl(maplibreWorkerUrl());
+      return module;
+    })
     .catch((error: unknown) => {
       maplibreRequest = null;
       throw error;

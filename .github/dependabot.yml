@@ -1,0 +1,94 @@
+version: 2
+
+# ─── WHY THIS FILE EXISTS ─────────────────────────────────────────────────────────────────
+# Nothing used to update this repository. The lockfile did not change from 2026-08-16 until
+# 2026-10-09, while production ran a Next release inside two critical advisories; CI's Node and
+# Postgres were whatever the first commit wrote; the workflow actions sat on a runtime GitHub had
+# deprecated. Every version drifted because nothing proposed the next one. Dependabot now does, once
+# a week, as pull requests that CI verifies like any other change.
+#
+# ─── THE SHAPE OF EACH ECOSYSTEM ─────────────────────────────────────────────────────────
+# Minor and patch updates arrive as ONE grouped pull request per ecosystem. Majors stay individual:
+# a framework major is a piece of work with its own migration, not a bump, and grouped with a dozen
+# patches it would hide in a diff nobody reads to the end.
+#
+# ─── WHAT IS HELD BACK, AND WHAT RELEASES IT ─────────────────────────────────────────────
+# Each `ignore` below is a coupling to something outside this repository, never a preference.
+# Delete the entry when its condition is met, in the same change that moves the coupled versions.
+
+updates:
+  # ── GitHub Actions ─────────────────────────────────────────────────────────────────────
+  # The workflows pin actions to commit SHAs with the tag in a trailing comment. A pin never picks
+  # up a security fix or a runtime bump on its own; this proposes the next SHA when the tag moves.
+  - package-ecosystem: github-actions
+    # "/" and not "/.github/workflows": for this ecosystem the directory is the repository root and
+    # Dependabot looks under .github/workflows itself.
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # ── npm ────────────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # The types must describe the runtime that executes the code: `engines.node` (24.x), which is
+      # also the highest Node Vercel offers. @types/node 26 would type-check calls Node 24 does not
+      # have. Remove this when Vercel lists 26.x, moving engines.node, the Dockerfile and this
+      # package together.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+
+  # ── Dockerfile ─────────────────────────────────────────────────────────────────────────
+  # The Dockerfile spells out its base image on every FROM line because this ecosystem cannot read
+  # an image tag built from an ARG.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # The container must run the Node major production runs (engines.node in package.json, which
+      # Vercel reads). Remove this when Vercel lists 26.x, with the same change as @types/node above.
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
+
+  # ── docker-compose.yml ─────────────────────────────────────────────────────────────────
+  - package-ecosystem: docker-compose
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Local and CI Postgres follow production's major, and production is Supabase, which builds
+      # PostgreSQL 15 and 17 and no 18. Remove this once the Supabase project is upgraded to 18,
+      # moving this image, CI's service container and the compose volume path together.
+      - dependency-name: postgres
+        update-types:
+          - version-update:semver-major
+      # Upstream MinIO is archived and its images are gone from Docker Hub, so there is no newer
+      # version to propose and the lookup only fails. Replacing the local object store is its own
+      # change; remove these two entries with it.
+      - dependency-name: minio/minio
+      - dependency-name: minio/mc

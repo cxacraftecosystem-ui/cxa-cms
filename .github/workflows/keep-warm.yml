@@ -61,7 +61,9 @@ permissions:
 
 jobs:
   beat:
-    runs-on: ubuntu-latest
+    # Named rather than `ubuntu-latest`, as in ci.yml. The database check below uses this image's
+    # psql: the 26.04 image ships the PostgreSQL 18 client, which talks to Supabase's 17 server.
+    runs-on: ubuntu-26.04
     # A curl capped at 60 s, then at most three connection attempts of 10 s each and 30 s of pauses:
     # well inside five minutes, so neither step can run the other out of time.
     timeout-minutes: 5

@@ -42,6 +42,11 @@ docker compose down            # stop, keep the data
 docker compose down -v         # stop and delete the data
 ```
 
+⚠ **A `postgres-data` volume from before October 2026 will not start.** It holds a PostgreSQL 16 cluster,
+and the image is now `postgres:17-alpine`, production's major, which refuses it ("database files are
+incompatible with server"). Run `docker compose down -v` once (after a `pg_dump`, if the local data
+matters); `up -d --build` then re-seeds.
+
 ⚠ **After a schema change, rebuild BOTH images.** `app` and `migrate` are built from separate stages and
 each carries its own generated Prisma client; `docker compose build app` leaves the migrator holding the
 old one, and since the migrator is what applies migrations, the stack then fails with something that
