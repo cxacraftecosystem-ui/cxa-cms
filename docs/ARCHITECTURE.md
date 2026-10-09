@@ -13,7 +13,7 @@ Five documents already exist and this one deliberately does not repeat them:
 | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Getting it running on Vercel or in a container; every `vercel.json` key; the two database URLs. |
 | [`OPERATIONS.md`](./OPERATIONS.md) | Bucket CORS, environment variables whose absence is *silent*, backups, the verification suite. |
 | [`SIGN-IN.md`](./SIGN-IN.md) | The studio access list as an administrator experiences it — adding, revoking, the master-admin rule. |
-| [`OUTSTANDING.md`](./OUTSTANDING.md) | What was once broken and what now prevents each class of it recurring. Nothing is outstanding; the *shape* of the failures is why the checks in §6.5 exist. |
+| [`OUTSTANDING.md`](./OUTSTANDING.md) | What is still open (its *Open* section), what was once broken, and what now prevents each class of it recurring. The *shape* of the failures is why the checks in §6.5 exist. |
 
 Two companions sit beside this one: [`DATA-MODEL.md`](./DATA-MODEL.md) for the entities and their
 relationships, and [`REQUEST-LIFECYCLE.md`](./REQUEST-LIFECYCLE.md) for what happens between a
@@ -72,16 +72,16 @@ differs is how many copies of the process exist, and therefore what in-process s
 ```mermaid
 flowchart TB
     subgraph vercel["Vercel — serverless"]
-        vfn["N short-lived function instances<br/>N changes with traffic"]
-        vcron["vercel.json crons<br/>/api/cron/purge, 03:17 UTC daily"]
-        gha["GitHub Actions 'Heartbeat'<br/>*/5 * * * * → /api/cron/publish"]
-        vneon[("Managed Postgres<br/>DATABASE_URL pooled<br/>DIRECT_DATABASE_URL for migrations")]
+        vfn["N short-lived function instances, bom1 (Mumbai)<br/>N changes with traffic"]
+        vcron["vercel.json crons<br/>/api/cron/purge, 03:17 UTC daily<br/>/api/cron/logs-archive, 03:41 UTC daily"]
+        gha["GitHub Actions 'Heartbeat'<br/>*/5 * * * * requested, hours apart in practice<br/>→ /api/cron/publish"]
+        vdb[("Supabase Postgres, ap-south-1<br/>DATABASE_URL: transaction pooler :6543<br/>DIRECT_DATABASE_URL: session pooler :5432, migrations")]
         vs3[("S3 / R2 / B2")]
-        vfn --> vneon
+        vfn --> vdb
         vfn --> vs3
         vcron --> vfn
         gha --> vfn
-        gha -.->|"psql select 1, wakes a scaled-to-zero compute"| vneon
+        gha -.->|"psql select 1, a health check only"| vdb
     end
 
     subgraph docker["Docker Compose — one long-lived process"]
@@ -427,9 +427,9 @@ somebody re-saves it.
 
 ```mermaid
 flowchart LR
-    subgraph gh[".github/workflows/keep-warm.yml — 'Heartbeat', */5 * * * *"]
-        w1["psql 'select 1'<br/>wakes a scaled-to-zero Neon compute<br/>3 attempts, widening pause"]
-        w2["curl -H 'Authorization: Bearer CRON_SECRET'<br/>SITE_URL/api/cron/publish"]
+    subgraph gh[".github/workflows/keep-warm.yml — 'Heartbeat', */5 * * * * requested"]
+        w1["curl -H 'Authorization: Bearer CRON_SECRET'<br/>SITE_URL/api/cron/publish"]
+        w2["psql 'select 1' — a health check<br/>runs whatever w1 did, gates nothing<br/>3 attempts, widening pause"]
         w1 --> w2
     end
     subgraph vj["vercel.json — crons"]
@@ -444,12 +444,18 @@ The reason is blunt: **the Vercel Hobby plan refuses any cron that fires more th
 deploy is rejected outright with `Hobby accounts are limited to daily cron jobs` — so a page an
 editor scheduled for 10:00 would not appear until the following night. `/api/cron/purge` stays in
 `vercel.json`, because daily is all it ever wanted, and `/api/cron/logs-archive` joined it there for
-the same reason. The workflow's own header records three things it
-cannot do, and they are worth reading before relying on it: GitHub's scheduler is best-effort and
-routinely fires ten to sixty minutes late, so scheduled publishing is accurate to roughly a quarter
-of an hour rather than to the minute; a compute that never sleeps burns about 730 compute-hours in a
-30-day month, which is past what a free Neon plan includes; and **GitHub silently disables scheduled
-workflows in a repository with no activity for 60 days**.
+the same reason. The workflow's own header records two things it
+cannot do, and they are worth reading before relying on it: GitHub's scheduler is best-effort, and
+over 100 runs from 2026-09-20 to 2026-10-08 it left a median of 263 minutes between runs (longest
+529), so the status column and the search index catch up hours after a scheduled date rather than
+minutes; and **GitHub silently disables scheduled workflows in a repository with no activity for 60
+days**. A scheduler that keeps time — Supabase Cron in the project's own database, or Vercel Pro — is
+an open decision (`DEPLOYMENT.md` §1.7).
+
+The workflow's second step is a `select 1` over the pooled URL. It began as the wake-up for a Neon
+compute that scaled to zero, and it used to gate the publish step, so a failed ping skipped
+publishing. The database is Supabase now, which does not scale to zero; the publish runs first and the
+check runs after it regardless, as a health signal and nothing more.
 
 > `DEPLOYMENT.md` §1.7 and `OPERATIONS.md` §3 now describe this arrangement rather than the one the
 > repository shipped with: three cron routes, two of them in `vercel.json` and the publish job here.

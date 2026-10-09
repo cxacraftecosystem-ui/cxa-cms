@@ -32,11 +32,12 @@ import {
  * ⚠ IT DELETES NOTHING, AND THAT IS A DECISION RATHER THAN AN OMISSION.
  *
  * A pruning job is a reasonable thing to want eventually: `audit_logs` is append-only and unbounded
- * today, and Neon's free tier is not. But a deleter shipped in the same change as the obligation to
- * retain is how a compliance system deletes the evidence it exists to keep — one wrong cutoff, one
- * environment variable read as days instead of hours, and the rows are gone with the audit trail of
- * their going gone too. Archival has to be provably working FIRST: manifests present for every day
- * in the window, and somebody who has actually fetched a range back out of the bucket.
+ * today, and the Supabase plan's database size is not. But a deleter shipped in the same change as
+ * the obligation to retain is how a compliance system deletes the evidence it exists to keep — one
+ * wrong cutoff, one environment variable read as days instead of hours, and the rows are gone with
+ * the audit trail of their going gone too. Archival has to be provably working FIRST: manifests
+ * present for every day in the window, and somebody who has actually fetched a range back out of the
+ * bucket.
  *
  * When that job is written, it MUST call `assertRetentionFloor` from lib/logArchive.ts with its
  * cutoff, and it must refuse to delete a day the archive has no manifest for. The floor is a

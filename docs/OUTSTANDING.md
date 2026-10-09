@@ -1,12 +1,47 @@
 # Outstanding work
 
-**Nothing is outstanding.** Every item previously listed here has been built, fixed and verified against
-a running application with a real PostgreSQL database — most recently against one carrying the full
+**Two things are outstanding, both recorded on 2026-10-09 and both listed under *Open* directly
+below.** Every other item previously listed here has been built, fixed and verified against a running
+application with a real PostgreSQL database — most recently against one carrying the full
 demonstration corpus, which is the first time these checks have run over a site with content on it.
+*(This paragraph opened "Nothing is outstanding." until 2026-10-09, when both entries below were
+recorded against the deployment as it stood that day. Each says what closes it; move it out of
+*Open* in the same change that does.)*
 
 This file is kept rather than deleted because the *shape* of what went wrong is worth remembering, and
 because the checks that now guard each class of defect only make sense once you know what they were
 written to catch.
+
+---
+
+## Open
+
+### Scheduled publishing lands hours after its time, until the owner chooses a scheduler — opened 2026-10-09
+
+`/api/cron/publish` is what moves a SCHEDULED page to PUBLISHED, records that in the audit log and
+re-syncs the search index's published flags. It runs from the `*/5` schedule in
+`.github/workflows/keep-warm.yml`, not from `vercel.json`, because the Vercel Hobby plan refuses any
+cron that fires more than once a day. GitHub's scheduler is best-effort: over the 100 runs from
+2026-09-20 to 2026-10-08 the gap between runs had a **median of 263 minutes** (longest 529). So a page
+an editor schedules for 10:00 stays SCHEDULED in the studio's status column, and keeps its old
+published flag in the search index, for hours. Public pages compare `publishAt` and `unpublishAt`
+with the clock on every read (`livePublishableWhere()` and `isLive()` in `lib/content.ts`), so nothing
+goes live early or stays up late; what lags is the studio and search.
+
+The fix is a scheduler that keeps time — **Supabase Cron** (`pg_cron` with `pg_net`, `CRON_SECRET` in
+Supabase Vault) or **Vercel Pro** with the publish job back in `vercel.json` — and choosing between
+them is the owner's decision, open as of 2026-10-09. Either way the publish step then comes out of
+`keep-warm.yml`. Both options are in `DEPLOYMENT.md` §1.7; the long version is `ARCHITECTURE.md` §3.2.
+
+### Prisma's `sslmode=require` does not verify the database's certificate — opened 2026-10-09
+
+Both database URLs carry `sslmode=require` (`DEPLOYMENT.md` §1.4). That encrypts the connection, but
+Prisma does not verify the server's certificate in that mode, so a function accepts whatever
+certificate the far end presents. Somebody on the path between a function and the Supabase pooler
+could therefore stand in the middle of the connection without the function noticing. That path runs
+inside the cloud providers' networks, which is why this is a known gap rather than an emergency — but
+nothing checks the peer. Verifying it needs Supabase's CA certificate shipped with the functions and
+verification switched on, and as of 2026-10-09 neither is done.
 
 ---
 

@@ -130,10 +130,19 @@ export function databaseUrl(): string {
  * The public origin. Falls back to localhost ONLY outside production; in production a missing value
  * throws, because canonical URLs, Open Graph tags and the sitemap all silently point at localhost
  * otherwise — the exact failure mode described in the skill's §14.1.
+ *
+ * ⚠ A VERCEL PREVIEW IS THE ONE PRODUCTION BUILD THAT FALLS BACK, AND IT FALLS BACK TO ITSELF.
+ * `next build` runs with NODE_ENV=production on previews too, and Preview has no NEXT_PUBLIC_SITE_URL,
+ * so every preview build died here while collecting page data. Giving Preview the production origin
+ * would be the wrong fix: a password or newsletter link minted on a preview would carry its token to
+ * production, where it does not exist. A configured value still wins, and production without one
+ * still throws — `VERCEL_URL` is set on production deployments as well, and is not read there.
  */
 export function siteUrl(): string {
   const configured = stripTrailingSlash(read("NEXT_PUBLIC_SITE_URL"));
   if (configured) return configured;
+  const preview = previewOrigin();
+  if (preview) return preview;
   if (process.env.NODE_ENV === "production") {
     throw new Error(
       "NEXT_PUBLIC_SITE_URL is required in production — canonical URLs, Open Graph images and " +
@@ -141,6 +150,17 @@ export function siteUrl(): string {
     );
   }
   return "http://localhost:3000";
+}
+
+/**
+ * A Vercel preview's own origin, or undefined anywhere else. The branch URL comes first because it
+ * survives the next push to the branch, so a link sent from one build still opens on the next; the
+ * per-deployment URL covers a preview with no branch. Vercel sets both without a scheme.
+ */
+function previewOrigin(): string | undefined {
+  if (read("VERCEL_ENV") !== "preview") return undefined;
+  const host = read("VERCEL_BRANCH_URL") ?? read("VERCEL_URL");
+  return host ? `https://${host}` : undefined;
 }
 
 export function siteName(): string {
@@ -312,7 +332,9 @@ export function configurationWarnings(): string[] {
         "against a transaction-mode pooler."
     );
   }
-  if (isProduction() && !read("NEXT_PUBLIC_SITE_URL")) {
+  // Not on a preview that resolved its own address: that is the correct state there (see `siteUrl()`),
+  // and a warning no correct deployment can clear is one operators learn to skip.
+  if (isProduction() && !read("NEXT_PUBLIC_SITE_URL") && !previewOrigin()) {
     warnings.push("NEXT_PUBLIC_SITE_URL is not set — canonical URLs and sitemap entries will be wrong.");
   }
   /**

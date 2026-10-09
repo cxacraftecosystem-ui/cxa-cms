@@ -82,8 +82,8 @@ a working deployment:
 
 | Variable | Why |
 |---|---|
-| `DATABASE_URL` | The runtime Prisma client. Point at a transaction-mode pooler if you have one. |
-| `DIRECT_DATABASE_URL` | Migrations and seeding. A transaction-mode pooler cannot run them. |
+| `DATABASE_URL` | The runtime Prisma client. Point at a transaction-mode pooler if you have one. In production that is Supabase's transaction pooler, port 6543, with `pgbouncer=true&connection_limit=10&pool_timeout=30&sslmode=require` — [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) §1.4 says why each is there. |
+| `DIRECT_DATABASE_URL` | Migrations and seeding. A transaction-mode pooler cannot run them. On Supabase, the session pooler: same host, port 5432. |
 | `JWT_SECRET` | Session signing. ≥32 characters of real entropy. |
 | `NEXT_PUBLIC_SITE_URL` | Canonical URLs, Open Graph, `sitemap.xml`. **Required in production** — without it the site publishes links to `localhost` while every signal stays green. |
 

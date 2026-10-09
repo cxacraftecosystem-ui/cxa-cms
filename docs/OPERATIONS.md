@@ -50,7 +50,7 @@ silent rather than loud:
 
 | Variable | If unset |
 |---|---|
-| `NEXT_PUBLIC_SITE_URL` | **Throws at boot in production**, deliberately. Without it, canonical URLs, Open Graph tags and `sitemap.xml` all publish pointing at `localhost` while every signal stays green. |
+| `NEXT_PUBLIC_SITE_URL` | **Throws at boot in production**, deliberately. Without it, canonical URLs, Open Graph tags and `sitemap.xml` all publish pointing at `localhost` while every signal stays green. A Vercel **preview** without it uses its own address instead (`VERCEL_BRANCH_URL`, else `VERCEL_URL`), so links minted there stay there. |
 | `CRON_SECRET` | Cron endpoints **refuse every request** and log why. That is the safe direction: an unauthenticated purge endpoint on the public internet is worse than a purge that never runs. |
 | `DIRECT_DATABASE_URL` | Migrations run through the pooled connection, which fails against a transaction-mode pooler. Reported by the studio's diagnostics panel. |
 | `S3_*` | Uploads are disabled and the studio **says so** on the settings screen, rather than failing at 90% of a transfer. |
@@ -79,7 +79,7 @@ edited. On another platform, call all three with `Authorization: Bearer $CRON_SE
 |---|---|---|---|
 | `/api/cron/purge` | `vercel.json` | `17 3 * * *` | Deletes the bytes of assets soft-deleted longer than `MEDIA_PURGE_AFTER_DAYS`, then their rows. Prunes expired sessions. |
 | `/api/cron/logs-archive` | `vercel.json` | `41 3 * * *` | Copies closed days of `audit_logs` and `access_logs` into `files/logs/<source>/<YYYY>/<MM>/<DD>/`, one manifest per day. **Deletes nothing.** |
-| `/api/cron/publish` | **`.github/workflows/keep-warm.yml`** | `*/5 * * * *` | Flips `SCHEDULED → PUBLISHED` and `PUBLISHED → ARCHIVED` at their dates, and re-syncs the search index's `isPublished` flag. Same workflow wakes the Neon compute first. ⚠ GitHub's scheduler is best-effort and routinely fires ten to sixty minutes late, so scheduled publishing here is accurate to roughly a quarter of an hour; and **GitHub silently disables scheduled workflows in a repository with no activity for 60 days**. `ARCHITECTURE.md` §3.2. |
+| `/api/cron/publish` | **`.github/workflows/keep-warm.yml`** | `*/5 * * * *` requested | Flips `SCHEDULED → PUBLISHED` and `PUBLISHED → ARCHIVED` at their dates, and re-syncs the search index's `isPublished` flag. The same workflow then checks that the database answers; that check no longer gates the publish. A missing `SITE_URL` or `CRON_SECRET` repository secret fails the publish step and turns the run red, and the database check still runs; it used to warn and stay green while nothing flipped. ⚠ GitHub's scheduler is best-effort, and in practice runs this **hours** apart — a median of 263 minutes between runs over 100 runs from 2026-09-20 to 2026-10-08 — so the studio's status column and search catch up hours after the date; and **GitHub silently disables scheduled workflows in a repository with no activity for 60 days**. `DEPLOYMENT.md` §1.7 has the two schedulers that would keep time; `ARCHITECTURE.md` §3.2. |
 
 ⚠ **`logs-archive` has two preconditions this repository cannot satisfy for you, and it is not
 compliant without them.** Both are in §2 and in `.env.example`, and both are infrastructure:
@@ -95,8 +95,9 @@ compliant without them.** Both are in §2 and in `.env.example`, and both are in
    job still reporting success every night.
 
 **On Pro, move `publish` back into `vercel.json`** as `{ "path": "/api/cron/publish", "schedule":
-"*/10 * * * *" }` and drop the curl step from the workflow. Vercel's own scheduler is not
-best-effort, is not disabled by repository inactivity, and does not need the compute woken first.
+"*/10 * * * *" }` and drop the publish step from the workflow — or, on the current plan, schedule the
+same call from Supabase Cron (`DEPLOYMENT.md` §1.7). Either keeps time; GitHub's scheduler does not,
+and is disabled by repository inactivity.
 
 **The publish job is a convenience, not the mechanism.** `livePublishableWhere()` compares against
 `now` on every read, so a scheduled article goes live at its minute even if the job has not run since

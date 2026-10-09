@@ -57,7 +57,7 @@ Set these for **Production**, **Preview** and **Development** unless a row says 
 | `DIRECT_DATABASE_URL` | build | The **unpooled** address. Migrations run in the build. See §1.4. |
 | `JWT_SECRET` | build **and** runtime | `openssl rand -base64 48`. The build evaluates route modules and `lib/auth/config.ts` refuses a weak value, so a missing one fails the build rather than the first sign-in. |
 | `JWT_ALGORITHM`, `ACCESS_TOKEN_TTL_MINUTES`, `REFRESH_TOKEN_TTL_DAYS` | runtime | Defaults are sensible; set them to be explicit. |
-| `NEXT_PUBLIC_SITE_URL` | **build** | Baked into the bundle. Also read on the server, where a missing value throws in production on purpose. |
+| `NEXT_PUBLIC_SITE_URL` | **build** | Baked into the bundle. Also read on the server, where a missing value throws in production on purpose. **Production only:** a Preview deployment without it uses its own address instead (`VERCEL_BRANCH_URL`, else `VERCEL_URL`). ⚠ Never give Preview the production origin — a password or newsletter link minted on a preview would carry its token to production, where it does not exist. |
 | `NEXT_PUBLIC_SITE_NAME`, `NEXT_PUBLIC_CDN_URL` | **build** | Baked into the bundle. |
 | `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | runtime | Required here, not optional. §1.5. |
 | `S3_PUBLIC_BASE_URL` | **build** only | `next.config.ts` derives the image optimiser's host allowlist from it at build time, and that is its only reader — `lib/env.ts` deliberately leaves it out of the runtime shape. A host missing from that list renders as a broken image, not an error. ⚠ It does **not** stand in for `NEXT_PUBLIC_CDN_URL`: setting this and leaving that blank serves an "Image unavailable" placeholder for every photograph on the site. |
@@ -106,8 +106,8 @@ container's Debian on its own, and pinning one would break the other.
 ### 1.4 Two database URLs, and why
 
 ```
-DATABASE_URL         → the pooler, transaction mode   (runtime)
-DIRECT_DATABASE_URL  → the database itself, no pooler (migrations)
+DATABASE_URL         → the pooler, transaction mode                  (runtime)
+DIRECT_DATABASE_URL  → one continuous session: session mode or direct (migrations)
 ```
 
 `prisma/schema.prisma` already wires this up: `url = env("DATABASE_URL")`,
@@ -128,6 +128,50 @@ migrate the same database at once.
 If `DIRECT_DATABASE_URL` is absent, Prisma falls back to the pooled URL and the studio's diagnostics
 panel says so. That fallback works against a plain Postgres and fails against a pooler, which is the
 single most confusing failure in this list: the same command works locally and fails in the build.
+
+**On Supabase, which is what production uses.** Both URLs go through Supabase's pooler, on the host
+Supabase → **Connect** shows for the project (`aws-0-<region>.pooler.supabase.com`; production's
+project is in `ap-south-1`). Placeholders only — the real values are Vercel secrets:
+
+```
+DATABASE_URL        = postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10&pool_timeout=30&sslmode=require
+DIRECT_DATABASE_URL = postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+Every part of the first one is load-bearing:
+
+- **Port `6543`** is transaction mode: a server connection is lent for one transaction and returned,
+  so however many copies of the application are running share a handful of real connections.
+- **`pgbouncer=true`** tells Prisma a transaction pooler is in front, and Prisma stops using named
+  prepared statements. A statement prepared on one server connection does not exist on the next one
+  the pooler lends, so without it queries fail with `prepared statement "s0" already exists` (or
+  `does not exist`) under concurrency.
+- **`connection_limit=10`** is the pool *each copy* of the application keeps. Prisma's generic advice
+  for serverless is `1`, and **it is wrong here**: the build prerenders pages in parallel through one
+  client, and the production build of 2026-09-24 12:41 UTC failed with `P2024 Timed out fetching a new
+  connection from the connection pool … (connection limit: 1)`. The same commit built cleanly minutes
+  later, once `DATABASE_URL` had been re-created (the operators' record of the new URL carries
+  `connection_limit=10`; the deployed value is a secret). Fluid compute also serves several requests
+  from one copy at once, and Vercel advises against a pool of one for that reason. The smallest
+  Supabase computes (Nano, Micro) admit 200 pooler clients, so 10 per copy leaves room for about
+  twenty copies at once.
+- **`pool_timeout=30`** is how many seconds a query waits for a free connection from that pool before
+  `P2024` (Prisma's default is 10). Builds run in Washington (`iad1`) against a database in Mumbai, so
+  every connection there is slow to open and slow to give back.
+- **`sslmode=require`** encrypts the connection. Prisma does not verify the server certificate in this
+  mode; verifying it needs Supabase's CA shipped with the functions, which is not done.
+
+The second URL is the **session pooler on port 5432 of the same host**, one server connection for the
+whole session, which is what `prisma migrate deploy` needs. It is not the "direct connection" Supabase
+also offers, `db.<project-ref>.supabase.co`: without Supabase's paid IPv4 add-on that host resolves to
+IPv6 only, and Vercel's builds and functions cannot reach IPv6. It carries none of the pool
+parameters, because a migration is one session doing one thing.
+
+`schema`, `pgbouncer`, `connection_limit`, `pool_timeout` (and `socket_timeout`,
+`statement_cache_size`, `sslaccept`, `sslidentity`) are **Prisma's own parameters, not Postgres's**:
+`psql` and every other libpq client refuse a URL that carries them with `invalid URI query
+parameter`. Anything that hands one of these URLs to such a tool strips them first —
+`.github/workflows/keep-warm.yml` shows how.
 
 ### 1.5 Object storage is not optional here
 
@@ -160,9 +204,10 @@ The file is strict JSON and cannot carry comments, so the reasons live here. Eve
 |---|---|
 | `$schema` | Editor validation. A typo in a function path is otherwise discovered as a setting that silently did nothing. |
 | `framework: "nextjs"` | Explicit rather than detected, so a future `package.json` change cannot alter the build. |
+| `regions: ["bom1"]` | Every function runs in Mumbai, beside the Supabase database and the media bucket, both in `ap-south-1`. Without it functions run in the project's default region, Washington (`iad1`), and every database round trip crosses the world: a one-query endpoint took 1.4–1.5 s warm and 4 s cold there, against 0.24–0.5 s for the museum app on the same Supabase region with its functions in `bom1`, and every studio save is an interactive transaction holding row locks across several such trips. The Hobby plan allows one region. Builds still run in `iad1`; only functions move. Set Project → Settings → Functions → Function Region to Mumbai too, so a deployment that ignores this file cannot quietly fall back to Washington. |
 | `buildCommand` | §1.3. |
 | `crons` | §1.7. |
-| `functions["app/api/studio/media/complete/route.ts"]` | `memory: 3009`, `maxDuration: 300`. This route pulls the uploaded object into memory and runs `sharp` over it to make every derivative. A 40-megapixel heritage scan decodes to a bitmap of several hundred megabytes, and the pipeline runs the sizes **sequentially** for exactly this reason. At the default memory the function is killed part-way: the object is already in the bucket, so the file exists with no row and no error anybody sees. |
+| `functions["app/api/studio/media/complete/route.ts"]` | `memory: 2048`, `maxDuration: 300` — 2048 MB is the Hobby plan's ceiling, and the original 3009 was refused at deploy. This route pulls the uploaded object into memory and runs `sharp` over it to make every derivative. A 40-megapixel heritage scan decodes to a bitmap of several hundred megabytes, and the pipeline runs the sizes **sequentially** for exactly this reason. At the default memory the function is killed part-way: the object is already in the bucket, so the file exists with no row and no error anybody sees. |
 | `functions["app/api/studio/media/[id]/replace/route.ts"]` | The same two values, because it does the same work — replacing the bytes behind an asset re-runs the whole derivative pipeline. It previously had **no entry**, and the route's own header says so; without it a large replacement is killed and the asset keeps pointing at the old file with nothing on screen to explain why. |
 | `functions["app/api/studio/files/route.ts"]` | `maxDuration: 60`, memory left at the default. Registering a document reads the whole object back to fingerprint it, up to a stated 128 MB cap. That is a large download plus a SHA-256, and it does not reliably finish inside the default ten-to-fifteen seconds. A 128 MB buffer fits the default memory comfortably, so only the clock needed raising. |
 | `functions["app/api/studio/files/[id]/versions/route.ts"]` | The same, for the same reason — it is the new-version half of the same flow and carries the same 128 MB cap. |
@@ -193,11 +238,13 @@ Notes on that block:
 ```
 
 **That is the whole `crons` array, and there is a third cron route that is not in it.**
-`/api/cron/publish` runs every five minutes from **`.github/workflows/keep-warm.yml`**, not from here
-— the Hobby plan rejects the deploy outright with `Hobby accounts are limited to daily cron jobs` for
-any schedule that fires more than once a day, so the ten-minute job had to move somewhere else and
-the two daily slots went to the jobs that cannot be run any other way. `ARCHITECTURE.md` §3.2 is the
-long version, including what GitHub's best-effort scheduler costs in accuracy. Confirmed against
+`/api/cron/publish` is scheduled every five minutes from **`.github/workflows/keep-warm.yml`**, not
+from here — the Hobby plan rejects the deploy outright with `Hobby accounts are limited to daily cron
+jobs` for any schedule that fires more than once a day, so the ten-minute job had to move somewhere
+else and the two daily slots went to the jobs that cannot be run any other way. ⚠ **Scheduled is not
+run.** GitHub's scheduler is best-effort, and over 100 runs from 2026-09-20 to 2026-10-08 it left a
+median of 263 minutes between them (longest 529), so a scheduled page reaches the studio's status
+column and the search index hours late. `ARCHITECTURE.md` §3.2 is the long version. Confirmed against
 `vercel.json`, that workflow, and the routes that exist. What each job does is in `OPERATIONS.md` §3.
 
 - **`CRON_SECRET` must be set as an environment variable.** Vercel Cron then sends
@@ -216,11 +263,18 @@ long version, including what GitHub's best-effort scheduler costs in accuracy. C
   mid-morning in India, which is fine for a job that deletes bytes already past their retention window
   and for one that copies closed days. The odd minutes keep them off the hour, where every other
   scheduled job on the platform queues up, and apart from each other.
-- ⚠ **A ten-minute schedule needs a paid plan, and that is why `publish` is not in the array.**
-  Vercel's free tier allows roughly one cron invocation per day. On Pro, add
-  `{ "path": "/api/cron/publish", "schedule": "*/10 * * * *" }` back and drop the curl step from
-  `keep-warm.yml`; Vercel's scheduler is not best-effort, is not disabled by 60 days of repository
-  inactivity, and does not need the Neon compute woken first.
+- ⚠ **A ten-minute schedule needs a scheduler that keeps time, and GitHub's does not.** Vercel's free
+  tier allows roughly one cron invocation per day, which is why `publish` is not in the array. Two
+  schedulers would keep time, and which one to use is an open decision; neither is set up:
+  - **Supabase Cron**, in the cxa-cms Supabase project: enable `pg_cron` and `pg_net`, keep
+    `CRON_SECRET` in Supabase Vault, and schedule a `net.http_get` of `/api/cron/publish` with the
+    bearer header every ten minutes. Free on the current plan; a rotated `CRON_SECRET` then has to be
+    changed in Vault as well as on Vercel.
+  - **Vercel Pro**: add `{ "path": "/api/cron/publish", "schedule": "*/10 * * * *" }` back to this
+    array.
+
+  Either way, drop the publish step from `keep-warm.yml` afterwards. Neither is best-effort, and
+  neither is switched off by 60 days of repository inactivity.
 
 ### 1.8 First deployment
 
@@ -384,7 +438,7 @@ rewrite; until one is registered, prefer one larger container to two smaller one
 |---|---|---|
 | **Rate limits** — sign-in, second factor, password links, contact form, event registration, search, suggestions, view beacon, counted downloads | **Per copy of the app.** The real limit is the configured number × however many copies are running, and a newly started copy allows a full fresh allowance. A speed bump, not a ceiling. | **Exact, with one process.** Multiplied by the replica count if you run more (§2.6). |
 | **Cold starts** | Real. After a quiet period the next request rebuilds the storage client, the JWT signing key and each sign-in provider's key set — commonly a second or two on the first sign-in of the morning. No data is affected. | None. The process stays warm; those caches are built once at start-up. |
-| **Cron** | **Split across two schedulers.** The two daily jobs are declared in `vercel.json` and run by the platform, which supplies the `Authorization` header from `CRON_SECRET`; `/api/cron/publish` runs from `.github/workflows/keep-warm.yml`, because Hobby rejects any schedule finer than daily (§1.7). | **Nothing runs any of them.** One host crontab covers all three, with the header set by hand (§2.5). |
+| **Cron** | **Split across two schedulers.** The two daily jobs are declared in `vercel.json` and run by the platform, which supplies the `Authorization` header from `CRON_SECRET`; `/api/cron/publish` runs from `.github/workflows/keep-warm.yml`, because Hobby rejects any schedule finer than daily — and GitHub runs it hours apart, not every five minutes (§1.7). | **Nothing runs any of them.** One host crontab covers all three, with the header set by hand (§2.5). |
 | **Logs** | Per invocation, in the platform dashboard, retained for a period the plan decides. `console.warn` from the rate limiter's bucket-ceiling message and `[cron]` lines land here. Not files; not greppable across a month unless you forward them somewhere. | `docker compose logs -f app`, or whatever the daemon's logging driver is pointed at. One continuous stream, and yours to rotate. |
 | **Sticky in-memory state** | Nothing survives. Rate-limit buckets, the rebuild-in-progress guard (`__cxaReindexState`) and every `let cached…` are rebuilt per copy and lost on each cold start. Two administrators can start two index rebuilds at once. | Survives for the life of the process. The rebuild guard works; the limiter counts correctly; a restart resets both. |
 | **Database connections** | One pool **per copy**, with the number of copies changing under load. `DATABASE_URL` must be a pooler (§1.4). | One pool, one process. A direct connection is fine. |

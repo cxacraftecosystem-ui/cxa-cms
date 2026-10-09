@@ -1,47 +1,51 @@
-# The site's heartbeat: keeps the Neon compute awake, and runs the publish cron that the Vercel
-# Hobby plan will not.
+# The site's heartbeat: runs the publish cron that the Vercel Hobby plan will not, then checks that
+# the database still answers on the address the application uses.
 #
 # ══════════════════════════════════════════════════════════════════════════════════════════════
-# TWO JOBS THAT HAPPEN TO SHARE A SCHEDULE, AND NEITHER IS OPTIONAL.
+# TWO JOBS THAT HAPPEN TO SHARE A SCHEDULE, AND ONLY THE FIRST HAS CONSEQUENCES.
 #
-#  1. **Waking the database.** Neon scales its compute to zero after a few idle minutes. The next
-#     query pays the wake-up — a few hundred milliseconds, landing on whoever arrives first, which on
-#     a low-traffic institutional site is usually the one person you wanted to impress.
-#  2. **Advancing scheduled content.** `vercel.json` used to run `/api/cron/publish` every ten
+#  1. **Advancing scheduled content.** `vercel.json` used to run `/api/cron/publish` every ten
 #     minutes. ⚠ THE HOBBY PLAN REFUSES ANY CRON THAT FIRES MORE THAN ONCE A DAY — the deploy is
 #     rejected outright with `Hobby accounts are limited to daily cron jobs` — so a page an editor
 #     scheduled for 10:00 would not appear until the following night. That cron now lives here.
 #     `/api/cron/purge` stays in `vercel.json`, because daily is all it ever wanted.
+#  2. **Checking the database answers.** `select 1` over the pooled DATABASE_URL, so a rotated
+#     credential, a paused project or a mangled secret turns this workflow red before an editor
+#     finds it. It began as the WAKE-UP for a Neon compute that scaled to zero after a few idle
+#     minutes. The database is Supabase now (ap-south-1), whose compute does not scale to zero, so
+#     nothing needs waking and nothing waits on this step.
 #
-# ⚠ THREE THINGS THIS CANNOT DO.
+# ⚠ THE PUBLISH STEP RUNS FIRST AND DEPENDS ON NOTHING. It used to run second, and only if the
+# wake-up had succeeded, so every failed ping — a pooler blip, a secret pasted with `?schema=public`,
+# which psql refuses — skipped publishing outright while the run merely showed red. Now the check
+# runs after it whatever the publish step did, and each reports its own failure. A missing
+# `SITE_URL` or `CRON_SECRET` is one: it turns the run red. It used to warn and pass, so a deleted or
+# renamed secret left every run green while no status flipped and the search index's `isPublished`
+# flags went stale.
 #
-#  a. **GitHub's scheduler is best-effort, not a cron daemon.** Five minutes is the shortest interval
-#     it accepts, but scheduled workflows queue at the lowest priority and routinely fire late — ten,
-#     twenty, occasionally sixty minutes. So scheduled publishing is accurate to roughly a quarter of
-#     an hour, not to the minute, and cold starts are reduced rather than abolished. Anything needing
-#     better belongs on the Pro plan, where Vercel runs the cron itself.
-#  b. **It cannot keep a FREE Neon plan warm all month.** The free allowance is measured in COMPUTE
-#     HOURS and a compute that never sleeps burns about 730 of them in a 30-day month — far past what
-#     the plan includes. Run this around the clock on the free plan and the quota, not the idle timer,
-#     is what takes the database away, roughly a week in. Either move to a paid Neon plan, or warm it
-#     only when readers are awake — see WAKING HOURS ONLY below.
-#  c. **GitHub disables scheduled workflows in a repository with no activity for 60 days**, quietly.
-#     A repository that went quiet over a holiday comes back with its schedule off, a database that
-#     sleeps and scheduled posts that never appear. `workflow_dispatch` is how you restart it without
-#     a commit; the notification email is the only warning you get.
+# ⚠ TWO THINGS THIS CANNOT DO.
+#
+#  a. **GitHub's scheduler is best-effort, not a cron daemon.** Five minutes is the shortest
+#     interval it accepts, and scheduled runs queue at the lowest priority and are dropped under
+#     load. Over 100 runs from 2026-09-20 to 2026-10-08 the gap between runs had a median of 263
+#     minutes (90th percentile 398, longest 529). So scheduled publishing lands hours late, not
+#     minutes. Public pages compare publication dates on every request (`livePublishableWhere()`),
+#     so nothing goes live early or stays up late; what lags is the studio's status column and the
+#     search index's `isPublished` flag. A scheduler that keeps time — Supabase Cron (pg_cron +
+#     pg_net) in the cxa-cms project, or Vercel Pro with the cron back in `vercel.json` — is the
+#     fix, and is an open decision (docs/DEPLOYMENT.md §1.7). Until then this schedule is the trigger.
+#  b. **GitHub disables scheduled workflows in a repository with no activity for 60 days**, quietly.
+#     A repository that went quiet over a holiday comes back with its schedule off and scheduled
+#     posts that never appear. `workflow_dispatch` is how you restart it without a commit; the
+#     notification email is the only warning you get.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
 name: Heartbeat
 
 on:
   schedule:
-    # Every five minutes, the floor GitHub allows. Neon's idle timer is about five minutes too, so
-    # this is the loosest schedule that can win the race at all — and per (a) it will still lose
-    # sometimes.
-    #
-    # WAKING HOURS ONLY — swap for this to cut compute by roughly two thirds, which is what makes a
-    # free Neon plan survive a whole month. 00:30–16:30 UTC is 06:00–22:00 IST:
-    #   - cron: "*/5 0-16 * * *"
+    # Every five minutes, the floor GitHub allows: the closest it can be asked to come to the
+    # ten-minute cadence the publish cron was written for. Per (a), it delivers far fewer runs.
     - cron: "*/5 * * * *"
 
   workflow_dispatch:
@@ -58,57 +62,11 @@ permissions:
 jobs:
   beat:
     runs-on: ubuntu-latest
-    # Generous next to a query that takes milliseconds, but a COLD compute is exactly what this is
-    # here to wake, and the first connection to a suspended Neon can sit for several seconds.
+    # A curl capped at 60 s, then at most three connection attempts of 10 s each and 30 s of pauses:
+    # well inside five minutes, so neither step can run the other out of time.
     timeout-minutes: 5
 
     steps:
-      - name: Wake the compute
-        env:
-          # The POOLED url — the same one the application uses, so this exercises the path that
-          # actually matters. Set with:
-          #   gh secret set DATABASE_URL --repo cxacraftecosystem-ui/cxa-cms
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          set -uo pipefail
-
-          if [ -z "${DATABASE_URL}" ]; then
-            echo "::error::DATABASE_URL is not set. Add it as a repository secret."
-            exit 1
-          fi
-
-          # ⚠ `pgbouncer`, `connection_limit` and `pool_timeout` ARE PRISMA'S, NOT libpq's. They are
-          # read by the Prisma client and are not real connection parameters, so handing this URL to
-          # psql verbatim fails instantly with `invalid URI query parameter` — which looks exactly
-          # like a dead database and is nothing of the kind. Strip them; keep sslmode and
-          # channel_binding, which libpq does understand and Neon does require.
-          #
-          # One parameter per pass, keeping the delimiter IN FRONT of it and dropping the one after:
-          # a single `g` pass that removed the leading `?` too broke the moment `pgbouncer` came first
-          # (`…/postgres?pgbouncer=true&sslmode=require` became database `postgres&sslmode=require`).
-          PG_URL=$(printf '%s' "${DATABASE_URL}" \
-            | sed -E ':a; s/([?&])(pgbouncer|connection_limit|pool_timeout)=[^&]*&?/\1/; ta; s/[?&]$//')
-
-          # Three attempts with a widening pause. A FIRST failure against a suspended compute is the
-          # expected case, not the exceptional one: Neon accepts the connection only once the instance
-          # is up, so a single-shot ping reports a red build for the very condition it exists to fix.
-          # stderr is kept for the last attempt — swallowing it is how a malformed URL masquerades as
-          # an outage for a week.
-          for attempt in 1 2 3; do
-            if err=$(psql "${PG_URL}" --quiet --no-align --tuples-only \
-                       --command "select 1" 2>&1 >/dev/null); then
-              echo "awake (attempt ${attempt})"
-              exit 0
-            fi
-            echo "attempt ${attempt} failed"
-            sleep $((attempt * 5))
-          done
-
-          echo "::error::The database did not answer after three attempts."
-          echo "Last error from psql: ${err}"
-          echo "A real outage, a rotated credential, or an exhausted compute-hour quota — see (b) above."
-          exit 1
-
       - name: Publish anything that came due
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
@@ -116,10 +74,19 @@ jobs:
         run: |
           set -uo pipefail
 
-          if [ -z "${SITE_URL}" ] || [ -z "${CRON_SECRET}" ]; then
-            echo "::warning::SITE_URL or CRON_SECRET is unset — skipping the publish cron."
-            echo "Scheduled pages and posts will NOT go live until both secrets exist."
-            exit 0
+          # A missing secret fails the step rather than skipping it (see the header); the database
+          # check still runs.
+          missing=""
+          [ -n "${SITE_URL}" ] || missing="${missing} SITE_URL"
+          [ -n "${CRON_SECRET}" ] || missing="${missing} CRON_SECRET"
+          if [ -n "${missing}" ]; then
+            echo "::error::The publish cron did not run. Repository secret(s) not set:${missing}"
+            echo "Until it runs, nothing changes status: due pages and posts stay SCHEDULED in the studio"
+            echo "instead of PUBLISHED, expired ones stay PUBLISHED instead of ARCHIVED, and the audit log"
+            echo "records no transition. Nor are the search index's isPublished flags re-synced, so site"
+            echo "search can list a withdrawn page and miss one that has gone live. The pages themselves"
+            echo "still go live and come down on time: they compare publishAt and unpublishAt with the clock."
+            exit 1
           fi
 
           # `lib/cron.ts` compares this bearer in constant time and fails closed when the secret is
@@ -139,3 +106,53 @@ jobs:
             401|403) echo "::error::The cron endpoint rejected the bearer. CRON_SECRET here and on Vercel disagree."; exit 1 ;;
             *)  echo "::error::The publish cron answered ${code}."; exit 1 ;;
           esac
+
+      - name: Check the database answers
+        # Whatever the publish step did: the two report separately (see the header). Not after a
+        # cancellation, which means a newer run is already on its way.
+        if: ${{ !cancelled() }}
+        env:
+          # The POOLED url — the same one the application uses, so this exercises the path that
+          # actually matters. Set with:
+          #   gh secret set DATABASE_URL --repo cxacraftecosystem-ui/cxa-cms
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # libpq otherwise waits indefinitely on a host that never answers.
+          PGCONNECT_TIMEOUT: "10"
+        run: |
+          set -uo pipefail
+
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::DATABASE_URL is not set. Add it as a repository secret."
+            exit 1
+          fi
+
+          # ⚠ PRISMA READS URL PARAMETERS THAT libpq HAS NEVER HEARD OF. `pgbouncer`, `connection_limit`,
+          # `pool_timeout`, `schema` and the rest of this list are read by the Prisma client and are
+          # not connection parameters at all, so handing the URL to psql verbatim fails instantly with
+          # `invalid URI query parameter` — which looks exactly like a dead database and is nothing of
+          # the kind. Strip them; keep sslmode and anything else libpq understands. `schema` was
+          # missing here although `.env.example` itself writes `?schema=public`.
+          #
+          # One parameter per pass, keeping the delimiter IN FRONT of it and dropping the one after:
+          # a single `g` pass that removed the leading `?` too broke the moment `pgbouncer` came first
+          # (`…/postgres?pgbouncer=true&sslmode=require` became database `postgres&sslmode=require`).
+          PG_URL=$(printf '%s' "${DATABASE_URL}" \
+            | sed -E ':a; s/([?&])(pgbouncer|connection_limit|pool_timeout|schema|socket_timeout|statement_cache_size|sslaccept|sslidentity)=[^&]*&?/\1/; ta; s/[?&]$//')
+
+          # Three attempts with a widening pause, so a pooler restart or one dropped connection does
+          # not turn the heartbeat red on its own. stderr is kept for the last attempt — swallowing it
+          # is how a malformed URL masquerades as an outage for a week.
+          for attempt in 1 2 3; do
+            if err=$(psql "${PG_URL}" --quiet --no-align --tuples-only \
+                       --command "select 1" 2>&1 >/dev/null); then
+              echo "answered (attempt ${attempt})"
+              exit 0
+            fi
+            echo "attempt ${attempt} failed"
+            sleep $((attempt * 5))
+          done
+
+          echo "::error::The database did not answer after three attempts."
+          echo "Last error from psql: ${err}"
+          echo "A real outage, a paused project, or a rotated credential."
+          exit 1
