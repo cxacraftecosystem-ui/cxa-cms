@@ -42,7 +42,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "^7.10.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
     "@tiptap/extension-highlight": "^3.31.4",
