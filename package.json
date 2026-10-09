@@ -86,7 +86,7 @@
     "@types/three": "^0.186.0",
     "autoprefixer": "^10.6.1",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^15.5.27",
+    "eslint-config-next": "^16.3.8",
     "postcss": "^8.5.29",
     "server-only": "file:./vendor/server-only-noop",
     "tailwindcss": "^3.4.19",
