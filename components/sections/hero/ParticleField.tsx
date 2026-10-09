@@ -284,6 +284,10 @@ function Pigment({ count, pointerX, pointerY }: PigmentProps) {
   );
 
   useFrame((state, delta) => {
+    // `state.clock` is the THREE.Clock that @react-three/fiber 9's store constructs, and three r183
+    // deprecated Clock: each mount of this field's canvas logs "THREE.Clock: This module has been
+    // deprecated", from R3F's store and not from this file. The clock still works. The warning goes
+    // when R3F moves its store to THREE.Timer; do not downgrade three or silence its logger to hide it.
     const elapsed = state.clock.elapsedTime;
     // Clamped, because a tab returning from the background hands over one enormous delta and every
     // grain would jump a third of the way down the hero in a single frame.
