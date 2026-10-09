@@ -35,7 +35,7 @@
  * where two of those three words are. When the search hides entries, it says how many.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { SearchX } from "lucide-react";
 import type { SectionType } from "@prisma/client";
 
@@ -367,13 +367,16 @@ export function AddSectionPalette({
   const [chosen, setChosen] = useState<SectionType | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
-  // A fresh search every time it opens. A palette that remembers last week's search shows one entry and
-  // looks broken.
-  useEffect(() => {
-    if (!open) return;
-    setQuery("");
-    setChosen(null);
-  }, [open]);
+  // A fresh search every time it opens, set in the render that opens it. A palette that remembers last
+  // week's search shows one entry and looks broken.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setQuery("");
+      setChosen(null);
+    }
+  }
 
   const used = useMemo(() => new Set<SectionType>(usedTypes), [usedTypes]);
 

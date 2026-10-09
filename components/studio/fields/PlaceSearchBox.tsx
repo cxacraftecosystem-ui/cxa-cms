@@ -77,9 +77,16 @@ export function PlaceSearchBox({
   const listboxId = `${baseId}-listbox`;
 
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<PlaceHit[]>([]);
-  const [state, setState] = useState<SearchState>("idle");
-  const [problem, setProblem] = useState<string | null>(null);
+  /**
+   * The last answer the geocoder gave, and the query it answers. The list, the failure and the box's
+   * state are all DERIVED from it below: a query that has no answer yet is a query being searched for,
+   * so nothing has to be set when a search starts.
+   */
+  const [answer, setAnswer] = useState<{
+    query: string;
+    hits: PlaceHit[];
+    problem: string | null;
+  } | null>(null);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
 
@@ -101,20 +108,31 @@ export function PlaceSearchBox({
     chooseRef.current = onChoose;
   }, [getProximity, onChoose]);
 
+  const wanted = query.trim();
+  const tooShort = wanted.length < MIN_QUERY_LENGTH;
+  // A query too short to search clears whatever the last one found — in the render that sees it shrink.
+  if (tooShort && answer !== null) setAnswer(null);
+  const state: SearchState = tooShort
+    ? wanted
+      ? "short"
+      : "idle"
+    : answer === null || answer.query !== wanted
+      ? "searching"
+      : answer.problem === null
+        ? "done"
+        : "failed";
+  // While a new query is being searched for, the previous answer stays up, as it always has.
+  const hits = answer?.hits ?? [];
+  const problem = answer?.problem ?? null;
+
   // Debounced, abortable, and re-armed by the query alone. The previous request is cancelled as the next
   // keystroke lands, so a slow answer for "Barp" can never overwrite the list for "Barpali".
   useEffect(() => {
     const wanted = query.trim();
     request.current?.abort();
 
-    if (wanted.length < MIN_QUERY_LENGTH) {
-      setHits([]);
-      setProblem(null);
-      setState(wanted ? "short" : "idle");
-      return;
-    }
+    if (wanted.length < MIN_QUERY_LENGTH) return;
 
-    setState("searching");
     const timer = window.setTimeout(() => {
       const controller = new AbortController();
       request.current = controller;
@@ -123,17 +141,13 @@ export function PlaceSearchBox({
           // An abort is a newer keystroke, never an answer. Rendering it would put a stale list under a
           // query that has moved on.
           if (controller.signal.aborted) return;
-          setHits(found);
-          setProblem(null);
-          setState("done");
+          setAnswer({ query: wanted, hits: found, problem: null });
           setHighlight(0);
           setOpen(true);
         })
         .catch((error: unknown) => {
           if (controller.signal.aborted) return;
-          setHits([]);
-          setProblem(describeSearchFailure(error));
-          setState("failed");
+          setAnswer({ query: wanted, hits: [], problem: describeSearchFailure(error) });
           setOpen(true);
         });
     }, DEBOUNCE_MS);

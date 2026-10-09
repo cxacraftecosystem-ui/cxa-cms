@@ -57,6 +57,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { ImageOff, TriangleAlert, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { emptyRichTextDoc, parseRichText, type RichTextDoc } from "@/lib/richtext";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -950,12 +951,10 @@ export function RichTextEditor({
  * cannot drift from what the keyboard actually does.
  */
 function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void }): ReactNode {
-  // Read after mount, never during render: `navigator` does not exist on the server and a value that
-  // differs between the two passes is a hydration mismatch.
-  const [isMac, setIsMac] = useState(false);
-  useEffect(() => {
-    setIsMac(/Mac|iPad|iPhone|iPod/.test(navigator.userAgent));
-  }, []);
+  // Read only once hydrated: `navigator` does not exist on the server, and a value that differs
+  // between the server's pass and hydration is a hydration mismatch.
+  const hydrated = useHydrated();
+  const isMac = hydrated && /Mac|iPad|iPhone|iPod/.test(navigator.userAgent);
 
   const modifier = isMac ? "Cmd" : "Ctrl";
 

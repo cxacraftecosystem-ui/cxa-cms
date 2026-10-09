@@ -25,8 +25,9 @@
  * boundary. It is also the CALLER — not this file — that decides whether the field may run at all:
  * reduced motion, a coarse pointer, a machine reporting few cores or little memory, and a machine
  * with no WebGL are ALL refused before the chunk is even requested, so a device that cannot afford
- * this never downloads it either. The single probe lives in `canRunParticleField()` in
- * HeroSection.tsx; putting a second copy here would be a second answer to one question.
+ * this never downloads it either. The decision is `canvasAllowed` in HeroSection.tsx — the reader's
+ * motion preference and the single device probe, `canRunParticleField()`; putting a second copy here
+ * would be a second answer to one question.
  *
  * Every refusal falls back to `CraftTapestry` alone, which is a FINISHED DESIGN and not a degraded
  * one. Nothing in this file is load-bearing for the hero's composition.
@@ -54,6 +55,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useSpring, type MotionValue } from "framer-motion";
 import {
+  BufferAttribute,
   BufferGeometry,
   CanvasTexture,
   Color,
@@ -288,41 +290,10 @@ function Pigment({ count, pointerX, pointerY }: PigmentProps) {
     // deprecated Clock: each mount of this field's canvas logs "THREE.Clock: This module has been
     // deprecated", from R3F's store and not from this file. The clock still works. The warning goes
     // when R3F moves its store to THREE.Timer; do not downgrade three or silence its logger to hide it.
-    const elapsed = state.clock.elapsedTime;
-    // Clamped, because a tab returning from the background hands over one enormous delta and every
-    // grain would jump a third of the way down the hero in a single frame.
-    const step = Math.min(delta, MAX_STEP_SECONDS);
-    const positions = field.positions;
-
-    for (let index = 0; index < count; index += 1) {
-      const offset = index * 3;
-      // Reads off a typed array are `number | undefined` under noUncheckedIndexedAccess; the
-      // fallbacks are unreachable and are there so the loop cannot produce NaN if one ever is not.
-      const previousY = positions[offset + 1] ?? 0;
-
-      // 0 at the floor of the field, 1 anywhere in its upper reaches. The fall slows as it drops.
-      const height = clamp((previousY + SPREAD_Y) / (SPREAD_Y * 1.4), 0, 1);
-      const fall = (field.fall[index] ?? 0) * (SETTLED_FALL_SHARE + (1 - SETTLED_FALL_SHARE) * height);
-
-      let y = previousY - fall * step;
-      let originX = field.originX[index] ?? 0;
-
-      // Off the bottom: back to the top with a fresh column, so the field never shows the same
-      // vertical lane twice. The wrap happens well below the frustum at every depth in the field, so
-      // the jump itself is never visible.
-      if (y < -SPREAD_Y) {
-        y = SPREAD_Y;
-        originX = (Math.random() * 2 - 1) * SPREAD_X;
-        field.originX[index] = originX;
-      }
-
-      // The horizontal drift is a sine on the grain's own phase and its own frequency, so no two
-      // grains ever move together — the only shared movement in the field is the parallax below.
-      positions[offset] =
-        originX + Math.sin(elapsed * (field.swayFreq[index] ?? 0) + (field.phase[index] ?? 0)) * (field.swayAmp[index] ?? 0);
-      positions[offset + 1] = y;
-    }
-    field.positionAttribute.needsUpdate = true;
+    //
+    // The step is clamped, because a tab returning from the background hands over one enormous delta
+    // and every grain would jump a third of the way down the hero in a single frame.
+    field.advance(state.clock.elapsedTime, Math.min(delta, MAX_STEP_SECONDS));
 
     const points = pointsRef.current;
     if (!points) return;
@@ -338,16 +309,25 @@ function Pigment({ count, pointerX, pointerY }: PigmentProps) {
 }
 
 interface Field {
-  /** The attribute three draws from, and the buffer `useFrame` writes into — the same memory. */
-  positionAttribute: Float32BufferAttribute;
-  positions: Float32Array;
+  /**
+   * The attribute three draws from, BUILT ON the buffer `advance` writes into — the same memory.
+   *
+   * ⚠ A `BufferAttribute`, NOT A `Float32BufferAttribute`. The latter COPIES the array it is given
+   * (`new Float32Array(array)` in its constructor), and that is what this was: every frame moved the
+   * grains in a buffer three never read, and re-uploaded an unchanged copy, so the field hung still and
+   * only the pointer parallax moved it. Sharing the buffer is what makes `needsUpdate` upload the fall.
+   */
+  positionAttribute: BufferAttribute;
   colorAttribute: Float32BufferAttribute;
-  /** Where the grain's column sits. Re-rolled each time the grain wraps to the top. */
-  originX: Float32Array;
-  swayAmp: Float32Array;
-  swayFreq: Float32Array;
-  fall: Float32Array;
-  phase: Float32Array;
+  /**
+   * One frame of the fall: every grain moved and the attribute flagged for upload.
+   *
+   * A method on the field rather than a loop in `useFrame`, because the buffers are the field's to
+   * mutate, sixty times a second: React's compiler treats a value made by `useMemo` and handed to a hook
+   * as frozen, and writing into its arrays from the frame callback is what it refuses
+   * (`react-hooks/immutability`). The simulation is an object with its own state, and this is it.
+   */
+  advance: (elapsed: number, step: number) => void;
 }
 
 /**
@@ -402,15 +382,45 @@ function createField(count: number): Field {
     colors[offset + 2] = colour.b * depth;
   }
 
+  // `BufferAttribute` keeps `positions` itself — see the note on `Field.positionAttribute`.
+  const positionAttribute = new BufferAttribute(positions, 3);
+
+  const advance = (elapsed: number, step: number) => {
+    for (let index = 0; index < count; index += 1) {
+      const offset = index * 3;
+      // Reads off a typed array are `number | undefined` under noUncheckedIndexedAccess; the
+      // fallbacks are unreachable and are there so the loop cannot produce NaN if one ever is not.
+      const previousY = positions[offset + 1] ?? 0;
+
+      // 0 at the floor of the field, 1 anywhere in its upper reaches. The fall slows as it drops.
+      const height = clamp((previousY + SPREAD_Y) / (SPREAD_Y * 1.4), 0, 1);
+      const drop = (fall[index] ?? 0) * (SETTLED_FALL_SHARE + (1 - SETTLED_FALL_SHARE) * height);
+
+      let y = previousY - drop * step;
+      let column = originX[index] ?? 0;
+
+      // Off the bottom: back to the top with a fresh column, so the field never shows the same
+      // vertical lane twice. The wrap happens well below the frustum at every depth in the field, so
+      // the jump itself is never visible.
+      if (y < -SPREAD_Y) {
+        y = SPREAD_Y;
+        column = (Math.random() * 2 - 1) * SPREAD_X;
+        originX[index] = column;
+      }
+
+      // The horizontal drift is a sine on the grain's own phase and its own frequency, so no two
+      // grains ever move together — the only shared movement in the field is the pointer parallax.
+      positions[offset] =
+        column + Math.sin(elapsed * (swayFreq[index] ?? 0) + (phase[index] ?? 0)) * (swayAmp[index] ?? 0);
+      positions[offset + 1] = y;
+    }
+    positionAttribute.needsUpdate = true;
+  };
+
   return {
-    positionAttribute: new Float32BufferAttribute(positions, 3),
-    positions,
+    positionAttribute,
     colorAttribute: new Float32BufferAttribute(colors, 3),
-    originX,
-    swayAmp,
-    swayFreq,
-    fall,
-    phase
+    advance
   };
 }
 

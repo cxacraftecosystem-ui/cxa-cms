@@ -194,10 +194,10 @@ There is no visible link, by design. Four equivalent doors:
 - <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> on any public page
 - the footer wordmark, clicked seven times
 
-`middleware.ts` refuses every `/studio/*` path but the login screen without a live session, and sends
+`proxy.ts` refuses every `/studio/*` path but the login screen without a live session, and sends
 `X-Robots-Tag: noindex` on all of them. `robots.txt` disallows `/studio`, `/console`, `/api/`, `/search`
 and `/preview` — but robots.txt is a **request, not an access control**, and none of it substitutes for
-the middleware.
+the proxy.
 
 ## 8. Before every deploy
 
@@ -227,7 +227,7 @@ traffic that never wakes the application:
 |---|---|
 | A cached public page | Answered by the CDN. The function is never invoked, so nothing in `route()` runs. |
 | `/_next/*` chunks, fonts, images | Served as static assets or from `NEXT_PUBLIC_CDN_URL`. Never routed through the app. |
-| A request `middleware.ts` refused | The 401 JSON and the 307 to login are returned from the Edge, where Prisma cannot run. |
+| A request `proxy.ts` refused | The 401 JSON and the 307 to login are answered by the proxy, in front of `route()` — the only place an access row is written — and the proxy is kept off the database on purpose. |
 | A function that timed out, ran out of memory, or was killed | The process is gone before it can write anything. `vercel.json` raises `maxDuration` on exactly the media routes most likely to hit this. |
 | A failed build or migration | `buildCommand` runs `prisma migrate deploy`; a failure there is a build-log event. |
 
@@ -396,9 +396,9 @@ hour. **A drain that has errored is retaining nothing**, so that email is the mo
   clause 4 exists to make answerable, and a drain with the addresses stripped answers it with
   "somebody". Note the trade — those addresses are personal data and the archive is subject to
   whatever retention and access rules that implies.
-- **The receiver is not behind `middleware.ts`.** Its matcher is `/studio`, `/studio/*` and
+- **The receiver is not behind `proxy.ts`.** Its matcher is `/studio`, `/studio/*` and
   `/api/studio/*`, so `/api/drains/*` is not matched and must not be added — the signature is the
-  authentication, and middleware cannot check it without Prisma or the drain secret at the Edge.
+  authentication, verified by the route itself (`lib/drains.ts`), and the proxy knows nothing of it.
 
 ### Unfinished
 

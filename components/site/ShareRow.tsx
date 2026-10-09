@@ -25,7 +25,6 @@
  * happily share a URL carrying whatever filter parameters happened to be in the address bar.
  */
 
-import { useEffect, useState } from "react";
 import {
   Linkedin,
   Link2,
@@ -38,6 +37,7 @@ import {
 
 import { Button, LinkButton } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/ToastProvider";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { cn } from "@/lib/utils";
 
 export type ShareTarget = "linkedin" | "x" | "whatsapp" | "email";
@@ -102,13 +102,10 @@ export function ShareRow({
   className
 }: ShareRowProps) {
   const { toast } = useToast();
-  // Detected after mount, never during render: `navigator` does not exist on the server, and an
-  // `initial` that differs between the two is a hydration mismatch.
-  const [canShare, setCanShare] = useState(false);
-
-  useEffect(() => {
-    setCanShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
-  }, []);
+  // Detected only once hydrated: `navigator` does not exist on the server, and a first render that
+  // differs between the two is a hydration mismatch.
+  const hydrated = useHydrated();
+  const canShare = hydrated && typeof navigator.share === "function";
 
   const copy = async () => {
     try {

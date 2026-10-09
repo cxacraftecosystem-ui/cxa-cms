@@ -2,7 +2,7 @@ import { authEnv } from "./config";
 
 /**
  * Cookie names and options — one place, so the login route, the refresh route, the logout route and
- * middleware cannot disagree about scope. A `Path` or `Domain` mismatch between the setter and the
+ * the proxy cannot disagree about scope. A `Path` or `Domain` mismatch between the setter and the
  * clearer leaves a stale cookie the browser keeps sending and nothing can delete.
  */
 

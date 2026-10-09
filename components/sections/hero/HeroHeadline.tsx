@@ -141,10 +141,10 @@ export function HeroHeadline({ headline, accent, className }: HeroHeadlineProps)
     // Reduced motion: no split animation, no timeline, no 70 KB of animation library. Just the
     // sentence.
     //
-    // ⚠ BOTH TESTS, AND THEY ARE NOT THE SAME TEST. `reduce` is the mount-gated hook and is what
+    // ⚠ BOTH TESTS, AND THEY ARE NOT THE SAME TEST. `reduce` is the hydration-gated hook and is what
     // answers a reader who flips the toggle later — it must stay in the dependency list for that. But
-    // it reports `false` for the first render BY DESIGN (contract §8: the value must not change what
-    // is in the prerendered HTML), and the first render is the one whose effect starts the download.
+    // it reports `false` while the page hydrates BY DESIGN (contract §8: the value must not change
+    // what is in the prerendered HTML), and hydration is the render whose effect starts the download.
     // Without the synchronous read, every reader who asked for less motion still fetches GSAP —
     // above the fold, on the homepage, against the hero photograph's own bytes — to then not use it.
     if (reduce || prefersLessMotionNow()) {

@@ -36,7 +36,7 @@
  * perfectly usable state — everything simply sits in "Not in a folder".
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -194,28 +194,31 @@ export function FolderTree({
   const visible = useMemo(() => flatten(tree, expanded), [tree, expanded]);
 
   /**
-   * Open the ancestors of the chosen folder.
+   * Open the ancestors of the chosen folder — in the render that first sees the choice (or a new tree).
    *
    * Without this a deep link (`?folder=…`) selects a folder nested three levels down and the panel
    * shows a collapsed root with no indication of where the selection is.
    */
-  useEffect(() => {
+  const [revealed, setRevealed] = useState<{ value: string; byId: typeof byId } | null>(null);
+  if (revealed === null || revealed.value !== value || revealed.byId !== byId) {
+    setRevealed({ value, byId });
     const selected = byId.get(value);
-    if (!selected) return;
-    setExpanded((current) => {
-      const next = new Set(current);
-      let parentId = selected.parentId;
-      let guard = 0;
-      // The guard is not paranoia: `parentId` comes from the database, and a cycle introduced by a
-      // bad restore would otherwise spin here for ever with no error on screen.
-      while (parentId !== null && guard < 64) {
-        next.add(parentId);
-        parentId = byId.get(parentId)?.parentId ?? null;
-        guard += 1;
-      }
-      return next.size === current.size ? current : next;
-    });
-  }, [value, byId]);
+    if (selected) {
+      setExpanded((current) => {
+        const next = new Set(current);
+        let parentId = selected.parentId;
+        let guard = 0;
+        // The guard is not paranoia: `parentId` comes from the database, and a cycle introduced by a
+        // bad restore would otherwise spin here for ever with no error on screen.
+        while (parentId !== null && guard < 64) {
+          next.add(parentId);
+          parentId = byId.get(parentId)?.parentId ?? null;
+          guard += 1;
+        }
+        return next.size === current.size ? current : next;
+      });
+    }
+  }
 
   const focusItem = useCallback((id: string) => {
     setFocusedId(id);

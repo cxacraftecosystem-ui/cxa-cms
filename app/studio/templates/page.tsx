@@ -36,7 +36,7 @@ import { TemplateManager } from "@/components/studio/templates/TemplateManager";
  * `templateIcons.ts` carries no directive at all, which is what lets this screen, the editor screen and
  * the glyph picker read one list, so the picker can never offer a mark this screen cannot draw.
  */
-import { blockIcon, templateIcon } from "@/components/studio/templates/templateIcons";
+import { TemplateIcon, blockIcon } from "@/components/studio/templates/templateIcons";
 
 /**
  * PAGE TEMPLATES — a new page that already has a shape.
@@ -486,7 +486,6 @@ export default async function StudioTemplatesPage({
  */
 function TemplateCard({ template }: { template: ResolvedPageTemplate }) {
   const previews = templateBlockPreviews(template);
-  const TemplateIcon = templateIcon(template.icon);
   const titleFieldId = `template-title-${template.id}`;
   const headingId = `template-${template.id}-heading`;
 
@@ -497,7 +496,7 @@ function TemplateCard({ template }: { template: ResolvedPageTemplate }) {
           aria-hidden="true"
           className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-purple-100 text-purple-700"
         >
-          <TemplateIcon className="h-4 w-4" />
+          <TemplateIcon name={template.icon} className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
           <h2 id={headingId} className="font-display text-base font-semibold text-ink-900">

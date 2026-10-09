@@ -191,26 +191,41 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
   const scale = space ? Math.min(PREVIEW_MAX / space.width, PREVIEW_MAX / space.height, 1) : 1;
 
   // ── Loading the pixels ────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!open) return;
-
-    setLoaded(false);
-    setLoadError(null);
-    setNatural(null);
-    setCrop(null);
-    setRotation(0);
-    setFlipX(false);
-    setFlipY(false);
-    setAspectId("free");
-    setSaveError(null);
-
-    if (!asset) return;
-    if (!source) {
-      setLoadError(
-        "There is no public web address for this file, so the browser cannot load its pixels. A CDN or public storage address has to be configured before pictures can be cropped here."
-      );
-      return;
+  // Everything starts again whenever the dialog opens on a picture, or is pointed at another one while
+  // open — in the render that sees the change, so no frame shows the previous picture's crop.
+  const [requested, setRequested] = useState<{
+    open: boolean;
+    asset: StudioMediaAsset | null;
+    source: string | null;
+  } | null>(null);
+  if (
+    requested === null ||
+    requested.open !== open ||
+    requested.asset !== asset ||
+    requested.source !== source
+  ) {
+    setRequested({ open, asset, source });
+    if (open) {
+      setLoaded(false);
+      setLoadError(null);
+      setNatural(null);
+      setCrop(null);
+      setRotation(0);
+      setFlipX(false);
+      setFlipY(false);
+      setAspectId("free");
+      setSaveError(null);
     }
+  }
+
+  /** Said before any load is attempted: without an address there are no pixels to ask for. */
+  const unaddressable = Boolean(asset) && !source;
+  const problem = unaddressable
+    ? "There is no public web address for this file, so the browser cannot load its pixels. A CDN or public storage address has to be configured before pictures can be cropped here."
+    : loadError;
+
+  useEffect(() => {
+    if (!open || !asset || !source) return;
 
     let cancelled = false;
     const image = new Image();
@@ -240,12 +255,16 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
     };
   }, [open, asset, source]);
 
-  // A fresh crop whenever the shape of the space or the locked ratio changes. Keeping the old rectangle
-  // across a turn would leave a box hanging outside the picture.
-  useEffect(() => {
-    if (!space) return;
+  // A fresh crop whenever the shape of the space or the locked ratio changes — in the render that sees
+  // the change. Keeping the old rectangle across a turn would leave a box hanging outside the picture.
+  const [fittedTo, setFittedTo] = useState<{
+    space: { width: number; height: number };
+    ratio: number | null;
+  } | null>(null);
+  if (space && (fittedTo === null || fittedTo.space !== space || fittedTo.ratio !== ratio)) {
+    setFittedTo({ space, ratio });
     setCrop(fitRect(space, ratio));
-  }, [space, ratio]);
+  }
 
   // ── Drawing ───────────────────────────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
@@ -316,7 +335,7 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
     };
   };
 
-  const onPointerDown = (kind: DragKind) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const startDrag = (kind: DragKind, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!crop) return;
     // Both: the corner handles sit inside the crop box, which is itself a button, so without these a
     // corner drag would also start a move.
@@ -455,17 +474,17 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
         </>
       }
     >
-      {loadError ? (
+      {problem ? (
         <p
           role="alert"
           className="flex items-start gap-1.5 rounded-md border border-error-200 bg-error-100 px-3 py-2.5 text-sm leading-relaxed text-error-700"
         >
           <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{loadError}</span>
+          <span>{problem}</span>
         </p>
       ) : null}
 
-      {!loadError && !loaded ? (
+      {!problem && !loaded ? (
         <div>
           <span role="status" className="sr-only">
             Loading the picture…
@@ -524,7 +543,7 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
               <button
                 type="button"
                 aria-label={`Crop area — ${outputWidth} by ${outputHeight} pixels. Use the arrow keys to move it, and hold Shift to move further.`}
-                onPointerDown={onPointerDown("move")}
+                onPointerDown={(event) => startDrag("move", event)}
                 onPointerMove={onPointerMove}
                 onPointerUp={endDrag}
                 onLostPointerCapture={endDrag}
@@ -552,7 +571,7 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
                     key={corner}
                     type="button"
                     aria-label={`Resize the crop from the ${label} corner. Use the arrow keys, and hold Shift to move further.`}
-                    onPointerDown={onPointerDown(corner)}
+                    onPointerDown={(event) => startDrag(corner, event)}
                     onPointerMove={onPointerMove}
                     onPointerUp={endDrag}
                     onLostPointerCapture={endDrag}

@@ -35,6 +35,8 @@ import { resolveActiveHref } from "@/lib/navigation";
 import { ROLE_LABELS } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/auth/current-user";
 import { asApiClientError, post } from "@/lib/client/fetcher";
+import { navigateWithFullLoad } from "@/lib/client/navigation";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { AccessibilityMenu } from "@/components/ui/AccessibilityMenu";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -131,7 +133,9 @@ export function StudioTopBar({
   const [signingOut, setSigningOut] = useState(false);
   // Starts at the PC spelling and is corrected on the client, because reading `navigator` during
   // render would make the server and the browser disagree and React would discard the whole tree.
-  const [shortcutLabel, setShortcutLabel] = useState("Ctrl K");
+  // The platform is known only in the browser; the server, and hydration, say "Ctrl K".
+  const hydrated = useHydrated();
+  const shortcutLabel = hydrated && /Mac|iPhone|iPad|iPod/i.test(window.navigator.userAgent) ? "⌘ K" : "Ctrl K";
 
   const jumpInputRef = useRef<HTMLInputElement | null>(null);
   const userTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -148,11 +152,6 @@ export function StudioTopBar({
       `${entry.label} ${entry.description} ${group ?? ""}`.toLowerCase().includes(needle)
     );
   }, [destinations, query]);
-
-  useEffect(() => {
-    const platform = window.navigator.userAgent;
-    if (/Mac|iPhone|iPad|iPod/i.test(platform)) setShortcutLabel("⌘ K");
-  }, []);
 
   const openSearch = useCallback(() => {
     // `dispatchEvent` returns FALSE when a listener called `preventDefault()`. So a false answer means
@@ -210,7 +209,9 @@ export function StudioTopBar({
       await post("/api/auth/logout");
       // Deliberately NOT `setSigningOut(false)`: the button must stay busy for the whole navigation,
       // and this component is about to be replaced by a fresh server render anyway.
-      window.location.assign("/studio/login");
+      // A full page load: the session has just ended, and every Server Component on screen was
+      // rendered for the account that is signing out (lib/client/navigation.ts).
+      navigateWithFullLoad("/studio/login");
     } catch (thrown) {
       const error = asApiClientError(thrown);
       setSigningOut(false);

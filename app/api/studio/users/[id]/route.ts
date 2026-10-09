@@ -27,7 +27,7 @@ import { buildAuditContext, found, parseStudioJson } from "@/lib/studio/crud";
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * A ROLE CHANGE REVOKES THE TARGET'S SESSIONS. THIS IS THE MOST IMPORTANT LINE IN THE FILE.
  *
- * An access token is a bearer of claims, not a session: it carries the role so middleware can route
+ * An access token is a bearer of claims, not a session: it carries the role so the proxy can route
  * without a database read, and it stays valid until it expires — up to thirty minutes by default. Without
  * a revocation, a demoted editor keeps a token that still SAYS "editor" for that whole window, and the
  * demotion is a request rather than a fact. Every write already re-reads the row (`requireUser()` does),

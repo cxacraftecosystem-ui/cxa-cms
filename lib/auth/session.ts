@@ -91,7 +91,7 @@ export type RotateResult =
  *
  * One browser routinely presents the same refresh token twice within milliseconds, with no attacker
  * anywhere near it. `lib/client/fetcher.ts` dedupes concurrent refreshes, but only within ONE tab and
- * only for requests that go through it — and the studio's other refresh path does not: middleware
+ * only for requests that go through it — and the studio's other refresh path does not: the proxy
  * redirects a PAGE navigation whose access token has expired to `GET /api/auth/refresh`. So an editor
  * coming back to a tab after half an hour, with a page load and an autosave firing together, or with
  * the studio open in two tabs, produces two rotations of one parent. One wins. The loser was told

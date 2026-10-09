@@ -166,12 +166,12 @@ export const GET = route(async (request: Request) => {
    * text rather than as a broken download. The predicate is the SAME one the screen uses; only the shape
    * of the refusal differs.
    *
-   * ⚠ AND `middleware.ts` GETS THERE FIRST FOR A SIGNED-OUT VISITOR. Its matcher is
+   * ⚠ AND `proxy.ts` GETS THERE FIRST FOR A SIGNED-OUT VISITOR. Its matcher is
    * `/studio/((?!login$|login/).*)`, which covers this path — so a click with no session is redirected
    * to `/studio/login` as a PAGE before this line ever runs, which is the right answer for a link
    * clicked in a browser. This check is therefore the one that matters for somebody who IS signed in
    * and lacks the rank, and for any request that reaches the handler another way. Both are needed:
-   * middleware decides whether there is a session, and only this line knows what the session may read.
+   * the proxy decides whether there is a session, and only this line knows what the session may read.
    */
   await requireCapability(
     canManageInquiries,

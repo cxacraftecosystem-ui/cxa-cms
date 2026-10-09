@@ -92,7 +92,7 @@
  * first screen without paying for the header a second time.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { motion, useScroll, useSpring, useTransform } from "framer-motion";
@@ -123,16 +123,16 @@ import { cn } from "@/lib/utils";
  * capability probe at the foot of this file has said yes, so a phone that will not run it does not
  * download it either.
  *
- * ⚠ THAT GUARANTEE RESTS ON THE PROBE READING THE MOTION PREFERENCE ITSELF, and it is the one part of
- * this that cannot be delegated. `useReducedMotionPreference()` deliberately answers `false` until
- * after mount, because a prerendered page must not branch its first paint on something the server
- * cannot know — so the effect below runs its FIRST pass with `reduce === false` for every reader,
- * including one whose operating system has asked for less. Gating the element on that value alone
- * would put `<ParticleField />` into the tree for a single render, and `next/dynamic` fires its loader
- * on RENDER rather than in an effect: three.js and @react-three/fiber would already be in flight by
- * the time the second pass removed it, paid for by exactly the reader who asked for less. So the probe
- * reads both halves of the preference synchronously; the `reduce` guard in the effect is what handles
- * a reader who flips the in-app toggle afterwards.
+ * ⚠ THAT GUARANTEE RESTS ON NO RENDER EVER ALLOWING THE CANVAS ON A MOTION PREFERENCE NOBODY HAS READ.
+ * `next/dynamic` fires its loader on RENDER rather than in an effect, so `<ParticleField />` in the tree
+ * for a single render puts three.js and @react-three/fiber in flight — paid for by exactly the reader
+ * who asked for less motion, if that render was wrong about them. `useReducedMotionPreference()`
+ * answers `false` for everybody until hydration is over, because a prerendered page must not branch
+ * its first paint on something the server cannot know; and the device probe is read through
+ * `useSyncExternalStore` with a server snapshot of `false`, so it holds the canvas back for exactly the
+ * same renders. From the render after hydration both tell the truth — and a component mounted later by
+ * a client navigation is told the truth by both from its first render. The `reduce` term is also what
+ * takes the canvas away from a reader who flips the in-app toggle afterwards.
  */
 const ParticleField = dynamic(
   () => import("@/components/sections/hero/ParticleField").then((mod) => mod.ParticleField),
@@ -431,13 +431,18 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
   const videoRef = useRef<HTMLVideoElement>(null);
 
   /**
-   * Both start FALSE, so the prerendered markup and the first client render agree with each other for
-   * every reader, whatever their device turns out to report. The canvas and the interactive tapestry
-   * are then ADDITIONS after hydration rather than replacements of something already painted — which
-   * is the whole of the rule in contract §8 about never branching an `initial` state on a public page.
+   * Both are FALSE on the server and through hydration, so the prerendered markup and the hydrating
+   * render agree with each other for every reader, whatever their device turns out to report. The
+   * canvas and the interactive tapestry are then ADDITIONS after hydration rather than replacements of
+   * something already painted — which is the whole of the rule in contract §8 about never branching an
+   * `initial` state on a public page.
    */
-  const [canvasAllowed, setCanvasAllowed] = useState(false);
   const [pointerFine, setPointerFine] = useState(false);
+  const deviceCanRunCanvas = useSyncExternalStore(
+    noCapabilitySubscription,
+    canRunParticleField,
+    particleFieldOnServer
+  );
 
   const asset = data.backgroundMediaId ? resolved?.media[data.backgroundMediaId] : undefined;
 
@@ -530,17 +535,11 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
     return () => query.removeEventListener("change", read);
   }, []);
 
-  // Two guards for one decision, and neither is redundant. `reduce` is the LIVE one: it re-runs this
-  // effect when the reader flips the in-app toggle, so a canvas already on screen is taken away. The
-  // probe's own synchronous read is the FIRST one: on the mounting pass `reduce` is still false for
-  // everybody, and by the time it corrects itself the chunk would have been requested.
-  useEffect(() => {
-    if (backdrop !== "particles" || reduce) {
-      setCanvasAllowed(false);
-      return;
-    }
-    setCanvasAllowed(canRunParticleField());
-  }, [backdrop, reduce]);
+  // The canvas needs all three, decided in render. `reduce` is live: a reader who flips the in-app toggle
+  // has a canvas already on screen taken away. The device probe is `false` until hydration is over, and
+  // so is `reduce` — so no render can mount the canvas (and request its chunk) on the strength of a
+  // motion preference that has not been read yet.
+  const canvasAllowed = backdrop === "particles" && !reduce && deviceCanRunCanvas;
 
   /**
    * React has historically dropped the `muted` attribute across hydration, and an autoplaying video
@@ -818,9 +817,10 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
           ⚠ WHAT IS DELIBERATELY *NOT* CUT: the tapestry's SCROLL parallax, which is untouched by this
           and is where its four layers' depth separation actually lives. Only the pointer response goes.
 
-          ⚠ AND THE ONE-RENDER FLICKER IS ACCOUNTED FOR RATHER THAN ACCIDENTAL. `canvasAllowed` starts
-          `false` and the probe corrects it in an effect, so on a machine that will run the canvas this
-          prop is `true` for a single commit before going false. Nothing is visible in that window: the
+          ⚠ AND THE ONE-RENDER FLICKER IS ACCOUNTED FOR RATHER THAN ACCIDENTAL. `canvasAllowed` is
+          `false` through hydration and `pointerFine` is read in an effect, and the two settle in
+          different renders — so on a machine that will run the canvas this prop can be `true` for a
+          single commit before going false. Nothing is visible in that window: the
           tapestry's springs rest at zero and its layer wrappers start at a zero transform, so the
           listener is installed and removed having moved nothing. It costs one `addEventListener` and
           one `removeEventListener`, which is the correct price for not branching the FIRST PAINT on a
@@ -1346,37 +1346,56 @@ function resolveBackdrop(kind: Backdrop, asset: MediaRow | undefined): Backdrop 
 /**
  * May this device run the pigment field?
  *
- * Five refusals, and each is a real failure mode rather than a precaution:
+ * Four refusals here, and each is a real failure mode rather than a precaution:
  *
- *  1. **Less motion, asked for either way.** Read HERE, from the attribute and from `matchMedia`,
- *     rather than taken from the caller: the caller's `reduce` is `false` on the render that mounts
- *     this component (see the note on the dynamic import at the head of this file), and a refusal
- *     that arrives one render late has already cost the download it was meant to prevent. The union
- *     is the same one globals.css and useReducedMotionPreference.ts make — the in-app toggle can only
- *     ever ADD reduction, never take the operating system's answer away.
- *  2. **No fine pointer.** A WebGL canvas painting sixty times a second is the fastest way to make a
+ *  1. **No fine pointer.** A WebGL canvas painting sixty times a second is the fastest way to make a
  *     mid-range phone hot and empty its battery, and this is the FIRST THING a visitor sees on one.
  *     The field's parallax is also driven by a cursor that a touch device does not have, so more than
  *     half of what it contributes is unreachable there anyway.
- *  3. **Few cores.** Four or fewer, and the main thread is already the scarce resource.
- *  4. **Little memory.** Under about 4 GB reported. A device that reports NOTHING is taken at its word
+ *  2. **Few cores.** Four or fewer, and the main thread is already the scarce resource.
+ *  3. **Little memory.** Under about 4 GB reported. A device that reports NOTHING is taken at its word
  *     and allowed — `deviceMemory` is absent in Safari and Firefox, and refusing every browser that
  *     does not implement a Chrome extension would refuse most of the desktop web.
- *  5. **WebGL may simply be unavailable** — blocked by policy, blacklisted for the driver, or out of
+ *  4. **WebGL may simply be unavailable** — blocked by policy, blacklisted for the driver, or out of
  *     live contexts. Browsers hard-cap how many exist at once, so the probe hands its own context
  *     straight back rather than holding one open for the life of the page.
  *
- * It reads the DOM and `matchMedia`, so it may only ever be called from an effect — never during a
- * render, where it would answer differently on the server and the client.
+ * The fifth refusal — less motion, asked for either way — is NOT made here. It is the caller's
+ * `reduce`, and that is safe only because of how this is read: through `useSyncExternalStore`, whose
+ * server snapshot (`particleFieldOnServer`) holds the canvas off through hydration, which is exactly as
+ * long as `useReducedMotionPreference()` answers `false` for everybody. From the render after it, both
+ * tell the truth, so no render can request the chunk on a preference nobody has read. (This probe read
+ * the preference itself while that hook answered `false` on the first render of every mount.)
+ *
+ * ANSWERED ONCE PER PAGE LOAD, then cached. `useSyncExternalStore` asks for its snapshot on every render
+ * and needs the same answer each time; the hardware does not change under a page, and the WebGL probe
+ * is not something to repeat on every render or every visit to the home page.
+ *
+ * It reads `navigator`, `matchMedia` and a canvas, so it is only ever called in the browser — never on
+ * the server, where it would answer differently from the client.
  *
  * Every refusal falls back to the photographic ground and the tapestry, silently. Nothing here is
  * worth a console message on a reader's machine, and nothing about the result is a degraded design.
  */
-function canRunParticleField(): boolean {
-  if (typeof window === "undefined" || typeof document === "undefined") return false;
+let particleFieldVerdict: boolean | null = null;
 
-  if (document.documentElement.getAttribute("data-reduced-motion") === "true") return false;
-  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
+function canRunParticleField(): boolean {
+  particleFieldVerdict ??= probeParticleField();
+  return particleFieldVerdict;
+}
+
+/** The server's answer, and hydration's: no canvas until the browser has been asked. */
+function particleFieldOnServer(): boolean {
+  return false;
+}
+
+/** Nothing to subscribe to: the verdict is settled once and never changes under the page. */
+function noCapabilitySubscription(): () => void {
+  return () => {};
+}
+
+function probeParticleField(): boolean {
+  if (typeof window === "undefined" || typeof document === "undefined") return false;
 
   const fine = window.matchMedia?.("(pointer: fine)").matches ?? false;
   if (!fine) return false;

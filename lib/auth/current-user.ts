@@ -154,9 +154,9 @@ export async function requireStudioCapability(
 ): Promise<SessionUser> {
   const user = await currentUser();
 
-  // Not signed in at all is a different answer from signed in without access, and middleware has
+  // Not signed in at all is a different answer from signed in without access, and the proxy has
   // already redirected that case to the login screen. Reaching here means the cookie went stale
-  // between the middleware check and this render, so send them to sign in rather than telling them
+  // between the proxy's check and this render, so send them to sign in rather than telling them
   // they lack a permission they may well hold.
   if (!user) redirect("/studio/login");
 
@@ -178,7 +178,7 @@ export async function requireStudioCapability(
  *
  * The case that actually reaches here is worth naming, because it is not hypothetical. An administrator
  * deactivates an editor; the editor's access token stays valid for up to its full lifetime by design, so
- * middleware lets the request through, `currentUser()` then returns null because the row is inactive —
+ * the proxy lets the request through, `currentUser()` then returns null because the row is inactive —
  * and the editor gets a 500 on the dashboard while every other screen correctly sends them to sign in.
  * A redirect is the honest answer: their session really has ended.
  *

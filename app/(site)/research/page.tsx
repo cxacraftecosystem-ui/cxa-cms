@@ -44,12 +44,12 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import * as LucideIcons from "lucide-react";
-import { ArrowRight, Microscope, type LucideIcon } from "lucide-react";
+import { ArrowRight, Microscope } from "lucide-react";
 
 import { Reveal } from "@/components/motion/Reveal";
 import { CardGrid } from "@/components/site/CardGrid";
 import { PageHero } from "@/components/site/PageHero";
+import { ResearchAreaIcon } from "@/components/site/ResearchAreaIcon";
 import {
   ResearchGraph,
   type ResearchGraphEdge,
@@ -83,25 +83,6 @@ export async function generateMetadata(): Promise<Metadata> {
       "The areas the Centre works in, the projects running inside each, and the people who work across them.",
     path: "/research"
   });
-}
-
-/**
- * The whole lucide export map, resolved by NAME ON THE SERVER.
- *
- * `ResearchArea.icon` is a free-text lucide name chosen in the studio's picker, so a curated shortlist
- * here would render the fallback for a perfectly valid choice — a wrongness the editor cannot see. This
- * is a Server Component, so the namespace import costs the browser nothing: the icon is already an
- * inline `<svg>` in the HTML by the time it reaches a reader. Same approach, same reasons, as
- * components/sections/ResearchShowcaseSection.tsx.
- */
-const ICON_SET = LucideIcons as unknown as Record<string, LucideIcon | undefined>;
-
-function resolveIcon(name: string | null): LucideIcon {
-  const key = name?.trim() ?? "";
-  // lucide also exports helpers and objects; only a PascalCase function is an icon.
-  if (!/^[A-Z][A-Za-z0-9]*$/.test(key)) return Microscope;
-  const candidate = ICON_SET[key];
-  return typeof candidate === "function" ? candidate : Microscope;
 }
 
 /**
@@ -473,7 +454,7 @@ function buildGraphNote(facts: {
  * Making a public index page dynamic to hide one sentence is the wrong trade, so the sentence is
  * phrased as a statement of how the diagram is fed: true and informative to a reader wondering why the
  * picture is bare, precise enough for an editor to act on. It links nowhere for the same reason — no
- * other page under (site) links into /studio, middleware.ts gates that tree, and a public link to a
+ * other page under (site) links into /studio, proxy.ts gates that tree, and a public link to a
  * gated screen is a dead end for everyone who is not signed in.
  */
 function buildNoLinesNote(facts: { projectsDrawn: number; areasDrawn: number }): string {
@@ -497,7 +478,6 @@ function buildNoLinesNote(facts: { projectsDrawn: number; areasDrawn: number }):
  * alternatives (an `<a>` wrapping the card, or two links) are both wrong for the reasons set out there.
  */
 function ResearchAreaCard({ area }: { area: AreaCardRow }) {
-  const Icon = resolveIcon(area.icon);
   const accent = accentOf(area.accentColor);
   // A deterministic id: a Server Component has no `useId`, and `aria-labelledby` needs one.
   const titleId = `research-area-${stableHash(area.slug).toString(36)}`;
@@ -527,7 +507,7 @@ function ResearchAreaCard({ area }: { area: AreaCardRow }) {
 
       <div className="flex flex-1 flex-col p-6">
         <span className="inline-flex h-11 w-11 items-center justify-center rounded-md bg-purple-50 text-purple-700">
-          <Icon aria-hidden="true" className="h-5 w-5" />
+          <ResearchAreaIcon name={area.icon} aria-hidden="true" className="h-5 w-5" />
         </span>
 
         <h2

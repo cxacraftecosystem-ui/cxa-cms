@@ -32,10 +32,10 @@
 
 import Link from "next/link";
 import type { PageSection } from "@prisma/client";
-import * as LucideIcons from "lucide-react";
-import { ArrowRight, Microscope, type LucideIcon } from "lucide-react";
+import { ArrowRight, Microscope } from "lucide-react";
 
 import { Reveal } from "@/components/motion/Reveal";
+import { ResearchAreaIcon } from "@/components/site/ResearchAreaIcon";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { CardGrid } from "@/components/site/CardGrid";
 import { LinkButton } from "@/components/ui/Button";
@@ -61,24 +61,6 @@ export interface ResearchShowcaseSectionProps {
   total?: number;
   /** Hand-picked ids that no longer resolve. */
   droppedIds?: number;
-}
-
-/**
- * The whole lucide export map, resolved by name on the SERVER.
- *
- * `ResearchArea.icon` is a free-text lucide name chosen from the studio's picker, so a curated
- * shortlist here would render the fallback for a perfectly valid choice — a silent wrongness the
- * editor cannot see. This is a Server Component, so the namespace import costs the browser nothing:
- * the icon is already an inline `<svg>` in the HTML by the time it reaches a reader.
- */
-const ICON_SET = LucideIcons as unknown as Record<string, LucideIcon | undefined>;
-
-/** lucide also exports helpers and objects; only a PascalCase function is an icon. */
-function resolveIcon(name: string | null): LucideIcon {
-  const key = name?.trim() ?? "";
-  if (!/^[A-Z][A-Za-z0-9]*$/.test(key)) return Microscope;
-  const candidate = ICON_SET[key];
-  return typeof candidate === "function" ? candidate : Microscope;
 }
 
 /**
@@ -176,7 +158,6 @@ export function ResearchShowcaseSection({
 }
 
 function ResearchAreaCard({ area }: { area: ResearchAreaRow }) {
-  const Icon = resolveIcon(area.icon);
   const accent = accentOf(area.accentColor);
   // A deterministic id: a Server Component has no `useId`, and `aria-labelledby` needs one.
   const titleId = `research-area-${stableHash(area.slug).toString(36)}`;
@@ -209,7 +190,7 @@ function ResearchAreaCard({ area }: { area: ResearchAreaRow }) {
 
       <div className="flex flex-1 flex-col p-6">
         <span className="inline-flex h-11 w-11 items-center justify-center rounded-md bg-purple-50 text-purple-700">
-          <Icon aria-hidden="true" className="h-5 w-5" />
+          <ResearchAreaIcon name={area.icon} aria-hidden="true" className="h-5 w-5" />
         </span>
 
         <h3

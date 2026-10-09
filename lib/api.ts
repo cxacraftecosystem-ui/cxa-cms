@@ -157,13 +157,26 @@ export function describeZodError(error: ZodError): {
  * (`route(async () => …)` — app/api/auth/me, app/api/public/stats, app/api/studio/account). Next passes
  * the request to those too, so they are logged like any other; the null branch is for a caller that is
  * not Next.
+ *
+ * ⚠ AND IT RETURNS NULL FOR NEXT'S PRERENDER STAND-IN. A `force-static` route (app/api/public/stats)
+ * is prerendered at build time with a sentinel in place of the request, whose private fields refuse to
+ * be read: the first real read throws `Cannot read private member #state`. So one header is read here,
+ * inside the same guard as the shape checks, and the stand-in is told apart from a request — no access
+ * row (nobody accessed anything; the build did) and no caught `TypeError` printed in every build log as
+ * "[access-log] request not recorded", which is what happened before. See the guard in `route()`.
  */
 function requestFrom(args: unknown[]): Request | null {
   const candidate = args[0];
   if (!candidate || typeof candidate !== "object") return null;
-  const maybe = candidate as { url?: unknown; method?: unknown; headers?: { get?: unknown } };
-  if (typeof maybe.url !== "string" || typeof maybe.method !== "string") return null;
-  if (!maybe.headers || typeof maybe.headers.get !== "function") return null;
+  try {
+    const maybe = candidate as { url?: unknown; method?: unknown; headers?: { get?: unknown } };
+    if (typeof maybe.url !== "string" || typeof maybe.method !== "string") return null;
+    const headers = maybe.headers;
+    if (!headers || typeof headers.get !== "function") return null;
+    (headers.get as (name: string) => unknown).call(headers, "user-agent");
+  } catch {
+    return null;
+  }
   return candidate as Request;
 }
 
@@ -203,10 +216,12 @@ function errorCodeFor(error: unknown, status: number): string | null {
  *
  * The alternatives were considered and rejected:
  *
- *   • MIDDLEWARE cannot do it. It runs on the Edge, where Prisma does not run at all — see the header
- *     of middleware.ts. Logging from there means an HTTP call to something that can write, which is an
- *     extra function invocation per request on a plan that counts them, and a self-inflicted
- *     amplification vector the moment somebody floods `/api/studio/*` while signed out.
+ *   • THE PROXY cannot do it. It stands in front of the route and never sees the response — the status
+ *     and the error code that make an access row worth keeping are decided in here, after it has let
+ *     the request through — and it is kept off the database on purpose, because it runs ahead of every
+ *     studio request, prefetches included (see the header of proxy.ts). Logging from there would be a
+ *     write for every request it refuses as well, a self-inflicted amplification vector the moment
+ *     somebody floods `/api/studio/*` while signed out.
  *   • A `app/studio/**` LAYOUT would log page renders, but Next prefetches studio links on hover, so
  *     every hovered link would become a logged "view" — and a screen render changes nothing anyway.
  *     Every studio state change already passes through here.
@@ -264,7 +279,9 @@ export function route<Args extends unknown[]>(
     // a statically prerendered route records no access row (correct — nobody accessed it; the build
     // did), and a logging fault of ANY kind at runtime costs the log line and never the response.
     // `console.warn` and not silence: a log that has stopped writing must be discoverable without an
-    // audit being the thing that discovers it.
+    // audit being the thing that discovers it. (`requestFrom` now recognises the prerender stand-in
+    // itself and answers null, so a build no longer prints that warning; the guard stays for every
+    // fault nobody has foreseen.)
     try {
       const request = requestFrom(args);
       if (request && typeof response?.status === "number") {

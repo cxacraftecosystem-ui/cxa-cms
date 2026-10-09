@@ -391,24 +391,28 @@ export function PageEditor({
   const [lockUnavailable, setLockUnavailable] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
 
+  // The answer is written in the promise's callbacks, never before the request is on the wire, so the
+  // effect below can claim the lock (and keep the heartbeat) without setting state synchronously.
   const claimLock = useCallback(
-    async (takeOver: boolean): Promise<LockResponse | null> => {
-      if (pageId === null) return null;
-      try {
-        const answer = await post<LockResponse>("/api/studio/locks", {
-          entityType: "Page",
-          entityId: pageId,
-          takeOver
-        });
-        setLock(answer);
-        setLockUnavailable(false);
-        return answer;
-      } catch {
-        // Advisory by design: a lock service that is not there must not stop anybody editing. The note
-        // is shown once and the screen carries on.
-        setLockUnavailable(true);
-        return null;
-      }
+    (takeOver: boolean): Promise<LockResponse | null> => {
+      if (pageId === null) return Promise.resolve(null);
+      return post<LockResponse>("/api/studio/locks", {
+        entityType: "Page",
+        entityId: pageId,
+        takeOver
+      }).then(
+        (answer) => {
+          setLock(answer);
+          setLockUnavailable(false);
+          return answer;
+        },
+        () => {
+          // Advisory by design: a lock service that is not there must not stop anybody editing. The
+          // note is shown once and the screen carries on.
+          setLockUnavailable(true);
+          return null;
+        }
+      );
     },
     [pageId]
   );

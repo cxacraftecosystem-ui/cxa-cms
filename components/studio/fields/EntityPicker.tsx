@@ -434,22 +434,29 @@ function EntityPickerControl({
     );
   }, [serverItems, settling, needle]);
 
-  useEffect(() => {
+  // Every row either answer has brought is remembered, in the render that first holds the answer —
+  // keyed on the two lists, which are memoised and change only when an answer (or the narrowing) does.
+  const [mergedFrom, setMergedFrom] = useState<{
+    resolved: LookupItem[] | null;
+    search: LookupItem[] | null;
+  }>({ resolved: null, search: null });
+  if (mergedFrom.resolved !== resolvedItems || mergedFrom.search !== searchItems) {
+    setMergedFrom({ resolved: resolvedItems, search: searchItems });
     const incoming = [...(resolvedItems ?? []), ...(searchItems ?? [])];
-    if (incoming.length === 0) return;
-    setKnown((current) => {
-      let changed = false;
-      const next = { ...current };
-      for (const item of incoming) {
-        if (next[item.id] !== item) {
-          next[item.id] = item;
-          changed = true;
+    if (incoming.length > 0) {
+      setKnown((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const item of incoming) {
+          if (next[item.id] !== item) {
+            next[item.id] = item;
+            changed = true;
+          }
         }
-      }
-      return changed ? next : current;
-    });
-    // Neither dependency changes as a result of this write, so there is no loop to guard against.
-  }, [resolvedItems, searchItems]);
+        return changed ? next : current;
+      });
+    }
+  }
 
   /**
    * Is an id we cannot resolve genuinely gone, or merely not answered yet?

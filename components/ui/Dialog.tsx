@@ -48,7 +48,6 @@ import {
   useEffect,
   useId,
   useRef,
-  useState,
   type ReactNode,
   type RefObject
 } from "react";
@@ -59,6 +58,7 @@ import { TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DURATION, EASE_OUT, SPRING_LAYOUT, useReducedMotionPreference } from "@/components/motion";
 import { useScrollLock } from "@/components/ui/useScrollLock";
+import { useHydrated } from "@/lib/client/useHydrated";
 
 export type DialogTone = "default" | "danger";
 export type DialogSize = "sm" | "md" | "lg";
@@ -163,11 +163,9 @@ function releaseFocusTracker(): void {
 const dialogStack: string[] = [];
 
 export function Dialog(props: DialogProps) {
-  const [container, setContainer] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    setContainer(document.body);
-  }, []);
+  // The portal's target, `document.body`, exists only in the browser: nothing renders on the server
+  // or during hydration, and a dialog is never open before an interaction anyway.
+  const hydrated = useHydrated();
 
   // Retained by the OUTER component, which is mounted long before `open` flips, so the trigger that
   // opens the dialog is on record by the time it disables itself.
@@ -176,13 +174,13 @@ export function Dialog(props: DialogProps) {
     return releaseFocusTracker;
   }, []);
 
-  if (!container) return null;
+  if (!hydrated) return null;
 
   return createPortal(
     // `initial={false}` is deliberately absent: a dialog only ever appears after an interaction, so
     // there is no prerendered first paint for its entrance to disagree with.
     <AnimatePresence>{props.open ? <DialogSurface {...props} /> : null}</AnimatePresence>,
-    container
+    document.body
   );
 }
 

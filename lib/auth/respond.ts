@@ -84,8 +84,8 @@ export async function applySession<T>(
 /**
  * Remove all three cookies.
  *
- * Called on logout AND on every failed refresh. The failure case is what stops middleware looping:
- * middleware redirects to the refresh route because a refresh cookie exists, so if the refresh
+ * Called on logout AND on every failed refresh. The failure case is what stops the proxy looping:
+ * the proxy redirects to the refresh route because a refresh cookie exists, so if the refresh
  * cannot clear that cookie the next request redirects again, and again. Clearing is therefore not
  * tidying up — it is the loop breaker.
  */

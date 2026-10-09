@@ -48,6 +48,7 @@ import { CENTRE_TIME_ZONE } from "@/components/site/EventDateBlock";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
+import { requestTime } from "@/lib/request-time";
 
 /**
  * Newsletter subscribers — who is on the list, who is waiting, and what has not been sent.
@@ -702,6 +703,9 @@ export default async function StudioSubscribersPage({
    */
   const mailer = newsletterMailerInfo();
 
+  // One instant for every "expired" on the page — see lib/request-time.ts.
+  const now = requestTime();
+
   const formatter = new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
@@ -751,7 +755,7 @@ export default async function StudioSubscribersPage({
             that is not a matter of taste. `LinkButton` renders a `next/link` for any href beginning with
             `/` (components/ui/Button.tsx), and `next/link` PREFETCHES what is in the viewport — this
             button sits in the page header, so it is always in the viewport. A prefetch of this href runs
-            the whole export: `middleware.ts` sees a valid editor token and lets it through, and the
+            the whole export: `proxy.ts` sees a valid editor token and lets it through, and the
             handler reads up to 200 rows of `email`, `emailKey`, `ipAddress`, `userAgent` and
             `consentText`, assembles a complete personal-data CSV, and the router throws it away. Nobody
             clicked anything. Clicking then routes the navigation through the App Router first, which
@@ -1140,7 +1144,7 @@ export default async function StudioSubscribersPage({
                           {formatter.format(row.confirmationSentAt)}
                           {row.confirmationExpiresAt ? (
                             <span className="ml-1.5 text-ink-500">
-                              {row.confirmationExpiresAt.getTime() < Date.now()
+                              {row.confirmationExpiresAt.getTime() < now
                                 ? "— expired"
                                 : `— valid until ${formatter.format(row.confirmationExpiresAt)}`}
                             </span>

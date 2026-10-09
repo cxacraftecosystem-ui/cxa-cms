@@ -71,7 +71,7 @@ import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/ToastProvider";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
-import { templateIcon } from "@/components/studio/templates/templateIcons";
+import { TemplateIcon } from "@/components/studio/templates/templateIcons";
 
 /** Every address this screen calls, in one place, so the route handlers have one list to satisfy. */
 const ENDPOINTS = {
@@ -493,7 +493,6 @@ function TemplateRow({
 }: TemplateRowProps) {
   const origin = describeOrigin(template);
   const OriginIcon = origin.icon;
-  const Glyph = templateIcon(template.icon);
   const isBuiltIn = template.origin === "built-in";
 
   return (
@@ -511,7 +510,7 @@ function TemplateRow({
             aria-hidden="true"
             className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-purple-100 text-purple-700"
           >
-            <Glyph className="h-4 w-4" />
+            <TemplateIcon name={template.icon} className="h-4 w-4" />
           </span>
 
           <div className="min-w-0 flex-1">

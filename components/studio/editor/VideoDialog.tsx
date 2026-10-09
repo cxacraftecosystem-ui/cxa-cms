@@ -151,25 +151,25 @@ export function VideoDialog({ open, onClose, value, onSave, onRequestFilm }: Vid
    */
   const closedRef = useRef(false);
   useEffect(() => {
-    if (!open) closedRef.current = true;
+    closedRef.current = !open;
   }, [open]);
 
   /**
-   * Re-seed when the dialog OPENS, never while it is open.
+   * Re-seed when the dialog OPENS, never while it is open — in the render that opens it.
    *
    * A dialog that re-seeded on every change of `value` would fight the author: the editor updates the
    * node as soon as a save lands, `value` changes, and everything typed since would be replaced. The
-   * open flag is the only thing this may key on.
+   * open flag is the only thing this may key on; `value` is read for the seed and nothing else.
    */
-  useEffect(() => {
-    if (!open) return;
-    closedRef.current = false;
-    setDraft(value ?? blankAttributes());
-    setProblem(null);
-    setSaving(false);
-    // `value` is deliberately absent: see above. It is read for the seed and must not re-run this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setDraft(value ?? blankAttributes());
+      setProblem(null);
+      setSaving(false);
+    }
+  }
 
   const isUpload = draft.provider === "upload";
   const hasFilm = Boolean(draft.objectKey);

@@ -3,9 +3,9 @@
  *
  * DELIBERATELY NOT `server-only`. Everything else that reads secrets lives in `lib/env.ts`, which
  * is `server-only` so a stray client import becomes a build error. This module is the one exception
- * because **Next.js middleware must verify tokens** and middleware is compiled for the edge runtime,
- * where the `server-only` guard is at best ambiguous. It is imported by middleware and by server
- * modules and by nothing else; `lib/env.ts` re-exports `authEnv` so there is still exactly one
+ * because **the studio proxy must verify tokens** (`proxy.ts`; `middleware.ts`, on the Edge runtime,
+ * before Next 16), and the proxy is compiled as an entry of its own where the `server-only` guard has
+ * been at best ambiguous. It is imported by the proxy and by server modules and by nothing else; `lib/env.ts` re-exports `authEnv` so there is still exactly one
  * implementation of "what are the token settings".
  */
 

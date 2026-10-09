@@ -23,7 +23,7 @@ import { MediaLibrary } from "./MediaLibrary";
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * `requireStudioCapability(canManageMedia)` IS THE FIRST STATEMENT, and it is the same predicate the
  * `/api/studio/media/*` handlers call. It THROWS rather than rendering: a failing permission check
- * renders nothing at all, never a screen of disabled controls (contract §1.8). Middleware has already
+ * renders nothing at all, never a screen of disabled controls (contract §1.8). The proxy has already
  * refused an anonymous request to this path, so this is the second of the two guards rather than the
  * only one.
  *

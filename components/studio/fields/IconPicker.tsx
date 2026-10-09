@@ -38,7 +38,7 @@ import { ChevronDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FieldBlock, useFieldContext } from "@/components/ui/Field";
 import { Popover } from "@/components/ui/Popover";
-import { FEATURE_ICON_NAMES, featureIcon } from "@/components/sections/FeatureGridSection";
+import { FEATURE_ICON_NAMES, FeatureIcon, featureIcon } from "@/components/sections/FeatureGridSection";
 
 /**
  * Words that find an icon, beyond its own name.
@@ -196,8 +196,6 @@ function IconPickerControl({ value, onChange }: { value: string; onChange: (next
     triggerRef.current?.focus({ preventScroll: true });
   };
 
-  const CurrentIcon = value.length > 0 ? featureIcon(value) : null;
-
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
@@ -215,7 +213,11 @@ function IconPickerControl({ value, onChange }: { value: string; onChange: (next
             aria-hidden="true"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-surface-100 text-purple-600"
           >
-            {CurrentIcon ? <CurrentIcon className="h-5 w-5" /> : <span className="text-xs text-ink-300">none</span>}
+            {value.length > 0 ? (
+              <FeatureIcon name={value} className="h-5 w-5" />
+            ) : (
+              <span className="text-xs text-ink-300">none</span>
+            )}
           </span>
           <span className="min-w-0 truncate">
             {value.length > 0 ? humaniseIconName(value) : "Choose an icon"}

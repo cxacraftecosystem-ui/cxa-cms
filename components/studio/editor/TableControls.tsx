@@ -214,27 +214,29 @@ function TableBar({
     }
   ];
 
-  const roving = useRovingFocus(items.filter((item) => item.available).map((item) => item.id));
+  const { containerRef, currentStop, onFocused, onKeyDown } = useRovingFocus(
+    items.filter((item) => item.available).map((item) => item.id)
+  );
 
   // Same rule as the toolbar: the edge fade only appears while there is something off-screen, because
   // a permanent fade over the first and last button reads as two disabled controls.
   useEffect(() => {
-    const element = roving.containerRef.current;
+    const element = containerRef.current;
     if (!element) return;
     const measure = () => setOverflowing(element.scrollWidth - element.clientWidth > 1);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [roving.containerRef]);
+  }, [containerRef]);
 
   return (
     <div
-      ref={roving.containerRef}
+      ref={containerRef}
       role="toolbar"
       aria-label="Table"
       aria-orientation="horizontal"
-      onKeyDown={roving.onKeyDown}
+      onKeyDown={onKeyDown}
       className={cn(
         // Not sticky. The formatting toolbar above it is, and a second sticky bar would have to know
         // the first one's height — two numbers meaning one thing, which is how they drift apart.
@@ -259,7 +261,7 @@ function TableBar({
             key={item.id}
             type="button"
             data-toolbar-item={item.id}
-            tabIndex={item.id === roving.currentStop ? 0 : -1}
+            tabIndex={item.id === currentStop ? 0 : -1}
             disabled={!item.available}
             aria-pressed={item.pressed}
             // No `aria-label`: the visible words are the accessible name, so a voice-control user
@@ -268,7 +270,7 @@ function TableBar({
             // A pointer press must not take focus from the writing area — the command applies at the
             // caret, and the cell selection would collapse before the command ran.
             onMouseDown={(event) => event.preventDefault()}
-            onFocus={() => roving.onFocused(item.id)}
+            onFocus={() => onFocused(item.id)}
             onClick={item.run}
             className={
               item.className

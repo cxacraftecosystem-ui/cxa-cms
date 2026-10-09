@@ -40,7 +40,7 @@
  * are commented where they sit.
  */
 
-import { useEffect, useRef, type DependencyList, type RefObject } from "react";
+import { useEffect, useEffectEvent, useRef, type DependencyList, type RefObject } from "react";
 
 import {
   loadGsapRuntime,
@@ -94,21 +94,22 @@ export function useGsapScope<T extends HTMLElement = HTMLDivElement>(
   const scopeRef = useRef<T | null>(null);
   const reduce = useReducedMotionPreference();
 
-  // The latest builder, without it being a dependency. Written during render rather than in an
-  // effect: the effect below may run before a later render's effect, and a builder that is one render
-  // stale would close over the previous props.
-  const buildRef = useRef(build);
-  buildRef.current = build;
+  // The latest builder, without it being a dependency. An Effect Event reads the props of the render
+  // being committed. A ref only gave that guarantee when written during render, which React's lint
+  // refuses; written in an effect instead, the effect below could run first and build with the
+  // previous render's props.
+  const latestBuild = useEffectEvent(() => build);
 
   useEffect(() => {
     const scope = scopeRef.current;
-    const builder = buildRef.current;
+    const builder = latestBuild();
 
-    // ⚠ BOTH TESTS ARE LOAD-BEARING AND THEY ARE NOT THE SAME TEST. `reduce` is the mount-gated hook
-    // and is what makes a reader who flips the toggle LATER have this context reverted under them —
-    // it must stay in the dependency list for that. But it is deliberately `false` on the first
-    // render, so on the first commit it is `prefersLessMotionNow()` that stops a reader who asked for
-    // less motion paying for a ~95 KB download they will never see. See runtime.ts.
+    // ⚠ BOTH TESTS ARE LOAD-BEARING AND THEY ARE NOT THE SAME TEST. `reduce` is the hydration-gated
+    // hook and is what makes a reader who flips the toggle LATER have this context reverted under
+    // them — it must stay in the dependency list for that. But it is deliberately `false` while the
+    // page hydrates, so on a first load's first commit it is `prefersLessMotionNow()` that stops a
+    // reader who asked for less motion paying for a ~95 KB download they will never see. See
+    // runtime.ts.
     if (!scope || !builder || reduce || prefersLessMotionNow()) return;
 
     let cancelled = false;
@@ -141,7 +142,7 @@ export function useGsapScope<T extends HTMLElement = HTMLDivElement>(
       context?.revert();
       context = null;
     };
-    // `build` is intentionally absent — see `buildRef` above; a new function identity every render
+    // `build` is intentionally absent — see `latestBuild` above; a new function identity every render
     // would rebuild every trigger on every state change in the component.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reduce, ...deps]);

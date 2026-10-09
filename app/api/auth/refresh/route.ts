@@ -17,18 +17,18 @@ import { accessTokenExpiresAt, applySession, clearSession } from "@/lib/auth/res
 /**
  * Rotate the session. One route, two callers, two answer shapes.
  *
- *  • **GET, from middleware.** A reader's access token expired while they were reading; middleware
+ *  • **GET, from the proxy.** A reader's access token expired while they were reading; the proxy
  *    sends the browser here with `?next=` and this route redirects them onward with fresh cookies.
  *    The reader sees one extra hop and nothing else.
  *  • **POST, from the browser client.** `lib/client/fetcher.ts` calls it after a 401 and retries the
  *    original request. It reads JSON, so it must never be handed a redirect to an HTML page.
  *
- * ON ANY FAILURE THE COOKIES ARE CLEARED. That is not tidiness: middleware sends a request here
+ * ON ANY FAILURE THE COOKIES ARE CLEARED. That is not tidiness: the proxy sends a request here
  * *because* a refresh cookie exists, so a failed refresh that left the cookie in place would send
  * the next request straight back here, forever. Clearing is the loop breaker.
  *
- * The route runs on Node (Prisma), which is why middleware redirects to it rather than doing the
- * rotation itself.
+ * The rotation needs the database (Prisma), which is why the proxy — kept off the database on purpose,
+ * see proxy.ts — redirects here rather than doing it itself.
  */
 
 export const dynamic = "force-dynamic";
@@ -161,14 +161,14 @@ async function handle(request: NextRequest, mode: Mode): Promise<NextResponse> {
    *
    * This is the second half of the "the studio keeps signing me out" fault; `ROTATION_GRACE_MS` in
    * lib/auth/session.ts is the first. When one browser refreshes twice at once — a page navigation
-   * redirected here by middleware alongside an autosave coming through the fetcher, or simply two tabs —
+   * redirected here by the proxy alongside an autosave coming through the fetcher, or simply two tabs —
    * the winner's response carries fresh cookies and the loser arrives here. Sending it through `refuse()`
    * cleared all three, so whichever response the browser applied last decided whether the editor stayed
    * signed in. Half the time it was the loser, and the session was gone.
    *
    * Changing nothing is what makes the outcome order-independent: both responses are in flight, only one
    * writes cookies, and after the burst the jar holds the winner's regardless of which landed last. It
-   * also cannot loop — the next request carries a valid access token, so middleware does not send it back
+   * also cannot loop — the next request carries a valid access token, so the proxy does not send it back
    * here.
    *
    * The 409 is deliberate rather than a 401: `lib/client/fetcher.ts` answers a 401 by refreshing, which

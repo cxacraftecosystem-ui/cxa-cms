@@ -54,8 +54,9 @@ This is the rule that is easiest to get backwards, and the two halves of the pro
 answers:
 
 - **On `(site)` routes**, pages are prerendered. `useReducedMotionPreference()` reads `false` on the
-  server and on the first client render *by design*, then flips a tick later. So an `initial` that
-  branches on it produces a **flash** — the prerendered HTML disagrees with the corrected client tree.
+  server and during hydration *by design*, then flips with the render after it (a component mounted
+  later by a client navigation reads the truth from its first render). So an `initial` that branches
+  on it produces a **flash** — the prerendered HTML disagrees with the corrected client tree.
   Gate the *duration and displacement*, never the initial state, and never make an element's
   **existence** depend on `reduce`.
 - **Inside `/studio`**, nothing is prerendered for an anonymous reader, so branching `initial` is fine.

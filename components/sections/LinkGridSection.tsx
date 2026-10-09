@@ -38,7 +38,7 @@ import { ArrowRight, ArrowUpRight } from "lucide-react";
 
 import { STAGGER } from "@/components/motion/constants";
 import { Reveal } from "@/components/motion/Reveal";
-import { featureIcon } from "@/components/sections/FeatureGridSection";
+import { FeatureIcon } from "@/components/sections/FeatureGridSection";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { sectionLabel } from "@/lib/sections/registry";
 import type { LinkGridItem, LinkGridSectionData } from "@/lib/sections/schema";
@@ -133,7 +133,6 @@ function LinkCard({ item }: { item: LinkGridItem }) {
   const label = item.label.trim();
   const description = item.description.trim();
   const href = item.href.trim();
-  const Icon = item.icon ? featureIcon(item.icon) : null;
   const Arrow = item.external ? ArrowUpRight : ArrowRight;
 
   // `pr-12` only where the arrow is drawn: on a card with no address the extra right padding would be an
@@ -154,12 +153,12 @@ function LinkCard({ item }: { item: LinkGridItem }) {
         />
       ) : null}
 
-      {Icon ? (
+      {item.icon ? (
         <span
           aria-hidden="true"
           className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-md bg-surface-100 text-purple-600"
         >
-          <Icon className="h-5 w-5" />
+          <FeatureIcon name={item.icon} className="h-5 w-5" />
         </span>
       ) : null}
 

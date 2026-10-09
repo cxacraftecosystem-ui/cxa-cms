@@ -119,7 +119,7 @@ export function CraftPhoto({
             ? { fill: true }
             : { width: image.width, height: image.height })}
           sizes={sizes}
-          priority={priority}
+          preload={priority}
           data-craft-parallax={parallax ? "" : undefined}
           /*
            * ⚠ NO `will-change` IN THIS CLASS LIST, DELIBERATELY — and the comment that used to sit

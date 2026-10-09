@@ -87,7 +87,6 @@
 
 import {
   useCallback,
-  useEffect,
   useId,
   useRef,
   useState,
@@ -279,17 +278,20 @@ export function DateField({
    *
    * Comparing meanings rather than strings is what stops this from fighting the typing: ` 2026-09-30`
    * and `2026-09-30` mean the same day, so nothing is rewritten under the cursor.
+   *
+   * Asked in the render that first sees a new `value`, and ONLY then: `meaning` changes on every
+   * keystroke, and re-syncing whenever the two disagreed would reintroduce exactly the fight this
+   * exists to avoid — the same rule as `CoordinateField` in app/studio/events/[id]/EventEditor.tsx.
    */
-  useEffect(() => {
-    if (value === meaning) return;
-    const next = splitValue(value);
-    setDayText(next.day);
-    setTimeText(next.time);
-    // `meaning` is deliberately not a dependency: it changes on every keystroke, and reacting to it
-    // would reintroduce exactly the fight this effect exists to avoid — the same rule, and the same
-    // exemption, as `CoordinateField` in app/studio/events/[id]/EventEditor.tsx.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
+    if (value !== meaning) {
+      const next = splitValue(value);
+      setDayText(next.day);
+      setTimeText(next.time);
+    }
+  }
 
   const commit = useCallback(
     (nextDay: string, nextTime: string) => {

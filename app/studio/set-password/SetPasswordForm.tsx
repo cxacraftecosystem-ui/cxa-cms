@@ -34,10 +34,10 @@
  *    way to say anything useful about a mismatch it cannot see, and a round trip to be told "they do not
  *    match" is a round trip for something the browser already knew.
  *
- * 6. ON SUCCESS IT IS `window.location.assign`, NOT A ROUTER PUSH. The response has just set the session
- *    cookies, and every Server Component above this one — the studio layout, the sidebar, the dashboard —
- *    was rendered for an anonymous request. A router navigation would leave all of it in place and the
- *    reader would land on a signed-in studio drawn for nobody.
+ * 6. ON SUCCESS IT IS A FULL PAGE LOAD (`navigateWithFullLoad`), NOT A ROUTER PUSH. The response has
+ *    just set the session cookies, and every Server Component above this one — the studio layout, the
+ *    sidebar, the dashboard — was rendered for an anonymous request. A router navigation would leave all
+ *    of it in place and the reader would land on a signed-in studio drawn for nobody.
  *
  * WHY PLAIN `fetch` AND NOT `lib/client/fetcher.ts`, the same two reasons as its twin `LoginForm.tsx`:
  * a failure here is about the link or the password, never an expired access token, so the shared
@@ -50,6 +50,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, KeyRound, LogIn, TriangleAlert } from "lucide-react";
 
+import { navigateWithFullLoad } from "@/lib/client/navigation";
 import { Button } from "@/components/ui/Button";
 import { FieldBlock } from "@/components/ui/Field";
 import { PasswordInput } from "@/components/ui/PasswordInput";
@@ -257,7 +258,7 @@ export function SetPasswordForm({ token, email }: SetPasswordFormProps) {
        * stays busy for the whole navigation rather than flicking back to "Set my password" while the
        * browser is already leaving.
        */
-      window.location.assign("/studio");
+      navigateWithFullLoad("/studio");
       return;
     }
 
@@ -285,14 +286,14 @@ export function SetPasswordForm({ token, email }: SetPasswordFormProps) {
           A BUTTON THAT NAVIGATES, rather than a `Link`. The response has just changed the session
           cookies (it cleared them, because no session was issued), so every Server Component above this
           one was rendered for whoever the browser used to be — the same reason point 6 in the header
-          gives for `window.location.assign` on the success path. A client navigation would carry all of
+          gives for the full page load on the success path. A client navigation would carry all of
           that stale tree onto the sign-in screen.
         */}
         <Button
           icon={LogIn}
           fullWidth
           className="mt-5"
-          onClick={() => window.location.assign("/studio/login")}
+          onClick={() => navigateWithFullLoad("/studio/login")}
         >
           Go to the sign-in screen
         </Button>

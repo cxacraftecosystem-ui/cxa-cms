@@ -27,7 +27,7 @@ import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
  * `requireStudioCapability(canManageContent)` IS THE FIRST STATEMENT, and it is the same predicate the
  * `/api/studio/gallery/*` handlers call and the same one `StudioNav` hides the sidebar entry with. It
  * THROWS rather than rendering: a failing permission check renders nothing at all, never a screen of
- * disabled controls (contract §1.8). Middleware has already refused an anonymous request to this path,
+ * disabled controls (contract §1.8). The proxy has already refused an anonymous request to this path,
  * so this is the second of the two guards rather than the only one.
  *
  * A SERVER COMPONENT THAT READS PRISMA DIRECTLY, and it stays one. The whole screen is a navigation:

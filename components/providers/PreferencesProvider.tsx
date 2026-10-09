@@ -10,18 +10,22 @@
  * THIS PROVIDER DOES NOT DRIVE THE DOM ON FIRST RENDER — IT CATCHES UP WITH IT.
  * `PREFERENCES_BOOT_SCRIPT` has already stamped `data-theme` / `data-reduced-motion` /
  * `data-larger-text` / `data-high-contrast` onto `<html>` before first paint, reading the same
- * localStorage key. So state starts at `DEFAULT_PREFERENCES` — a value the server can also produce —
- * and a mount effect adopts what is actually stored. Seeding state from localStorage in the
- * initialiser instead would make the client's first render disagree with the server's markup, which
- * is a hydration error, and it would buy nothing: the attributes are already correct.
+ * localStorage key. So the server, and hydration, render with `DEFAULT_PREFERENCES` — a value the
+ * server can also produce — and the render straight after hydration adopts what is actually stored.
+ * Both come from `useSyncExternalStore`, whose server snapshot is the default and whose client
+ * snapshot is the stored value. Reading localStorage in a state initialiser instead would make the
+ * client's first render disagree with the server's markup, which is a hydration error, and it would
+ * buy nothing: the attributes are already correct.
  *
- * The consequence to design around: for one render `resolvedTheme` is "light" even on a dark device.
- * Anything that renders a theme-dependent GLYPH (a sun/moon toggle) will settle on mount. Do not use
- * `resolvedTheme` to decide an `initial` animation state on a prerendered page — see contract §8.
+ * The consequence to design around: until hydration completes, `resolvedTheme` is "light" even on a
+ * dark device. Anything that renders a theme-dependent GLYPH (a sun/moon toggle) settles with the
+ * render after it. Do not use `resolvedTheme` to decide an `initial` animation state on a prerendered
+ * page — see contract §8.
  *
- * Every write goes through `commit()`, which does all three things at once: React state (so the UI
- * re-renders), `applyPreferences` (so `<html>` matches) and `writeStoredPreferences` (so the next
- * load's boot script matches). Doing two of the three is how a toggle "works" until you reload.
+ * Every write goes through `commit()`, which does all three things at once: the store this provider
+ * reads (so the UI re-renders), `applyPreferences` (so `<html>` matches) and `writeStoredPreferences`
+ * (so the next load's boot script matches). Doing two of the three is how a toggle "works" until you
+ * reload.
  */
 
 import {
@@ -30,10 +34,11 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode
 } from "react";
 
+import { useHydrated } from "@/lib/client/useHydrated";
 import {
   DEFAULT_PREFERENCES,
   applyPreferences,
@@ -72,33 +77,77 @@ export class PreferencesContextError extends Error {
 
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 
-export function PreferencesProvider({ children }: { children: ReactNode }) {
-  const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
-  const [systemDark, setSystemDark] = useState(false);
-  // Until this is true the DOM is authoritative and this component knows nothing. Applying
-  // DEFAULT_PREFERENCES before adoption would strip the attributes the boot script just wrote —
-  // a visible flash of the wrong theme one tick after paint.
-  const [adopted, setAdopted] = useState(false);
+// ─── The stored choice, as a store ─────────────────────────────────────────────────────────────
+//
+// Read from localStorage ONCE, by the first client render that asks, then held here and replaced by
+// `commit()`. Held rather than re-read because `readStoredPreferences` parses a fresh object on every
+// call, and a snapshot that is a new object each time tells React the store changed on every render.
+// Held IN MEMORY rather than only in localStorage because storage can refuse a write (Safari private
+// mode, a sandboxed iframe) and a choice that cannot be persisted must still apply for this visit.
+// There is one provider (see the header), so there is one store.
 
-  useEffect(() => {
-    setPreferences(readStoredPreferences());
-    setAdopted(true);
-  }, []);
+let storedPreferences: Preferences | null = null;
+const preferenceListeners = new Set<() => void>();
+
+function subscribeToPreferences(listener: () => void): () => void {
+  preferenceListeners.add(listener);
+  return () => {
+    preferenceListeners.delete(listener);
+  };
+}
+
+function preferencesSnapshot(): Preferences {
+  storedPreferences ??= readStoredPreferences();
+  return storedPreferences;
+}
+
+function preferencesOnServer(): Preferences {
+  return DEFAULT_PREFERENCES;
+}
+
+function publishPreferences(next: Preferences): void {
+  storedPreferences = next;
+  for (const listener of preferenceListeners) listener();
+}
+
+// ─── The operating system's palette ────────────────────────────────────────────────────────────
+
+const DARK_QUERY = "(prefers-color-scheme: dark)";
+
+function subscribeToSystemDark(onChange: () => void): () => void {
+  const query = window.matchMedia(DARK_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function systemDarkSnapshot(): boolean {
+  return window.matchMedia(DARK_QUERY).matches;
+}
+
+function systemDarkOnServer(): boolean {
+  return false;
+}
+
+export function PreferencesProvider({ children }: { children: ReactNode }) {
+  const preferences = useSyncExternalStore(
+    subscribeToPreferences,
+    preferencesSnapshot,
+    preferencesOnServer
+  );
 
   /**
-   * The OS palette, held as STATE rather than read on demand.
+   * The OS palette, SUBSCRIBED to rather than read on demand.
    *
    * `resolveTheme()` in lib/preferences answers the same question, but it reads `matchMedia` at call
    * time and therefore cannot make React re-render when the reader flips their device to dark at
-   * dusk. The subscription below can.
+   * dusk. The subscription can.
    */
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-color-scheme: dark)");
-    setSystemDark(query.matches);
-    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
+  const systemDark = useSyncExternalStore(subscribeToSystemDark, systemDarkSnapshot, systemDarkOnServer);
+
+  // Until this is true the DOM is authoritative and this component knows nothing: the render React
+  // hydrates with carries the server's defaults. Applying them would strip the attributes the boot
+  // script just wrote — a visible flash of the wrong theme one tick after paint.
+  const adopted = useHydrated();
 
   const resolvedTheme: "light" | "dark" =
     preferences.theme === "system" ? (systemDark ? "dark" : "light") : preferences.theme;
@@ -117,7 +166,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   }, [adopted, preferences, systemDark]);
 
   const commit = useCallback((next: Preferences) => {
-    setPreferences(next);
+    publishPreferences(next);
     applyPreferences(next);
     writeStoredPreferences(next);
   }, []);

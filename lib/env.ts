@@ -21,9 +21,9 @@ import "server-only";
  * component" from a silent secret leak into a build error.
  */
 
-// The JWT settings live in lib/auth/config.ts, NOT here, because middleware must read them and this
+// The JWT settings live in lib/auth/config.ts, NOT here, because the proxy must read them and this
 // module is `server-only`. Re-exported so `authEnv()` still has exactly one implementation and one
-// import site for everything that is not middleware.
+// import site for everything that is not the proxy.
 export { authEnv, jwtSecretWeakness, MIN_JWT_SECRET_LENGTH } from "./auth/config";
 export type { AuthEnv, JwtAlgorithm } from "./auth/config";
 

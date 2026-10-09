@@ -249,10 +249,13 @@ export function MediaLibrary({
    *
    * Not about the count — the selected rows are derived from what is on screen — but about the set not
    * growing without bound as somebody pages through, and about a stale id not being silently
-   * re-selected when a row reappears on a later page.
+   * re-selected when a row reappears on a later page. Pruned in the render that first sees the new
+   * rows.
    */
   const rowIdsKey = (assets ?? []).map((row) => row.id).join("\n");
-  useEffect(() => {
+  const [prunedFor, setPrunedFor] = useState(rowIdsKey);
+  if (rowIdsKey !== prunedFor) {
+    setPrunedFor(rowIdsKey);
     const allowed = new Set(rowIdsKey.length > 0 ? rowIdsKey.split("\n") : []);
     setSelectedIds((current) => {
       if (current.size === 0) return current;
@@ -262,7 +265,7 @@ export function MediaLibrary({
       });
       return next.size === current.size ? current : next;
     });
-  }, [rowIdsKey]);
+  }
 
   const selectedAssets = useMemo(
     () => (assets ?? []).filter((row) => selectedIds.has(row.id)),

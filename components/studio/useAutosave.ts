@@ -153,8 +153,10 @@ export function useAutosave<T>({
   onSaved,
   onError
 }: UseAutosaveOptions<T>): UseAutosaveResult {
-  // Frozen at mount — see the option's note.
-  const serialiseFn = useRef<(value: T) => string>(serialise ?? defaultSerialise).current;
+  // Frozen at mount — see the option's note. State with a lazy initialiser that RETURNS the function
+  // (a bare function passed to `useState` would be called as the initialiser), not a ref read during
+  // render, which React's lint refuses.
+  const [serialiseFn] = useState<(value: T) => string>(() => serialise ?? defaultSerialise);
 
   const serialised = useMemo(() => serialiseFn(data), [data, serialiseFn]);
 

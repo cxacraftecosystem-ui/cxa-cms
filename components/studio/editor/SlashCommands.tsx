@@ -41,6 +41,7 @@ import {
   useId,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 import { createPortal } from "react-dom";
@@ -395,6 +396,8 @@ export function SlashCommands({ editor, onRequestImage, onRequestVideo }: SlashC
   /** The document position of a "/" the reader dismissed. Null once the trigger has moved on. */
   const [dismissedFrom, setDismissedFrom] = useState<number | null>(null);
   const [placement, setPlacement] = useState<{
+    /** The trigger position this was measured for. A placement for any other is not this menu's. */
+    from: number;
     left: number;
     top: number | null;
     bottom: number | null;
@@ -442,24 +445,38 @@ export function SlashCommands({ editor, onRequestImage, onRequestVideo }: SlashC
     [active, items]
   );
 
-  // A new "/" somewhere else clears an earlier dismissal; without this, dismissing once would leave
-  // the menu switched off for the position it happened to be at.
-  useEffect(() => {
-    if (dismissedFrom === null) return;
-    if (!trigger || trigger.from !== dismissedFrom) setDismissedFrom(null);
-  }, [dismissedFrom, trigger]);
+  // A new "/" somewhere else clears an earlier dismissal, in the render that sees it move; without
+  // this, dismissing once would leave the menu switched off for the position it happened to be at.
+  if (dismissedFrom !== null && (!trigger || trigger.from !== dismissedFrom)) setDismissedFrom(null);
 
-  // Filtering changes the list under the highlight, so the highlight goes back to the top. Keyed on
-  // the query rather than on the array, which is a new object on every render.
-  useEffect(() => {
+  // Filtering changes the list under the highlight, so the highlight goes back to the top — in the
+  // render that sees the new query. Keyed on the query rather than on the array, which is a new object
+  // on every render.
+  const query = active?.query;
+  const [highlightedFor, setHighlightedFor] = useState(query);
+  if (query !== highlightedFor) {
+    setHighlightedFor(query);
     setHighlighted(0);
-  }, [active?.query]);
+  }
+
+  /**
+   * The editor, for MEASURING. Where the caret sits on screen is a reading of the editor's live DOM —
+   * taken in a layout effect or a scroll handler, never during render — and holding the handle in a ref
+   * is what says so. It is also what lets React's compiler accept a measurement that sets state before
+   * paint: `react-hooks/set-state-in-effect` exempts values read through a ref, which is exactly how
+   * React's own documentation measures a DOM node in `useLayoutEffect`.
+   */
+  const editorRef = useRef(editor);
+  useLayoutEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   const measure = useCallback(() => {
-    if (!editor || !active) return;
+    const view = editorRef.current?.view;
+    if (!view || !active) return;
     let caret: { left: number; top: number; bottom: number };
     try {
-      caret = editor.view.coordsAtPos(active.from);
+      caret = view.coordsAtPos(active.from);
     } catch {
       // The position can be stale for one frame after a transaction that shortened the document.
       // Losing the menu for that frame is better than throwing inside a layout effect.
@@ -477,6 +494,7 @@ export function SlashCommands({ editor, onRequestImage, onRequestVideo }: SlashC
     // where it fits in neither direction, downward at least scrolls into the space that exists.
     if (roomBelow < MIN_ROOM_BELOW && roomAbove > roomBelow) {
       setPlacement({
+        from: active.from,
         left,
         top: null,
         bottom: window.innerHeight - caret.top + CARET_GAP,
@@ -484,16 +502,18 @@ export function SlashCommands({ editor, onRequestImage, onRequestVideo }: SlashC
       });
       return;
     }
-    setPlacement({ left, top: caret.bottom + CARET_GAP, bottom: null, maxHeight: roomBelow });
-  }, [active, editor]);
+    setPlacement({
+      from: active.from,
+      left,
+      top: caret.bottom + CARET_GAP,
+      bottom: null,
+      maxHeight: roomBelow
+    });
+  }, [active]);
 
   // Measured before paint, so the panel is never visible in the wrong place.
   useLayoutEffect(() => {
-    if (!active) {
-      setPlacement(null);
-      return;
-    }
-    measure();
+    if (active) measure();
   }, [active, measure]);
 
   // The caret moves with the page. Capture, because the scrolling ancestor is a studio panel rather
@@ -606,7 +626,13 @@ export function SlashCommands({ editor, onRequestImage, onRequestVideo }: SlashC
     };
   }, [active, editor, filtered.length, highlightedId, listboxId]);
 
-  if (!active || !placement || typeof document === "undefined") return null;
+  // A placement outlives the trigger it was measured for (nothing clears it when the menu closes), so
+  // it is only used for the trigger it was measured at. The layout effect above re-measures before paint
+  // whenever the trigger changes; a measurement that failed leaves the menu hidden for that frame rather
+  // than drawn where an earlier "/" was.
+  if (!active || !placement || placement.from !== active.from || typeof document === "undefined") {
+    return null;
+  }
 
   return createPortal(
     <div

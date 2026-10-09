@@ -29,7 +29,7 @@ import { StudioShell } from "@/components/studio/StudioShell";
  *
  * The guard is therefore in three places, none of which is this one:
  *
- *   • `middleware.ts` refuses every `/studio/*` path but the login screen when there is no live
+ *   • `proxy.ts` refuses every `/studio/*` path but the login screen when there is no live
  *     session, and redirects with `?next=` so the reader lands back where they were going;
  *   • every studio page calls `requireUser()` / `requireCapability()` as its FIRST statement, which
  *     re-reads the row and throws rather than rendering;
@@ -67,7 +67,7 @@ import { StudioShell } from "@/components/studio/StudioShell";
 
 export const metadata: Metadata = {
   // Belt and braces. `next.config.ts` already sends `X-Robots-Tag: noindex` for `/studio/:path*` and
-  // middleware repeats it on the redirects, but a header is invisible when you are reading the HTML
+  // the proxy repeats it on the redirects, but a header is invisible when you are reading the HTML
   // and a crawler that only honours the meta tag is still a crawler.
   robots: { index: false, follow: false },
   title: { default: "Studio", template: "%s · Studio" }

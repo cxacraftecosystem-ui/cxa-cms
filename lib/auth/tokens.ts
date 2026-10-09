@@ -5,11 +5,11 @@ import { authEnv } from "./config";
 /**
  * Access-token minting and verification.
  *
- * Edge-safe on purpose: `jose` uses WebCrypto, so the same code verifies a token in middleware, in a
- * route handler and in a server component. No `server-only` import — see lib/auth/config.ts for why.
+ * Runtime-neutral on purpose: `jose` uses WebCrypto, so the same code verifies a token in the proxy,
+ * in a route handler and in a server component — and would on the Edge runtime as well. No `server-only` import — see lib/auth/config.ts for why.
  *
  * The access token is a BEARER OF CLAIMS, not a session. It is short-lived (30 minutes by default)
- * and carries the role so middleware can make a routing decision without a database round trip. The
+ * and carries the role so the proxy can make a routing decision without a database round trip. The
  * authoritative role is still re-read from the database by `requireUser()` for anything that
  * actually writes — a token minted before a demotion is valid until it expires, and a demotion must
  * take effect immediately for a write.

@@ -23,7 +23,7 @@ import { LoginForm, type LoginProvider, type ProviderMark } from "./LoginForm";
  * `?next=` IS VALIDATED, NOT TRUSTED. An open redirect on a login flow is a phishing primitive: a link
  * that reads as the Centre's own domain and lands on somebody else's copy of this form. The checks
  * below are character-for-character the ones in `app/api/auth/refresh/route.ts` — the two must agree,
- * because middleware writes the parameter and either of them may be the one that consumes it.
+ * because the proxy writes the parameter and either of them may be the one that consumes it.
  *
  * THE PROVIDER BUTTONS ARE BUILT FROM `configuredProviders()`, WHICH READS THE ENVIRONMENT. A provider
  * with no client id and secret is not rendered AT ALL — not greyed out, not "coming soon" (contract

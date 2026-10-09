@@ -357,7 +357,7 @@ export function MediaImage({
           alt={bandAlt}
           fill
           sizes={sizes}
-          priority={priority}
+          preload={priority}
           unoptimized={/\.svg(\?|$)/i.test(bandSrc)}
           placeholder={first.media.blurDataUrl ? "blur" : "empty"}
           blurDataURL={first.media.blurDataUrl ?? undefined}
@@ -401,7 +401,7 @@ export function MediaImage({
             alt={alt}
             fill
             sizes={sizes}
-            priority={priority}
+            preload={priority}
             unoptimized={isVector}
             placeholder={media?.blurDataUrl ? "blur" : "empty"}
             blurDataURL={media?.blurDataUrl ?? undefined}
@@ -418,7 +418,7 @@ export function MediaImage({
           alt={alt}
           fill
           sizes={sizes}
-          priority={priority}
+          preload={priority}
           unoptimized={isVector}
           // `blurDataURL` — capital URL — is next/image's spelling; the database column is
           // `blurDataUrl`. The mismatch is a silent no-op if you get it the wrong way round.

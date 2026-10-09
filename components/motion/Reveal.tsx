@@ -139,13 +139,11 @@ function useAchievableAmount(
   // which every one of `RevealTag`'s twelve elements has, so the runtime is correct whichever is used.
   ref: { readonly current: HTMLDivElement | null }
 ): number | "some" | "all" {
-  const [amount, setAmount] = useState(requested);
-
-  // Reset when the caller changes its mind, so a corrected value cannot outlive the prop that asked
-  // for it. `requested` is the dependency; `amount` deliberately is not, or this would loop.
-  useEffect(() => {
-    setAmount(requested);
-  }, [requested]);
+  // The requested amount this element was measured unable to reach, if any. Holding WHICH value was
+  // unreachable, rather than a corrected amount, is what keeps a correction from outliving the prop
+  // that asked for it: a different request is simply not the one that was measured.
+  const [unreachable, setUnreachable] = useState<number | "all" | null>(null);
+  const amount = unreachable !== null && unreachable === requested ? "some" : requested;
 
   useEffect(() => {
     const element = ref.current;
@@ -157,7 +155,7 @@ function useAchievableAmount(
 
     // A margin, because a threshold met only exactly is a threshold met only sometimes: sub-pixel
     // layout and a scrollbar's width both move the ratio by a fraction.
-    if (wanted > reachable * 0.95) setAmount("some");
+    if (wanted > reachable * 0.95) setUnreachable(requested);
   }, [requested, ref]);
 
   return amount;

@@ -66,7 +66,7 @@ export function StudioDoorway() {
 
       // Only now, when the shortcut has definitely matched.
       event.preventDefault();
-      // `push`, not `replace`: Back must return the reader to the page they were reading. Middleware
+      // `push`, not `replace`: Back must return the reader to the page they were reading. The proxy
       // handles the rest — an unauthenticated visitor who guesses the combination lands on the login
       // screen, which is the same thing typing the address gives them.
       router.push(STUDIO_PATH);

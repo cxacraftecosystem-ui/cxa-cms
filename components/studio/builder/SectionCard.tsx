@@ -80,7 +80,8 @@ import {
   Users,
   Video,
   Workflow,
-  type LucideIcon
+  type LucideIcon,
+  type LucideProps
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import type { SectionType } from "@prisma/client";
@@ -271,6 +272,20 @@ if (process.env.NODE_ENV !== "production") {
 /** The glyph for a block type. Never undefined — see `FALLBACK_ICON`. */
 export function sectionIcon(type: SectionType): LucideIcon {
   return SECTION_ICONS[safeSectionMeta(type).icon] ?? FALLBACK_ICON;
+}
+
+/**
+ * The glyph for a block type, drawn — for a caller that would otherwise write `const Icon =
+ * sectionIcon(type)` at the top of its render and then `<Icon />`.
+ *
+ * React's compiler cannot see that `sectionIcon` returns one of the components in the map above
+ * rather than making a new one, and a component made during render is a new type on every render,
+ * which React remounts each time (`react-hooks/static-components`). Here the glyph is a lookup into
+ * the map itself, which it can see is the same component every time. Same map, same fallback.
+ */
+export function SectionIcon({ type, ...props }: Omit<LucideProps, "ref"> & { type: SectionType }) {
+  const Glyph = SECTION_ICONS[safeSectionMeta(type).icon] ?? FALLBACK_ICON;
+  return <Glyph {...props} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -704,7 +719,6 @@ export function SectionCard({
   onDelete
 }: SectionCardProps) {
   const meta = safeSectionMeta(section.type);
-  const Icon = sectionIcon(section.type);
   const name = sectionDisplayName(section);
   const summary = summariseSection(section.type, section.data);
 
@@ -820,7 +834,8 @@ export function SectionCard({
           className="min-w-0 flex-1 rounded-md px-1.5 py-2 text-left focus-visible:ring-4 focus-visible:ring-purple-600/15"
         >
           <span className="flex items-center gap-2">
-            <Icon
+            <SectionIcon
+              type={section.type}
               aria-hidden="true"
               className={cn("h-4 w-4 shrink-0", isSelected ? "text-purple-700" : "text-ink-500")}
             />

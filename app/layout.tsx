@@ -311,7 +311,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // `suppressHydrationWarning` is INTENTIONAL: the boot script writes attributes React did not
     // render. Removing it floods the console; removing the script flashes the light theme on every
     // load. The two go together.
-    <html lang="en" suppressHydrationWarning className={fontVariableClasses}>
+    //
+    // `data-scroll-behavior="smooth"` keeps route changes INSTANT. globals.css sets
+    // `scroll-behavior: smooth` on `<html>` for in-page anchors; Next 15 stood it down around every
+    // navigation on its own, and Next 16 does so only when this attribute asks — without it, every
+    // link click animates a scroll back to the top of the new page.
+    <html
+      lang="en"
+      suppressHydrationWarning
+      data-scroll-behavior="smooth"
+      className={fontVariableClasses}
+    >
       <body className="min-h-screen bg-bg-0 font-sans text-ink-900 antialiased">
         {/*
           FIRST, BLOCKING child of <body>. It must run before the first paint, which is why it is a

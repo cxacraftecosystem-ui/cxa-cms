@@ -226,20 +226,25 @@ export function PickerUpload({
    *
    * ⚠ AN UNREVOKED OBJECT URL PINS THE WHOLE FILE IN MEMORY for the lifetime of the document — the same
    * trap `UploadQueue` documents. Only one picture is ever held here, and only while the dialog is
-   * actually open, which is why this keys on `cropOpen` rather than on the asset.
+   * actually open, which is why it is made by the handler that opens the dialog rather than when the
+   * asset arrives. Every way the dialog closes drops it from state (`closeCropper`, and a new upload in
+   * `run`), and the effect below revokes whichever URL was dropped — or the last one, on unmount.
    */
+  const openCropper = () => {
+    if (!cropFile) return;
+    setCropSrc(URL.createObjectURL(cropFile));
+    setCropOpen(true);
+  };
+
+  const closeCropper = () => {
+    setCropOpen(false);
+    setCropSrc(null);
+  };
+
   useEffect(() => {
-    if (!cropOpen || !cropFile) {
-      setCropSrc(null);
-      return;
-    }
-    const url = URL.createObjectURL(cropFile);
-    setCropSrc(url);
-    return () => {
-      URL.revokeObjectURL(url);
-      setCropSrc(null);
-    };
-  }, [cropOpen, cropFile]);
+    if (cropSrc === null) return;
+    return () => URL.revokeObjectURL(cropSrc);
+  }, [cropSrc]);
 
   /**
    * Store the chosen rectangle against the asset — THE SAME FIVE COLUMNS AND THE SAME ENDPOINT as
@@ -303,6 +308,7 @@ export function PickerUpload({
       setCropAsset(null);
       setCropFile(null);
       setCropOpen(false);
+      setCropSrc(null);
       setCropError(null);
       try {
         if (kind === "media") {
@@ -469,7 +475,7 @@ export function PickerUpload({
         <div className="mt-2">
           <button
             type="button"
-            onClick={() => setCropOpen(true)}
+            onClick={openCropper}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-line-200 bg-card px-3 py-1.5 text-sm font-medium text-ink-700 transition hover:border-purple-300 hover:text-purple-700"
           >
             <Crop aria-hidden="true" className="h-4 w-4" />
@@ -499,7 +505,7 @@ export function PickerUpload({
       */}
       <ImageCropper
         open={cropOpen}
-        onClose={() => setCropOpen(false)}
+        onClose={closeCropper}
         src={cropSrc}
         fileName={cropFileName}
         initialRect={storedCrop(cropAsset)}

@@ -72,16 +72,17 @@ const REDUCED_MOTION_ATTRIBUTE = "data-reduced-motion";
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * ⚠ WHY A SECOND READER OF THE PREFERENCE EXISTS, WHEN DUPLICATING ONE IS NORMALLY THE BUG.
  *
- * `useReducedMotionPreference()` reports `false` on the server AND on the first client render, ON
- * PURPOSE: a value that differed between the prerendered HTML and the first paint would flash a
- * framer `initial` state, so it is gated behind a mount flag and only tells the truth from the second
- * render onwards (contract §8, and the hook's own header at length).
+ * `useReducedMotionPreference()` reports `false` on the server AND during hydration, ON PURPOSE: a
+ * value that differed between the prerendered HTML and the first paint would flash a framer `initial`
+ * state, so it is gated on hydration and only tells the truth from the render after it (contract §8,
+ * and the hook's own header at length).
  *
- * That is right for anything that renders, and wrong for the one decision made in the effect of the
- * FIRST commit: whether to spend ~95 KB of somebody's bandwidth. Every caller currently starts the
- * import while the preference still reads `false`, and then throws the module away one render later —
- * so a reader who explicitly asked for less motion pays the whole download for animation that is
- * never built. On the homepage that download competes with the hero photograph for the LCP.
+ * That is right for anything that renders, and wrong for the one decision made in the effect of a
+ * hydrating page's FIRST commit: whether to spend ~95 KB of somebody's bandwidth. On a page's first
+ * load every caller would start the import while the preference still reads `false`, and then throw
+ * the module away one render later — so a reader who explicitly asked for less motion would pay the
+ * whole download for animation that is never built. On the homepage that download competes with the
+ * hero photograph for the LCP.
  *
  * Reading `matchMedia` and the attribute HERE is safe precisely because it never happens during
  * render: nothing downstream of it is markup, so there is nothing to mismatch and nothing to flash.

@@ -78,8 +78,10 @@ import {
   Users,
   Video,
   Workflow,
-  type LucideIcon
+  type LucideIcon,
+  type LucideProps
 } from "lucide-react";
+import { createElement, type ReactElement } from "react";
 
 /**
  * The closed set, in the order the picker offers it: the general shapes first, then teaching, then
@@ -149,6 +151,27 @@ export function templateIcon(name: string): LucideIcon {
   return Object.prototype.hasOwnProperty.call(TEMPLATE_ICONS, wanted)
     ? (TEMPLATE_ICONS[wanted] ?? LayoutTemplate)
     : LayoutTemplate;
+}
+
+/**
+ * A template's glyph, drawn — for a caller that would otherwise write `const Icon =
+ * templateIcon(name)` at the top of its render and then `<Icon />`.
+ *
+ * React's compiler cannot see that `templateIcon` returns one of the components in the map above rather
+ * than making a new one, and a component made during render is a new type on every render, which React
+ * remounts each time (`react-hooks/static-components`). Here the glyph is a lookup into the map itself,
+ * asked the same `hasOwnProperty` question as `templateIcon` for the same reason. `createElement`
+ * rather than JSX only because this module is `.ts`, which three other files name.
+ */
+export function TemplateIcon({
+  name,
+  ...props
+}: Omit<LucideProps, "ref" | "name"> & { name: string }): ReactElement {
+  const wanted = name.trim();
+  const Glyph = Object.prototype.hasOwnProperty.call(TEMPLATE_ICONS, wanted)
+    ? (TEMPLATE_ICONS[wanted] ?? LayoutTemplate)
+    : LayoutTemplate;
+  return createElement(Glyph, props);
 }
 
 /** True when the name is one this build can draw. Used to warn about a stored name that has gone. */

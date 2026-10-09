@@ -21,7 +21,7 @@ import { PagesTable, type StudioPageRow } from "./PagesTable";
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * `requireStudioCapability(canManageStructure)` IS THE FIRST STATEMENT, and it is the same predicate the
  * `/api/studio/pages/*` handlers enforce. It THROWS rather than rendering: a failing permission check
- * renders nothing at all, never a screen of controls that will be refused (contract §1.8). Middleware
+ * renders nothing at all, never a screen of controls that will be refused (contract §1.8). The proxy
  * has already turned an anonymous request away, so this is the second of two guards, not the only one.
  *
  * A SERVER COMPONENT READING PRISMA DIRECTLY. The filters live in the URL, so narrowing this list is a

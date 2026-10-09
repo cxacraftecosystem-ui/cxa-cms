@@ -15,7 +15,7 @@ import { isSafeObjectKey } from "@/lib/storage/keys";
  * Clause 4 of the CIC hosting undertaking makes us responsible for retaining "all website-related
  * logs" for ninety days. The application can log itself — that is what the audit and access slices
  * do — but it cannot see the traffic it never wakes for: a CDN cache hit, a static asset, a request
- * middleware refused, a function killed before it could write anything. Only the PLATFORM sees
+ * the proxy refused, a function killed before it could write anything. Only the PLATFORM sees
  * those, and the only way to get them out of Vercel is a Log Drain.
  *
  * Drains are Pro-and-above. This team is on Hobby. So this endpoint cannot receive a single byte

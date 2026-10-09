@@ -16,7 +16,7 @@ import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
 import { CustomiseBuiltIn } from "@/components/studio/templates/CustomiseBuiltIn";
 import { TemplateEditor } from "@/components/studio/templates/TemplateEditor";
-import { blockIcon, templateIcon } from "@/components/studio/templates/templateIcons";
+import { TemplateIcon, blockIcon } from "@/components/studio/templates/templateIcons";
 
 /**
  * One page template: what a page made from it starts as.
@@ -156,7 +156,6 @@ export default async function StudioTemplateEditorPage({
  */
 function BuiltInAccount({ template }: { template: ResolvedPageTemplate }) {
   const previews = templateBlockPreviews(template);
-  const TemplateIcon = templateIcon(template.icon);
 
   return (
     <section aria-labelledby="built-in-heading" className="panel">
@@ -165,7 +164,7 @@ function BuiltInAccount({ template }: { template: ResolvedPageTemplate }) {
           aria-hidden="true"
           className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-purple-100 text-purple-700"
         >
-          <TemplateIcon className="h-4 w-4" />
+          <TemplateIcon name={template.icon} className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
           <h2 id="built-in-heading" className="font-display text-base font-semibold text-ink-900">

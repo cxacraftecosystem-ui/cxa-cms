@@ -13,7 +13,7 @@ failure through is a happy path that will be debugged in production.
 ## 1. A public page request
 
 `/about/history` is a `Page` row whose `slug` is `about/history`, served by
-`app/(site)/[...slug]/page.tsx`. **Middleware never sees this request** — its matcher is `/studio`,
+`app/(site)/[...slug]/page.tsx`. **The proxy never sees this request** — its matcher is `/studio`,
 `/studio/*` and `/api/studio/*` only — which is precisely what allows the response to be a cached
 static render.
 
@@ -146,7 +146,7 @@ sequenceDiagram
     participant U as Editor
     participant PB as PageBuilder<br/>(the working copy)
     participant F as lib/client/fetcher.ts
-    participant MW as middleware.ts, on the Edge
+    participant MW as proxy.ts, kept off the database
     participant RF as POST /api/auth/refresh, on Node
     participant H as PATCH …/sections/[sectionId]
     participant P as Postgres
@@ -164,7 +164,7 @@ sequenceDiagram
         F->>F: refreshOnce() — a MODULE-LEVEL shared promise
         Note over F: A studio screen commonly has 4–5 requests in flight. Ten<br/>concurrent rotations of ONE refresh token is exactly what<br/>lib/auth/session.ts treats as THEFT: the second presentation of a<br/>rotated token revokes the whole family. So ten 401s join one refresh.
         F->>RF: plain fetch, never apiFetch — a 401 here must not recurse
-        Note over RF: Outside the matcher by construction: middleware cannot run<br/>the rotation itself, because Prisma does not run on the Edge.
+        Note over RF: Outside the matcher by construction: the proxy does not run<br/>the rotation itself, because it is kept off the database.
         RF->>P: rotateSession — new token, old row marked rotatedTo
         RF-->>F: 200 + fresh cxa_access / cxa_refresh / cxa_session_hint
         F->>H: the ORIGINAL request, replayed once

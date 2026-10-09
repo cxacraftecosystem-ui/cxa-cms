@@ -570,23 +570,29 @@ export function SiteHeader({
   });
 
   // A dropdown anchored to a link that is about to be unmounted by the collapse would be left
-  // hanging under an empty pill.
-  useEffect(() => {
+  // hanging under an empty pill — so the render that changes the shape closes it.
+  const [shapeShown, setShapeShown] = useState(compact);
+  if (compact !== shapeShown) {
+    setShapeShown(compact);
     setOpenMenuId(null);
-  }, [compact]);
+  }
 
   /**
    * The reset net.
    *
    * Every link already closes the sheet on its way out; this catches the routes that change without
-   * one — the browser's Back button, a redirect, a `router.push` from anywhere else. It deliberately
-   * does NOT move focus: the navigation has already moved the reader, and dragging focus back to the
-   * hamburger afterwards would strand a screen-reader user at the top of a page they have left.
+   * one — the browser's Back button, a redirect, a `router.push` from anywhere else. Adjusted in the
+   * render that first sees the new path, so the new page is never drawn under an open sheet. It
+   * deliberately does NOT move focus: the navigation has already moved the reader, and dragging focus
+   * back to the hamburger afterwards would strand a screen-reader user at the top of a page they have
+   * left.
    */
-  useEffect(() => {
+  const [pathShown, setPathShown] = useState(pathname);
+  if (pathname !== pathShown) {
+    setPathShown(pathname);
     setSheetOpen(false);
     setOpenMenuId(null);
-  }, [pathname]);
+  }
 
   /**
    * Close the sheet if the viewport grows past `lg` while it is open.

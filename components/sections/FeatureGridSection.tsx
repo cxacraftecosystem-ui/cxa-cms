@@ -98,7 +98,8 @@ import {
   Workflow,
   Wrench,
   Zap,
-  type LucideIcon
+  type LucideIcon,
+  type LucideProps
 } from "lucide-react";
 import type { PageSection } from "@prisma/client";
 
@@ -280,6 +281,21 @@ const FALLBACK_ICON: LucideIcon = Shapes;
 export function featureIcon(name: string): LucideIcon {
   if (!name) return FALLBACK_ICON;
   return FEATURE_ICONS[name] ?? FALLBACK_ICON;
+}
+
+/**
+ * The icon for a stored name, drawn — for a caller that would otherwise write `const Icon =
+ * featureIcon(name)` at the top of its render and then `<Icon />`.
+ *
+ * React's compiler cannot see that `featureIcon` hands back one of the components in the map above
+ * rather than making a new one, and a component made during render is a new type on every render, so
+ * React remounts it each time — its DOM and its state thrown away (`react-hooks/static-components`).
+ * Here the glyph is a lookup into the map itself, which it can see is the same component every time.
+ * Same names, same fallback as `featureIcon`.
+ */
+export function FeatureIcon({ name, ...props }: Omit<LucideProps, "ref" | "name"> & { name: string }) {
+  const Glyph = (name ? FEATURE_ICONS[name] : undefined) ?? FALLBACK_ICON;
+  return <Glyph {...props} />;
 }
 
 /** Complete literal class strings — a `grid-cols-${n}` assembled from data is purged (contract §5). */

@@ -17,6 +17,8 @@
  * `window` rather than failing later with "Failed to parse URL from /api/…".
  */
 
+import { navigateWithFullLoad } from "@/lib/client/navigation";
+
 /** Refresh-token exchange. Called at most once per burst — see `refreshOnce`. */
 const REFRESH_PATH = "/api/auth/refresh";
 
@@ -217,7 +219,7 @@ function refreshOnce(): Promise<boolean> {
        * ⚠ A LOST REFRESH RACE COUNTS AS SUCCESS, BECAUSE THE COOKIES ARE ALREADY GOOD.
        *
        * The promise above dedupes concurrent refreshes within THIS tab, and that is all it can do: a
-       * second tab has its own copy of this module, and middleware refreshes a page navigation without
+       * second tab has its own copy of this module, and the proxy refreshes a page navigation without
        * coming through here at all. So one browser really does present the same refresh token twice, and
        * the server now answers the loser with 409 `refresh_raced` instead of tearing the session down
        * (lib/auth/session.ts, ROTATION_GRACE_MS).
@@ -261,7 +263,7 @@ function redirectToLogin(): void {
   const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   // A full navigation rather than a router push: the session is gone, so every cached RSC payload
   // on this page was rendered for someone who is no longer signed in.
-  window.location.assign(`${LOGIN_PATH}?next=${encodeURIComponent(next)}`);
+  navigateWithFullLoad(`${LOGIN_PATH}?next=${encodeURIComponent(next)}`);
 }
 
 function mayAttemptRefresh(path: string, init: ApiRequestInit): boolean {

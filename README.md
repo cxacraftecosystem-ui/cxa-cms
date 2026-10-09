@@ -204,7 +204,7 @@ for `CraftPhoto` rather than `next/image` for anything in that manifest.
 
 ⚠ `/preview` deliberately sits under `(site)` and not under `/studio`. It renders inside the real site
 layout, so an editor reviews the design rather than the design inside a sidebar; and it is outside
-`middleware.ts`'s `/studio/*` matcher, so the signed token really is the gate and a preview link can be
+`proxy.ts`'s `/studio/*` matcher, so the signed token really is the gate and a preview link can be
 forwarded. `docs/OUTSTANDING.md` §5 records what happened when it lived at the other address.
 
 ## Architecture

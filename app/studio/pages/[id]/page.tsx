@@ -154,7 +154,7 @@ export default async function StudioPageEditorPage({
    * because a preview address is a string and `npm run route-check` only resolves `/api/…` literals.
    * The route now lives at `app/(site)/preview/[[...slug]]`, which gives it two properties the studio
    * path could not have: it renders inside the real site layout, so the preview looks like the page
-   * rather than like the page inside a sidebar; and it sits outside the middleware's `/studio/*`
+   * rather than like the page inside a sidebar; and it sits outside the proxy's `/studio/*`
    * matcher, so the signed token is genuinely the gate and a preview link can be forwarded.
    */
   const previewBase = page.slug.length > 0 ? `/preview/${page.slug}` : "/preview";

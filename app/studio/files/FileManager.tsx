@@ -54,6 +54,7 @@ import {
 } from "@/lib/client/upload";
 import { FILE_PRESIGN_PATH, uploadToFileStore } from "@/lib/client/fileUpload";
 import { useDebouncedValue, useResource } from "@/lib/client/useResource";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { cn, formatBytes } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -298,16 +299,15 @@ export function FileManager({ categories, categoriesTruncated, storageReady }: F
   const [uploading, setUploading] = useState<{ name: string; fraction: number } | null>(null);
 
   /**
-   * `now` is read once, after mount.
+   * `now` is read once, when this mounts, and used only once hydrated.
    *
    * "Has this expired?" depends on the clock, and the server rendering the first HTML has a different one
    * from the reader's browser — printing the answer during SSR is a hydration mismatch React resolves by
-   * keeping whichever it likes. Until this lands, an expiry is shown as a date and nothing more.
+   * keeping whichever it likes. Until hydration is over, an expiry is shown as a date and nothing more.
    */
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    setNow(Date.now());
-  }, []);
+  const hydrated = useHydrated();
+  const [mountedAt] = useState(() => Date.now());
+  const now = hydrated ? mountedAt : null;
 
   // The COMPOSED PATH is debounced, not the text box: typing and choosing a filter share one timer, so
   // they cannot interleave into a request that reflects neither (useResource.ts).

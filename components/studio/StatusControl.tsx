@@ -52,11 +52,12 @@
  * speaking, or "publish at 9am" means two different instants to the two people who set it and read it.
  */
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import type { ContentStatus } from "@prisma/client";
 import { CalendarClock, TriangleAlert } from "lucide-react";
 
 import { STATUS_LABELS, describeStatus } from "@/lib/content";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { cn } from "@/lib/utils";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
@@ -208,12 +209,10 @@ export function StatusControl({
    * `describeStatus()` formats dates with `toLocaleDateString`, which depends on the reader's time
    * zone — and the server rendering this HTML does not know it. Printing the sentence during SSR
    * therefore produces a hydration mismatch that React resolves by keeping the SERVER's date, which
-   * is the wrong one. So the first paint shows the status word alone and the sentence lands on mount.
+   * is the wrong one. So the server's paint, and hydration, show the status word alone, and the
+   * sentence lands with the render that follows hydration.
    */
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useHydrated();
 
   const blockers = publishBlockers ?? [];
   const blocked = blockers.length > 0;

@@ -17,20 +17,22 @@
  * no picture at all. Every uncropped image on the site depends on that, and it is the one property that
  * cannot be established by reading the code, because it is a claim about two code paths agreeing.
  *
- * ⚠ THREE PIECES OF SETUP, ALL FORCED AND NONE OF THEM A HACK:
+ * ⚠ TWO PIECES OF SETUP, BOTH FORCED AND NEITHER OF THEM A HACK:
  *
- *  1. `--tsconfig tsconfig.scripts.json`. The project's `tsconfig.json` sets `"jsx": "preserve"` because
- *     Next owns the transform, so `tsx` compiles the JSX inside `MediaImage.tsx` with the CLASSIC runtime
- *     and the render dies on "React is not defined". The override sets `react-jsx` for scripts only.
- *  2. An `.svg` object key, so `next/image` takes its `unoptimized` path. The optimiser's loader validates
+ *  1. An `.svg` object key, so `next/image` takes its `unoptimized` path. The optimiser's loader validates
  *     the hostname against a config Next injects AT BUILD TIME, which does not exist outside `next build`
  *     — an ordinary CDN URL therefore throws "hostname is not configured" here and only here. The crop
  *     geometry is produced before and independently of the loader, so bypassing it changes nothing this
  *     script looks at.
- *  3. Everything inside `main()`, with DYNAMIC imports. `lib/media/url.ts` reads `NEXT_PUBLIC_CDN_URL` at
+ *  2. Everything inside `main()`, with DYNAMIC imports. `lib/media/url.ts` reads `NEXT_PUBLIC_CDN_URL` at
  *     module scope, so a static import would capture an empty base and every render would come out as the
  *     "no image" placeholder. Dynamic imports need `await`, and `tsx` compiles a `.ts` file in this
  *     package to CJS — where esbuild refuses top-level `await`. Hence the function.
+ *
+ * (There used to be a third: `--tsconfig tsconfig.scripts.json`, because `tsconfig.json` said
+ * `"jsx": "preserve"` and `tsx` then compiled `MediaImage.tsx` with the classic runtime — "React is not
+ * defined". Next 16 writes `"jsx": "react-jsx"` into `tsconfig.json` itself, which `tsx` reads, so the
+ * override and its file are gone.)
  *
  * ⚠ WHAT IT CANNOT SEE: whether the emitted CSS is applied by a browser, whether the breakpoint matches
  * the one the layout uses, or whether anything on a real page passes `picture` at all.

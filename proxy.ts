@@ -5,9 +5,13 @@ import { verifyAccessToken } from "@/lib/auth/tokens";
 /**
  * The studio door.
  *
- * EDGE RUNTIME, WHICH DECIDES WHAT MAY BE IMPORTED. `jose` verifies the access token with WebCrypto
- * and runs here happily; Prisma does not run here at all. So this file must never import `lib/db.ts`
- * — nor anything that transitively pulls it in, which rules out `lib/api.ts`, `lib/audit.ts` and
+ * NEXT'S PROXY, ON NODE.JS — AND THE IMPORT RULE OUTLIVED THE EDGE. This file was `middleware.ts`,
+ * on the Edge runtime, until Next 16 renamed the convention to `proxy` and fixed its runtime to
+ * Node.js (a `runtime` export here is refused). `jose` verifies the access token with WebCrypto on
+ * either. Prisma COULD run here now, and still must not: the door stands in front of every studio
+ * request, prefetches included, and a database round trip here would be paid on each of them for a
+ * question the signed token already answers. So this file never imports `lib/db.ts` — nor anything
+ * that transitively pulls it in, which rules out `lib/api.ts`, `lib/audit.ts` and
  * `lib/auth/current-user.ts`. That is why the 401 body below is written out by hand instead of being
  * built with `unauthorized()`: it must stay byte-compatible with `lib/api.ts`'s `ApiErrorBody`, and
  * the comment beside it is the only thing keeping the two in step.
@@ -105,7 +109,7 @@ function unauthorizedJson(): NextResponse {
   );
 }
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname, search } = request.nextUrl;
 
   if (isPublicStudioPath(pathname)) return withStudioHeaders(NextResponse.next());

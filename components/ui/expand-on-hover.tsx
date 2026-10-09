@@ -359,7 +359,7 @@ function ShelfFace({ face, priority }: { face: ExpandOnHoverFace; priority?: boo
         alt={face.alt}
         fill
         sizes={COVER_SIZES}
-        priority={priority}
+        preload={priority}
         // The blur the rest of the site gets through `MediaImage` and this branch did not — see
         // `blurDataUrl` on the face. `blurDataURL` is next/image's capitalisation and the column is
         // `blurDataUrl`; getting it the wrong way round is a silent no-op.

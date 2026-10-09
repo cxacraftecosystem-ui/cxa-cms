@@ -35,9 +35,9 @@ import { getSetting } from "@/lib/settings/service";
  *      as the reason `/studio` is here — and then claimed every entry was annotated while five of the
  *      nine carried no comment at all. It cannot be an argument for this list: see the paragraph below.
  *      A crawler that means harm reads this file as a map of where to look, so nothing is ever kept out
- *      by being named in it. `/studio` is here under (a); it is the middleware that guards it.
+ *      by being named in it. `/studio` is here under (a); it is the proxy that guards it.
  *
- * robots.txt is a REQUEST, not an access control. Nothing here is a substitute for the middleware
+ * robots.txt is a REQUEST, not an access control. Nothing here is a substitute for the proxy
  * that actually guards `/studio`.
  */
 
@@ -94,14 +94,14 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
            * about `/studio` would walk in under the other name.
            *
            * `/studio` is additionally sent `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` by
-           * next.config.ts and by middleware, so for that door this line is the EARLIER ask — a header
+           * next.config.ts and by the proxy, so for that door this line is the EARLIER ask — a header
            * is only read once the page has already been fetched.
            *
            * ⚠ `/console` GETS NO SUCH HEADER, so for that door this line is not defence in depth — it is
            * the only ask there is. Verified on a running server: `/console` and `/console/pages` answer
            * a bare `307` carrying nothing but `location`. Both routes that could have added one miss it,
            * for different reasons: `next.config.ts`'s header rule for `/console/:path*` never fires
-           * because the redirect short-circuits it, and `middleware.ts` never sees the path at all
+           * because the redirect short-circuits it, and `proxy.ts` never sees the path at all
            * because its `config.matcher` lists only studio and studio-API prefixes. That is not a hole
            * — nothing is SERVED at `/console`, only a redirect — but it is why this entry must not be
            * deleted as redundant with `/studio`.

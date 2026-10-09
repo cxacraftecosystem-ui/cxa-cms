@@ -37,13 +37,12 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    # ⚠ ROOM FOR THE MAJORS THIS REPOSITORY IS DELIBERATELY BEHIND ON. Dependabot stops opening version
-    # updates for an ecosystem once five of its pull requests are open, and its first run here opened
-    # five majors at once (Next 16, ESLint 10, TypeScript 7, Prisma 7, Tailwind 4), each a migration of
-    # its own that stays open until that work lands. At the default of five, the weekly minor-and-patch
+    # ⚠ ROOM FOR MAJORS THAT TAKE A MIGRATION. Dependabot stops opening version updates for an ecosystem
+    # once five of its pull requests are open, and a major is a pull request of its own that can stay
+    # open for weeks while its migration is done — its first run here opened five at once (Next 16,
+    # ESLint 10, TypeScript 7, Prisma 7, Tailwind 4). At the default of five, the weekly minor-and-patch
     # group, which is the reason this file exists, would not be opened again until they were closed.
-    # Nine majors are pending (those five, @prisma/client 7, eslint-config-next 16, zod 4 and
-    # lucide-react 1) plus the group; fifteen leaves headroom. Security updates have a separate limit.
+    # Fifteen leaves headroom for a burst like that. Security updates have a separate limit.
     open-pull-requests-limit: 15
     groups:
       minor-and-patch:

@@ -54,7 +54,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Crop, ImageOff, SearchX, TriangleAlert, UploadCloud } from "lucide-react";
 
 import { asApiClientError, patch } from "@/lib/client/fetcher";
@@ -175,15 +175,19 @@ export function MediaPicker({
   const [cropError, setCropError] = useState<string | null>(null);
 
   // A fresh dialog every time. Carrying the last search over would show somebody a filtered library
-  // with no memory of why, and carrying a selection over would let a stale pick be confirmed.
-  useEffect(() => {
-    if (open) return;
-    setFilters({ ...DEFAULT_MEDIA_FILTERS, kind: kind ?? "" });
-    setChosen([]);
-    setShowUpload(false);
-    setCropping(null);
-    setCropError(null);
-  }, [open, kind]);
+  // with no memory of why, and carrying a selection over would let a stale pick be confirmed. Reset in
+  // the render that closes it (or that changes `kind` while it is shut), so it is fresh when it opens.
+  const [shown, setShown] = useState({ open, kind });
+  if (open !== shown.open || kind !== shown.kind) {
+    setShown({ open, kind });
+    if (!open) {
+      setFilters({ ...DEFAULT_MEDIA_FILTERS, kind: kind ?? "" });
+      setChosen([]);
+      setShowUpload(false);
+      setCropping(null);
+      setCropError(null);
+    }
+  }
 
   // The COMPOSED PATH is debounced, not the text box: typing and choosing a filter then share one
   // timer, so they cannot interleave into a request that reflects neither (useResource.ts).

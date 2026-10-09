@@ -125,7 +125,7 @@ as an error.
 **Fixed** by building `app/(site)/preview/[[...slug]]/page.tsx`. It went under `(site)` rather than
 `/studio` for two reasons that turned out to matter: the site layout gives the preview the real header,
 footer and type, so it shows the design being reviewed rather than the design inside a sidebar; and it
-sits outside `middleware.ts`'s `/studio/*` matcher, so the signed token is genuinely the gate and a
+sits outside `proxy.ts`'s `/studio/*` matcher, so the signed token is genuinely the gate and a
 preview link can be forwarded — which is what `lib/pages.ts` had always claimed and, under `/studio`,
 was not true of.
 
@@ -244,9 +244,9 @@ repaint. Now a constant gradient on a layer translated by `x`/`y`, which compose
 `transparent 68%` — the layer is already transparent well inside its own boundary.
 
 ⚠ **And a reduced-motion reader was downloading animation libraries they would never see.**
-`useReducedMotionPreference()` reports `false` on the first render by design (a value that differed
-between the prerendered HTML and the first paint would flash), and the first commit's effect is the one
-that starts the import — so GSAP (~95 KB) and Lenis were fetched and then discarded one render later.
+`useReducedMotionPreference()` reports `false` until hydration is over, by design (a value that
+differed between the prerendered HTML and the first paint would flash), and the hydrating commit's effect
+is the one that starts the import — so GSAP (~95 KB) and Lenis were fetched and then discarded one render later.
 Behaviour was correct; the cost was paid by exactly the readers who opted out. Both now test a
 synchronous `prefersLessMotionNow()` alongside the hook.
 

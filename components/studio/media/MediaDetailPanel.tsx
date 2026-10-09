@@ -251,17 +251,15 @@ export function MediaDetailPanel({
 
   const data = detail.data;
 
-  useEffect(() => {
-    if (!data) return;
-    // Seed ONCE per asset. `useResource` re-reads on every refresh, and re-seeding on each answer
-    // would wipe half-typed alt text the moment an unrelated refresh landed.
-    if (loadedId === data.id) return;
+  // Seed ONCE per asset, in the render that first holds it. `useResource` re-reads on every refresh,
+  // and re-seeding on each answer would wipe half-typed alt text the moment an unrelated refresh landed.
+  if (data && loadedId !== data.id) {
     setForm(formFromDetail(data));
     setLoadedId(data.id);
     setTagDraft("");
     setSaveError(null);
     setReplaceError(null);
-  }, [data, loadedId]);
+  }
 
   const baseline = useMemo(() => (data ? snapshot(formFromDetail(data)) : null), [data]);
   const current = useMemo(() => (form ? snapshot(form) : null), [form]);

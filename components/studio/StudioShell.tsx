@@ -48,10 +48,11 @@
  * no reveal on the sidebar, no fade on the main region. An administrator hitting a row must land on it
  * immediately.
  *
- * THE PADDING-LEFT SWITCH IS NOT TRANSITIONED ON FIRST PAINT. The stored width is only knowable after
- * mount, so the server always renders the expanded column. Animating the correction would show every
- * reader who collapsed their sidebar a 220ms slide on every single page load; `ready` holds the
- * transition back until after the correction has landed, so the first paint is simply right.
+ * THE PADDING-LEFT SWITCH IS NOT TRANSITIONED ON FIRST PAINT. The stored width is only knowable in the
+ * browser, so the server — and hydration — always render the expanded column. Animating the correction
+ * would show every reader who collapsed their sidebar a 220ms slide on every single page load; `ready`
+ * holds the transition back until the render after hydration, which is the one that applies the stored
+ * width, so the first paint is simply right.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * ⚠ THE FRAME DOES NOT PRINT, AND UNTIL NOW THERE WAS NOTHING FOR THE PRINT STYLESHEET TO HOLD ON TO
@@ -84,11 +85,21 @@
  */
 
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode
+} from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/current-user";
+import { useHydrated } from "@/lib/client/useHydrated";
 import { DURATION, EASE_OUT, SPRING_ISLAND, useReducedMotionPreference } from "@/components/motion";
 import { useScrollLock } from "@/components/ui/useScrollLock";
 // Reused rather than redefined: Dialog's comment calls this "one definition shared by every overlay",
@@ -122,6 +133,33 @@ function readStoredCollapsed(): boolean | null {
   }
 }
 
+/** The server cannot read the browser's storage: it, and hydration, draw the default (expanded). */
+function storedCollapsedOnServer(): boolean | null {
+  return null;
+}
+
+/** Nothing to subscribe to: only this screen writes the key, and it re-renders itself when it does. */
+function noStorageSubscription(): () => void {
+  return () => {};
+}
+
+/** 1024px is the stock `lg` breakpoint, written as a literal because a media query cannot read a token. */
+const WIDE_QUERY = "(min-width: 1024px)";
+
+function subscribeToWide(onChange: () => void): () => void {
+  const query = window.matchMedia(WIDE_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function isWide(): boolean {
+  return window.matchMedia(WIDE_QUERY).matches;
+}
+
+function wideOnServer(): boolean {
+  return false;
+}
+
 function writeStoredCollapsed(collapsed: boolean): void {
   try {
     window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "collapsed" : "expanded");
@@ -146,8 +184,16 @@ export function StudioShell({ user, children }: StudioShellProps) {
   // so an entry hidden from one cannot reappear in the other.
   const sections = useMemo(() => visibleStudioNav(user), [user]);
 
-  const [collapsed, setCollapsed] = useState(false);
-  const [ready, setReady] = useState(false);
+  // The stored width once hydrated (a primitive, so the snapshot is stable between reads), then the
+  // reader's own choice once they make one this visit.
+  const storedCollapsed = useSyncExternalStore(
+    noStorageSubscription,
+    readStoredCollapsed,
+    storedCollapsedOnServer
+  );
+  const [chosenCollapsed, setChosenCollapsed] = useState<boolean | null>(null);
+  const collapsed = chosenCollapsed ?? storedCollapsed ?? false;
+  const ready = useHydrated();
   const [navOpen, setNavOpen] = useState(false);
 
   const navTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -157,19 +203,11 @@ export function StudioShell({ user, children }: StudioShellProps) {
   // opened from inside the sheet cannot free the page when it closes.
   useScrollLock(navOpen);
 
-  useEffect(() => {
-    const stored = readStoredCollapsed();
-    if (stored !== null) setCollapsed(stored);
-    setReady(true);
-  }, []);
-
   const toggleCollapsed = useCallback(() => {
-    setCollapsed((current) => {
-      const next = !current;
-      writeStoredCollapsed(next);
-      return next;
-    });
-  }, []);
+    const next = !collapsed;
+    writeStoredCollapsed(next);
+    setChosenCollapsed(next);
+  }, [collapsed]);
 
   const closeNav = useCallback(() => {
     // Focus moves BEFORE the close, while the panel is still mounted and the hamburger is still what the
@@ -180,12 +218,15 @@ export function StudioShell({ user, children }: StudioShellProps) {
     setNavOpen(false);
   }, []);
 
-  // A navigation closes the sheet. Without this the panel stays over the screen it just opened, and
-  // the reader has to dismiss the menu to see what they chose. Focus is NOT pulled back to the trigger
-  // here: the destination page is what should receive attention now.
-  useEffect(() => {
+  // A navigation closes the sheet — in the render that first sees the new path. Without this the
+  // panel stays over the screen it just opened, and the reader has to dismiss the menu to see what
+  // they chose. Focus is NOT pulled back to the trigger here: the destination page is what should
+  // receive attention now.
+  const [pathShown, setPathShown] = useState(pathname);
+  if (pathname !== pathShown) {
+    setPathShown(pathname);
     setNavOpen(false);
-  }, [pathname]);
+  }
 
   /**
    * Rule 1: focus moves into the sheet when it opens.
@@ -211,22 +252,11 @@ export function StudioShell({ user, children }: StudioShellProps) {
    *
    * The sheet is `lg:hidden`, so at that width it is invisible — but `useScrollLock` would still be
    * holding the page frozen with nothing on screen to dismiss. A reader who rotated a tablet would find
-   * a CMS that refuses to scroll and no way to explain it. 1024px is the stock `lg` breakpoint, written
-   * as a literal because a media query cannot read a Tailwind token.
+   * a CMS that refuses to scroll and no way to explain it. The width is a store React subscribes to
+   * (`WIDE_QUERY` above), and the render that sees it cross closes the sheet.
    */
-  useEffect(() => {
-    if (!navOpen) return;
-    const wide = window.matchMedia("(min-width: 1024px)");
-    if (wide.matches) {
-      setNavOpen(false);
-      return;
-    }
-    const onChange = (event: MediaQueryListEvent) => {
-      if (event.matches) setNavOpen(false);
-    };
-    wide.addEventListener("change", onChange);
-    return () => wide.removeEventListener("change", onChange);
-  }, [navOpen]);
+  const wide = useSyncExternalStore(subscribeToWide, isWide, wideOnServer);
+  if (navOpen && wide) setNavOpen(false);
 
   // Rules 2, 3 and 4: the trap itself. See the header for why each branch is the shape it is.
   useEffect(() => {

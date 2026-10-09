@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/Input";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
+import { requestTime } from "@/lib/request-time";
 
 /**
  * The recycle bin — everything soft-deleted, and the two things that can be done with it.
@@ -478,7 +479,8 @@ export default async function StudioRecycleBinPage({
    */
   const mayPurge = isMasterAdmin(user);
   const windowDays = mediaPurgeAfterDays();
-  const now = Date.now();
+  // One instant for every countdown on the page — see lib/request-time.ts.
+  const now = requestTime();
 
   return (
     <div className="mx-auto w-full max-w-[84rem] space-y-6">

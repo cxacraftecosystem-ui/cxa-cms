@@ -39,7 +39,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ClipboardList, Image as ImageIcon, MapPin, Plus, X } from "lucide-react";
@@ -1406,14 +1406,16 @@ function CoordinateField({
    * Re-sync only when the number arriving from outside means something DIFFERENT from what is already
    * typed — a discard, or a revision being restored. Comparing meanings rather than strings is what stops
    * this from fighting the typing: "12." and 12 mean the same thing, so nothing is rewritten.
+   *
+   * Asked in the render that first sees a new `value`, and ONLY then: `meaning` changes on every
+   * keystroke, and re-syncing whenever the two disagreed would reintroduce exactly the fight this exists
+   * to avoid.
    */
-  useEffect(() => {
-    if (meaning === value) return;
-    setText(value === null ? "" : String(value));
-    // `meaning` is deliberately not a dependency: it changes on every keystroke, and reacting to it would
-    // reintroduce exactly the fight this effect exists to avoid.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
+    if (meaning !== value) setText(value === null ? "" : String(value));
+  }
 
   const outOfRange = meaning !== null && (meaning < min || meaning > max);
 

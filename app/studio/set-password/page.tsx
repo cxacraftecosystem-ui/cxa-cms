@@ -26,7 +26,7 @@ import { SetPasswordForm } from "./SetPasswordForm";
  * set a new one for you" was true of no code path in the application.
  *
  * IT REQUIRES NO SESSION, AND MUST NOT. The whole point is an account that has no password yet, so
- * there is nothing to sign in with. `middleware.ts` exempts this one path from the studio door for
+ * there is nothing to sign in with. `proxy.ts` exempts this one path from the studio door for
  * exactly that reason — if that exemption is ever removed, every invitation dies again, silently.
  *
  * THE TOKEN IS VALIDATED BEFORE THE FORM IS RENDERED. A form that cannot succeed is worse than a

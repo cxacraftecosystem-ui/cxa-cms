@@ -55,6 +55,20 @@ interface SpeechCapableWindow extends Window {
   webkitSpeechRecognition?: new () => MinimalSpeechRecognition;
 }
 
+/** Stop and forget the recogniser a ref holds, if there is one. */
+function stopRecogniser(ref: { current: MinimalSpeechRecognition | null }): void {
+  const recognition = ref.current;
+  ref.current = null;
+  if (!recognition) return;
+  // Detached first, so the stop is not taken for Chromium's end-after-silence and restarted.
+  recognition.onend = null;
+  try {
+    recognition.stop();
+  } catch {
+    // Never started — nothing to stop.
+  }
+}
+
 export function AiOrb({ className }: { className?: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotionPreference();
@@ -63,40 +77,38 @@ export function AiOrb({ className }: { className?: string }) {
   const [near, setNear] = useState(false);
   const [covered, setCovered] = useState(false);
   const [listening, setListening] = useState(false);
-  /** What the microphone permission did when the reader asked for it. See the effect below. */
+  /** What the microphone permission did when the reader asked for it. See `askForMicrophone`. */
   const [mic, setMic] = useState<"idle" | "asking" | "granted" | "denied" | "unavailable">("idle");
   const [speaking, setSpeaking] = useState(false);
   /** The reader's words, live. Null when recognition is unsupported — a different fact from "". */
   const [transcript, setTranscript] = useState<string | null>("");
   const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
+  /**
+   * Which press the microphone question belongs to. Bumped by every press and by unmounting, so an
+   * answer that arrives after the reader has already stopped listening — or left — writes nothing.
+   */
+  const micRequestRef = useRef(0);
 
   /*
    * THE TRANSCRIPT — what it heard, written back to the reader while they speak.
    *
-   * Same consent gate as the analyser: recognition starts only while `listening` is true, i.e.
-   * strictly after the reader pressed the microphone button (the browser's own mic permission has
-   * already been granted to the orb's getUserMedia by then, so this adds no second prompt in
-   * Chromium). Interim results are shown as they form — the point is the mirror, not a minutes
-   * document — and only the LAST utterance is kept, because a scrolling transcript under an orb
-   * is a chat log, which this is not.
+   * Same consent gate as the analyser: recognition starts only FROM THE PRESS, i.e. strictly after
+   * the reader pressed the microphone button (the browser's own mic permission is asked in the same
+   * press, so this adds no second prompt in Chromium). Interim results are shown as they form — the
+   * point is the mirror, not a minutes document — and only the LAST utterance is kept, because a
+   * scrolling transcript under an orb is a chat log, which this is not.
+   *
+   * Returns the transcript to start from: "" when the recogniser is running, null when there is none
+   * (or it would not start).
    *
    * ⚠ Firefox ships no SpeechRecognition: `transcript` stays null there and the line under the
    * orb simply never renders. The orb itself (amplitude-driven) works everywhere, so the feature
    * degrades by shedding words, not by breaking.
    */
-  useEffect(() => {
-    if (!listening) {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-      return;
-    }
-
+  const startRecognition = (): string | null => {
     const speechWindow = window as SpeechCapableWindow;
     const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-    if (!Recognition) {
-      setTranscript(null);
-      return;
-    }
+    if (!Recognition) return null;
 
     const recognition = new Recognition();
     recognitionRef.current = recognition;
@@ -126,21 +138,22 @@ export function AiOrb({ className }: { className?: string }) {
 
     try {
       recognition.start();
-      setTranscript("");
+      return "";
     } catch {
-      setTranscript(null);
-    }
-
-    return () => {
       recognitionRef.current = null;
-      recognition.onend = null;
-      try {
-        recognition.stop();
-      } catch {
-        // Never started — nothing to stop.
-      }
-    };
-  }, [listening]);
+      return null;
+    }
+  };
+
+  // Leaving the page while it listens releases the recogniser and abandons a pending prompt answer.
+  // Refs only, so the cleanup needs nothing from any render.
+  useEffect(
+    () => () => {
+      micRequestRef.current += 1;
+      stopRecogniser(recognitionRef);
+    },
+    []
+  );
 
   // Near-viewport gate + lazy chunk. The import fires once, on first approach; the mount flag
   // keeps toggling with visibility so the rAF loop never runs for an orb nobody can see.
@@ -195,16 +208,11 @@ export function AiOrb({ className }: { className?: string }) {
    * one open as well would light the recording indicator for a feature the reader may have turned
    * straight back off, and would keep the microphone busy for another tab.
    *
-   * It runs only while `listening` is true, so the prompt still follows the reader's own press —
-   * the consent gate this component is careful about everywhere else.
+   * It runs only from the press itself — the consent gate this component is careful about
+   * everywhere else, and the user gesture a browser most readily shows its prompt for.
    * ══════════════════════════════════════════════════════════════════════════════════════════════
    */
-  useEffect(() => {
-    if (!listening) {
-      setMic("idle");
-      return;
-    }
-
+  const askForMicrophone = () => {
     // `mediaDevices` is undefined outside a secure context, which on this site means somebody is
     // running it over plain http — worth saying rather than failing mutely.
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -212,25 +220,40 @@ export function AiOrb({ className }: { className?: string }) {
       return;
     }
 
-    let cancelled = false;
+    const request = micRequestRef.current + 1;
+    micRequestRef.current = request;
     setMic("asking");
 
     void navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
         stream.getTracks().forEach((track) => track.stop());
-        if (!cancelled) setMic("granted");
+        if (micRequestRef.current === request) setMic("granted");
       })
       .catch(() => {
         // Refused, dismissed, blocked by policy, or no input device — the reader cannot tell these
         // apart and neither can we, so one honest sentence covers all of them.
-        if (!cancelled) setMic("denied");
+        if (micRequestRef.current === request) setMic("denied");
       });
+  };
 
-    return () => {
-      cancelled = true;
-    };
-  }, [listening]);
+  /**
+   * THE PRESS, and everything that follows from it at once: the microphone question, the recogniser,
+   * and the two lines of state below — so the first frame after the press already says what is
+   * happening, rather than a frame later from an effect.
+   */
+  const toggleListening = () => {
+    if (listening) {
+      micRequestRef.current += 1;
+      stopRecogniser(recognitionRef);
+      setListening(false);
+      setMic("idle");
+      return;
+    }
+    setListening(true);
+    askForMicrophone();
+    setTranscript(startRecognition());
+  };
 
   const showShader = !reduce && near && !covered && Orb !== null;
 
@@ -289,7 +312,7 @@ export function AiOrb({ className }: { className?: string }) {
         <button
           type="button"
           aria-pressed={listening}
-          onClick={() => setListening((current) => !current)}
+          onClick={toggleListening}
           className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-full border border-gold-300/30 bg-gold-300/5 px-5 font-display text-sm font-semibold text-gold-200 transition hover:border-gold-300/60 hover:bg-gold-300/15 focus-visible:!outline-logo-cream"
         >
           {listening ? (
@@ -338,7 +361,7 @@ export function AiOrb({ className }: { className?: string }) {
 
       {/*
         ⚠ THE BROWSER HAS NO RECOGNISER — SAY SO, RATHER THAN RENDERING NOTHING.
-        `transcript` is set to `null` in exactly one case that is not an error: the effect above
+        `transcript` is set to `null` in exactly one case that is not an error: `startRecognition`
         found neither `SpeechRecognition` nor `webkitSpeechRecognition`. Until now that produced
         SILENCE — the orb turned, the button said "Stop listening", and no words ever appeared —
         which is indistinguishable from a bug, and was reported as one.

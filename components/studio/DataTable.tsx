@@ -448,9 +448,13 @@ export function DataTable<Row>({
    *
    * The derived `selectedRows` above already ignores them, so this is not about correctness of the
    * count — it is about the set not growing without bound as a reader pages through a list, and about
-   * a stale id not being silently re-selected if a row comes back on a later page.
+   * a stale id not being silently re-selected if a row comes back on a later page. Pruned in the render
+   * that first sees the new rows, keyed on the joined ids: `rowIds` is a fresh array every render, and
+   * comparing it would prune on every render instead of when the rows actually change.
    */
-  useEffect(() => {
+  const [prunedFor, setPrunedFor] = useState(rowIdsKey);
+  if (rowIdsKey !== prunedFor) {
+    setPrunedFor(rowIdsKey);
     setSelected((current) => {
       if (current.size === 0) return current;
       const allowed = new Set(rowIds);
@@ -460,10 +464,7 @@ export function DataTable<Row>({
       });
       return next.size === current.size ? current : next;
     });
-    // Keyed on the joined ids: `rowIds` is a fresh array every render, and listing it would run this
-    // on every render instead of when the rows actually change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowIdsKey]);
+  }
 
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
   const someSelected = selectedRows.length > 0 && !allSelected;

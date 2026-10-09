@@ -446,7 +446,7 @@ export function ImageCropper({
     [normalisedRatio]
   );
 
-  const onPointerDown = (kind: DragKind) => (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const startDrag = (kind: DragKind, event: ReactPointerEvent<HTMLButtonElement>) => {
     const image = imageRef.current;
     if (!image) return;
     const frame = image.getBoundingClientRect();
@@ -729,7 +729,7 @@ export function ImageCropper({
                 <button
                   type="button"
                   aria-label={`Crop area. ${cropSentence} Use the arrow keys to move it, and hold Shift to move further.`}
-                  onPointerDown={onPointerDown("move")}
+                  onPointerDown={(event) => startDrag("move", event)}
                   onPointerMove={onPointerMove}
                   onPointerUp={endDrag}
                   onLostPointerCapture={endDrag}
@@ -758,7 +758,7 @@ export function ImageCropper({
                       key={corner}
                       type="button"
                       aria-label={`Resize the crop from the ${label} corner. ${cropSentence} Use the arrow keys, and hold Shift to move further.`}
-                      onPointerDown={onPointerDown(corner)}
+                      onPointerDown={(event) => startDrag(corner, event)}
                       onPointerMove={onPointerMove}
                       onPointerUp={endDrag}
                       onLostPointerCapture={endDrag}

@@ -1170,20 +1170,20 @@ function ToolbarBar({
   const reachableIds = groups.flatMap((group) =>
     group.items.filter((item) => item.available).map((item) => item.id)
   );
-  const roving = useRovingFocus(reachableIds);
+  const { containerRef, currentStop, onFocused, onKeyDown } = useRovingFocus(reachableIds);
 
   // The mask must only appear when there is something off-screen to hint at. Observing the scroller is
   // enough: every control is always rendered (unavailable ones are disabled, not removed), so the
   // content width does not change on its own.
   useEffect(() => {
-    const element = roving.containerRef.current;
+    const element = containerRef.current;
     if (!element) return;
     const measure = () => setOverflowing(element.scrollWidth - element.clientWidth > 1);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [roving.containerRef]);
+  }, [containerRef]);
 
   return (
     <div
@@ -1198,11 +1198,11 @@ function ToolbarBar({
       className={cn("sticky z-10 border-b border-line-200 bg-surface-50", className)}
     >
       <div
-        ref={roving.containerRef}
+        ref={containerRef}
         role="toolbar"
         aria-label={label}
         aria-orientation="horizontal"
-        onKeyDown={roving.onKeyDown}
+        onKeyDown={onKeyDown}
         className={cn(
           "flex items-center gap-1 overflow-x-auto px-2 py-1.5",
           overflowing && "mask-edges-x"
@@ -1225,15 +1225,15 @@ function ToolbarBar({
                 <ToolbarMenu
                   key={item.id}
                   menu={item}
-                  isTabStop={item.id === roving.currentStop}
-                  onFocused={roving.onFocused}
+                  isTabStop={item.id === currentStop}
+                  onFocused={onFocused}
                 />
               ) : (
                 <ToolbarButton
                   key={item.id}
                   item={item}
-                  isTabStop={item.id === roving.currentStop}
-                  onFocused={roving.onFocused}
+                  isTabStop={item.id === currentStop}
+                  onFocused={onFocused}
                 />
               )
             )}

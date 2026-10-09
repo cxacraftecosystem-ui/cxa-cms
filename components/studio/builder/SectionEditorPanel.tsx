@@ -44,8 +44,8 @@ import { Switch } from "@/components/ui/Switch";
 import { FormSection } from "@/components/studio/FormSection";
 import { SECTION_FORMS, type SectionFormProps } from "@/components/studio/sections";
 import {
+  SectionIcon,
   safeSectionMeta,
-  sectionIcon,
   type BuilderSection
 } from "@/components/studio/builder/SectionCard";
 
@@ -164,7 +164,6 @@ export function SectionEditorPanel({
   }
 
   const meta = safeSectionMeta(section.type);
-  const Icon = sectionIcon(section.type);
   const Form = forms[section.type] as AnySectionForm | undefined;
 
   /** Anything the schema reported about the settings as a whole rather than about one field. */
@@ -179,7 +178,7 @@ export function SectionEditorPanel({
       description={meta.description}
       actions={
         <span className="flex items-center gap-2 text-xs text-ink-500">
-          <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-purple-700" />
+          <SectionIcon type={section.type} aria-hidden="true" className="h-4 w-4 shrink-0 text-purple-700" />
           <span className="tabular-nums">
             Block {index + 1} of {total}
           </span>

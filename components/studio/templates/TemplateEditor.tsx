@@ -66,7 +66,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { useAutosave } from "@/components/studio/useAutosave";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { AddSectionPalette } from "@/components/studio/builder/AddSectionPalette";
-import { safeSectionMeta, sectionIcon } from "@/components/studio/builder/SectionCard";
+import { SectionIcon, safeSectionMeta } from "@/components/studio/builder/SectionCard";
 import {
   TEMPLATE_ICON_NAMES,
   humaniseTemplateIcon,
@@ -525,7 +525,6 @@ interface BlockRowProps {
 
 function BlockRow({ block, index, total, onChange, onMove, onRemove, onInsertAfter }: BlockRowProps) {
   const meta = safeSectionMeta(block.type);
-  const Glyph = sectionIcon(block.type);
   const overrideCount = block.overrides ? Object.keys(block.overrides).length : 0;
 
   return (
@@ -536,7 +535,7 @@ function BlockRow({ block, index, total, onChange, onMove, onRemove, onInsertAft
             aria-hidden="true"
             className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line-200 bg-card text-ink-500"
           >
-            <Glyph className="h-3.5 w-3.5" />
+            <SectionIcon type={block.type} className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-ink-900">

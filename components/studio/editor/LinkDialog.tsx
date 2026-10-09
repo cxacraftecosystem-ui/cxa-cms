@@ -173,22 +173,39 @@ export function LinkDialog({
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  /** null = a search is running; [] = it finished and found nothing. Different screens. */
-  const [results, setResults] = useState<PageLinkResult[] | null>(null);
-  const [truncated, setTruncated] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+
+  /**
+   * The last answer the search gave, with the query it answers. What the list shows is DERIVED from it
+   * below rather than set at the start of every search: an answer to a different query than the one in
+   * the box is simply not this query's answer, so the screen says "searching" until this one's lands.
+   */
+  const [answer, setAnswer] = useState<{
+    query: string;
+    results: PageLinkResult[];
+    truncated: boolean;
+    error: string | null;
+  } | null>(null);
+  const trimmedQuery = query.trim();
+  const current = answer !== null && answer.query === trimmedQuery ? answer : null;
+  /** null = a search is running (or nothing is typed); [] = it finished and found nothing. Different screens. */
+  const results = trimmedQuery.length === 0 ? null : (current?.results ?? null);
+  const truncated = current?.truncated ?? false;
+  const searchError = current?.error ?? null;
 
   // Every render of a closed dialog is a render nobody sees, so the fields are reset when it opens
-  // rather than when it closes — a reset on close is visible for the length of the exit animation.
-  useEffect(() => {
-    if (!open) return;
-    setValue(href ?? "");
-    setError(null);
-    setQuery("");
-    setResults(null);
-    setTruncated(false);
-    setSearchError(null);
-  }, [href, open]);
+  // rather than when it closes — a reset on close is visible for the length of the exit animation. The
+  // reset happens in the render that opens it (or that hands an open dialog a different link), so the
+  // first frame of the dialog is already the fresh one.
+  const [seeded, setSeeded] = useState<{ open: boolean; href: string | null }>({ open: false, href });
+  if (open !== seeded.open || href !== seeded.href) {
+    setSeeded({ open, href });
+    if (open) {
+      setValue(href ?? "");
+      setError(null);
+      setQuery("");
+      setAnswer(null);
+    }
+  }
 
   /**
    * The search race guard.
@@ -214,33 +231,31 @@ export function LinkDialog({
     if (!open) return;
     const trimmed = query.trim();
     if (trimmed.length === 0) {
+      // Nothing to ask; whatever is in flight answers a query that is no longer in the box.
       generationRef.current += 1;
-      setResults(null);
-      setTruncated(false);
-      setSearchError(null);
       return;
     }
 
     const generation = (generationRef.current += 1);
     const controller = new AbortController();
-    setResults(null);
-    setSearchError(null);
 
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const answer = await searchRef.current(trimmed, controller.signal);
+          const found = await searchRef.current(trimmed, controller.signal);
           if (generation !== generationRef.current) return;
-          setResults(answer.results);
-          setTruncated(answer.truncated);
+          setAnswer({ query: trimmed, results: found.results, truncated: found.truncated, error: null });
         } catch (thrown) {
           if (generation !== generationRef.current) return;
           if (controller.signal.aborted) return;
           // The message from lib/api.ts is already a plain sentence ready to render, so it is shown
           // verbatim — with the sentence that says the dialog still works.
-          setSearchError(asApiClientError(thrown).message);
-          setResults([]);
-          setTruncated(false);
+          setAnswer({
+            query: trimmed,
+            results: [],
+            truncated: false,
+            error: asApiClientError(thrown).message
+          });
         }
       })();
     }, SEARCH_DEBOUNCE_MS);

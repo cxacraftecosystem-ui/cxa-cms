@@ -471,7 +471,7 @@ function shouldRecord(pathname: string, status: number): boolean {
  *      `route()` sees it like any other response and logs it. That is the slice's headline win —
  *      `audit_logs` cannot see a throttled sign-in attempt and this table can — and it means the
  *      limiter caps password guesses, not row inserts.
- *   3. `middleware.ts` matches only `/studio` and `/api/studio/*`, so neither surface is refused
+ *   3. `proxy.ts` matches only `/studio` and `/api/studio/*`, so neither surface is refused
  *      earlier.
  *
  * So `GET /api/cron/purge` in a loop costs the attacker one connection and costs the deployment one

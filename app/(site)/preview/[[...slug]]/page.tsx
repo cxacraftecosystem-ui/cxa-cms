@@ -37,7 +37,7 @@ import { resolveSectionData } from "@/lib/sections/resolve";
  *
  * Two things follow, and both are what `lib/pages.ts` always described:
  *
- *   1. **The signed token is the gate.** `middleware.ts` matches `/studio/*` only, so this route is
+ *   1. **The signed token is the gate.** `proxy.ts` matches `/studio/*` only, so this route is
  *      reachable without a session — which is the whole point of signing the slug with the server
  *      secret. A preview link can be sent to a colleague, a funder or a mailing list, and rotating
  *      `JWT_SECRET` invalidates every outstanding one at once.
@@ -54,7 +54,7 @@ import { resolveSectionData } from "@/lib/sections/resolve";
  * be previewed before publication.
  *
  * ⚠ `forceNoIndex`. An unpublished draft on a stable URL is exactly what a crawler that found the
- * link once will come back for. It is belt and braces behind the middleware, and it costs one
+ * link once will come back for. It is belt and braces behind the proxy, and it costs one
  * argument.
  */
 

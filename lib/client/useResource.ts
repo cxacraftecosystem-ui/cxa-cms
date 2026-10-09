@@ -68,6 +68,32 @@ export function useResource<T>(
     path !== null && options.initialData === undefined
   );
 
+  /**
+   * THE KEY THE STATE ABOVE DESCRIBES, and the adjustment made the moment it changes — DURING RENDER.
+   *
+   * A new path means a new question, so the render that first sees it already says "loading" and has
+   * dropped the previous failure: leaving the old error on screen while the new request runs makes it
+   * look as though nothing was asked. No path at all means nothing is loading and nothing will, and the
+   * previous key's answer is cleared, because attributing one query's answer to another key is worse
+   * than showing nothing. (Between two real paths the old rows stay up until the new ones land — a
+   * filter change must not blank a list that is about to be replaced.)
+   *
+   * Done here rather than at the start of the effect that fetches, which is where it used to be: state
+   * set synchronously in an effect is a second render of a frame the reader has already been shown,
+   * and for one commit every screen saw the new key with the old key's `isLoading` and `error`.
+   */
+  const [shownPath, setShownPath] = useState(path);
+  if (path !== shownPath) {
+    setShownPath(path);
+    setError(null);
+    if (path === null) {
+      setDataState(null);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+  }
+
   const generation = useRef(0);
 
   // The callbacks live in a ref, refreshed after every commit. Depending on them directly would
@@ -78,50 +104,61 @@ export function useResource<T>(
     latestOptions.current = options;
   });
 
-  const run = useCallback(async (): Promise<void> => {
-    if (path === null) return;
-
+  /**
+   * Ask `target` and settle the state when it answers — and ONLY when it answers.
+   *
+   * It touches no state before the request is on the wire: whoever calls it has already said
+   * "loading" (the render-time adjustment above for a new path, `refresh` for the same one). The
+   * answer is written in the promise's callbacks, so the effect below can start a request without
+   * setting state synchronously.
+   */
+  const request = useCallback((target: string): Promise<void> => {
     const mine = generation.current + 1;
     generation.current = mine;
-    setIsLoading(true);
-    // Clear a previous failure at the START of the attempt: leaving the old error on screen while
-    // the retry runs makes the retry look like it did nothing.
-    setError(null);
 
-    try {
-      const result = await apiFetch<T>(path);
-      if (generation.current !== mine) return;
-      setDataState(result);
-      latestOptions.current.onSuccess?.(result);
-    } catch (thrown) {
-      if (generation.current !== mine) return;
-      const failure = asApiClientError(thrown);
-      setError(failure);
-      // `data` is deliberately left alone. A failed refresh of a list that is already on screen
-      // should show an error beside the list, not replace a working page with an empty one.
-      latestOptions.current.onError?.(failure);
-    } finally {
-      if (generation.current === mine) setIsLoading(false);
-    }
-  }, [path]);
+    return apiFetch<T>(target).then(
+      (result) => {
+        if (generation.current !== mine) return;
+        setDataState(result);
+        setIsLoading(false);
+        latestOptions.current.onSuccess?.(result);
+      },
+      (thrown: unknown) => {
+        if (generation.current !== mine) return;
+        const failure = asApiClientError(thrown);
+        setError(failure);
+        setIsLoading(false);
+        // `data` is deliberately left alone. A failed refresh of a list that is already on screen
+        // should show an error beside the list, not replace a working page with an empty one.
+        latestOptions.current.onError?.(failure);
+      }
+    );
+  }, []);
 
   useEffect(() => {
     if (path === null) {
+      // Whatever was in flight answers a question nobody is asking any more.
       generation.current += 1;
-      setDataState(null);
-      setError(null);
-      setIsLoading(false);
       return;
     }
 
-    void run();
+    void request(path);
 
     return () => {
       // Bumping on cleanup covers both a path change and an unmount: whichever happened, the answer
       // now in flight belongs to a question nobody is asking, and it drops itself when it arrives.
       generation.current += 1;
     };
-  }, [path, run]);
+  }, [path, request]);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    if (path === null) return;
+    setIsLoading(true);
+    // Clear a previous failure at the START of the attempt: leaving the old error on screen while
+    // the retry runs makes the retry look like it did nothing.
+    setError(null);
+    await request(path);
+  }, [path, request]);
 
   const setData = useCallback<Dispatch<SetStateAction<T | null>>>((value) => {
     // A manual write is newer than any read already in flight, so that read is retired. Without
@@ -133,7 +170,7 @@ export function useResource<T>(
     setIsLoading(false);
   }, []);
 
-  return { data, error, isLoading, refresh: run, setData };
+  return { data, error, isLoading, refresh, setData };
 }
 
 export interface UseMutationResult<TInput, TOutput> {
@@ -241,14 +278,16 @@ export function useMutation<TInput, TOutput>(
 export function useDebouncedValue<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState<T>(value);
 
+  // No delay at all: the value IS the debounced value, from the render that receives it. The stored
+  // copy is kept level during render (not in the effect), so that if a delay is asked for later the
+  // timer starts from the latest value rather than from whatever was current before the delay ended.
+  if (ms <= 0 && !Object.is(debounced, value)) setDebounced(value);
+
   useEffect(() => {
-    if (ms <= 0) {
-      setDebounced(value);
-      return;
-    }
+    if (ms <= 0) return;
     const timer = window.setTimeout(() => setDebounced(value), ms);
     return () => window.clearTimeout(timer);
   }, [value, ms]);
 
-  return debounced;
+  return ms <= 0 ? value : debounced;
 }

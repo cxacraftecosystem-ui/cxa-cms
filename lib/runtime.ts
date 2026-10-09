@@ -24,8 +24,8 @@ import { storageConfigured } from "@/lib/env";
  *   2. **Longer-lived serverless is still not shared.** A platform that keeps an instance warm and sends
  *      it several requests at once reduces cold starts; it does not give two instances one counter. Every
  *      warning here is about state being PER INSTANCE, so warm instances do not change any of them.
- *   3. **This module is `server-only` and never reaches the edge.** `middleware.ts` runs on the edge
- *      runtime and imports none of this; the numbers below describe the Node functions.
+ *   3. **This module is `server-only` and never reaches the proxy.** `proxy.ts` imports none of this;
+ *      the numbers below describe the route and page functions.
  *
  * ══ THE AUDIT BEHIND `runtimeWarnings()` ══
  *

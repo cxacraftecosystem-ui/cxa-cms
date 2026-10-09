@@ -44,6 +44,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { CircleCheck, LoaderCircle, PencilLine, TriangleAlert, type LucideIcon } from "lucide-react";
 
+import { useHydrated } from "@/lib/client/useHydrated";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
@@ -162,20 +163,27 @@ export function SaveBar({
   const confirm = useConfirm();
 
   /**
-   * `null` until mounted, and the relative phrase is withheld until then.
+   * The relative phrase is withheld until hydration.
    *
    * A relative time computed on the server is already stale by the time it hydrates, and the two
-   * strings differ — a hydration mismatch React resolves by keeping whichever it wants. Waiting one
-   * commit costs a single frame of a phrase that is about to start ticking anyway.
+   * strings differ — a hydration mismatch React resolves by keeping whichever it wants. Waiting for
+   * the render after hydration costs a single frame of a phrase that is about to start ticking anyway.
+   *
+   * The clock is read when this mounts and then once a tick while there is a save to describe. A save
+   * that lands between ticks is newer than the last reading, and `relativeWords` floors a negative age
+   * at zero — "just now", which is exactly what it is.
    */
-  const [now, setNow] = useState<number | null>(null);
+  const hydrated = useHydrated();
+  const [mountedAt] = useState(() => Date.now());
+  const [tickedAt, setTickedAt] = useState<number | null>(null);
 
   useEffect(() => {
-    setNow(Date.now());
     if (lastSavedAt === null) return;
-    const timer = window.setInterval(() => setNow(Date.now()), TICK_MS);
+    const timer = window.setInterval(() => setTickedAt(Date.now()), TICK_MS);
     return () => window.clearInterval(timer);
   }, [lastSavedAt]);
+
+  const now = tickedAt ?? mountedAt;
 
   const saving = status === "saving";
   const dirty = status === "dirty" || status === "error";
@@ -186,7 +194,7 @@ export function SaveBar({
   const word = status === "idle" && lastSavedAt !== null ? STATUS_WORD.saved : STATUS_WORD[status];
   const Icon = STATUS_ICON[status];
 
-  const relative = lastSavedAt !== null && now !== null ? relativeWords(lastSavedAt, now) : null;
+  const relative = hydrated && lastSavedAt !== null ? relativeWords(lastSavedAt, now) : null;
 
   const discard = useCallback(async () => {
     const agreed = await confirm({

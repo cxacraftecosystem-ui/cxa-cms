@@ -18,7 +18,7 @@
  * changes their system setting mid-visit, and every navigation remounts.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * WHY THIS RETURNS `false` ON THE SERVER *AND* ON THE FIRST CLIENT RENDER
+ * WHY THIS RETURNS `false` ON THE SERVER *AND* DURING HYDRATION
  *
  * framer's `useReducedMotion()` reads `matchMedia` DURING RENDER. On a machine with the OS setting
  * on, it therefore returns `true` on the very first client render — while the prerendered HTML was
@@ -26,7 +26,7 @@
  * affects the FIRST paint would differ between the two, and React keeps the server's DOM while
  * framer immediately writes the client's inline styles over it: the section flashes.
  *
- * So the value is gated behind a mount flag, and the rule that follows is not optional:
+ * So the value is gated on hydration (`useHydrated`), and the rule that follows is not optional:
  *
  *   **On the public, prerendered pages, reduced motion may change DURATIONS. It must never change
  *   the `initial` state.**
@@ -36,39 +36,49 @@
  * an already-invisible initial state (`y: 24` → `y: 0` while `opacity` stays `0`) is fine and is what
  * `variants.ts` does — the element is invisible either way, so there is nothing to flash.
  *
+ * A component mounted LATER, by a client navigation, has no server HTML to agree with, so it is told
+ * the truth on its very first render. (Until 2026-10 this hook flipped a mount flag in an effect and
+ * answered `false` on the first render of EVERY mount; React's lint now refuses state set
+ * synchronously in an effect, and the hydration gate is the part that was ever needed.)
+ *
  * Inside the studio, where nothing is prerendered for anonymous readers, branching `initial` is
  * harmless. Do not copy either pattern across (contract §8).
  */
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useReducedMotion } from "framer-motion";
+
+import { useHydrated } from "@/lib/client/useHydrated";
 
 const REDUCED_MOTION_ATTRIBUTE = "data-reduced-motion";
 
 export function useReducedMotionPreference(): boolean {
   const systemPrefers = useReducedMotion() === true;
-  const [inAppPrefers, setInAppPrefers] = useState(false);
-  // Starts false and only ever flips in an effect, which is what makes the first client render
-  // identical to the server's regardless of what either source says.
-  const [mounted, setMounted] = useState(false);
+  const inAppPrefers = useSyncExternalStore(watchInAppToggle, readInAppToggle, inAppToggleOnServer);
+  const hydrated = useHydrated();
 
-  useEffect(() => {
-    const root = document.documentElement;
+  return hydrated && (inAppPrefers || systemPrefers);
+}
 
-    const read = () => {
-      setInAppPrefers(root.getAttribute(REDUCED_MOTION_ATTRIBUTE) === "true");
-    };
+/**
+ * The in-app toggle as a store React subscribes to. Module-level functions, so their identity never
+ * changes and React subscribes once per mount rather than once per render.
+ */
+function watchInAppToggle(onChange: () => void): () => void {
+  const observer = new MutationObserver(onChange);
+  // Filtered to the one attribute: `<html>` also carries data-theme, data-larger-text and
+  // data-high-contrast, and an unfiltered observer would wake this hook on every theme change.
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: [REDUCED_MOTION_ATTRIBUTE]
+  });
+  return () => observer.disconnect();
+}
 
-    read();
-    setMounted(true);
+function readInAppToggle(): boolean {
+  return document.documentElement.getAttribute(REDUCED_MOTION_ATTRIBUTE) === "true";
+}
 
-    const observer = new MutationObserver(read);
-    // Filtered to the one attribute: `<html>` also carries data-theme, data-larger-text and
-    // data-high-contrast, and an unfiltered observer would wake this hook on every theme change.
-    observer.observe(root, { attributes: true, attributeFilter: [REDUCED_MOTION_ATTRIBUTE] });
-
-    return () => observer.disconnect();
-  }, []);
-
-  return mounted && (inAppPrefers || systemPrefers);
+function inAppToggleOnServer(): boolean {
+  return false;
 }

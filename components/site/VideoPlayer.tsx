@@ -53,7 +53,7 @@
  * utility is not. Every call site in this repository was checked against that.
  */
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { Download, Minimize2, X } from "lucide-react";
 
 import { useReducedMotionPreference } from "@/components/motion";
@@ -280,12 +280,6 @@ export function VideoPlayer({
    */
   const ownPauseRef = useRef(false);
 
-  /** Kept in a ref as well so the observer callback reads today's settings without re-subscribing. */
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
-  const reduceRef = useRef(reduce);
-  reduceRef.current = reduce;
-
   const undock = useCallback(() => {
     setDocked(false);
     setPlaceholderHeight(null);
@@ -308,19 +302,19 @@ export function VideoPlayer({
   /**
    * Join the page's register of players, and leave it on unmount.
    *
-   * ⚠ `undock` IS READ THROUGH A REF RATHER THAN CAPTURED. The registration must not re-run on every
-   * render — a `Set` entry replaced mid-play is an entry another player may already be iterating — and
-   * a captured callback would go stale the moment anything in this component changed. `undock` is a
-   * `useCallback` with an empty dependency list, so the ref is belt as well as braces; it is written
-   * this way so that adding a dependency to `undock` later cannot silently break the register.
+   * ⚠ `undock` IS REACHED THROUGH AN EFFECT EVENT RATHER THAN CAPTURED. The registration must not
+   * re-run on every render — a `Set` entry replaced mid-play is an entry another player may already be
+   * iterating — and a captured callback would go stale the moment anything in this component changed.
+   * `undock` is a `useCallback` with an empty dependency list, so the indirection is belt as well as
+   * braces; it is written this way so that adding a dependency to `undock` later cannot silently break
+   * the register.
    */
-  const undockRef = useRef(undock);
-  undockRef.current = undock;
+  const undockForRegister = useEffectEvent(() => undock());
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const entry: RegisteredPlayer = { video, undock: () => undockRef.current() };
+    const entry: RegisteredPlayer = { video, undock: () => undockForRegister() };
     players.add(entry);
     return () => {
       players.delete(entry);
@@ -328,6 +322,46 @@ export function VideoPlayer({
   }, []);
 
   // ── Visibility ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * What a change of visibility does, read against TODAY's settings and motion preference.
+   *
+   * An Effect Event, so the observer below reads the props of the latest render without being torn
+   * down and re-subscribed whenever they change — the job two "latest value" refs used to do by being
+   * written during render, which React's lint refuses.
+   */
+  const onVisibilityChange = useEffectEvent((entry: IntersectionObserverEntry, anchor: HTMLElement) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isOnScreen(entry)) {
+      undock();
+      if (settings.autoplayOnScreen && !reduce && !stoppedByReaderRef.current && video.paused) {
+        startMuted();
+      }
+      return;
+    }
+
+    // Off screen. A film that is not playing needs nothing done to it — docking a paused player
+    // would put an empty panel in the corner of every page that happens to carry a video.
+    if (video.paused) return;
+
+    if (settings.offScreen === "pause") {
+      // OURS, not the reader's — so the film may start again when they scroll back to it. The
+      // flag is set BEFORE the call and spent by the handler; see `ownPauseRef` for why the
+      // obvious order is wrong. The early return above guarantees the film is playing, which is
+      // what guarantees the event this flag is waiting for actually fires.
+      ownPauseRef.current = true;
+      video.pause();
+      return;
+    }
+
+    if (settings.offScreen === "minimise") {
+      setPlaceholderHeight(anchor.getBoundingClientRect().height || null);
+      setDocked(true);
+    }
+    // "continue" does nothing at all, which is the whole of it.
+  });
 
   useEffect(() => {
     const anchor = anchorRef.current;
@@ -342,50 +376,14 @@ export function VideoPlayer({
         // delivered as several entries in one callback, and only the newest describes where the film
         // has actually ended up.
         const entry = entries[entries.length - 1];
-        if (!entry) return;
-        const video = videoRef.current;
-        if (!video) return;
-        const current = settingsRef.current;
-
-        if (isOnScreen(entry)) {
-          undock();
-          if (
-            current.autoplayOnScreen &&
-            !reduceRef.current &&
-            !stoppedByReaderRef.current &&
-            video.paused
-          ) {
-            startMuted();
-          }
-          return;
-        }
-
-        // Off screen. A film that is not playing needs nothing done to it — docking a paused player
-        // would put an empty panel in the corner of every page that happens to carry a video.
-        if (video.paused) return;
-
-        if (current.offScreen === "pause") {
-          // OURS, not the reader's — so the film may start again when they scroll back to it. The
-          // flag is set BEFORE the call and spent by the handler; see `ownPauseRef` for why the
-          // obvious order is wrong. The early return above guarantees the film is playing, which is
-          // what guarantees the event this flag is waiting for actually fires.
-          ownPauseRef.current = true;
-          video.pause();
-          return;
-        }
-
-        if (current.offScreen === "minimise") {
-          setPlaceholderHeight(anchor.getBoundingClientRect().height || null);
-          setDocked(true);
-        }
-        // "continue" does nothing at all, which is the whole of it.
+        if (entry) onVisibilityChange(entry, anchor);
       },
       { threshold: VISIBILITY_STEPS }
     );
 
     observer.observe(anchor);
     return () => observer.disconnect();
-  }, [startMuted, undock]);
+  }, []);
 
   // ── Where it starts, and where it left off ─────────────────────────────────────────────────
 

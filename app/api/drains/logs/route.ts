@@ -19,7 +19,7 @@ import {
  *
  * Clause 4 of the CIC undertaking makes us retain "all website-related logs" for ninety days. The
  * audit and access slices cover what the application itself sees. They structurally cannot cover
- * what the application never wakes for — a CDN cache hit, a static asset, a request middleware
+ * what the application never wakes for — a CDN cache hit, a static asset, a request the proxy
  * refused, a build, or a function killed by the platform before it could write a line. Those exist
  * only in Vercel's own logs, which last ONE HOUR on Hobby.
  *

@@ -14,7 +14,7 @@ import type { NextConfig } from "next";
  * for MinIO, R2 and Backblaze, and as docker-compose's `http://localhost:9000/cxa-media` shows. A
  * pattern that kept only the host and allowed `/**` would therefore authorise the optimiser to fetch
  * ANY object on that host, not merely the Centre's bucket — and `/_next/image` is unauthenticated
- * (middleware matches `/studio` and `/api/studio` only), so a stranger could push somebody else's
+ * (proxy.ts matches `/studio` and `/api/studio` only), so a stranger could push somebody else's
  * bucket through this deployment's optimiser and have it transcoded, cached and hotlinked from the
  * Centre's own domain at the Centre's cost. The configured path becomes the pattern's prefix; a base
  * with no path of its own still gets `/**`, because that is the virtual-hosted shape where the bucket
@@ -66,6 +66,60 @@ function remotePatternsFromEnv(): NonNullable<NextConfig["images"]>["remotePatte
   return patterns;
 }
 
+/**
+ * May the image optimiser fetch from a loopback or private address? Only when the storage this
+ * deployment is CONFIGURED to read from lives there — the local stack, and nowhere else.
+ *
+ * Next 16 refuses to optimise images from local IPs by default (`images.dangerouslyAllowLocalIP`),
+ * as protection against server-side request forgery through `/_next/image`. That is right for every
+ * deployment of this site — production's storage is a public bucket — and wrong for exactly one shape
+ * of it: docker-compose's object store, which the browser reaches at `http://localhost:9000` and the
+ * server at `http://minio:9000` (a compose service name, resolving to a private address), and the same
+ * store under `npm run dev`. There every image would answer 400.
+ *
+ * So it is switched on only when EVERY configured storage origin is itself local. That opens nothing
+ * that was not already allowed: `remotePatterns` above still limits the optimiser to those exact hosts
+ * and bucket paths, so the switch lets it reach the local store and no other address on the network.
+ * A storage host with a public name — anything with a dot in it that is not an address in a private
+ * range — keeps the default, which is what a real deployment always has.
+ */
+function storageIsLocal(): boolean {
+  const hosts = [
+    process.env.NEXT_PUBLIC_CDN_URL,
+    process.env.S3_PUBLIC_BASE_URL,
+    process.env.S3_ENDPOINT
+  ]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .map((value) => {
+      try {
+        return new URL(value.trim()).hostname;
+      } catch {
+        return null;
+      }
+    });
+  if (hosts.length === 0 || hosts.some((host) => host === null)) return false;
+  return hosts.every((host) => host !== null && isLocalHostname(host));
+}
+
+function isLocalHostname(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  // A single-label name is a compose service (`minio`) or a machine on the local network; a public
+  // storage host always has a dot in it.
+  if (!host.includes(".") && !host.includes(":")) return true;
+  if (host === "::1" || /^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)) return true;
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+  if (!ipv4) return false;
+  const first = Number(ipv4[1]);
+  const second = Number(ipv4[2]);
+  return (
+    first === 127 ||
+    first === 10 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
 type HeaderRule = Awaited<ReturnType<NonNullable<NextConfig["headers"]>>>[number];
 
 /**
@@ -112,6 +166,8 @@ const nextConfig: NextConfig = {
     // smaller on the photographic material this site is mostly made of.
     formats: ["image/avif", "image/webp"],
     remotePatterns: remotePatternsFromEnv(),
+    // The local stack only — see `storageIsLocal`.
+    dangerouslyAllowLocalIP: storageIsLocal(),
     // The derivative pipeline (lib/storage/derivatives.ts) already emits these widths, so the
     // optimiser's own resizes land on cached originals rather than re-fetching the full-size object.
     deviceSizes: [420, 640, 828, 1080, 1280, 1600, 1920, 2560],
@@ -200,7 +256,7 @@ const nextConfig: NextConfig = {
            * oversight. A meaningful `script-src` needs per-request nonces, and this application renders a
            * BLOCKING INLINE SCRIPT as the first child of `<body>` — the pre-paint theme boot
            * (lib/preferences.ts). Getting a nonce to it means routing every public request through
-           * middleware, which today matches only `/studio`. A `script-src` with `'unsafe-inline'`
+           * the proxy, which today matches only `/studio`. A `script-src` with `'unsafe-inline'`
            * instead would be a policy that permits precisely the thing it is supposed to prevent, while
            * looking in an audit like protection. Better an honest gap than a decorative header.
            *

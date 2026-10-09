@@ -6,7 +6,7 @@ import { assertSameOrigin, badRequest, conflict, forbidden, ok, route } from "@/
 import { requireCapability } from "@/lib/auth/current-user";
 import { mutateWithHistory } from "@/lib/audit";
 import { prisma } from "@/lib/db";
-// `authEnv` is re-exported by lib/env.ts so everything that is not middleware has ONE import site for the
+// `authEnv` is re-exported by lib/env.ts so everything that is not the proxy has ONE import site for the
 // token settings — its own header says so.
 import { authEnv, siteUrl } from "@/lib/env";
 import { ROLES_DESCENDING, canAssignRole, canManageUsers } from "@/lib/permissions";

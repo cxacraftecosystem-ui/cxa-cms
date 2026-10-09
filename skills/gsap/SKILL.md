@@ -135,9 +135,9 @@ Both are load-bearing:
   attribute and watches it with a `MutationObserver`. Keeping it in `deps` is what lets a reader who
   flips the toggle *mid-page* have the context reverted under them, removing every transform GSAP
   wrote.
-- **`prefersLessMotionNow()`** (from `runtime.ts`) is a synchronous read. The hook reports `false` on
-  the first render **by design** — contract §8: the value must not change the prerendered HTML — and
-  that first render is the one whose effect starts the download. Without the synchronous test, every
+- **`prefersLessMotionNow()`** (from `runtime.ts`) is a synchronous read. The hook reports `false` while
+  the page hydrates **by design** — contract §8: the value must not change the prerendered HTML — and
+  the hydrating render is the one whose effect starts the download. Without the synchronous test, every
   reader who asked for less motion still fetches ~95 KB, above the fold, to then not use it. **This
   shipped as a real bug and was caught by the motion audit.**
 

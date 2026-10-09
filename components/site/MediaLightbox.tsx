@@ -67,6 +67,7 @@ import { DURATION, EASE_OUT, SPRING_LAYOUT, useReducedMotionPreference } from "@
 import { focusableWithin } from "@/components/ui/Dialog";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { useScrollLock } from "@/components/ui/useScrollLock";
+import { useHydrated } from "@/lib/client/useHydrated";
 import type { MediaLike } from "@/lib/media/url";
 import { cn, unique } from "@/lib/utils";
 
@@ -107,14 +108,11 @@ export interface MediaLightboxProps {
 }
 
 export function MediaLightbox({ items, index, onClose, onIndexChange, label }: MediaLightboxProps) {
-  const [container, setContainer] = useState<HTMLElement | null>(null);
+  // `document` is not available during the server render, so the portal target exists only once
+  // hydrated.
+  const hydrated = useHydrated();
 
-  // `document` is not available during the server render, so the portal target is taken after mount.
-  useEffect(() => {
-    setContainer(document.body);
-  }, []);
-
-  if (!container) return null;
+  if (!hydrated) return null;
 
   const open = index !== null && index >= 0 && index < items.length;
 
@@ -130,7 +128,7 @@ export function MediaLightbox({ items, index, onClose, onIndexChange, label }: M
         />
       ) : null}
     </AnimatePresence>,
-    container
+    document.body
   );
 }
 

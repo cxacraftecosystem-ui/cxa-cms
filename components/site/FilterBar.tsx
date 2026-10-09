@@ -327,11 +327,18 @@ function FilterBarControls({
   const selectGroups = groups.filter((group) => controlOf(group) === "select");
   const chipGroups = groups.filter((group) => controlOf(group) === "chips");
 
+  /**
+   * One chip in the "Filtering by" row. DATA ONLY: what pressing it removes is `removeFilter`'s
+   * decision, made when it is pressed. A closure per chip, built during render, would carry `commit` —
+   * and with it the debounce timer's ref — into a list React's compiler cannot prove is never called
+   * while rendering (`react-hooks/refs`).
+   */
   interface ActiveFilter {
     id: string;
     groupLabel: string;
     label: string;
-    remove: () => void;
+    /** The search box, or one value of one group. */
+    target: { kind: "search" } | { kind: "value"; group: FilterGroup; value: string };
   }
 
   const active: ActiveFilter[] = [];
@@ -340,7 +347,7 @@ function FilterBarControls({
       id: "search",
       groupLabel: search.label,
       label: `“${state.q.trim()}”`,
-      remove: () => commit({ ...state, q: "" })
+      target: { kind: "search" }
     });
   }
   for (const group of groups) {
@@ -351,14 +358,22 @@ function FilterBarControls({
         groupLabel: group.label,
         // The raw value when no option matches — an unrecognised filter is still narrowing the list.
         label: option?.label ?? value,
-        remove: () =>
-          setGroupValues(
-            group,
-            (state.values[group.key] ?? []).filter((entry) => entry !== value)
-          )
+        target: { kind: "value", group, value }
       });
     }
   }
+
+  const removeFilter = (filter: ActiveFilter) => {
+    if (filter.target.kind === "search") {
+      commit({ ...state, q: "" });
+      return;
+    }
+    const { group, value } = filter.target;
+    setGroupValues(
+      group,
+      (state.values[group.key] ?? []).filter((entry) => entry !== value)
+    );
+  };
 
   /**
    * Parameters this bar does NOT own, replayed as hidden inputs when it is a form. A GET submission
@@ -486,7 +501,7 @@ function FilterBarControls({
             <button
               key={filter.id}
               type="button"
-              onClick={filter.remove}
+              onClick={() => removeFilter(filter)}
               className={cn(CHIP_BASE, CHIP_ACTIVE_FILTER)}
             >
               <span>

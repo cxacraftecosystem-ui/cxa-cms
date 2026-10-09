@@ -286,7 +286,7 @@ const QUICK_CREATE: readonly QuickCreate[] = [
 ];
 
 export default async function StudioDashboardPage() {
-  // The authoritative role, re-read from the row. Middleware has already refused an anonymous request
+  // The authoritative role, re-read from the row. The proxy has already refused an anonymous request
   // to this path, so this is the second of the two guards rather than the only one.
   const user = await requireUser();
 

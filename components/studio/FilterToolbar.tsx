@@ -316,11 +316,18 @@ export function FilterToolbar({
 
   const clearAll = () => commit({ q: "", values: {} });
 
+  /**
+   * One chip in the active-filter row. DATA ONLY: what pressing it removes is `removeFilter`'s
+   * decision, made when it is pressed. A closure per chip, built during render, would carry `commit` —
+   * and with it the debounce timer's ref — into a list React's compiler cannot prove is never called
+   * while rendering (`react-hooks/refs`).
+   */
   interface ActiveFilter {
     id: string;
     groupLabel: string;
     label: string;
-    remove: () => void;
+    /** The search box, or the one value a group holds. */
+    target: { kind: "search" } | { kind: "value"; key: string };
   }
 
   const active: ActiveFilter[] = [];
@@ -329,7 +336,7 @@ export function FilterToolbar({
       id: "search",
       groupLabel: search.label,
       label: `“${state.q.trim()}”`,
-      remove: () => commit({ ...state, q: "" })
+      target: { kind: "search" }
     });
   }
   for (const group of groups) {
@@ -341,9 +348,14 @@ export function FilterToolbar({
       groupLabel: group.label,
       // The raw value when no option matches — an unrecognised filter is still narrowing the list.
       label: option?.label ?? value,
-      remove: () => setValue(group.key, "")
+      target: { kind: "value", key: group.key }
     });
   }
+
+  const removeFilter = (filter: ActiveFilter) => {
+    if (filter.target.kind === "search") commit({ ...state, q: "" });
+    else setValue(filter.target.key, "");
+  };
 
   return (
     <section aria-label={label} className={cn("flex flex-col gap-3", className)}>
@@ -381,7 +393,12 @@ export function FilterToolbar({
           {active.map((filter) => (
             // THE WHOLE CHIP IS THE REMOVE CONTROL. A 20px × inside a chip is a target nobody hits on a
             // laptop trackpad, and two controls per filter is twice the tab stops for one decision.
-            <button key={filter.id} type="button" onClick={filter.remove} className={CHIP_ACTIVE}>
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => removeFilter(filter)}
+              className={CHIP_ACTIVE}
+            >
               <span>
                 <span className="font-semibold">{filter.groupLabel}:</span> {filter.label}
               </span>

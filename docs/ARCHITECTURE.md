@@ -23,7 +23,7 @@ keystroke and a row.
 
 ## 1. System context
 
-One Next.js 15 application (App Router, React 19), one PostgreSQL database reached through Prisma,
+One Next.js 16 application (App Router, React 19), one PostgreSQL database reached through Prisma,
 one S3-compatible object store. There is no second service, no queue, no cache tier and no search
 engine — and every one of those absences is a decision recorded below rather than a gap.
 
@@ -119,32 +119,35 @@ Three consequences of that split are worth carrying in your head, because each h
 
 ```mermaid
 flowchart LR
-    req(["Request"]) --> mw{"middleware.ts<br/>matcher: /studio, /studio/*, /api/studio/*"}
+    req(["Request"]) --> mw{"proxy.ts<br/>matcher: /studio, /studio/*, /api/studio/*"}
     mw -->|"no match — the whole public site"| site["app/(site)/**<br/>ISR, mostly 300s"]
-    mw -->|"match"| door["The studio door<br/>verify access token with jose on the Edge"]
+    mw -->|"match"| door["The studio door<br/>verify access token with jose, no database"]
     door -->|"valid"| studio["app/studio/**<br/>force-dynamic"]
     door -->|"no token, refresh cookie, real navigation"| refresh["307 → /api/auth/refresh?next=…"]
     door -->|"no token, /api/studio/*"| json401["401 JSON in ApiErrorBody shape"]
     door -->|"nothing left"| login["307 → /studio/login?next=…"]
 ```
 
-**Middleware runs on the Edge, which decides what it may import.** `jose` verifies the access token
-with WebCrypto and runs there; Prisma does not run there at all. So `middleware.ts` must never import
-`lib/db.ts` — nor `lib/api.ts`, `lib/audit.ts` or `lib/auth/current-user.ts`, which pull it in
-transitively. That is why its 401 body is written out by hand and must stay byte-compatible with
-`ApiErrorBody`.
+**The proxy stays off the database, and that decides what it may import.** `proxy.ts` is Next 16's
+name for what was `middleware.ts`, and its runtime is Node.js (the Edge runtime is not offered to a
+proxy). `jose` verifies the access token with WebCrypto. Prisma could run there now and still must
+not: the door stands in front of every studio request, prefetches included, and a database round
+trip there would be paid on each of them for a question the signed token already answers. So
+`proxy.ts` never imports `lib/db.ts` — nor `lib/api.ts`, `lib/audit.ts` or `lib/auth/current-user.ts`,
+which pull it in transitively. That is why its 401 body is written out by hand and must stay
+byte-compatible with `ApiErrorBody`.
 
 **The token's `role` claim is for routing only.** A token minted before a demotion stays valid for up
 to its 30-minute TTL, so every read and every write inside the studio re-reads the authoritative role
 from the database through `requireUser()` / `requireRole()` / `requireCapability()` in
-`lib/auth/current-user.ts`. Gating a capability on `claims.role` in middleware would build a
+`lib/auth/current-user.ts`. Gating a capability on `claims.role` in the proxy would build a
 permission that is up to half an hour out of date.
 
-**The public site is never touched by middleware**, and that is what makes ISR work at all — and also
+**The public site is never touched by the proxy**, and that is what makes ISR work at all — and also
 why `next.config.ts` ships a deliberately partial Content-Security-Policy with no `script-src`: a
 meaningful one needs per-request nonces, and getting a nonce to the pre-paint theme boot
 (`lib/preferences.ts`, a blocking inline script that is the first child of `<body>`) would mean
-routing every public request through middleware. An honest gap beats a decorative header with
+routing every public request through the proxy. An honest gap beats a decorative header with
 `'unsafe-inline'` in it.
 
 ---
@@ -583,7 +586,7 @@ every page that shows a photograph.
 
 `next.config.ts` derives `images.remotePatterns` from the same environment variables the storage
 layer reads, **including the bucket path**. A pattern that kept only the host and allowed `/**` would
-authorise `/_next/image` — which is unauthenticated, because middleware matches `/studio` and
+authorise `/_next/image` — which is unauthenticated, because the proxy matches `/studio` and
 `/api/studio` only — to transcode *any* object on that host, so a stranger could push somebody else's
 bucket through this deployment's optimiser and hotlink it from the Centre's domain at the Centre's
 cost.
@@ -694,7 +697,7 @@ and local development would look like a broken login with no error. The clear-op
 path, domain, `secure` and `sameSite` exactly, because a clear that differs in any attribute creates
 a *second* cookie instead of deleting the first — a "log out" that logs nobody out.
 
-⚠ **Middleware refuses to spend a refresh token on a speculative request.** Next prefetches studio
+⚠ **The proxy refuses to spend a refresh token on a speculative request.** Next prefetches studio
 links on hover and several prefetches can be in flight at once; two of them racing through the
 refresh route would trip the reuse detector and sign the editor out of every device *while they were
 moving the mouse*. `isSpeculative()` checks `next-router-prefetch`, `purpose` and `sec-purpose`, and
@@ -800,7 +803,7 @@ authority to read a preview.
 
 ⚠ **The route lives under `(site)`, not under `/studio`, and the placement is the design.** It
 renders inside the real site layout, so the preview is the design being reviewed rather than an
-approximation of it; and it is outside the middleware matcher, so the signed token is genuinely the
+approximation of it; and it is outside the proxy's matcher, so the signed token is genuinely the
 gate. Putting it under `/studio` would wrap every preview in the CMS chrome, because a route group
 cannot escape a parent layout. It is an **optional** catch-all, `[[...slug]]`, because the homepage's
 slug is the empty string — and the homepage is the page most likely to be previewed before
@@ -875,6 +878,6 @@ characters, so the CI value is genuine entropy.
 | Change how a block looks | `components/sections/<X>Section.tsx` | The schema, unless the data genuinely changed |
 | Add a content type | `prisma/schema.prisma` · `lib/studio/crud.ts` helpers · a studio route pair · `lib/search/index.ts` | `lib/sections/*` — a content type is not a block |
 | Change publication rules | `lib/content.ts` (read time) **and** `publishTransition` in `lib/studio/crud.ts` (write time) | The cron alone — it is a convenience, not the mechanism |
-| Change who may sign in | `lib/auth/access.ts` · Studio → Studio access | `middleware.ts` — it decides routing, never authorisation |
+| Change who may sign in | `lib/auth/access.ts` · Studio → Studio access | `proxy.ts` — it decides routing, never authorisation |
 | Change a permission | `lib/permissions.ts` **only**, then use it on the client *and* in the handler (contract §7) | Any second hand-rolled rank test |
 | Add an upload type | The allow-list in **all three** of `lib/client/upload.ts`, `media/presign/route.ts`, `media/complete/route.ts` | Nothing — they are restated rather than imported because the client module is `"use client"` |

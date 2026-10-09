@@ -71,8 +71,8 @@
  * they are cheaper than a second attribute with the same failure mode and none of the reach.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
- * FIRST PAINT. `showing` starts FALSE on the server and on the first client render, and only an
- * effect can ever turn it on (contract §8). That is not caution about hydration alone — the server
+ * FIRST PAINT. `showing` starts FALSE on the server and on the first client render, and only the
+ * observer's callback can ever turn it on (contract §8). That is not caution about hydration alone — the server
  * cannot know where the reader is on the page, and the homepage opens ON a dark band, so "visible
  * until proven otherwise" would stamp the stitching across the hero for one frame of every cold
  * load. Hidden is both the safe answer and the correct one for the commonest entry point.
@@ -97,7 +97,7 @@
  * `aria-hidden` and `pointer-events: none`: it carries no information and must never take a press.
  */
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 
 import { BUTI_BOX, BUTI_BY_ID, hashRange, type ButiId } from "@/components/craft/motifs";
@@ -319,6 +319,8 @@ export function EmbroideryEdge() {
   const reduce = useReducedMotionPreference();
   const pathname = usePathname();
   const [showing, setShowing] = useState(false);
+  /** The left strip: always on the page and never a dark band. See the effect. */
+  const stripRef = useRef<HTMLDivElement | null>(null);
 
   /**
    * Is any dark band on screen right now?
@@ -336,28 +338,19 @@ export function EmbroideryEdge() {
    * holding the previous page's detached elements, which report nothing at all, and the edge would be
    * frozen at whatever the last page decided. Disconnecting and re-observing is the whole fix.
    *
-   * ⚠ AND IT DROPS TO HIDDEN FIRST. The effect runs after the new page has been committed, so for the
-   * frame in between, the previous page's answer is still on screen — which on a light-to-homepage
-   * navigation is stitching over the top of the hero. Falling back to hidden and letting the observer
-   * earn its way back is the same rule the first paint follows.
+   * ⚠ AND IT DROPS TO HIDDEN FIRST — in the render that carries the new page, so no frame shows the
+   * previous page's answer over the new one, which on a light-to-homepage navigation is stitching
+   * over the top of the hero. Falling back to hidden and letting the observer earn its way back is the
+   * same rule the first paint follows.
    */
-  useEffect(() => {
-    const bands = document.querySelectorAll<HTMLElement>(DARK_BAND_SELECTOR);
-
-    /*
-     * ⚠ THIS BRANCH DOES NOT FIRE IN THE PUBLIC FRAME, AND IT IS NOT DEAD CODE. `SiteFooter` wears
-     * the attribute on every page of the site, so there is always at least one band to observe. It is
-     * here because the component must not depend on that staying true: an observer with nothing to
-     * observe never calls back, so "wait until the observer says it is safe" would leave the edge
-     * hidden for ever on any surface that happens to have no dark band on it. The safe default at
-     * first paint is hidden; the safe answer when there is provably nothing to hide from is shown.
-     */
-    if (bands.length === 0) {
-      setShowing(true);
-      return;
-    }
-
+  const [observedPath, setObservedPath] = useState(pathname);
+  if (pathname !== observedPath) {
+    setObservedPath(pathname);
     setShowing(false);
+  }
+
+  useEffect(() => {
+    const bands = new Set<Element>(document.querySelectorAll(DARK_BAND_SELECTOR));
 
     // The set, rather than a count: an observer delivers one entry per target and re-delivers the
     // same target whenever it crosses, so counting would drift the first time two bands are on
@@ -367,6 +360,7 @@ export function EmbroideryEdge() {
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
+          if (!bands.has(entry.target)) continue;
           if (entry.isIntersecting) covered.add(entry.target);
           else covered.delete(entry.target);
         }
@@ -376,12 +370,28 @@ export function EmbroideryEdge() {
     );
 
     for (const band of bands) observer.observe(band);
+
+    /*
+     * ⚠ THE EDGE ALSO WATCHES ITS OWN STRIP, AND THAT IS WHAT LIGHTS IT WHERE THERE IS NO BAND AT ALL.
+     * `SiteFooter` wears the attribute on every page of the site, so in the public frame there is
+     * always a band to observe — but the component must not depend on that staying true: an observer
+     * with nothing to observe never calls back, so "wait until the observer says it is safe" would
+     * leave the edge hidden for ever on a surface with no dark band on it. Every observed target gets
+     * one initial notification, and the strip is never a band (the callback skips it), so the first
+     * answer is "nothing covers it" — the safe answer when there is provably nothing to hide from.
+     */
+    const strip = stripRef.current;
+    if (strip) observer.observe(strip);
+
     return () => observer.disconnect();
   }, [pathname]);
 
   return (
     <div aria-hidden="true" style={EDGE_THREAD_STYLE} className={EDGE_CLASS.set}>
-      <div className={cn(EDGE_CLASS.left, showing && EDGE_CLASS.lit, !reduce && EDGE_CLASS.fade)} />
+      <div
+        ref={stripRef}
+        className={cn(EDGE_CLASS.left, showing && EDGE_CLASS.lit, !reduce && EDGE_CLASS.fade)}
+      />
       {/* The right-hand strip is the same tile MIRRORED, in globals.css — a border is worked
           inwards from each selvedge, so the mango leans towards the text on both sides. */}
       <div className={cn(EDGE_CLASS.right, showing && EDGE_CLASS.lit, !reduce && EDGE_CLASS.fade)} />

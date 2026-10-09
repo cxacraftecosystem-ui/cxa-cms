@@ -154,6 +154,8 @@ html {
   /*
    * Native smooth scrolling for in-page anchors. Lenis takes over on the public site and disables
    * this to avoid two smoothing systems fighting; the reduced-motion rules below neutralise BOTH.
+   * Route changes stay instant: `data-scroll-behavior="smooth"` on `<html>` (app/layout.tsx) is what
+   * asks Next 16 to stand this down around a navigation, as Next 15 did unasked.
    *
    * ⚠ THIS IS THE ONE DECLARATION IN THE FILE THAT LIVES ONLY ON THE ROOT ELEMENT. `scroll-behavior`
    * is not inherited and the document scroller reads it from `<html>` alone, so a rule that reaches
