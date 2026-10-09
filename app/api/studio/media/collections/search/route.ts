@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { ok, parseQuery, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageMedia } from "@/lib/permissions";
@@ -50,9 +50,8 @@ const MIN_QUERY_LENGTH = 2;
 /**
  * A bounded whole number from a query string, VALIDATED AS A STRING and converted at the call site.
  *
- * The house pattern — see the identical note in app/api/studio/media/route.ts. `parseQuery` takes a
- * `ZodSchema<T>` whose input and output are the same `T`, so a `.transform()` or a `.default()` makes
- * the two differ and the call stops type-checking; `.refine()` does not.
+ * The house pattern — see the identical note in app/api/studio/media/route.ts: a string with a
+ * `.refine()` answers a bad value with a sentence, where coercion would answer in Zod's own words.
  */
 const boundedInt = (label: string, min: number, max: number) =>
   z

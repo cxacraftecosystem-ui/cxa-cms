@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -453,7 +453,7 @@ const PatchBody = z.object({
 
     if (present.length !== CROP_KEYS.length) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["cropX"],
         message:
           "A crop is five values and they have to be sent together. Send all of cropX, cropY, cropWidth, cropHeight and cropAspect, or none of them."
@@ -470,7 +470,7 @@ const PatchBody = z.object({
     if (nulls === numbers.length) {
       if (cropAspect !== null) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["cropAspect"],
           message: "Clearing a crop clears the shape with it. Send cropAspect as null too."
         });
@@ -487,7 +487,7 @@ const PatchBody = z.object({
       typeof cropHeight !== "number"
     ) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["cropX"],
         message:
           "Part of a crop is missing. Send all four of cropX, cropY, cropWidth and cropHeight, or all four as null to show the whole picture."
@@ -507,7 +507,7 @@ const PatchBody = z.object({
      */
     if (cropWidth <= 0 || cropHeight <= 0) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["cropWidth"],
         message: "A crop has to keep some of the picture — its width and height cannot be zero."
       });
@@ -515,7 +515,7 @@ const PatchBody = z.object({
     }
     if (cropX + cropWidth > 1.0001 || cropY + cropHeight > 1.0001) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["cropWidth"],
         message: "That crop runs off the edge of the picture. Move it back inside before saving."
       });

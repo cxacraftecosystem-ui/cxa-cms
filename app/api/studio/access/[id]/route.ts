@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` is the tagged template
 // `$queryRaw` needs for the master-admin lock. See `lockMasterAdminGrants`.
 import { Prisma, type AccessKind, type AuthProvider, type Role } from "@prisma/client";
@@ -413,7 +413,7 @@ const PatchBody = z.object({
     .union([z.string().trim().max(200, "Keep the name to 200 characters or fewer."), z.null()])
     .optional(),
   role: z.enum(ROLE_VALUES, {
-    errorMap: () => ({ message: "Choose what this person will be able to do." })
+    error: "Choose what this person will be able to do."
   }).optional(),
   note: z
     .union([z.string().trim().max(NOTE_MAX, `Keep the reason to ${NOTE_MAX} characters or fewer.`), z.null()])

@@ -19,8 +19,8 @@
  * the missing description — live in `formEmbedSectionSchema`'s `superRefine`, so the sentence an editor
  * reads is character for character the sentence the save would produce. Writing a second wording here
  * would give the studio two explanations of one rule, and the one on screen would be the one nobody
- * updated. (Because of that `superRefine` this schema is a `ZodEffects`, which is why the field
- * descriptions come through `.innerType()` — the same as EMBED.)
+ * updated. (That `superRefine` is a check on the object in Zod 4, not a wrapper round it, so the field
+ * descriptions are read off `.shape` — the same as EMBED.)
  *
  * WHAT IS ACCEPTED IS STATED WHETHER OR NOT IT HAS BEEN BROKEN. `describeFormHosts()` sits in the field's
  * own help on every render where there is an answer to give: a rule you only meet by breaking it reads as
@@ -65,8 +65,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { HelpText } from "@/components/studio/HelpText";
 import type { SectionFormProps } from "@/components/studio/sections";
 
-/** `.innerType()` because this schema is a `ZodEffects` — see the header and the schema's own note. */
-const SHAPE = formEmbedSectionSchema.innerType().shape;
+/** `.shape` directly: the `superRefine` is a check on the object, not a wrapper (see the header). */
+const SHAPE = formEmbedSectionSchema.shape;
 
 /** The picker's order, quietest route last: the three that can be framed, then the one that cannot. */
 const PROVIDERS: readonly FormEmbedProvider[] = ["google", "microsoft", "typeform", "other"];

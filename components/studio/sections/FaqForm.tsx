@@ -22,7 +22,7 @@ import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = faqSectionSchema.shape;
-const ITEM = SHAPE.items.removeDefault().element.shape;
+const ITEM = SHAPE.items.unwrap().element.shape;
 
 type FaqItem = FaqSectionData["items"][number];
 

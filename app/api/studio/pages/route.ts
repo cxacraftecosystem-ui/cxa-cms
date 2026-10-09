@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, ok, route } from "@/lib/api";
@@ -101,7 +101,7 @@ const pageBodySchema = z.object({
       // `superRefine` and not `refine`, because the MESSAGE is computed from the value — `refine` can
       // only decide pass or fail and would have to carry a generic sentence. Using both would emit
       // two errors for one mistake, which is how a form ends up telling somebody the same thing twice.
-      if (conflict) ctx.addIssue({ code: z.ZodIssueCode.custom, message: conflict });
+      if (conflict) ctx.addIssue({ code: "custom", message: conflict });
     }),
   navLabel: optionalText(60),
   status: statusSchema.default("DRAFT"),

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import type { ZodType, ZodTypeDef } from "zod";
+import type { ZodType } from "zod";
 
 import { ApiError, badRequest, describeZodError, toErrorResponse } from "@/lib/api";
 import { NEWSLETTER_OUTCOME_ID } from "@/lib/newsletter/paths";
@@ -108,21 +108,23 @@ export type NewsletterStateCode =
   | "not-found";
 
 /**
- * ⚠ `NewsletterSchema<T>` RATHER THAN ZOD'S OWN `ZodSchema<T>`, AND THIS IS NOT A STYLE PREFERENCE.
+ * ⚠ `NewsletterSchema<T>`: A SCHEMA WHOSE OUTPUT IS `T` AND WHOSE INPUT IS `unknown` — AND THE INPUT IS
+ * THE POINT.
  *
- * `ZodSchema<T>` is `ZodType<T, ZodTypeDef, T>` — it declares that the schema's INPUT and its OUTPUT are
- * the same type. That is true of a plain `z.object({ a: z.string() })` and FALSE of every schema in this
- * feature, because they all use `.default("")`: the input accepts a missing key, the output never has one.
- * Handed such a schema, TypeScript has to satisfy both `Output = T` and `Input = T`, resolves `T` to the
- * INPUT shape, and every field arrives at the call site as `string | undefined`.
+ * Every schema in this feature uses `.default("")`: the input accepts a missing key, the output never has
+ * one, so input and output are different types. Zod 3's `ZodSchema<T>` declared them the SAME type, and
+ * handed such a schema TypeScript had to satisfy both `Output = T` and `Input = T`, resolved `T` to the
+ * INPUT shape, and every field arrived at the call site as `string | undefined`.
  *
  * The symptom is the reason this is written down: it does not look like a variance problem. It looks like
  * "Zod's `.default()` is broken", and the tempting fixes are all wrong in the same direction — sprinkling
  * `?? ""` at every read (dead code that hides the real types), or `.optional().default("")` (which really
  * does put `undefined` in the output), or a cast. Declaring the input as `unknown` — which is the truth: it
  * is a request body — lets `T` be inferred from the output alone, and the defaults then mean what they say.
+ * Zod 4's `ZodType<T>` leaves its input `unknown` by default, so the alias now states what that type
+ * already says; it stays so the rule and the reason live in one place.
  */
-export type NewsletterSchema<T> = ZodType<T, ZodTypeDef, unknown>;
+export type NewsletterSchema<T> = ZodType<T, unknown>;
 
 /**
  * ⚠ DELIBERATELY NOT EXPORTED. It is the return shape of the private `readNewsletterSubmission` and

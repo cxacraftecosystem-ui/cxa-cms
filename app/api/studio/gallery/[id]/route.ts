@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { patchOf, z } from "@/lib/zod";
 import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, noContent, ok, route } from "@/lib/api";
@@ -214,7 +214,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
   );
   const { id } = await context.params;
 
-  const body = await parseStudioJson(request, albumBodySchema.partial());
+  const body = await parseStudioJson(request, patchOf(albumBodySchema));
 
   const existing = found(
     await prisma.galleryAlbum.findFirst({ where: { id, deletedAt: null }, select: ALBUM_SELECT }),

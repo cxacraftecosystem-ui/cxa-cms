@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { patchOf, z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
@@ -70,11 +70,15 @@ const DESCRIPTION_MAX = 240;
  */
 const REINDEX_LIMIT = 500;
 
-const patchBody = z.object({
-  name: requiredText(NAME_MAX, "A category needs a name.").optional(),
-  slug: slugSchema().optional(),
-  description: optionalText(DESCRIPTION_MAX).optional()
-});
+// `patchOf`: Zod 4 lets an `optionalText` field's `.default(null)` answer for a key the request left out,
+// even under `.optional()`, which would clear every field a PATCH did not mention. See lib/zod.ts.
+const patchBody = patchOf(
+  z.object({
+    name: requiredText(NAME_MAX, "A category needs a name.").optional(),
+    slug: slugSchema().optional(),
+    description: optionalText(DESCRIPTION_MAX).optional()
+  })
+);
 
 const CATEGORY_SELECT = {
   id: true,

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
-// `AnnouncementTone` is imported as a VALUE, not just a type: `z.nativeEnum` needs the runtime object,
+import { z } from "@/lib/zod";
+// `AnnouncementTone` is imported as a VALUE, not just a type: `z.enum` needs the runtime object,
 // and taking the vocabulary from Prisma rather than retyping it means a tone added to the schema cannot
 // be one the studio is unable to save.
 import { AnnouncementTone, type Prisma } from "@prisma/client";
@@ -85,8 +85,8 @@ const HREF_MAX = 500;
  * The error map is not decoration: `lib/api.ts` guarantees `message` is a plain human sentence ready to
  * render, and Zod's own "Invalid enum value. Expected 'INFO' | 'SUCCESS' …" is not one.
  */
-const toneSchema = z.nativeEnum(AnnouncementTone, {
-  errorMap: () => ({ message: "Choose one of the four kinds of announcement from the list." })
+const toneSchema = z.enum(AnnouncementTone, {
+  error: "Choose one of the four kinds of announcement from the list."
 });
 
 /**

@@ -27,7 +27,7 @@ import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = featureGridSectionSchema.shape;
-const ITEM = SHAPE.items.removeDefault().element.shape;
+const ITEM = SHAPE.items.unwrap().element.shape;
 
 type FeatureItem = FeatureGridSectionData["items"][number];
 type Columns = FeatureGridSectionData["columns"];

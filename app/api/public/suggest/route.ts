@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { ok, parseQuery, route } from "@/lib/api";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/ratelimit";
 import { suggest } from "@/lib/search/query";
@@ -35,9 +35,9 @@ const SuggestQuery = z.object({
     .min(1, "Type at least one character to see suggestions.")
     .max(200, "That is too long to suggest against. Use the search page instead."),
   /**
-   * Validated as a STRING and converted below. `parseQuery` takes a `ZodSchema<T>`, whose input and
-   * output are both `T`, so a `.transform()` to a number would not type-check; `.refine()` keeps both
-   * sides `string` and still refuses an out-of-range value with a sentence.
+   * Validated as a STRING and converted below, the house pattern app/api/public/search/route.ts sets
+   * out: `.refine()` refuses an out-of-range value with a sentence, where coercion would answer in Zod's
+   * own words about NaN.
    */
   limit: z
     .string()

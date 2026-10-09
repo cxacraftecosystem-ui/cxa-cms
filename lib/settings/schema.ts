@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import {
   FACE_CHOICES,
@@ -616,7 +616,8 @@ export const homepageSettingsSchema = z.object({
       enabled: z.boolean().default(false),
       note: text(240).default("")
     })
-    .default({})
+    // `.prefault`, not `.default`: see `videoSettingsSchema` in lib/media/video.ts.
+    .prefault({})
 });
 
 export type HomepageSettings = z.infer<typeof homepageSettingsSchema>;
@@ -932,7 +933,7 @@ export interface SettingsMap {
 export type SettingsOf<K extends SettingsGroup> = SettingsMap[K];
 
 /**
- * `satisfies Record<SettingsGroup, z.AnyZodObject>` does two jobs: it fails the build if a group is
+ * `satisfies Record<SettingsGroup, z.ZodObject>` does two jobs: it fails the build if a group is
  * added to the key tuple without a schema, and it proves every entry is a plain object schema — which
  * is what makes `settingsFieldSchemas()` below safe rather than hopeful.
  */
@@ -946,7 +947,7 @@ export const SETTINGS_SCHEMAS = {
   leadership: leadershipSettingsSchema,
   features: featuresSettingsSchema,
   footer: footerSettingsSchema
-} as const satisfies Record<SettingsGroup, z.AnyZodObject>;
+} as const satisfies Record<SettingsGroup, z.ZodObject>;
 
 /**
  * The schema for a group, typed to that group's output.
@@ -966,8 +967,8 @@ export function settingsSchema<K extends SettingsGroup>(key: K): z.ZodType<Setti
  * reader parses each field on its own and keeps the ones that pass. Safe because of the `satisfies`
  * above — every value in the map really is a `ZodObject`, so `.shape` is always there.
  */
-export function settingsFieldSchemas(key: SettingsGroup): Record<string, z.ZodTypeAny> {
-  return (SETTINGS_SCHEMAS[key] as unknown as z.AnyZodObject).shape as Record<string, z.ZodTypeAny>;
+export function settingsFieldSchemas(key: SettingsGroup): Record<string, z.ZodType> {
+  return (SETTINGS_SCHEMAS[key] as unknown as z.ZodObject).shape as Record<string, z.ZodType>;
 }
 
 /**

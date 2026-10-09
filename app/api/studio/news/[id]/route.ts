@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { patchOf, z } from "@/lib/zod";
 import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, forbidden, noContent, ok, route } from "@/lib/api";
@@ -195,7 +195,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
   );
   const { id } = await context.params;
 
-  const body = await parseStudioJson(request, articleBodySchema.partial());
+  const body = await parseStudioJson(request, patchOf(articleBodySchema));
 
   const existing = found(
     await prisma.post.findFirst({ where: { id, deletedAt: null }, select: POST_SELECT }),

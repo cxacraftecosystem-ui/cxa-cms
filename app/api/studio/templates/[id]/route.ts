@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { Prisma } from "@prisma/client";
 
 import {
@@ -71,7 +71,7 @@ const BlockBody = z.object({
   type: z.string().trim().min(1).max(64),
   label: z.string().trim().max(TEMPLATE_LIMITS.blockLabel).optional(),
   purpose: z.string().trim().max(TEMPLATE_LIMITS.blockPurpose).optional(),
-  overrides: z.record(z.unknown()).optional()
+  overrides: z.record(z.string(), z.unknown()).optional()
 });
 
 const PatchBody = z.object({

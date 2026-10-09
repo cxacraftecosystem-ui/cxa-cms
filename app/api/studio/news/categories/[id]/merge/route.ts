@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { wrongTypeError, z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, ok, route } from "@/lib/api";
@@ -55,7 +55,7 @@ const REINDEX_LIMIT = 500;
 const mergeBody = z.object({
   /** The category the articles end up in. The screen calls this "Move the articles to". */
   intoId: z
-    .string({ invalid_type_error: "Choose which category the articles should move to." })
+    .string({ error: wrongTypeError("Choose which category the articles should move to.") })
     .trim()
     .min(1, "Choose which category the articles should move to.")
     .max(40, "That does not look like a reference to a category.")

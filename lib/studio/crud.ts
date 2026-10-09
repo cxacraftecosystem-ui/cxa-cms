@@ -1,6 +1,7 @@
 import "server-only";
 
-import { z, type ZodSchema } from "zod";
+import type { ZodType } from "zod";
+import { wrongTypeError, z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` and `Prisma.join` are the
 // tagged-template helpers `rewriteSectionPositions` builds its two statements from.
 import { Prisma, type AuditAction, type ContentStatus } from "@prisma/client";
@@ -119,31 +120,30 @@ export function buildAuditContext(request: Request, user: SessionUser | null): A
  * `parseQuery` / `parseJson` from lib/api.ts, typed for a schema that has DEFAULTS.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
- * WHY THE CAST. Both helpers are declared as `<T>(request, schema: ZodSchema<T>) => T`, and
- * `ZodSchema<T>` is `ZodType<T, ZodTypeDef, T>` — it pins Zod's INPUT type and its OUTPUT type to the
- * same `T`. That holds for a schema built only from `min`/`max`/`email`, which is why the public routes
- * use them directly.
- *
- * It stops holding the moment a field carries `.default()` or `.transform()`: the input type has the key
- * optional and the output type has it required, so TypeScript cannot satisfy both and silently infers `T`
- * as the INPUT — leaving every defaulted field typed `| undefined` even though Zod has just filled it in.
- * Under `noUncheckedIndexedAccess` that surfaces as "'query.page' is possibly undefined" on a field with
- * a default of 1.
+ * WHY THE WRAPPERS. Both helpers are declared as `<T>(request, schema: ZodType<T>) => T`. Under Zod 3
+ * that type was `ZodSchema<T>`, which pinned the schema's INPUT and its OUTPUT to the same `T`, and the
+ * moment a field carried `.default()` or `.transform()` — input key optional, output key required —
+ * TypeScript silently inferred `T` as the INPUT, leaving every defaulted field typed `| undefined` even
+ * though Zod had just filled it in ("'query.page' is possibly undefined" on a field with a default of
+ * 1). Zod 4's `ZodType<T>` leaves the input `unknown`, which removes that trap for a schema passed
+ * directly — which is what the public routes do.
  *
  * These wrappers keep the runtime behaviour exactly as it is — the same validation, the same 422 body,
- * the same field errors — and take the generic over the SCHEMA instead, so `z.output<S>` is the honest
- * answer. Every studio handler reads its input through these two, and nothing else casts.
+ * the same field errors — and take the generic over the SCHEMA, so `z.output<S>` is stated rather than
+ * inferred. The one cast remains because TypeScript cannot see that a generic `S` is a
+ * `ZodType<z.output<S>>`, which it always is. Every studio handler reads its input through these two,
+ * and nothing else casts.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
-export function parseStudioQuery<S extends z.ZodTypeAny>(request: Request, schema: S): z.output<S> {
-  return parseQuery(request, schema as unknown as ZodSchema<z.output<S>>);
+export function parseStudioQuery<S extends z.ZodType>(request: Request, schema: S): z.output<S> {
+  return parseQuery(request, schema as unknown as ZodType<z.output<S>>);
 }
 
-export function parseStudioJson<S extends z.ZodTypeAny>(
+export function parseStudioJson<S extends z.ZodType>(
   request: Request,
   schema: S
 ): Promise<z.output<S>> {
-  return parseJson(request, schema as unknown as ZodSchema<z.output<S>>);
+  return parseJson(request, schema as unknown as ZodType<z.output<S>>);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,7 +249,7 @@ export { screenFramingColumn as screenFramingField } from "@/lib/media/framing-s
 /** Text that must be there. The message names what is missing, because "Required" does not. */
 export function requiredText(max: number, missing: string) {
   return z
-    .string({ invalid_type_error: missing })
+    .string({ error: wrongTypeError(missing) })
     .trim()
     .min(1, missing)
     .max(max, `Keep this to ${max} characters or fewer.`);
@@ -301,7 +301,7 @@ export function optionalDateTime(label: string) {
 /** An ISO instant that must be there — an event's start, for instance. */
 export function requiredDateTime(label: string, missing: string) {
   return z
-    .string({ invalid_type_error: missing })
+    .string({ error: wrongTypeError(missing) })
     .trim()
     .min(1, missing)
     .refine((value) => !Number.isNaN(Date.parse(value)), {
@@ -363,7 +363,7 @@ export function slugSchema(options: { allowEmpty?: boolean; allowSlashes?: boole
     : "A web address may only contain lower-case letters, numbers and hyphens. “Annual Report 2026” becomes “annual-report-2026”.";
 
   return z
-    .string({ invalid_type_error: advice })
+    .string({ error: wrongTypeError(advice) })
     .trim()
     .max(96, "That web address is too long. Keep it to 96 characters or fewer.")
     .refine((value) => (value.length === 0 ? options.allowEmpty === true : shape.test(value)), {

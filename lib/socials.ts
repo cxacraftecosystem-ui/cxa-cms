@@ -35,20 +35,14 @@
  *
  * THE ICONS ARE `lucide-react` AND ONLY `lucide-react` (contract §13). There is no brand-logo set in
  * this repository and adding one is explicitly out of bounds, so "its own brand logo" means lucide's
- * own brand glyphs — the same eight the footer and the contact page have always drawn.
+ * own brand glyphs — the same eight the footer and the contact page have always drawn. Six of them
+ * left lucide's package in 1.0 and are kept, as lucide drew them and built by lucide's own factory, in
+ * components/icons/brands.ts.
  */
 
-import {
-  Facebook,
-  Github,
-  Globe,
-  Instagram,
-  Linkedin,
-  Rss,
-  Twitter,
-  Youtube,
-  type LucideIcon
-} from "lucide-react";
+import { Globe, Rss, type LucideIcon } from "lucide-react";
+
+import { Facebook, Github, Instagram, Linkedin, Twitter, Youtube } from "@/components/icons/brands";
 
 import {
   SOCIAL_FALLBACK_ICON,

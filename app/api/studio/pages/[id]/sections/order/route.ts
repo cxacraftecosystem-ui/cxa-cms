@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";

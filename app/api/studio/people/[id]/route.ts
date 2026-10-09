@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { Prisma, type ContentStatus, type PersonKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -76,7 +76,7 @@ const slugField = z
   );
 
 const richTextField = z.union([
-  z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).passthrough(),
+  z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).loose(),
   z.null()
 ]);
 

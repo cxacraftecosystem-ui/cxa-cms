@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { Role, StudioAccess } from "@prisma/client";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { clientIp, notFound, route, userAgent } from "@/lib/api";
 import { mutateWithHistory, recordEvent, type AuditContext } from "@/lib/audit";
 import { prisma } from "@/lib/db";

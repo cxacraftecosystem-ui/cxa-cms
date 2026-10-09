@@ -56,7 +56,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { CircleCheck, Lock, TriangleAlert, Wrench } from "lucide-react";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { apiFetch } from "@/lib/client/fetcher";
 import {
@@ -291,53 +291,58 @@ function copyFor(path: string, key: string): FieldCopy & { described: boolean } 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The parts of a Zod definition this generator reads.
+ * The bounds a schema WRITES DOWN — `.max(200)`, `.min(0)`, an array's `.max(6)` — read off its checks.
  *
- * ⚠ `_def` IS ZOD'S INTERNAL SHAPE, and reading it is a deliberate, contained decision: it is the only way
- * to ask a schema "what kind of value do you hold, and what are your bounds" without a second description
- * of every field living in this file — which is the whole thing the generator exists to avoid. The access
- * is confined to `defOf` and the two functions below, so a Zod upgrade that moves any of it breaks HERE,
- * loudly, rather than producing a form of blank boxes.
+ * ⚠ THIS IS THE ONE PLACE THE GENERATOR READS ZOD'S INTERNALS, and it is a deliberate, contained
+ * decision. Everything else below asks a schema through what Zod 4 publishes for this (`instanceof`,
+ * `isInt`, `options`, `values`, `element`, `shape`, `unwrap()`, `def.innerType`, a pipe's `in` and
+ * `out`), but an explicitly written bound is only kept as a check on the schema: `minValue` and
+ * `maxValue` fold in the ±2^53 a whole number allows (and ±Infinity for any number), which is not a
+ * bound anybody chose and would make a new row start at -9,007,199,254,740,991. Confined here, a Zod
+ * upgrade that moves this breaks HERE, loudly, rather than producing a form of blank boxes.
  */
-interface ZodDefLike {
-  typeName?: string;
-  innerType?: z.ZodTypeAny;
-  schema?: z.ZodTypeAny;
-  type?: z.ZodTypeAny;
-  values?: readonly unknown[];
-  value?: unknown;
-  shape?: () => Record<string, z.ZodTypeAny>;
-  checks?: readonly { kind: string; value?: number }[];
-  maxLength?: { value: number } | null;
-  defaultValue?: () => unknown;
+function writtenBounds(schema: z.ZodType): { min?: number; max?: number } {
+  const checks = (schema.def as { checks?: readonly { _zod?: { def?: unknown } }[] }).checks ?? [];
+  const bounds: { min?: number; max?: number } = {};
+  for (const check of checks) {
+    const def = (check._zod?.def ?? {}) as {
+      check?: string;
+      value?: unknown;
+      minimum?: unknown;
+      maximum?: unknown;
+    };
+    if (def.check === "greater_than" && typeof def.value === "number") bounds.min = def.value;
+    if (def.check === "less_than" && typeof def.value === "number") bounds.max = def.value;
+    if (def.check === "max_length" && typeof def.maximum === "number") bounds.max = def.maximum;
+  }
+  return bounds;
 }
 
-function defOf(schema: z.ZodTypeAny): ZodDefLike {
-  return schema._def as unknown as ZodDefLike;
-}
-
-/** Peel `.default()`, `.catch()`, `.optional()`, `.nullable()` and every `.refine()`/`.transform()`. */
-function unwrap(schema: z.ZodTypeAny): { inner: z.ZodTypeAny; nullable: boolean } {
+/** Peel `.default()`, `.prefault()`, `.catch()`, `.optional()`, `.nullable()` and every `.transform()`. */
+function unwrap(schema: z.ZodType): { inner: z.ZodType; nullable: boolean } {
   let current = schema;
   let nullable = false;
 
-  // Bounded, because a malformed chain must not be an infinite loop inside a render.
+  // Bounded, because a malformed chain must not be an infinite loop inside a render. (`.refine()` and
+  // `.superRefine()` need nothing here: in Zod 4 they are checks on the schema, not a wrapper round it.)
   for (let depth = 0; depth < 12; depth += 1) {
-    const def = defOf(current);
-    if (def.typeName === "ZodNullable") {
+    if (current instanceof z.ZodNullable) {
       nullable = true;
-      if (!def.innerType) break;
-      current = def.innerType;
+      current = current.unwrap() as z.ZodType;
       continue;
     }
-    if (def.typeName === "ZodOptional" || def.typeName === "ZodDefault" || def.typeName === "ZodCatch") {
-      if (!def.innerType) break;
-      current = def.innerType;
+    if (current instanceof z.ZodOptional) {
+      current = current.unwrap() as z.ZodType;
       continue;
     }
-    if (def.typeName === "ZodEffects") {
-      if (!def.schema) break;
-      current = def.schema;
+    if (current instanceof z.ZodDefault || current instanceof z.ZodPrefault || current instanceof z.ZodCatch) {
+      current = current.def.innerType as z.ZodType;
+      continue;
+    }
+    if (current instanceof z.ZodPipe) {
+      // `.transform()` is a pipe out of the schema; `z.preprocess()` is a pipe INTO it.
+      const { in: input, out: output } = current.def;
+      current = (input instanceof z.ZodTransform ? output : input) as z.ZodType;
       continue;
     }
     break;
@@ -353,59 +358,49 @@ type FieldShape =
   | { kind: "enum"; values: string[] }
   | { kind: "literal"; value: string }
   | { kind: "stringList"; max: number | undefined }
-  | { kind: "objectList"; item: Record<string, z.ZodTypeAny>; max: number | undefined }
-  | { kind: "object"; shape: Record<string, z.ZodTypeAny> }
+  | { kind: "objectList"; item: Record<string, z.ZodType>; max: number | undefined }
+  | { kind: "object"; shape: Record<string, z.ZodType> }
   | { kind: "unsupported"; typeName: string };
 
-function shapeOf(schema: z.ZodTypeAny): FieldShape & { nullable: boolean } {
+function shapeOf(schema: z.ZodType): FieldShape & { nullable: boolean } {
   const { inner, nullable } = unwrap(schema);
-  const def = defOf(inner);
 
-  switch (def.typeName) {
-    case "ZodString": {
-      const max = def.checks?.find((check) => check.kind === "max")?.value;
-      return { kind: "text", max, nullable };
-    }
-    case "ZodBoolean":
-      return { kind: "boolean", nullable };
-    case "ZodNumber": {
-      const checks = def.checks ?? [];
-      return {
-        kind: "number",
-        int: checks.some((check) => check.kind === "int"),
-        min: checks.find((check) => check.kind === "min")?.value,
-        max: checks.find((check) => check.kind === "max")?.value,
-        nullable
-      };
-    }
-    case "ZodEnum":
-      return {
-        kind: "enum",
-        values: (def.values ?? []).filter((value): value is string => typeof value === "string"),
-        nullable
-      };
-    case "ZodLiteral":
-      return { kind: "literal", value: String(def.value ?? ""), nullable };
-    case "ZodArray": {
-      const element = def.type;
-      const max = def.maxLength?.value;
-      if (!element) return { kind: "unsupported", typeName: "ZodArray", nullable };
-      const { inner: elementInner } = unwrap(element);
-      const elementDef = defOf(elementInner);
-      if (elementDef.typeName === "ZodObject" && elementDef.shape) {
-        return { kind: "objectList", item: elementDef.shape(), max, nullable };
-      }
-      return { kind: "stringList", max, nullable };
-    }
-    case "ZodObject":
-      return { kind: "object", shape: def.shape?.() ?? {}, nullable };
-    default:
-      return { kind: "unsupported", typeName: def.typeName ?? "unknown", nullable };
+  if (inner instanceof z.ZodString) {
+    return { kind: "text", max: writtenBounds(inner).max, nullable };
   }
+  if (inner instanceof z.ZodBoolean) {
+    return { kind: "boolean", nullable };
+  }
+  if (inner instanceof z.ZodNumber) {
+    const { min, max } = writtenBounds(inner);
+    return { kind: "number", int: inner.isInt, min, max, nullable };
+  }
+  if (inner instanceof z.ZodEnum) {
+    return {
+      kind: "enum",
+      values: inner.options.filter((value): value is string => typeof value === "string"),
+      nullable
+    };
+  }
+  if (inner instanceof z.ZodLiteral) {
+    return { kind: "literal", value: String([...inner.values][0] ?? ""), nullable };
+  }
+  if (inner instanceof z.ZodArray) {
+    const max = writtenBounds(inner).max;
+    const { inner: element } = unwrap(inner.element as z.ZodType);
+    if (element instanceof z.ZodObject) {
+      return { kind: "objectList", item: element.shape as Record<string, z.ZodType>, max, nullable };
+    }
+    return { kind: "stringList", max, nullable };
+  }
+  if (inner instanceof z.ZodObject) {
+    return { kind: "object", shape: inner.shape as Record<string, z.ZodType>, nullable };
+  }
+  return { kind: "unsupported", typeName: inner.def.type, nullable };
 }
 
 /** A blank value for a field, for a row somebody has just added to a repeating list. */
-function blankFor(schema: z.ZodTypeAny): unknown {
+function blankFor(schema: z.ZodType): unknown {
   const shape = shapeOf(schema);
   switch (shape.kind) {
     case "boolean":
@@ -749,7 +744,7 @@ interface SettingFieldProps {
   /** `group.field`, or `group.field.subfield` inside a repeating row. Keys the copy table. */
   path: string;
   fieldKey: string;
-  schema: z.ZodTypeAny;
+  schema: z.ZodType;
   value: unknown;
   onChange: (next: unknown) => void;
   errors: string[] | undefined;

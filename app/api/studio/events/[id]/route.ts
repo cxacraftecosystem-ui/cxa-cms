@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { patchOf, z } from "@/lib/zod";
 import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, noContent, ok, route } from "@/lib/api";
@@ -86,19 +86,23 @@ const eventBodySchema = z.object({
   mode: z.enum(["IN_PERSON", "ONLINE", "HYBRID"]),
   venue: optionalText(240),
   address: optionalText(400),
+  // ⚠ `z.null()` COMES FIRST in this union and in `longitude` and `capacity`. A union answers with the first
+  // option that accepts, and `z.coerce.number()` accepts null as Number(null), which is 0: with null second,
+  // the editor clearing the capacity box (it sends null, "no limit") stored a capacity of 0, and clearing the
+  // coordinates put the venue at 0°, 0°.
   latitude: z
     .union([
+      z.null(),
       z.coerce
         .number()
         .min(-90, "A latitude is between -90 and 90. Check the two numbers are not swapped.")
-        .max(90, "A latitude is between -90 and 90. Check the two numbers are not swapped."),
-      z.null()
+        .max(90, "A latitude is between -90 and 90. Check the two numbers are not swapped.")
     ])
     .default(null),
   longitude: z
     .union([
-      z.coerce.number().min(-180, "A longitude is between -180 and 180.").max(180, "A longitude is between -180 and 180."),
-      z.null()
+      z.null(),
+      z.coerce.number().min(-180, "A longitude is between -180 and 180.").max(180, "A longitude is between -180 and 180.")
     ])
     .default(null),
   onlineUrl: optionalText(500).refine(
@@ -115,12 +119,12 @@ const eventBodySchema = z.object({
   registrationClosesAt: optionalDateTime("The date registration closes"),
   capacity: z
     .union([
+      z.null(),
       z.coerce
         .number()
         .int("A capacity is a whole number of people.")
         .min(0, "A capacity cannot be negative. Leave it empty for no limit.")
-        .max(1_000_000, "That capacity is larger than any real room. Leave it empty for no limit."),
-      z.null()
+        .max(1_000_000, "That capacity is larger than any real room. Leave it empty for no limit.")
     ])
     .default(null),
   isRegistrationOpen: z.boolean(),
@@ -268,7 +272,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
   );
   const { id } = await context.params;
 
-  const body = await parseStudioJson(request, eventBodySchema.partial());
+  const body = await parseStudioJson(request, patchOf(eventBodySchema));
 
   const existing = found(
     await prisma.coeEvent.findFirst({ where: { id, deletedAt: null }, select: EVENT_SELECT }),

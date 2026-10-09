@@ -22,7 +22,26 @@ export default defineConfig([
       // next/image is mandatory for anything coming out of the media library — the derivative
       // pipeline and the CDN cache keys both assume the optimiser is in the path.
       "@next/next/no-img-element": "error",
-      "react-hooks/exhaustive-deps": "warn"
+      "react-hooks/exhaustive-deps": "warn",
+      // `z` comes from lib/zod.ts, which configures the sentence a reader sees when a schema has not
+      // written its own. Imported from "zod" directly, a schema would answer in Zod's developer English
+      // in any bundle that did not happen to load lib/zod.ts first. Types and `ZodError` are fine.
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "zod",
+              importNames: ["z"],
+              message: 'Import `z` from "@/lib/zod" — it carries the application\'s validation messages.'
+            }
+          ]
+        }
+      ]
     }
+  },
+  {
+    files: ["lib/zod.ts"],
+    rules: { "no-restricted-imports": "off" }
   }
 ]);

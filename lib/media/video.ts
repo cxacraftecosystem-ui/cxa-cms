@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 /**
  * Video, in one module: what counts as one, where a pasted address points, and every setting the
@@ -493,7 +493,7 @@ export const VIDEO_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * ⚠ EVERY FIELD HAS A DEFAULT AND THE WHOLE OBJECT HAS ONE. That is rule 2 of lib/sections/schema.ts
  * applied one level down: a MEDIA_SPLIT block saved before this object existed has no `videoSettings`
- * key at all, and `.default({})` is what makes it parse into a complete set of defaults rather than
+ * key at all, and `.prefault({})` is what makes it parse into a complete set of defaults rather than
  * turning every image-beside-text block on the site into an editor-only error card.
  *
  * ⚠ ZOD'S `.default()` FIRES FOR A MISSING KEY, NEVER FOR AN EXPLICIT `null` (contract §14). Nothing
@@ -584,7 +584,14 @@ export const videoSettingsSchema = z
       .default("")
       .describe("What the subtitles are called in the menu — “English”. Left empty it reads “Captions”.")
   })
-  .default({});
+  /*
+   * ⚠ `.prefault`, NOT `.default`, AND THE DIFFERENCE IS THE WHOLE POINT OF THIS LINE. Zod 4's
+   * `.default(value)` hands `value` back as the OUTPUT without parsing it, so `{}` would arrive as `{}`
+   * with none of the fields' own defaults filled in — every player setting undefined. `.prefault(value)`
+   * parses `value` through the schema, which is what Zod 3's `.default` did and what every "`{}` parses
+   * into a complete set of defaults" in this codebase relies on.
+   */
+  .prefault({});
 
 export type VideoSettings = z.infer<typeof videoSettingsSchema>;
 
@@ -622,7 +629,7 @@ export function readVideoSettings(raw: unknown): VideoSettings {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return defaults;
 
   const source = raw as Record<string, unknown>;
-  const shape = videoSettingsSchema.removeDefault().shape;
+  const shape = videoSettingsSchema.unwrap().shape;
   const repaired: Record<string, unknown> = { ...defaults };
 
   for (const key of Object.keys(defaults) as (keyof VideoSettings)[]) {
@@ -698,7 +705,7 @@ export type VideoSettingKey = keyof VideoSettings;
  * would be stored, editable nowhere, and honoured by a player that never saw a control for it.
  * Reading the schema's own keys makes that impossible.
  */
-const EVERY_SETTING = Object.keys(videoSettingsSchema.removeDefault().shape) as VideoSettingKey[];
+const EVERY_SETTING = Object.keys(videoSettingsSchema.unwrap().shape) as VideoSettingKey[];
 
 /**
  * ⚠ `startMuted` IS ABSENT FROM THE TWO HOSTED PROVIDERS ON PURPOSE. It means "start silent because

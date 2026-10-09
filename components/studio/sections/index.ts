@@ -169,9 +169,9 @@ export const SECTION_FORMS: { [K in SectionType]: SectionFormComponent<SectionPa
   // edits the header only and says so (see PlatformPillarsForm's own header).
   PLATFORM_PILLARS: PlatformPillarsForm,
   INDIA_MAP: IndiaMapForm,
-  // One uploaded document, placed on a page. Its form is the third to read its field descriptions
-  // through `.innerType()` — the schema is a `ZodEffects`, because the title is required once a
-  // document is chosen, for the same accessibility reason as EMBED's and FORM_EMBED's.
+  // One uploaded document, placed on a page. Its schema is the third with a `superRefine` — the title
+  // is required once a document is chosen, for the same accessibility reason as EMBED's and
+  // FORM_EMBED's.
   DOCUMENT_EMBED: DocumentEmbedForm
 };
 

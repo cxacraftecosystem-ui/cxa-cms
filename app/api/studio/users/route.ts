@@ -1,6 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma, Role } from "@prisma/client";
 import { assertSameOrigin, badRequest, conflict, forbidden, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";

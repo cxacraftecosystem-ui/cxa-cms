@@ -50,11 +50,11 @@ import type { LookupResponse } from "@/components/studio/fields/EntityPicker";
 /**
  * The schema's own link rule, reached through the CTA schema rather than restated.
  *
- * `cta()` wraps the pair in `.default({})`, so the default has to come off before the shape is
+ * `cta()` wraps the pair in `.prefault({})`, so the wrapper has to come off before the shape is
  * readable. The message this produces is the one `lib/sections/schema.ts` wrote for a non-technical
  * reader — there is deliberately no second copy of it in this file.
  */
-const HREF_SCHEMA = ctaSectionSchema.shape.primaryCta.removeDefault().shape.href;
+const HREF_SCHEMA = ctaSectionSchema.shape.primaryCta.unwrap().shape.href;
 
 function hrefProblem(value: string): string | null {
   const result = HREF_SCHEMA.safeParse(value);

@@ -51,8 +51,8 @@ import {
 } from "@/components/studio/fields/EntityPicker";
 import type { SectionFormProps } from "@/components/studio/sections";
 
-/** `.innerType()` because the schema is a `ZodEffects` — see its header, and EMBED's and FORM_EMBED's. */
-const SHAPE = documentEmbedSectionSchema.innerType().shape;
+/** `.shape` directly: the schema's `superRefine` is a check on the object, not a wrapper round it. */
+const SHAPE = documentEmbedSectionSchema.shape;
 
 /** How tall the frame is, in words rather than pixels. Matches the schema's `height` enum. */
 const HEIGHT_OPTIONS: readonly { value: DocumentEmbedSectionData["height"]; label: string }[] = [

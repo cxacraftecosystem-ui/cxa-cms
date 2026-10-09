@@ -50,7 +50,7 @@ import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = linkGridSectionSchema.shape;
-const ITEM = SHAPE.items.removeDefault().element.shape;
+const ITEM = SHAPE.items.unwrap().element.shape;
 
 type GridLink = LinkGridSectionData["items"][number];
 type Columns = LinkGridSectionData["columns"];

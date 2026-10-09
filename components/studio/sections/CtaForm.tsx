@@ -25,9 +25,9 @@ import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = ctaSectionSchema.shape;
 
-/** `cta()` wraps each button in `.default({})`; the default comes off before the shape is readable. */
-const PRIMARY_CTA = SHAPE.primaryCta.removeDefault().shape;
-const SECONDARY_CTA = SHAPE.secondaryCta.removeDefault().shape;
+/** `cta()` wraps each button in `.prefault({})`; the wrapper comes off before the shape is readable. */
+const PRIMARY_CTA = SHAPE.primaryCta.unwrap().shape;
+const SECONDARY_CTA = SHAPE.secondaryCta.unwrap().shape;
 
 function buttonRenders(button: { label: string; href: string }): boolean {
   // The renderer draws a button only when it has BOTH words and a link — a labelled button with no link

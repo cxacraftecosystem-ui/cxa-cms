@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma, SubmissionStatus } from "@prisma/client";
 import { assertSameOrigin, badRequest, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";

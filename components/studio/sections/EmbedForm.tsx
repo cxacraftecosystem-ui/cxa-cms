@@ -9,9 +9,9 @@
  *
  * A screen reader announces an untitled `<iframe>` as "frame", and an untitled `<video>` as "video",
  * which tells a reader nothing about whether to spend four minutes on it. `embedSectionSchema` is
- * therefore one of the three schemas in `lib/sections/schema.ts` that carry a `superRefine`, and is a
- * `ZodEffects` rather than a `ZodObject` — which is why the field descriptions below are reached
- * through `.innerType()`.
+ * therefore one of the three schemas in `lib/sections/schema.ts` that carry a `superRefine` — a check
+ * on the object in Zod 4, not a wrapper round it, so the field descriptions below are still read off
+ * `.shape`.
  *
  * The requirement binds ONLY once there is something to describe — an address for the four hosted
  * providers, a chosen film for `upload` — so a block that has just been dropped onto a page still
@@ -55,8 +55,8 @@ import { VideoSettingsFields } from "@/components/studio/fields/VideoSettingsFie
 import { HelpText } from "@/components/studio/HelpText";
 import type { SectionFormProps } from "@/components/studio/sections";
 
-/** `.innerType()` because this schema is a `ZodEffects` — see the header and the schema's own note. */
-const SHAPE = embedSectionSchema.innerType().shape;
+/** `.shape` directly: the `superRefine` is a check on the object, not a wrapper (see the header). */
+const SHAPE = embedSectionSchema.shape;
 
 /**
  * The provider list, in the order an editor is most likely to want it.

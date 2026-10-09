@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { AccessKind, AuthProvider, Prisma, Role } from "@prisma/client";
 import { assertSameOrigin, badRequest, conflict, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
@@ -385,16 +385,16 @@ const CreateBody = z.object({
     .superRefine((raw, ctx) => {
       const subject = parseAccessSubject(raw);
       if (!subject.ok) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: subject.message });
+        ctx.addIssue({ code: "custom", message: subject.message });
         return;
       }
       if (subject.kind === "EMAIL" && !ADDRESS.safeParse(subject.value).success) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: ADDRESS_REFUSAL });
+        ctx.addIssue({ code: "custom", message: ADDRESS_REFUSAL });
       }
     }),
   name: z.string().trim().max(200, "Keep the name to 200 characters or fewer.").optional(),
   role: z.enum(ROLE_VALUES, {
-    errorMap: () => ({ message: "Choose what this person will be able to do." })
+    error: "Choose what this person will be able to do."
   }),
   note: z
     .string()

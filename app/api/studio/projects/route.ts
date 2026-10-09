@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -74,7 +74,7 @@ const slugField = z
 
 /** Envelope only; the node tree is `components/RichText.tsx`'s business. See lib/sections/schema.ts. */
 const richTextField = z.union([
-  z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).passthrough(),
+  z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).loose(),
   z.null()
 ]);
 

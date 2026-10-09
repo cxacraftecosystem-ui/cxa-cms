@@ -438,7 +438,10 @@ literal `U+0300`–`U+036F` range where the other eight use `\p{Diacritic}`, whi
 set. Nothing has gone wrong yet; nothing would say so if it had.
 
 **Do not add `clsx`, `tailwind-merge`, `next-themes`, a second toast library, or a second icon set.**
-Icons are `lucide-react`, and only `lucide-react`.
+Icons are `lucide-react`, and only `lucide-react`. The one exception is not a second set: the six brand
+marks lucide withdrew in 1.0 (GitHub, LinkedIn, X/Twitter, YouTube, Instagram, Facebook) are kept in
+`components/icons/brands.ts`, as lucide 0.471 drew them and built with lucide's own `createLucideIcon`,
+so the social and share links did not lose their icons. Nothing is added to that file.
 
 ---
 

@@ -8,15 +8,14 @@ import {
   CalendarDays,
   ExternalLink,
   Fingerprint,
-  Github,
   Globe,
   GraduationCap,
-  Linkedin,
   Mail,
   Phone,
   type LucideIcon
 } from "lucide-react";
 
+import { Github, Linkedin } from "@/components/icons/brands";
 import { Reveal } from "@/components/motion/Reveal";
 import { BreadcrumbJsonLd, Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { CardGrid } from "@/components/site/CardGrid";

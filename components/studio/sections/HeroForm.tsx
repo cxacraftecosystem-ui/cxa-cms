@@ -8,9 +8,10 @@
  * way to read it back. Copying those sentences into this file would create two versions of the same
  * explanation, and the one on screen would be the one nobody remembered to update.
  *
- * The character limits ARE restated, because Zod does not expose a `.max()` without reaching into its
- * private `_def`. Each one below matches the schema; changing one means changing both, and the counter
- * under the field is what tells an editor before the save refuses them.
+ * The character limits ARE restated — written when Zod kept a `.max()` in its private `_def`. Zod 4
+ * publishes a string's `maxLength`, so they could now be read off the schema (through the `.default()`
+ * each `text()` field carries); until they are, each one below matches the schema, changing one means
+ * changing both, and the counter under the field is what tells an editor before the save refuses them.
  *
  * `headlineAccent` IS A SEPARATE FIELD, not markup inside the headline, because the gold gradient is
  * the one place gold is allowed on the whole site (contract §1.1) and it must not be somewhere an
@@ -39,12 +40,12 @@ const SHAPE = heroSectionSchema.shape;
 /**
  * The two buttons' own field descriptions.
  *
- * `cta()` wraps each pair in `.default({})`, so the default comes off before the shape is readable. Read
+ * `cta()` wraps each pair in `.prefault({})`, so the wrapper comes off before the shape is readable. Read
  * rather than retyped, for the reason in the header: two copies of one sentence means the one on screen
  * is the stale one.
  */
-const PRIMARY_CTA = SHAPE.primaryCta.removeDefault().shape;
-const SECONDARY_CTA = SHAPE.secondaryCta.removeDefault().shape;
+const PRIMARY_CTA = SHAPE.primaryCta.unwrap().shape;
+const SECONDARY_CTA = SHAPE.secondaryCta.unwrap().shape;
 
 /** The CSS words are the stored values; the British prose is what a person reads (schema header). */
 const ALIGNMENT_OPTIONS = [

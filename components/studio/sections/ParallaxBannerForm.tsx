@@ -51,8 +51,8 @@ import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = parallaxBannerSectionSchema.shape;
 
-/** `cta()` wraps the pair in `.default({})`; the default comes off before the shape is readable. */
-const CTA = SHAPE.cta.removeDefault().shape;
+/** `cta()` wraps the pair in `.prefault({})`; the wrapper comes off before the shape is readable. */
+const CTA = SHAPE.cta.unwrap().shape;
 
 /** ⚠ Matches `count({ min: 0, max: 40 })` on `speed`. Two different caps would be two different rules. */
 const SPEED_MIN = 0;

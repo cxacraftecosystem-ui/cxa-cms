@@ -42,7 +42,7 @@ import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker"
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = storyScrollSectionSchema.shape;
-const CHAPTER = SHAPE.chapters.removeDefault().element.shape;
+const CHAPTER = SHAPE.chapters.unwrap().element.shape;
 
 type StoryChapter = StoryScrollSectionData["chapters"][number];
 

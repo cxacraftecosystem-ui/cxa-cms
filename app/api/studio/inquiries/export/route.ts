@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma, SubmissionStatus } from "@prisma/client";
 
 import { badRequest, route } from "@/lib/api";

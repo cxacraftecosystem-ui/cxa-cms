@@ -346,7 +346,7 @@ export function RichTextForm({
           /**
            * ⚠ THE CAST IS REQUIRED AND IT WEAKENS NOTHING. `RichTextDoc` is an INTERFACE with
            * `type: "doc"` and `content: RichTextNode[]`, which is strictly more precise than the field's
-           * own type; but that field is inferred from a `.passthrough()` Zod object, so it carries an
+           * own type; but that field is inferred from a `.loose()` Zod object, so it carries an
            * index signature (`{ [k: string]: unknown }`) — and TypeScript does not give an interface an
            * implicit index signature, only a type alias or an object literal. So a BETTER-typed value is
            * not assignable to a looser one, purely because of how the looser one is spelled. The

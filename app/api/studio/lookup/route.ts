@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { MediaKind, Prisma } from "@prisma/client";
 
 import { badRequest, ok, parseQuery, route } from "@/lib/api";
@@ -163,11 +163,9 @@ const MAX_SUBTITLE_CHARS = 140;
 /**
  * A bounded whole number from a query string, VALIDATED AS A STRING and converted at the call site.
  *
- * The house pattern, for the reason app/api/studio/media/route.ts sets out: `parseQuery` takes a
- * `ZodSchema<T>`, whose input and output types are the same `T`, so a `.default()` or a `.transform()`
- * makes the two differ and the call stops type-checking. `.refine()` does not. It also produces a
- * better message than coercion, which answers `?limit=abc` with "Expected number, received nan" — a
- * sentence about JavaScript, shown to somebody who edited a URL.
+ * The house pattern, for the reason app/api/studio/media/route.ts sets out: a string with a `.refine()`
+ * produces a better message than coercion, which answers `?limit=abc` with "Expected number, received
+ * nan" — a sentence about JavaScript, shown to somebody who edited a URL.
  */
 const boundedInt = (label: string, min: number, max: number) =>
   z

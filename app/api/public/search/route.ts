@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { badRequest, ok, parseQuery, route } from "@/lib/api";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/ratelimit";
 import { logSearch, search } from "@/lib/search/query";
@@ -25,12 +25,12 @@ export const dynamic = "force-dynamic";
 /**
  * A bounded whole number from a query string, VALIDATED AS A STRING.
  *
- * Two constraints shape this. Written as a string check rather than `z.coerce.number()` because
- * coercion answers "?limit=abc" with "Expected number, received nan" — a sentence about JavaScript,
- * shown to a reader who typed a URL. And it stays a string rather than transforming to a number because
- * `parseQuery` takes a `ZodSchema<T>`, whose input and output are the same `T`; a `.transform()` makes
- * them differ and the call no longer type-checks. `.refine()` does not, so the range check lives here
- * and the conversion happens at the call site.
+ * Written as a string check rather than `z.coerce.number()` because coercion answers "?limit=abc" with
+ * "Expected number, received nan" — a sentence about JavaScript, shown to a reader who typed a URL. The
+ * range check is a `.refine()` here and the conversion happens at the call site, so the only sentences a
+ * reader can meet are the two written below. (It began as a string for a second reason too: Zod 3's
+ * `ZodSchema<T>`, which `parseQuery` took, pinned input and output to one type, so a `.transform()` to a
+ * number would not type-check. Zod 4's `ZodType<T>` would accept one; the messages are why it stays.)
  */
 const boundedInt = (label: string, min: number, max: number) =>
   z

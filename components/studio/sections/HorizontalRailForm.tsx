@@ -39,7 +39,7 @@ import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker"
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = horizontalRailSectionSchema.shape;
-const ITEM = SHAPE.items.removeDefault().element.shape;
+const ITEM = SHAPE.items.unwrap().element.shape;
 
 type RailCard = HorizontalRailSectionData["items"][number];
 

@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` and `Prisma.join` are the
 // tagged-template helpers the one rearranging statement is built from. See the note on it below.
 import { Prisma } from "@prisma/client";

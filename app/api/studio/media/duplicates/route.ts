@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE: `Prisma.sql` / `Prisma.join` are the tagged-template helpers, and
 // they are the only way a checksum reaches this file's SQL. Nothing here concatenates a query string.
 import { Prisma } from "@prisma/client";

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { FONT_ROLE_LABELS, fontFace } from "@/lib/typography/fonts";
 
@@ -666,7 +666,7 @@ export function readBlockTypeset(value: unknown): BlockTypeset {
  * ⚠ THIS CAST IS THE ONE PLACE THE `typeset` KEY IS REACHED WITHOUT THE TYPE SYSTEM'S HELP, and it is
  * here so it is nowhere else.
  *
- * `typeset: blockTypesetSchema.default({})` HAS since landed on `richTextSectionSchema`, so the key is
+ * `typeset: blockTypesetSchema.prefault({})` HAS since landed on `richTextSectionSchema`, so the key is
  * now genuinely stored and `TYPESET_STORED` in `RichTextForm` has flipped itself on. The index-signature
  * read stays anyway, deliberately: this helper is called with the payload of ANY section type, and only
  * RICH_TEXT carries the field. Typing the parameter to the rich-text payload would make it unusable for

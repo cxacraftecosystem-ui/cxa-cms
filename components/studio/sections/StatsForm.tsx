@@ -15,7 +15,8 @@
  * count instead — see its header.
  *
  * Field descriptions and limits come from `lib/sections/schema.ts` — the descriptions are read off it,
- * the limits are restated (Zod does not expose `.max()` publicly) and must match.
+ * the limits are restated and must match. (They were restated because Zod 3 kept `.max()` private; Zod
+ * 4 publishes a string's `maxLength` and an array's checks, so reading them off is now possible.)
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * THE "WHERE THE FIGURE COMES FROM" PICKER, AND WHY IT IS THE POINT OF THIS FILE.
@@ -104,10 +105,10 @@ const SHAPE = statsSectionSchema.shape;
 /**
  * The shape of ONE figure, reached through the array.
  *
- * `removeDefault()` then `.element` then `.shape` — all public Zod API, so the help sentences below are
+ * `unwrap()` then `.element` then `.shape` — all public Zod API, so the help sentences below are
  * the same strings the schema wrote and cannot drift from them.
  */
-const ITEM = SHAPE.items.removeDefault().element.shape;
+const ITEM = SHAPE.items.unwrap().element.shape;
 
 type StatsItem = StatsSectionData["items"][number];
 

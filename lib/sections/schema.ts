@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { screenFramingPayload } from "@/lib/media/framing-schema";
 import { EMBED_ASPECT_RATIOS, EMBED_PROVIDERS, videoSettingsSchema } from "@/lib/media/video";
@@ -62,7 +62,8 @@ import { blockTypesetSchema } from "@/lib/typography/typeset";
  *
  *     What has to hold for a nested value is rule 2, one level down: every field inside it needs a
  *     default AND the object itself needs one, or a payload saved before it existed fails to parse.
- *     `videoSettingsSchema` ends in `.default({})` for exactly that reason.
+ *     `videoSettingsSchema` ends in `.prefault({})` for exactly that reason — `.prefault` and not
+ *     `.default`, because only it fills in the fields' own defaults (see lib/media/video.ts).
  *
  * Enum VALUES here are code words (`center`, not `centre`) because they end up beside CSS; the
  * British prose lives in the labels and the help text, which is what a person actually reads.
@@ -238,7 +239,8 @@ function cta(what: string) {
       label: text(40, `The words on the ${what} button. Leave it empty to hide the button.`),
       href: link(`Where the ${what} button goes.`)
     })
-    .default({})
+    // `.prefault`, not `.default`: see `videoSettingsSchema` in lib/media/video.ts.
+    .prefault({})
     .describe(`The ${what} button. It appears once it has both words and a link.`);
 }
 
@@ -271,7 +273,7 @@ const alignment = (fallback: "left" | "center" | "right", help: string) =>
 
 // Filter vocabularies mirrored from `prisma/schema.prisma`.
 //
-// Hardcoded rather than `z.nativeEnum(PersonKind)` because `nativeEnum` needs a VALUE import from
+// Hardcoded rather than `z.enum(PersonKind)` because handing Zod the enum needs a VALUE import from
 // `@prisma/client`, and this module is imported by studio client components — that import would drag
 // the Prisma client into the browser bundle. Adding a kind to the schema means adding it here too;
 // the empty string is "no filter", so the payload stays flat and a cleared picker is expressible.
@@ -496,7 +498,7 @@ export const heroSectionSchema = z.object({
  *    of known node shapes would have to be extended in lockstep with the editor, and the day somebody
  *    forgot, every page holding the new block would fail validation on save — turning a formatting
  *    feature into data loss.
- *  - `.passthrough()` keeps any envelope key Tiptap adds later, rather than stripping it. This is the
+ *  - `.loose()` keeps any envelope key Tiptap adds later, rather than stripping it. This is the
  *    ONE schema in this file that deliberately does not clean unknown keys (rule 6 above), because the
  *    thing being carried is a foreign document format, not our own payload.
  *  - Nothing here is required beyond `type: "doc"`, so a document saved before today — including one
@@ -513,7 +515,7 @@ const richTextDocumentSchema = z
     type: z.literal("doc"),
     content: z.array(z.unknown()).default([])
   })
-  .passthrough();
+  .loose();
 
 export const richTextSectionSchema = z.object({
   eyebrow: text(60, "The small line above the heading. Optional."),
@@ -575,7 +577,7 @@ export const richTextSectionSchema = z.object({
     "One of the craft photographs that ship with the site. Used only when you have not chosen an uploaded picture above."
   ),
   /*
-   * ⚠ `.default({})` IS LOAD-BEARING, AND IT IS WHY THIS FIELD NEEDS NO MIGRATION. Every child field
+   * ⚠ `.prefault({})` IS LOAD-BEARING, AND IT IS WHY THIS FIELD NEEDS NO MIGRATION. Every child field
    * of `blockTypesetSchema` carries its own default of `inherit`, so `{}` parses into the complete
    * all-inherit document — which means every RICH_TEXT payload written before this field existed
    * parses unchanged and renders exactly as it did. Same shape as `cta()` and `homepage.censusOverride`.
@@ -585,7 +587,7 @@ export const richTextSectionSchema = z.object({
    * style still reaches every block that never overrode it.
    */
   typeset: blockTypesetSchema
-    .default({})
+    .prefault({})
     .describe(
       "How this passage is set — its face, line length, reading size, leading and paragraph habits. Every field starts on the site's house style, which is set in Settings → Typesetting."
     )
@@ -1220,9 +1222,10 @@ export const mapSectionSchema = z.object({
  * uploaded branch is not an `<iframe>` at all, but a `<video>` with no accessible name is announced
  * as "video" and nothing else, so the requirement is the same requirement.
  *
- * Because of that rule this is the ONE schema here that is a `ZodEffects` rather than a `ZodObject`:
- * an editor form reading field descriptions off `.shape` must go through `.innerType()` for this
- * type. Everything else in `SECTION_SCHEMAS` has `.shape` directly.
+ * That rule is a `.superRefine()`, and in Zod 4 a refinement is a check ON the object rather than a
+ * wrapper round it (Zod 3 wrapped it in a `ZodEffects`), so this is still a `ZodObject` and an editor
+ * form reads its field descriptions off `.shape` exactly as it does for every other entry in
+ * `SECTION_SCHEMAS`.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * ⚠ FIVE PROVIDERS, AND TWO OF THEM ARE NEW AND ARE NOT VARIATIONS ON THE OTHER THREE.
@@ -1301,7 +1304,7 @@ export const embedSectionSchema = z
     const hasSomething = value.provider === "upload" ? value.mediaId !== "" : value.url !== "";
     if (hasSomething && value.title === "") {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["title"],
         message:
           "Describe this embed before saving it. A screen reader announces an untitled frame only as 'frame', which tells the reader nothing about what is inside."
@@ -1344,9 +1347,9 @@ export const embedSectionSchema = z
  *
  * `title` is required once a document is chosen — the third of the conditional requirements
  * described in rule 4 at the top of this file, and the same kind as the other two: it is the
- * `<iframe>`'s accessible name, and a screen reader announces an untitled frame as "frame". Because
- * of it this is a `ZodEffects` rather than a `ZodObject`, so the studio form reads its field
- * descriptions through `.innerType()`, as EMBED's and FORM_EMBED's do.
+ * `<iframe>`'s accessible name, and a screen reader announces an untitled frame as "frame". It is a
+ * `.superRefine()`, which in Zod 4 leaves the schema a `ZodObject` — the studio form reads its field
+ * descriptions off `.shape`, as EMBED's and FORM_EMBED's do.
  *
  * ⚠ NOTHING HERE PROMISES A PREVIEW. A browser renders a PDF and renders nothing else — no
  * PowerPoint, no Word, no OpenDocument — so `DocumentEmbedSection` shows a download card for those
@@ -1380,7 +1383,7 @@ export const documentEmbedSectionSchema = z
   .superRefine((value, ctx) => {
     if (value.mediaId !== "" && value.title === "") {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["title"],
         message:
           "Describe this document before saving it. A screen reader announces an untitled frame only as 'frame', which tells the reader nothing about what is inside."
@@ -1682,8 +1685,8 @@ export function describeFormHosts(provider: FormEmbedProvider): string {
  *     frame as "frame". It binds only once there is a form to label, per §10 — a field may only be
  *     mandatory where it is answerable.
  *
- * Because of rule 2 this is a `ZodEffects` rather than a `ZodObject`, so an editor form reading field
- * descriptions off `.shape` must go through `.innerType()` for this type, as it must for EMBED.
+ * Rule 2 is a `.superRefine()`, which in Zod 4 is a check on the object rather than a wrapper round it,
+ * so an editor form reads this type's field descriptions off `.shape`, as it does for EMBED.
  *
  * `url` requires **https** specifically, not merely an absolute address. Every one of these providers
  * is https-only, and a form collecting somebody's name, address and date of birth over plain http is
@@ -1730,7 +1733,7 @@ export const formEmbedSectionSchema = z
   .superRefine((value, ctx) => {
     if (value.url !== "" && value.title === "") {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["title"],
         message:
           "Describe this form before saving it. A screen reader announces an untitled frame only as 'frame', which tells the reader nothing about what is inside."
@@ -1759,7 +1762,7 @@ export const formEmbedSectionSchema = z
 
     if (!formHostAllowed(value.provider, hostname)) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["url"],
         message: `That address is on ${hostname}, which cannot be shown inside a page on this site. ${describeFormHosts(value.provider)} If the form is somewhere else, set the service to “Another service” and it will be offered as a link instead.`
       });
@@ -2195,7 +2198,7 @@ export const indiaMapSectionSchema = z.object({
  * Every schema, keyed by `SectionType`.
  *
  * `satisfies` rather than a type annotation on purpose: the annotation would flatten every value to
- * `ZodTypeAny` and lose the per-type inference that `SectionPayloads` below is built from, while
+ * `ZodType` and lose the per-type inference that `SectionPayloads` below is built from, while
  * `satisfies` still fails the build the moment a `SectionType` is added to the Prisma enum without a
  * schema here — which is exactly the mistake that would otherwise reach production as an error card.
  */
@@ -2235,7 +2238,7 @@ export const SECTION_SCHEMAS = {
   // One uploaded document — a PDF on the page, anything else as a download card. See its schema for
   // why it names a `MediaAsset` rather than a `FileAsset`.
   DOCUMENT_EMBED: documentEmbedSectionSchema
-} satisfies Record<SectionType, z.ZodTypeAny>;
+} satisfies Record<SectionType, z.ZodType>;
 
 type SectionSchemas = typeof SECTION_SCHEMAS;
 
@@ -2340,10 +2343,10 @@ export function parseSectionData<T extends SectionType>(
   type: T,
   data: unknown
 ): SectionParseResult<T> {
-  // Widened to `ZodTypeAny` deliberately: indexing the registry with a generic key gives TypeScript a
+  // Widened to `ZodType` deliberately: indexing the registry with a generic key gives TypeScript a
   // union of 26 schema types, and calling `safeParse` on that union is a fight not worth having. The
   // cast on the way out restates the guarantee the registry's key already makes.
-  const schema: z.ZodTypeAny | undefined = SECTION_SCHEMAS[type];
+  const schema: z.ZodType | undefined = SECTION_SCHEMAS[type];
 
   // `type` is typed as a `SectionType`, but this function is on the boundary — the value regularly
   // arrives from a request body. An unknown type is a message, never a crash.
@@ -2681,7 +2684,7 @@ const SECTION_PLACEHOLDERS: Partial<{ [K in SectionType]: z.input<SectionSchemas
  * constant would let one edited block rewrite the default for every block added afterwards.
  */
 export function defaultSectionData(type: SectionType): unknown {
-  const schema: z.ZodTypeAny | undefined = SECTION_SCHEMAS[type];
+  const schema: z.ZodType | undefined = SECTION_SCHEMAS[type];
   if (!schema) return {};
 
   const seed = SECTION_PLACEHOLDERS[type];

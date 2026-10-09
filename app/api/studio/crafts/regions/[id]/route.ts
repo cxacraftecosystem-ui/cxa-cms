@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { wrongTypeError, z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
@@ -53,12 +53,12 @@ const LONGITUDE_ADVICE =
  */
 const patchBody = z.object({
   latitude: z
-    .number({ invalid_type_error: LATITUDE_ADVICE })
+    .number({ error: wrongTypeError(LATITUDE_ADVICE) })
     .min(6, LATITUDE_ADVICE)
     .max(38, LATITUDE_ADVICE)
     .nullable(),
   longitude: z
-    .number({ invalid_type_error: LONGITUDE_ADVICE })
+    .number({ error: wrongTypeError(LONGITUDE_ADVICE) })
     .min(68, LONGITUDE_ADVICE)
     .max(98, LONGITUDE_ADVICE)
     .nullable()

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma, SubmissionStatus } from "@prisma/client";
 
 import { ApiError, assertSameOrigin, ok, route } from "@/lib/api";

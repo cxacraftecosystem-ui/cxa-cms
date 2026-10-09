@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -69,7 +69,7 @@ const slugField = z
  * second, weaker copy of that whitelist — guaranteed to drift, and trusted more than it deserves.
  */
 const richTextField = z.union([
-  z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).passthrough(),
+  z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).loose(),
   z.null()
 ]);
 
@@ -160,9 +160,8 @@ function auditContext(request: NextRequest, actor: { id: string; email: string }
 /**
  * A bounded whole number from a query string, VALIDATED AS A STRING and converted at the call site.
  *
- * The house pattern, for the reason app/api/public/search/route.ts sets out: `parseQuery` takes a
- * `ZodSchema<T>`, whose input and output are the same `T`, so a `.default()` or a `.transform()` makes
- * the two differ and the call stops type-checking. `.refine()` does not.
+ * The house pattern, for the reason app/api/public/search/route.ts sets out: a string with a `.refine()`
+ * answers a bad value with the sentence below, where coercion would answer in Zod's own words.
  */
 const boundedInt = (label: string, min: number, max: number) =>
   z

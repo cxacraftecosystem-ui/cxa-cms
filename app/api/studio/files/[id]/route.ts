@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {

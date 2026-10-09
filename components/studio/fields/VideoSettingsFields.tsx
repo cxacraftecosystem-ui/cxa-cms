@@ -24,7 +24,7 @@
  *
  * ⚠ THE HELP TEXT IS THE SCHEMA'S, READ BY RUNNING IT. Writing a second sentence per field here would
  * give the studio two explanations of one setting, and the one on screen would be the one nobody
- * updated. `videoSettingsSchema` is a `.default({})`, so `.removeDefault()` comes off before `.shape`
+ * updated. `videoSettingsSchema` is a `.prefault({})`, so `.unwrap()` comes off before `.shape`
  * is readable — the same step `MediaSplitForm` takes for its two `cta()` objects.
  *
  * ⚠ IT IS A `<fieldset>` WITH A `<legend>`, NOT A HEADING. A group of related controls is exactly what
@@ -50,8 +50,8 @@ import { EntityPicker } from "@/components/studio/fields/EntityPicker";
 import { HelpText } from "@/components/studio/HelpText";
 import { NumberField } from "@/components/studio/sections/ShowcaseForm";
 
-/** `.default({})` wraps the object; the default comes off before the shape is readable. */
-const SHAPE = videoSettingsSchema.removeDefault().shape;
+/** `.prefault({})` wraps the object; the wrapper comes off before the shape is readable. */
+const SHAPE = videoSettingsSchema.unwrap().shape;
 
 export interface VideoSettingsFieldsProps {
   /**

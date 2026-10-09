@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { ok, route } from "@/lib/api";
 import { listRevisions } from "@/lib/audit";

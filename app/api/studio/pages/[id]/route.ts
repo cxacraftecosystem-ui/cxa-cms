@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { patchOf, z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, conflict, noContent, ok, route } from "@/lib/api";
@@ -92,7 +92,7 @@ const pageBodySchema = z.object({
       // `superRefine` and not `refine`, because the MESSAGE is computed from the value — `refine` can
       // only decide pass or fail and would have to carry a generic sentence. Using both would emit
       // two errors for one mistake, which is how a form ends up telling somebody the same thing twice.
-      if (conflict) ctx.addIssue({ code: z.ZodIssueCode.custom, message: conflict });
+      if (conflict) ctx.addIssue({ code: "custom", message: conflict });
     }),
   navLabel: optionalText(60),
   status: statusSchema,
@@ -189,7 +189,7 @@ export const PATCH = route(async (request: Request, context: { params: Promise<{
   );
   const { id } = await context.params;
 
-  const body = await parseStudioJson(request, pageBodySchema.partial());
+  const body = await parseStudioJson(request, patchOf(pageBodySchema));
 
   // A page in the recycle bin must be restored before it can be edited: saving one would put work into a
   // row the editor believes they have removed, and the site would not show it either way.

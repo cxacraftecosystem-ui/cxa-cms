@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { assertSameOrigin, route } from "@/lib/api";
 import { prisma } from "@/lib/db";

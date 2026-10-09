@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { patchOf, z } from "@/lib/zod";
 // A VALUE import for the tone enum — see the sibling collection route.
 import { AnnouncementTone, type Prisma } from "@prisma/client";
 
@@ -83,25 +83,29 @@ const LIST_SELECT = {
 
 type AnnouncementRow = Prisma.AnnouncementGetPayload<{ select: typeof LIST_SELECT }>;
 
-const PatchBody = z.object({
-  message: requiredText(
-    MESSAGE_MAX,
-    "An announcement needs something to say. One sentence is usually right."
-  ).optional(),
-  href: optionalText(HREF_MAX).optional(),
-  linkLabel: optionalText(LINK_LABEL_MAX).optional(),
-  tone: z
-    .nativeEnum(AnnouncementTone, {
-      errorMap: () => ({ message: "Choose one of the four kinds of announcement from the list." })
-    })
-    .optional(),
-  startsAt: optionalDateTime("The date it starts showing").optional(),
-  endsAt: optionalDateTime("The date it stops showing").optional(),
-  isActive: z.boolean().optional(),
-  dismissible: z.boolean().optional(),
-  /** Put a removed announcement back. Administrator only — see the header. */
-  restore: z.literal(true).optional()
-});
+// `patchOf`: Zod 4 lets an `optionalText` field's `.default(null)` answer for a key the request left out,
+// even under `.optional()`, which would clear every field a PATCH did not mention. See lib/zod.ts.
+const PatchBody = patchOf(
+  z.object({
+    message: requiredText(
+      MESSAGE_MAX,
+      "An announcement needs something to say. One sentence is usually right."
+    ).optional(),
+    href: optionalText(HREF_MAX).optional(),
+    linkLabel: optionalText(LINK_LABEL_MAX).optional(),
+    tone: z
+      .enum(AnnouncementTone, {
+        error: "Choose one of the four kinds of announcement from the list."
+      })
+      .optional(),
+    startsAt: optionalDateTime("The date it starts showing").optional(),
+    endsAt: optionalDateTime("The date it stops showing").optional(),
+    isActive: z.boolean().optional(),
+    dismissible: z.boolean().optional(),
+    /** Put a removed announcement back. Administrator only — see the header. */
+    restore: z.literal(true).optional()
+  })
+);
 
 /** ⚠ Word for word the sentence AnnouncementManager.tsx shows in the form. See the collection route. */
 function assertWindowOrder(startsAt: Date | null, endsAt: Date | null): void {

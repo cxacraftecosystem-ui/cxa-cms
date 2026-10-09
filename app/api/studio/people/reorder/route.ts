@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` and `Prisma.join` are the
 // tagged-template helpers the one statement below is built from. See the note on that statement.
 import { Prisma, type PersonKind } from "@prisma/client";

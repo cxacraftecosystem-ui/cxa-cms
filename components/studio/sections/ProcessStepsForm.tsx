@@ -42,7 +42,7 @@ import { CraftImagePicker } from "@/components/studio/sections/CraftImagePicker"
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = processStepsSectionSchema.shape;
-const STEP = SHAPE.steps.removeDefault().element.shape;
+const STEP = SHAPE.steps.unwrap().element.shape;
 
 type ProcessStep = ProcessStepsSectionData["steps"][number];
 

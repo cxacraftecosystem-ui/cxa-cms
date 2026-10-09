@@ -47,7 +47,7 @@ import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = actionStepsSectionSchema.shape;
-const STEP = SHAPE.steps.removeDefault().element.shape;
+const STEP = SHAPE.steps.unwrap().element.shape;
 
 type ActionStep = ActionStepsSectionData["steps"][number];
 type StepStatus = ActionStep["status"];

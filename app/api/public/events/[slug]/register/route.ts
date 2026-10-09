@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` is the tagged template `$queryRaw`
 // needs for the event row lock. See `lockEvent`.
 import { Prisma, type RegistrationStatus } from "@prisma/client";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { prisma } from "@/lib/db";
 import {
   ApiError,

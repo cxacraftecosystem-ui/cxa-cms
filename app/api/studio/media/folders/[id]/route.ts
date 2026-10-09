@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE: `Prisma.sql` is the tagged-template helper, and the one raw statement
 // in this file is the reason it is needed. Nothing here concatenates a query string.
 import { Prisma } from "@prisma/client";

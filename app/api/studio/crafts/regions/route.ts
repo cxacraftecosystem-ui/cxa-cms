@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { wrongTypeError, z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, badRequest, conflict, ok, route } from "@/lib/api";
@@ -59,7 +59,7 @@ const LEVELS = ["NATION", "STATE", "DISTRICT", "CLUSTER"] as const satisfies rea
 
 const createBody = z.object({
   name: z
-    .string({ invalid_type_error: "Give the place a name." })
+    .string({ error: wrongTypeError("Give the place a name.") })
     .trim()
     .min(1, "Give the place a name.")
     .max(120, "Keep a region's name to 120 characters or fewer."),
@@ -69,13 +69,13 @@ const createBody = z.object({
   /** Null is "top of the tree", which is what a NATION is and what an unfiled STATE may be for now. */
   parentId: z.string().trim().max(40).nullable().default(null),
   latitude: z
-    .number({ invalid_type_error: LATITUDE_ADVICE })
+    .number({ error: wrongTypeError(LATITUDE_ADVICE) })
     .min(6, LATITUDE_ADVICE)
     .max(38, LATITUDE_ADVICE)
     .nullable()
     .default(null),
   longitude: z
-    .number({ invalid_type_error: LONGITUDE_ADVICE })
+    .number({ error: wrongTypeError(LONGITUDE_ADVICE) })
     .min(68, LONGITUDE_ADVICE)
     .max(98, LONGITUDE_ADVICE)
     .nullable()

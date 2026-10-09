@@ -24,7 +24,7 @@ import { RepeaterField } from "@/components/studio/fields/RepeaterField";
 import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = timelineSectionSchema.shape;
-const ENTRY = SHAPE.entries.removeDefault().element.shape;
+const ENTRY = SHAPE.entries.unwrap().element.shape;
 
 type TimelineEntry = TimelineSectionData["entries"][number];
 

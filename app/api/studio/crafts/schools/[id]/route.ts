@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { wrongTypeError, z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
@@ -40,7 +40,7 @@ export const dynamic = "force-dynamic";
 
 const patchBody = z.object({
   name: z
-    .string({ invalid_type_error: "Give the school or tradition a name." })
+    .string({ error: wrongTypeError("Give the school or tradition a name.") })
     .trim()
     .min(1, "Give the school or tradition a name.")
     .max(160, "Keep the name to 160 characters or fewer."),

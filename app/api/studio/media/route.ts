@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ok, parseQuery, route } from "@/lib/api";
@@ -63,11 +63,9 @@ const NO_FOLDER = "none";
 /**
  * A bounded whole number from a query string, VALIDATED AS A STRING and converted at the call site.
  *
- * The house pattern, for the reason app/api/public/search/route.ts sets out: `parseQuery` takes a
- * `ZodSchema<T>`, whose input and output are the same `T`, so a `.transform()` or a `.default()` makes
- * the two differ and the call stops type-checking. `.refine()` does not. It also gives a better message
- * than coercion, which answers "?page=abc" with "Expected number, received nan" — a sentence about
- * JavaScript, shown to somebody who edited a URL.
+ * The house pattern, for the reason app/api/public/search/route.ts sets out: a string with a `.refine()`
+ * gives a better message than coercion, which answers "?page=abc" with "Expected number, received nan"
+ * — a sentence about JavaScript, shown to somebody who edited a URL.
  */
 const boundedInt = (label: string, min: number, max: number) =>
   z

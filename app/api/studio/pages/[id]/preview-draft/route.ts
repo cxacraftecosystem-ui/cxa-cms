@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { ApiError, assertSameOrigin, noContent, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";

@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { wrongTypeError, z } from "@/lib/zod";
 
 import { ApiError, assertSameOrigin, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
@@ -96,8 +96,9 @@ async function groupFrom(context: RouteContext): Promise<SettingsGroup> {
  * read "Expected object, received array" and mean nothing to an administrator.
  */
 const documentSchema = z.record(z.string(), z.unknown(), {
-  invalid_type_error:
+  error: wrongTypeError(
     "A settings save has to carry the group's values as a set of named fields. Nothing has been changed."
+  )
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────

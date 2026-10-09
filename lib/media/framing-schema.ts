@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { SCREEN_BUCKET_IDS } from "./screens";
 

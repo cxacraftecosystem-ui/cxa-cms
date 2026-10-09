@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE: `Prisma.sql` is the tagged template `$queryRaw` needs. See `lockEvent`.
 import { Prisma, type RegistrationStatus } from "@prisma/client";
 

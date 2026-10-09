@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import type { User } from "@prisma/client";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { prisma } from "@/lib/db";
 import {
   ApiError,

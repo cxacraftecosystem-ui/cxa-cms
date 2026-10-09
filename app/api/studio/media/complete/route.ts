@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { MediaKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {

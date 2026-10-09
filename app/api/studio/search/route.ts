@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 import { badRequest, ok, route } from "@/lib/api";
 import { requireUser } from "@/lib/auth/current-user";

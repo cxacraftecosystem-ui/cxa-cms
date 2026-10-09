@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { badRequest, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";

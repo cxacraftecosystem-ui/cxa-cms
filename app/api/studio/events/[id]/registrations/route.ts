@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { wrongTypeError, z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` is the tagged template
 // `$queryRaw` needs for the event row lock. See `lockEvent`.
 import { Prisma, type RegistrationStatus } from "@prisma/client";
@@ -130,7 +130,7 @@ const stateChangeSchema = z.object({
 const manualRegistrationSchema = z.object({
   name: requiredText(120, "Enter the name that should appear on the attendance list."),
   email: z
-    .string({ invalid_type_error: "Enter an email address." })
+    .string({ error: wrongTypeError("Enter an email address.") })
     .trim()
     .min(1, "Enter an email address — it is how this person is identified on the list.")
     .max(254)

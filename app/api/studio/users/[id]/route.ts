@@ -1,6 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` is the tagged template `$queryRaw`
 // needs for the administrator lock. See `lockActiveAdministrators`.
 import { Prisma, type AuthProvider, type Role } from "@prisma/client";

@@ -42,9 +42,9 @@ function firstItem(response: LookupResponse | null): LookupItem | null {
   return response.items[0] ?? null;
 }
 
-/** `cta()` wraps each button in `.default({})`; the default comes off before the shape is readable. */
-const PRIMARY_CTA = SHAPE.primaryCta.removeDefault().shape;
-const SECONDARY_CTA = SHAPE.secondaryCta.removeDefault().shape;
+/** `cta()` wraps each button in `.prefault({})`; the wrapper comes off before the shape is readable. */
+const PRIMARY_CTA = SHAPE.primaryCta.unwrap().shape;
+const SECONDARY_CTA = SHAPE.secondaryCta.unwrap().shape;
 
 export function MediaSplitForm({ data, onChange, onDirty }: SectionFormProps<MediaSplitSectionData>) {
   const update = (patch: Partial<MediaSplitSectionData>) => {

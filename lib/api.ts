@@ -1,6 +1,6 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { ZodError, type ZodSchema } from "zod";
+import { ZodError, type ZodType } from "zod";
 import { recordAccess } from "@/lib/requestLog";
 
 /**
@@ -320,7 +320,7 @@ export function noContent(): NextResponse {
  * A malformed body produces a 400 with a sentence, not a 500 — the request never reached the
  * handler's logic, so calling it a server error would send an operator looking in the wrong place.
  */
-export async function parseJson<T>(request: Request, schema: ZodSchema<T>): Promise<T> {
+export async function parseJson<T>(request: Request, schema: ZodType<T>): Promise<T> {
   let raw: unknown;
   try {
     raw = await request.json();
@@ -336,7 +336,7 @@ export async function parseJson<T>(request: Request, schema: ZodSchema<T>): Prom
 }
 
 /** Parse `?a=1&b=2` against a schema. Repeated keys collapse to the LAST value, matching URLSearchParams.get. */
-export function parseQuery<T>(request: Request, schema: ZodSchema<T>): T {
+export function parseQuery<T>(request: Request, schema: ZodType<T>): T {
   const params = new URL(request.url).searchParams;
   const raw: Record<string, string> = {};
   params.forEach((value, key) => {

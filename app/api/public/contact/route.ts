@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { prisma } from "@/lib/db";
 import { ApiError, assertSameOrigin, clientIp, ok, parseJson, route, userAgent } from "@/lib/api";
 import { recordEvent, type AuditContext } from "@/lib/audit";

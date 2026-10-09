@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { redirect as navigate } from "next/navigation";
 import { TriangleAlert, WandSparkles } from "lucide-react";
 import type { Prisma } from "@prisma/client";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireStudioCapability } from "@/lib/auth/current-user";

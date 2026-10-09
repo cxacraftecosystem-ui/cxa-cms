@@ -25,16 +25,9 @@
  * happily share a URL carrying whatever filter parameters happened to be in the address bar.
  */
 
-import {
-  Linkedin,
-  Link2,
-  Mail,
-  MessageCircle,
-  Share2,
-  Twitter,
-  type LucideIcon
-} from "lucide-react";
+import { Link2, Mail, MessageCircle, Share2, type LucideIcon } from "lucide-react";
 
+import { Linkedin, Twitter } from "@/components/icons/brands";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/ToastProvider";
 import { useHydrated } from "@/lib/client/useHydrated";
