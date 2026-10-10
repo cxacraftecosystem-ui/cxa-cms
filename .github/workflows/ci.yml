@@ -80,6 +80,13 @@ jobs:
           node-version-file: package.json
           cache: npm
 
+      # npm 12, the newest stable, rather than the npm 11 Node 24 bundles: npm 12 blocks dependency
+      # install scripts unless package.json's `allowScripts` lets them run, and CI must install the way
+      # the policy says (docs/DEPLOYMENT.md §1.3). Pinned; Dependabot does not see this line, so move it
+      # with package.json's devEngines.
+      - name: npm 12
+        run: npm install -g npm@12.2.0 && npm -v
+
       - name: Install
         run: npm ci
 

@@ -68,6 +68,11 @@ COPY package.json package-lock.json ./
 # thing that needs it, and this stage exists precisely so a source edit does not reinstall the world.
 COPY vendor ./vendor
 
+# npm 12 first (the image bundles npm 11): it runs a dependency's install scripts only where
+# package.json's `allowScripts` says so — @prisma/engines, which fetches the schema engine
+# `prisma migrate` needs — and skips the rest. CI and vercel.json's installCommand do the same.
+RUN npm install -g npm@12.2.0
+
 # `npm ci`, not `npm install`: it installs exactly the locked tree and fails loudly when package.json and
 # the lockfile have drifted, rather than quietly resolving something new inside an image nobody inspects.
 # devDependencies are required — typescript, tailwind, postcss and eslint all run during the build.

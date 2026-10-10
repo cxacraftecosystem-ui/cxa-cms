@@ -5,6 +5,13 @@
   "engines": {
     "node": "24.x"
   },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": ">=12.2.0",
+      "onFail": "warn"
+    }
+  },
   "scripts": {
     "dev": "next dev",
     "dev:webpack": "next dev --webpack",
@@ -90,5 +97,11 @@
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "allowScripts": {
+    "@prisma/engines": true,
+    "esbuild": false,
+    "prisma": false,
+    "unrs-resolver": false
   }
 }

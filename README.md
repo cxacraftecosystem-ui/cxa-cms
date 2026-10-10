@@ -67,6 +67,7 @@ the app refuses to start on a weak one — replace it, and the seed password, be
 
 ```bash
 cp .env.example .env      # then fill it in — see "Configuration" below
+npm install -g npm@12     # once: package.json's allowScripts policy is an npm 12 feature
 npm install
 npx prisma migrate dev    # creates the schema
 npm run seed              # structural pages, settings, and one administrator
