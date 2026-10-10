@@ -96,9 +96,10 @@ erDiagram
     AuditLog {
         json before "the FULL prior entity, not a diff"
         json after  "the FULL new entity"
-        string actorId "the actor; the address is JOINED from the user at read time"
-        string ipHash "keyed HMAC of the client address, never the address (AUDIT-PRIVACY.md)"
-        string actorEmail "LEGACY, no longer written"
+        string actorId "the actor"
+        string actorEmail "the actor's address at the time, so a deleted user does not erase the trail"
+        string ipAddress "the client IP, from lib/request-ip.ts only (AUDIT-PRIVACY.md)"
+        string ipHash "keyed HMAC of the same address, for search across fingerprint-only rows"
     }
 
     Revision {

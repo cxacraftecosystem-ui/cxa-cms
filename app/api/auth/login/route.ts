@@ -173,9 +173,10 @@ export const POST = route(async (request: NextRequest) => {
     await recordEvent(context, {
       action: "LOGIN_FAILED",
       entityType: "User",
-      // The attempted address as a keyed fingerprint and its domain — never the address itself, which
-      // may belong to nobody (lib/audit-subject.ts) — and the reason. Never the password, nor a hint of it.
-      after: { ...attemptedAddress(email), reason: result.reason }
+      entityLabel: email,
+      // The attempted address (with its keyed fingerprint and domain, for grouping) and the reason.
+      // Never the password, and never a hint of it.
+      after: { email, ...attemptedAddress(email), reason: result.reason }
     });
 
     if (result.reason === "locked") {
@@ -264,8 +265,8 @@ export const POST = route(async (request: NextRequest) => {
         action: "LOGIN_FAILED",
         entityType: "User",
         entityId: user.id,
-        // The account is `entityId`; screens join it for a name. No address on the row.
-        after: { ...attemptedAddress(email), reason: "second-factor" }
+        entityLabel: email,
+        after: { email, ...attemptedAddress(email), reason: "second-factor" }
       });
       throw unauthorized(SECOND_FACTOR_MESSAGE);
     }
@@ -304,7 +305,9 @@ export const POST = route(async (request: NextRequest) => {
       action: "LOGIN_FAILED",
       entityType: "User",
       entityId: user.id,
+      entityLabel: user.email,
       after: {
+        email: user.email,
         ...attemptedAddress(user.email),
         reason: "access-refused",
         detail: describeRefusal(access.reason),
@@ -343,7 +346,7 @@ export const POST = route(async (request: NextRequest) => {
       action: "LOGIN",
       entityType: "User",
       entityId: user.id,
-      // No `entityLabel`: it used to repeat the actor's own address. Screens join `entityId` instead.
+      entityLabel: user.email,
       // `admittedWithoutGrant` is recorded rather than inferred, under the same name the OAuth callback
       // uses, so one query answers "who has been getting in on the grace path?" across both doors. It
       // is a sign-in an administrator should follow up by writing the grant, and a server-console

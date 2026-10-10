@@ -4,7 +4,7 @@ import "server-only";
 // same namespace. Same pattern as app/api/public/events/[slug]/register/route.ts.
 import { Prisma, type AuditAction, type AuthProvider, type Role } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { auditIpHashCandidates, displayIpFingerprint, fingerprintSearchHex } from "@/lib/audit-ip";
+import { auditIpSearchClauses, displayIpFingerprint, fingerprintSearchHex } from "@/lib/audit-ip";
 import {
   attemptedFromPayload,
   displayFieldNames,
@@ -68,8 +68,8 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * How many account and grant addresses are fingerprinted to recognise a refused sign-in's typed
- * address (`installationProvenance`). An installation with more than this many is a different product;
+ * How many account and grant addresses are fingerprinted to recognise the typed address of a refused
+ * sign-in that carries only a fingerprint (`installationProvenance`). An installation with more than this many is a different product;
  * an address beyond it is shown masked, which is the safe direction.
  */
 const RECOGNITION_LIMIT = 5000;
@@ -179,9 +179,10 @@ function cappedByProbe<T>(rows: readonly T[], cap: number): CappedList<T> {
  * shape — it goes through `RefusedAttempt`, where it is masked unless it is recognised.
  *
  * `id` and `name` are null when the account has been hard-deleted: `AuditLog.actor` is
- * `onDelete: SetNull`, which nulls `actorId` too. `email` then comes from the legacy `actorEmail`
- * column on rows written before 2026-10, and is null on rows written since — the log no longer copies
- * addresses (docs/AUDIT-PRIVACY.md), so a screen says "deleted user" instead.
+ * `onDelete: SetNull`, which nulls `actorId` too. `email` then comes from `actorEmail`, the address
+ * recorded on the row when it was written — denormalised for exactly that reason, so a purged account
+ * does not erase the trail (docs/AUDIT-PRIVACY.md). Only the few rows written on 2026-10-10 without it
+ * leave a screen to say "deleted user".
  */
 export interface ActorRef {
   id: string | null;
@@ -199,35 +200,34 @@ function actorRef(row: ActorColumns): ActorRef {
   return {
     id: row.actor?.id ?? row.actorId,
     name: row.actor?.name ?? null,
-    email: row.actor?.email ?? row.actorEmail
+    email: row.actorEmail ?? row.actor?.email ?? null
   };
 }
 
 const ACTOR_SELECT = { select: { id: true, name: true, email: true } } as const;
 
 /**
- * The network a row came from, as it may be shown: the fingerprint for rows written since the audit
- * log stopped storing addresses, the legacy raw column for older rows (until the optional scrub in
- * docs/AUDIT-PRIVACY.md clears it).
+ * The network a row came from, as it is shown: the client IP address the row recorded. A row written on
+ * 2026-10-10 before the owner's reversal carries only a fingerprint and shows no address (it still
+ * counts in the grouped lists, under its `net·…` fingerprint — `groupByNetwork`).
  */
-function shownNetwork(row: { ipHash: string | null; ipAddress: string | null }): string | null {
-  return displayIpFingerprint(row.ipHash) ?? row.ipAddress;
+function shownNetwork(row: { ipAddress: string | null }): string | null {
+  return row.ipAddress;
 }
 
 /**
- * A network search. A whole IP address is fingerprinted with every key it may have been stored under
- * and matched EXACTLY — a substring of a keyed hash means nothing. Anything shaped like a displayed
- * fingerprint is matched by prefix of the hex part (the stored form is `<keyId>:<hex>`, and the key id
- * has no colon, so `:<hex>` can only match at the start). Legacy rows match on their raw column.
+ * A network search. A whole IP address matches the stored address exactly, and the fingerprint-only
+ * rows through every fingerprint it may have been stored under (`auditIpSearchClauses`). Anything shaped
+ * like a displayed fingerprint (`net·…`) is matched by prefix of the hex part (the stored form is
+ * `<keyId>:<hex>`, and the key id has no colon, so `:<hex>` can only match at the start). Anything else
+ * is part of an address, matched as a substring of the stored one.
  */
 function networkFilter(filter: string): Prisma.AuditLogWhereInput {
-  const candidates = auditIpHashCandidates(filter);
-  if (candidates.length > 0) {
-    return { OR: [{ ipHash: { in: candidates } }, { ipAddress: filter.trim() }] };
-  }
+  const exact = auditIpSearchClauses(filter);
+  if (exact.length > 0) return { OR: exact };
   const hex = fingerprintSearchHex(filter);
-  if (hex) return { OR: [{ ipHash: { contains: `:${hex}` } }, { ipAddress: { contains: filter } }] };
-  return { ipAddress: { contains: filter } };
+  if (hex) return { OR: [{ ipHash: { contains: `:${hex}` } }, { ipAddress: { contains: filter.trim() } }] };
+  return { ipAddress: { contains: filter.trim() } };
 }
 
 /** One network in a "where from" list: the shown form, how often, and when. */
@@ -241,33 +241,31 @@ interface NetworkGroup {
 /**
  * The rows matching `where`, grouped by the network they came from — the top `take` networks.
  *
- * ⚠ TWO GENERATIONS OF ROW, ONE LIST. Rows written since docs/AUDIT-PRIVACY.md carry `ipHash`; rows
- * written before it carry the raw `ipAddress` and no hash, and cannot be given one (the database never
- * holds the key). Grouping on `ipHash` alone made every pre-migration row silently vanish from "the
- * addresses they worked from" and "where the refusals came from" — not as the rows aged out, but at
- * once, for every window — while the per-event lists beside them still showed those rows. So both
- * columns are grouped, each on its own (a legacy row is one with no hash), and merged.
+ * ⚠ TWO KINDS OF ROW, ONE LIST. Almost every row records the client `ipAddress` (all rows before the
+ * 2026-10-10 deploy, and every row since the owner's reversal the same day — docs/AUDIT-PRIVACY.md), and
+ * they are grouped by it. The rows written in between carry only `ipHash`, a keyed fingerprint, and
+ * cannot be given the address back; grouping on `ipAddress` alone would make them vanish from "the
+ * addresses they worked from" and "where the refusals came from" while the per-event lists still count
+ * them. So they are grouped on their fingerprint (shown as `net·…`), and the two lists are merged.
  *
- * Taking the top `take` of EACH and merging is exact for the top `take` of the union: a network in the
- * overall top `take` is in the top `take` of its own generation. The one thing the merge cannot do is
- * tell that a legacy address and a fingerprint are the same network — that needs the key to hash the
- * legacy address, which the database never holds — so a network seen on both sides of the change
- * appears twice for a window that straddles it, the same trade a key rotation makes.
+ * Taking the top `take` of EACH and merging is exact for the top `take` of the union. The merge cannot
+ * tell that an address and a fingerprint are the same network (that needs the key, which the database
+ * never holds), so a network seen on both sides appears twice for a window that straddles the change.
  */
 async function groupByNetwork(where: Prisma.AuditLogWhereInput, take: number): Promise<NetworkGroup[]> {
   // Each awaited on its own — the array form of `$transaction` erases `_count`. See `recordProvenance`.
   const hashed = await prisma.auditLog.groupBy({
     by: ["ipHash"],
-    where: { AND: [where, { ipHash: { not: null } }] },
+    where: { AND: [where, { ipAddress: null }, { ipHash: { not: null } }] },
     orderBy: { _count: { ipHash: "desc" } },
     take,
     _count: { _all: true },
     _min: { createdAt: true },
     _max: { createdAt: true }
   });
-  const legacy = await prisma.auditLog.groupBy({
+  const byAddress = await prisma.auditLog.groupBy({
     by: ["ipAddress"],
-    where: { AND: [where, { ipHash: null }, { ipAddress: { not: null } }] },
+    where: { AND: [where, { ipAddress: { not: null } }] },
     orderBy: { _count: { ipAddress: "desc" } },
     take,
     _count: { _all: true },
@@ -283,7 +281,7 @@ async function groupByNetwork(where: Prisma.AuditLogWhereInput, take: number): P
     if (address === null) continue;
     groups.push({ address, count: row._count._all, firstSeen: row._min.createdAt, lastSeen: row._max.createdAt });
   }
-  for (const row of legacy) {
+  for (const row of byAddress) {
     if (row.ipAddress === null) continue;
     groups.push({
       address: row.ipAddress,
@@ -758,8 +756,8 @@ export interface SignInEvent {
   action: AuditAction;
   at: string;
   /**
-   * The network the event came from, as it may be shown: a keyed fingerprint (`net·…`) for rows written
-   * since docs/AUDIT-PRIVACY.md, the raw legacy address for older rows. Never the address on a new row.
+   * The client IP address the event came from. Null when none was known, and on the few rows written on
+   * 2026-10-10 that carry only a fingerprint (docs/AUDIT-PRIVACY.md).
    */
   ipAddress: string | null;
   /** A plain sentence for a refusal, null for a success. */
@@ -1091,9 +1089,9 @@ export interface InstallationProvenance {
  * address somebody typed: the attempted addresses are shown masked, and a search that confirmed a
  * masked address would undo the masking one guess at a time.
  *
- * The filter is either a whole IP address — fingerprinted under the current and previous keys and
- * matched exactly — or a fingerprint as shown (`net·3f9a…`, matched by prefix). See
- * `networkFilter`. Legacy rows are still matched on their raw column.
+ * The filter is a whole IP address (matched exactly, and through the fingerprint on the rows that carry
+ * only one), a fingerprint as shown (`net·3f9a…`, matched by prefix), or part of an address. See
+ * `networkFilter`.
  */
 export async function installationProvenance(
   window: ResolvedWindow,
@@ -1249,39 +1247,46 @@ export async function installationProvenance(
 
   // ── Which attempted addresses this installation recognises ────────────────────────────────────
   /**
-   * A refused sign-in no longer stores the address that was typed (lib/audit-subject.ts). It stores
-   * `entityId` when the address belonged to an account, and always a keyed fingerprint and the domain.
-   * So an address is recognised — and shown whole — when:
+   * A refused sign-in records the address that was TYPED (`after.email`, and `entityLabel`). It is shown
+   * whole when it belongs to a studio account or an access grant, and masked to its domain otherwise —
+   * an address that belongs to nobody may be somebody's typo of their personal address.
    *
-   *   1. `entityId` joins to an account: that account's CURRENT address;
-   *   2. the fingerprint equals the fingerprint of a studio account's or an access grant's address,
-   *      hashed under every search key so a rotation does not forget them;
-   *   3. a pre-migration row carries the address itself and it is one of those.
-   *
-   * Anything else is the domain, masked — what an unrecognised address always showed.
+   * The few rows written on 2026-10-10 before the owner's reversal (docs/AUDIT-PRIVACY.md) hold only a
+   * keyed fingerprint and the domain. They are recognised through `entityId` (the account's current
+   * address) or by fingerprinting the known addresses under every search key; anything else is masked.
    */
-  const refusalParts = refusalRows.map((row) => ({ row, attempted: attemptedFromPayload(row.after) }));
-  const subjectIds = [...new Set(refusalParts.flatMap(({ row }) => (row.entityId ? [row.entityId] : [])))];
+  const refusalParts = refusalRows.map((row) => {
+    const attempted = attemptedFromPayload(row.after);
+    const label = row.entityLabel?.trim().toLowerCase() ?? "";
+    const typed = attempted.email ?? (label.includes("@") ? label : null);
+    return { row, attempted, typed };
+  });
+  const typedAddresses = [...new Set(refusalParts.flatMap(({ typed }) => (typed ? [typed] : [])))];
+  const known = new Set<string>();
+  if (typedAddresses.length > 0) {
+    const [knownUsers, knownGrants] = await prisma.$transaction([
+      prisma.user.findMany({ where: { email: { in: typedAddresses, mode: "insensitive" } }, select: { email: true } }),
+      prisma.studioAccess.findMany({ where: { email: { in: typedAddresses, mode: "insensitive" } }, select: { email: true } })
+    ]);
+    for (const row of knownUsers) known.add(row.email.toLowerCase());
+    for (const row of knownGrants) known.add(row.email.toLowerCase());
+  }
+
+  // Fingerprint-only rows (no typed address on the row).
+  const fingerprintOnly = refusalParts.filter(({ typed }) => typed === null);
+  const subjectIds = [...new Set(fingerprintOnly.flatMap(({ row }) => (row.entityId ? [row.entityId] : [])))];
   const subjects =
     subjectIds.length > 0
       ? await prisma.user.findMany({ where: { id: { in: subjectIds } }, select: { id: true, email: true } })
       : [];
   const subjectEmail = new Map(subjects.map((row) => [row.id, row.email.toLowerCase()]));
-
-  const unresolved = refusalParts.some(
-    ({ row, attempted }) =>
-      !(row.entityId && subjectEmail.has(row.entityId)) && Boolean(attempted.emailHash || attempted.legacyEmail || row.entityLabel)
-  );
-  const known = new Set<string>();
   let byFingerprint = new Map<string, string>();
-  if (unresolved) {
-    const [knownUsers, knownGrants] = await prisma.$transaction([
+  if (fingerprintOnly.some(({ row, attempted }) => attempted.emailHash && !(row.entityId && subjectEmail.has(row.entityId)))) {
+    const [allUsers, allGrants] = await prisma.$transaction([
       prisma.user.findMany({ select: { email: true }, take: RECOGNITION_LIMIT }),
       prisma.studioAccess.findMany({ select: { email: true }, take: RECOGNITION_LIMIT })
     ]);
-    for (const row of knownUsers) known.add(row.email.toLowerCase());
-    for (const row of knownGrants) known.add(row.email.toLowerCase());
-    byFingerprint = recogniseAttemptedAddresses(known);
+    byFingerprint = recogniseAttemptedAddresses([...allUsers, ...allGrants].map((row) => row.email));
   }
 
   return {
@@ -1291,16 +1296,15 @@ export async function installationProvenance(
     signedIn: cappedByProbe(toPeople(signedInGroups), PROVENANCE_CAPS.people),
     mostActive: cappedByProbe(toPeople(activeGroups), PROVENANCE_CAPS.people),
     refusals: capped(
-      refusalParts.map(({ row, attempted }): RefusedAttempt => {
+      refusalParts.map(({ row, attempted, typed }): RefusedAttempt => {
         const detail = refusalDetail(row.after);
-        // A pre-migration row: the address itself, in the payload or the label.
-        const legacy = (attempted.legacyEmail ?? row.entityLabel ?? "").trim().toLowerCase();
-        const recognised =
-          (row.entityId ? subjectEmail.get(row.entityId) : undefined) ??
-          (attempted.emailHash ? byFingerprint.get(attempted.emailHash) : undefined) ??
-          (legacy.includes("@") && known.has(legacy) ? legacy : undefined);
-        const masked =
-          maskedDomain(attempted.emailDomain) ?? (legacy.includes("@") ? maskEmail(legacy) : null);
+        const recognised = typed
+          ? known.has(typed)
+            ? typed
+            : undefined
+          : ((row.entityId ? subjectEmail.get(row.entityId) : undefined) ??
+            (attempted.emailHash ? byFingerprint.get(attempted.emailHash) : undefined));
+        const masked = typed ? maskEmail(typed) : maskedDomain(attempted.emailDomain);
         return {
           id: row.id,
           at: row.createdAt.toISOString(),

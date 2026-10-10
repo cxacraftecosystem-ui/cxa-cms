@@ -107,7 +107,7 @@ export const POST = route(async (request: NextRequest) => {
       {
         action: "PERMISSION_CHANGE",
         entityType: "User",
-        // No `entityLabel`: the account is the actor, and its address is joined at read time.
+        entityLabel: user.email,
         // No revision: a user row is not versioned content, and a revision of one would only be a
         // second copy of the audit entry with a redacted secret in it.
         revise: false,
@@ -153,6 +153,7 @@ export const POST = route(async (request: NextRequest) => {
     {
       action: "PERMISSION_CHANGE",
       entityType: "User",
+      entityLabel: user.email,
       revise: false,
       before: { twoFactorEnabled: true }
     },

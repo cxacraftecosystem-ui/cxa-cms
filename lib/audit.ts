@@ -5,7 +5,7 @@ import "server-only";
 import { Prisma, type AuditAction } from "@prisma/client";
 import { ApiError } from "@/lib/api";
 import { hashAuditIp } from "@/lib/audit-ip";
-import { scrubAccountIdentity } from "@/lib/audit-subject";
+import { normaliseIp } from "@/lib/request-ip";
 import { prisma } from "@/lib/db";
 import type { SessionUser } from "@/lib/auth/current-user";
 
@@ -27,11 +27,13 @@ export type TxClient = Prisma.TransactionClient;
 /**
  * The subset of a request an audit entry needs. Assembled once per route.
  *
- * ⚠ `actor.email` and `ipAddress` ARE INPUTS, NOT WHAT IS STORED. The row records `actorId` (the
- * address is joined from the user at read time) and `ipHash`, a keyed fingerprint of the address
- * (lib/audit-ip.ts). Neither raw value reaches the table — see `auditRowIdentity` and
- * docs/AUDIT-PRIVACY.md. `email` stays in the type so the many call sites that pass a session user
- * need not change.
+ * `actor.email` and `ipAddress` are STORED as given (owner decision, 2026-10-10 — docs/AUDIT-PRIVACY.md):
+ * the row records `actorId` and `actorEmail` (the actor's address at the time), and `ipAddress` (the
+ * client address) together with `ipHash`, a keyed fingerprint of it (lib/audit-ip.ts) that keeps a
+ * whole-address search working across rows that carry only the fingerprint.
+ *
+ * ⚠ `ipAddress` MUST come from lib/request-ip.ts (`clientIp()` / `clientIpFromHeaders`) — never from
+ * the leftmost `x-forwarded-for` entry, which the client writes. See `auditRowIdentity`.
  */
 export interface AuditContext {
   actor: Pick<SessionUser, "id" | "email"> | null;
@@ -40,15 +42,24 @@ export interface AuditContext {
 }
 
 /**
- * The identifying columns of an audit row, from a context: the actor's id, and the fingerprint of the
- * address. Exported so the tests can pin that no raw email or IP is ever among them.
+ * The identifying columns of an audit row, from a context: who (`actorId`, and `actorEmail` — their
+ * address at the time, so the trail survives a hard-deleted account) and from where (`ipAddress`, and
+ * its keyed fingerprint `ipHash`). Exported so the tests can pin exactly what is stored.
  *
- * `actorEmail` and `ipAddress` are deliberately ABSENT rather than set to null: they are legacy
- * columns, and leaving them out of the insert is the whole of "stop writing them".
+ * The address is stored in its canonical spelling (`normaliseIp`: RFC 5952, IPv4-mapped → IPv4), the
+ * same string the fingerprint is computed from, so an exact search matches either column. Anything that
+ * is not a valid address stores null in both.
  */
-export function auditRowIdentity(context: AuditContext): { actorId: string | null; ipHash: string | null } {
+export function auditRowIdentity(context: AuditContext): {
+  actorId: string | null;
+  actorEmail: string | null;
+  ipAddress: string | null;
+  ipHash: string | null;
+} {
   return {
     actorId: context.actor?.id ?? null,
+    actorEmail: context.actor?.email ?? null,
+    ipAddress: normaliseIp(context.ipAddress),
     ipHash: hashAuditIp(context.ipAddress)
   };
 }
@@ -102,33 +113,22 @@ export interface AuditInput {
   action: AuditAction;
   entityType: string;
   entityId?: string | null;
-  /**
-   * A human handle — a title, a name. Denormalised so a purged row still reads sensibly. On an account
-   * row an address is stripped from it before the insert (see `auditRowData`).
-   */
+  /** A human handle — a title, a name, an email. Denormalised so a purged row still reads sensibly. */
   entityLabel?: string | null;
   before?: unknown;
   after?: unknown;
 }
 
-/**
- * The whole insert for one entry — the ONE place a row is assembled, for both writers below.
- *
- * Account rows (entityType `User`, and every sign-in event) go through `scrubAccountIdentity` first:
- * their label and payloads lose every email address, because those rows used to carry the actor's own
- * address under another column name (`entityLabel` on every sign-in and sign-out). lib/audit-subject.ts
- * says what replaces it.
- */
+/** The whole insert for one entry — the ONE place a row is assembled, for both writers below. */
 export function auditRowData(context: AuditContext, input: AuditInput) {
-  const scrubbed = scrubAccountIdentity(input);
   return {
     ...auditRowIdentity(context),
-    action: scrubbed.action,
-    entityType: scrubbed.entityType,
-    entityId: scrubbed.entityId ?? null,
-    entityLabel: scrubbed.entityLabel ?? null,
-    before: toJsonColumn(scrubbed.before),
-    after: toJsonColumn(scrubbed.after),
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId ?? null,
+    entityLabel: input.entityLabel ?? null,
+    before: toJsonColumn(input.before),
+    after: toJsonColumn(input.after),
     userAgent: context.userAgent?.slice(0, 512) ?? null
   };
 }

@@ -3,6 +3,8 @@
 Five bugs found in the old CMS, each fixed here instead of being carried over: links beginning with
 `//` or `/\` treated as internal, upload signing with no size or checksum, rate limits that a spoofed
 `X-Forwarded-For` dodged, the cron secret accepted in the URL, and raw emails and IPs in the audit log.
+(Finding 5 was partly reversed by the owner on 2026-10-10: the audit log stores and shows real emails and
+IP addresses again — see §5.)
 This page is the reviewer's map of branch `security/hardening`: what each fix changed, where, how it is
 tested, and what a deployment has to do. The long explanations are in the files' own header comments and
 in `AUDIT-PRIVACY.md`. This page links to them and does not repeat them.
@@ -16,12 +18,12 @@ half of it tests).
 
 | # | Step | Required? |
 |---|---|---|
-| 1 | Apply migration `20261010120000_audit_log_ip_hash` (`prisma migrate deploy` in the normal release step). Additive: one nullable column and one index. | **Yes**, before the new code serves traffic. Without it every audit write fails on the missing `ipHash` column. |
+| 1 | Apply migration `20261010120000_audit_log_ip_hash` (`prisma migrate deploy` in the normal release step). Additive: one nullable column and one index. | **Yes**, before the new code serves traffic. Without it every audit write fails on the missing `ipHash` column (still written beside the address). |
 | 2 | Set `AUDIT_IP_HASH_SECRET` (≥ 32 chars, `openssl rand -base64 48`). | Recommended. Unset, a key is derived from `JWT_SECRET`, and Settings → Diagnostics warns until it is set. |
 | 3 | **Off Vercel only:** set `TRUSTED_PROXY_HOPS` to the real number of proxies in front of the app (1 for the nginx in `DEPLOYMENT.md`). | **Yes** for Docker/VM. If it is unset there, every visitor shares one `no-ip` rate-limit bucket. Leave it unset on Vercel. |
 | 4 | Make sure no scheduler calls `/api/cron/*` with `?secret=`. Rotate `CRON_SECRET` if one ever did. | **Yes.** Those calls now get a 401. Both GitHub workflows already send the header. |
 | 5 | Check the bucket CORS allows `x-amz-checksum-sha256` (fine with the documented `AllowedHeaders: ["*"]`). | **Yes** if the CORS rule was narrowed. Otherwise every upload fails at the PUT. |
-| 6 | `prisma/manual/audit_log_scrub_legacy_pii.sql`: NULL the legacy email/IP data on old audit rows. | **Optional, manual and irreversible.** A person runs it after checking for legal holds. See `AUDIT-PRIVACY.md` §4. |
+| 6 | ~~Scrub legacy audit emails/IPs~~ — **withdrawn 2026-10-10**: the owner does not want scrubbing, and the script was removed. | — |
 
 No change to `package.json` or the lockfile.
 
@@ -187,58 +189,51 @@ log"). `tests/newsletter/drain-auth.test.ts` was updated for the 401/403 split.
 
 **Deployment.** Step 4. Monitoring that expected a 403 from a wrong secret will now see a 401.
 
-## 5. The audit log stored raw emails and IP addresses
+## 5. The audit log stored raw emails and IP addresses — partly reversed by owner decision
 
-**Before.** Every `audit_logs` row copied `actorEmail` and the raw `ipAddress`. Sign-in, sign-out and
-refused sign-in rows also repeated the address in `entityLabel` and `after.email`.
+**Status, 2026-10-10: OWNER DECISION. The audit log stores and shows the real client IP address and the
+real email address again.** What remains of this finding is the trusted-IP derivation and the keyed
+fingerprint; the replacement of addresses by ids and fingerprints, the account-row scrub and the optional
+legacy scrub were withdrawn the same day. `AUDIT-PRIVACY.md` is the full account.
 
-**After.** The full account is in `AUDIT-PRIVACY.md`. In short:
+**Kept from the fix.**
 
-- `lib/audit.ts` writes `actorId` and `ipHash` = `<keyId>:` + HMAC-SHA256 of the normalised address,
-  truncated to 128 bits (new `lib/audit-ip.ts`). Key rotation is supported through
-  `AUDIT_IP_HASH_PREVIOUS_SECRETS`, including `jwt:<old JWT_SECRET>` for keys that were derived.
-- Account rows go through `scrubAccountIdentity` (new `lib/audit-subject.ts`). The label loses the
-  address. A typed sign-in address is stored as `emailHash` + `emailDomain`. Other addresses become
-  `••••@domain #<hex>`. The auth routes (`login`, `logout`, `two-factor`, `set-password`, OAuth
-  callback) no longer pass an address.
-- Read side: new `lib/audit-actor.ts` and `lib/audit-accounts.ts` join `users` at read time. After a hard
-  delete the row reads "Deleted user". `lib/provenance.ts` groups by fingerprint and merges legacy rows.
-  `app/api/studio/audit/route.ts`, `app/studio/audit/page.tsx`, `app/studio/page.tsx` and
-  `ProvenanceConsole` use the join and show `net·<hex>` instead of an address. Search by exact IP or
-  address still works through the fingerprint.
-- Lock take-overs: `takeOverLock` (`lib/studio/crud.ts`) used to write both editors' addresses as
-  `before.editingHeldBy` / `after.editingHeldBy` on the PAGE or POST row, which `scrubAccountIdentity`
-  never sees. It now writes `editingHeldById`, and the audit screen and the single-entry API join the
-  name at read time (`lockHoldersForAuditRows`, `withLockHolderNames`). The audit list answer and the
-  provenance timeline, which report only changed field NAMES, name that field `editingHeldBy` too
-  (`displayFieldNames`), so no screen shows the storage name.
-- `prisma/schema.prisma`: `ipHash String?` plus an index. `actorEmail` and `ipAddress` stay as nullable,
-  read-only legacy columns.
+- **The address is trustworthy.** Every audit write takes its `ipAddress` from `clientIp()` /
+  `clientIpFromHeaders()` (`lib/request-ip.ts`, §3): Vercel's edge headers, or the `TRUSTED_PROXY_HOPS`-th
+  `X-Forwarded-For` entry from the right — never the leftmost, client-written one. `lib/audit.ts` stores
+  it in canonical form (`normaliseIp`).
+- **The keyed fingerprint.** `ipHash` (HMAC-SHA256 under `AUDIT_IP_HASH_SECRET`, with rotation through
+  `AUDIT_IP_HASH_PREVIOUS_SECRETS`) is still written on every row, beside the address. It is what an
+  exact-address search uses to find the rows written between the deploy and the reversal, which carry
+  only the fingerprint. `actorId` is written as before.
 
-**Tests.** `tests/security/audit-privacy.test.ts` (11), `audit-account-rows.test.ts` (10),
-`audit-lock-takeover.test.ts` (5, including the field name a list of headlines shows),
-`audit-provenance.db.test.ts` (3) and `audit-lock-takeover.db.test.ts` (4: the real writer, step 5 of
-the scrub file run against an old-style row, step 5 with an address that has since changed hands, which
-must name the account that had it then or nobody, and the record's provenance timeline naming the
-take-over field `editingHeldBy`). The DB tests run only
-against a local database, and passed against a throwaway Postgres with every migration applied.
+**Restored as before 4675432.**
 
-**Migration.** `prisma/migrations/20261010120000_audit_log_ip_hash/migration.sql` is purely additive:
-`ADD COLUMN "ipHash" TEXT` plus `CREATE INDEX audit_logs_ipHash_createdAt_idx`. It has no backfill,
-because the database must never hold the key. `prisma migrate diff` from the migrations to the schema
-shows no drift from this branch. Its only output is the existing `DROP INDEX
-"search_documents_title_trgm_idx"`. That index is a hand-written expression index (see
-`20260814120000_restore_search_title_trgm_index`), and Prisma always proposes dropping it.
+- `lib/audit.ts` writes `actorEmail` (the actor's address at the time) and `ipAddress` on every row.
+- Account rows carry addresses again: `entityLabel` is the address on sign-in, sign-out and refused
+  sign-in rows and `Name <address>` on `User` rows; a refused sign-in records the typed address in
+  `after.email` (plus `emailHash` and `emailDomain`). `scrubAccountIdentity` was removed.
+- A lock take-over records `editingHeldBy` (both addresses) beside `editingHeldById`.
+- Display: the audit screen shows `Name <address>` for the actor and "from &lt;IP&gt;" per entry, and its
+  search matches the actor's email and an exact IP address; `/api/studio/audit` returns `actorEmail` and
+  `ipAddress` (and `networkFingerprint`); the provenance console shows IPs for sign-ins, refusals and
+  events, and groups by address; the dashboard and every "who" fall back to the recorded `actorEmail`
+  when the account is gone. Fingerprint-only rows show no IP and remain hash-searchable.
+- `prisma/manual/audit_log_scrub_legacy_pii.sql` was deleted. Production's 559 legacy rows keep (and have
+  had restored) their addresses.
 
-**Optional data scrub.** `prisma/manual/audit_log_scrub_legacy_pii.sql` is not a migration, and every
-statement in it is commented out. It NULLs the legacy columns on old rows, cuts addresses out of account
-labels and payloads, replaces a lock take-over's `editingHeldBy` address with the id of the account that
-had that address when the row was written (from the legacy `actorEmail`/`actorId` pair, which is why
-`actorEmail` is cleared last; ambiguous or unknown addresses are dropped, never matched to whoever has
-the address today), and leaves
-contact, registration and grant rows alone. Take a backup first. Old rows
-lose network correlation, and rows for hard-deleted actors will read "Deleted user". `access_logs` (CIC
-90-day retention) is untouched.
+**Tests.** `tests/security/audit-privacy.test.ts`, `audit-account-rows.test.ts`,
+`audit-lock-takeover.test.ts`, `audit-lock-takeover.db.test.ts` and `audit-provenance.db.test.ts` now
+assert the restored behaviour: the real email and canonical IP are stored beside `actorId`/`ipHash`, the
+auth routes label account rows with addresses, take-overs record both, the screens show them, and the
+search finds rows by actor email and by exact IP, including fingerprint-only rows.
+
+**Migration.** `prisma/migrations/20261010120000_audit_log_ip_hash/migration.sql` is unchanged (already
+applied): `ADD COLUMN "ipHash" TEXT` plus `CREATE INDEX audit_logs_ipHash_createdAt_idx`. Its header still
+describes the original intent; `actorEmail` and `ipAddress` were never dropped, so the reversal needed no
+migration. `prisma migrate diff` from the migrations to the schema shows only the existing
+`DROP INDEX "search_documents_title_trgm_idx"`, a hand-written expression index Prisma always proposes
+dropping (see `20260814120000_restore_search_title_trgm_index`).
 
 ---
 
@@ -259,6 +254,17 @@ migration applied. The Postgres was removed afterwards. The shared checkout's
 | `next build` with `NEXT_PUBLIC_SITE_URL=https://cxa.example.org` and no database | succeeds, with 30/30 static pages. The `prisma:error` lines it prints are the expected failed connections when there is no database. |
 | `prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script` (with a shadow database) | only the existing `DROP INDEX "search_documents_title_trgm_idx"` (see §5). Nothing from this branch. |
 | `prisma migrate deploy` + `audit-provenance.db.test.ts` and `audit-lock-takeover.db.test.ts` on the throwaway Postgres | 7 pass. The whole scrub file, uncommented, also executes there without error, and a second run changes nothing it already changed (only step 4 re-touches a row whose address sits deeper than the top level, as the file says). |
+
+**Owner-decision reversal of §5 (2026-10-10).** Same method (clean `npm ci --ignore-scripts` copy,
+`prisma generate`, throwaway Postgres 16 with every migration applied, removed afterwards): `npm test`
+970/970 pass, 0 skipped (all three `*.db.test.ts` files included: the two audit ones and the newsletter
+outbox); the five audit test files 45/45; `npm run check` (typecheck, eslint and every check script)
+clean; `next build` succeeds. End-to-end on the same database with `next start` (`VERCEL=1`): password
+sign-ins sent with `x-vercel-forwarded-for: 203.0.113.7` and a spoofed leftmost `X-Forwarded-For` wrote
+rows with `actorEmail`, `ipAddress` `203.0.113.7` (never the spoofed entry) and `ipHash`; the audit page
+showed `Name <address>` and "from 203.0.113.7", `/api/studio/audit` returned `actorEmail` and
+`ipAddress`, and searching by the actor's email and by `203.0.113.7` both found the rows. The scrub file
+the rows above mention has since been deleted.
 
 The rows below come from earlier runs during the review, against the code before each fix.
 

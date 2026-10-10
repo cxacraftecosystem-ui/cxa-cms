@@ -3,8 +3,8 @@ import { z } from "@/lib/zod";
 import type { AuditAction, Prisma } from "@prisma/client";
 import { badRequest, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
-import { auditActorEmail, auditActorEmailSearch } from "@/lib/audit-actor";
-import { accountsForAuditRows, auditAccountSearch, lockHoldersForAuditRows } from "@/lib/audit-accounts";
+import { auditActorEmail } from "@/lib/audit-actor";
+import { accountsForAuditRows, auditTextSearch, lockHoldersForAuditRows } from "@/lib/audit-accounts";
 import { accountLabel, displayFieldNames, withLockHolderNames } from "@/lib/audit-subject";
 import { displayIpFingerprint } from "@/lib/audit-ip";
 import { prisma } from "@/lib/db";
@@ -25,9 +25,9 @@ import { parseStudioQuery } from "@/lib/studio/crud";
  *
  * `requireCapability(canViewAuditLog)` — administrator only, and the reason is the CONTENT rather than the
  * metadata. `before` and `after` hold the full serialised entity, so the log holds the text of unpublished
- * work. (It no longer holds the address of everybody who has signed in: account rows are written without
- * one and named here through a join — lib/audit-subject.ts, docs/AUDIT-PRIVACY.md.) Passwords, TOTP secrets and recovery codes
- * are stripped by NAME before they get there (`redact()`); everything else is in it in full.
+ * work, and the email address and client IP address of everybody who has ever signed in or changed anything
+ * (kept and shown by owner decision, 2026-10-10 — docs/AUDIT-PRIVACY.md). Passwords, TOTP secrets and
+ * recovery codes are stripped by NAME before they get there (`redact()`); everything else is in it in full.
  *
  * ⚠ THE PAYLOADS ARE SUMMARISED, NOT SENT WHOLE, and the cut is reported per entry. Forty entries each
  * carrying two complete snapshots of a page with twenty blocks is several megabytes for a screen that shows
@@ -192,7 +192,7 @@ export const GET = route(async (request: NextRequest) => {
       return ok({ entry: null, message: "That audit entry no longer exists." });
     }
 
-    // A lock take-over names both holders by account id; the name is joined here, never stored.
+    // A lock take-over records both holders by address and id; the current name is joined here.
     const lockHolders = await lockHoldersForAuditRows([entry]);
     const before = withLockHolderNames(asRecord(entry.before), lockHolders);
     const after = withLockHolderNames(asRecord(entry.after), lockHolders);
@@ -219,17 +219,17 @@ export const GET = route(async (request: NextRequest) => {
         entityType: entry.entityType,
         entityId: entry.entityId,
         /**
-         * For a row about an account, the account as it is NOW (joined by `entityId`), "Deleted user" once
-         * it is gone, or a refused address masked to its domain — the row itself stores no address.
+         * For a row about an account, the address the row recorded (or, on a row without one, the account
+         * as it is now, joined by `entityId`) — lib/audit-subject.ts `accountLabel`.
          */
         entityLabel: accountLabel(entry, account),
         actor: entry.actor,
-        // Joined from the account (null once it is hard-deleted); the legacy column only for older rows.
+        /** The actor's address as recorded on the row; the joined one only for rows that lack it. */
         actorEmail: auditActorEmail(entry),
-        /** A keyed fingerprint of the network address, never the address. See docs/AUDIT-PRIVACY.md. */
-        networkFingerprint: displayIpFingerprint(entry.ipHash),
-        /** Legacy rows only (written before the fingerprint). Always null on a row written since. */
+        /** The client IP address (lib/request-ip.ts). Null on a row that carries only `networkFingerprint`. */
         ipAddress: entry.ipAddress,
+        /** A keyed fingerprint of the same address (lib/audit-ip.ts), on every row since 2026-10-10. */
+        networkFingerprint: displayIpFingerprint(entry.ipHash),
         userAgent: entry.userAgent,
         createdAt: entry.createdAt,
         changedFields: fields,
@@ -282,24 +282,15 @@ export const GET = route(async (request: NextRequest) => {
   if (to) createdAt.lte = to;
 
   const q = query.q ?? "";
-  // Account rows hold no address, so an address search resolves through the account — lib/audit-accounts.ts.
-  const accountClauses = q.length > 0 ? await auditAccountSearch(q) : [];
+  // Label, entity id, actor email, an exact IP address, and the account joins — lib/audit-accounts.ts.
+  const searchClauses = q.length > 0 ? await auditTextSearch(q) : [];
   const where: Prisma.AuditLogWhereInput = {
     ...(query.actor && query.actor.length > 0 ? { actorId: query.actor } : {}),
     ...(action.length > 0 ? { action: action as AuditAction } : {}),
     ...(query.entityType && query.entityType.length > 0 ? { entityType: query.entityType } : {}),
     ...(query.entityId && query.entityId.length > 0 ? { entityId: query.entityId } : {}),
     ...(from || to ? { createdAt } : {}),
-    ...(q.length > 0
-      ? {
-          OR: [
-            { entityLabel: { contains: q, mode: "insensitive" } },
-            { entityId: { contains: q, mode: "insensitive" } },
-            ...auditActorEmailSearch(q),
-            ...accountClauses
-          ]
-        }
-      : {})
+    ...(q.length > 0 ? { OR: searchClauses } : {})
   };
 
   const [entries, total, actorRows, typeRows] = await prisma.$transaction([
@@ -343,13 +334,13 @@ export const GET = route(async (request: NextRequest) => {
         entityLabel: accountLabel(entry, entry.entityId ? accounts.get(entry.entityId) : null),
         actor: entry.actor,
         /**
-         * Joined from the account — the row itself stores only `actorId`. Null when the account has been
-         * hard-deleted (and the row predates nothing that recorded it): a client shows "Deleted user".
+         * The actor's address as recorded on the row (it survives a hard-deleted account); the joined one
+         * only for rows that lack it. Null only when neither exists: a client shows "Deleted user".
          */
         actorEmail: auditActorEmail(entry),
-        networkFingerprint: displayIpFingerprint(entry.ipHash),
-        /** Legacy rows only. Always null on a row written since the fingerprint replaced it. */
+        /** The client IP address. Null on a row that carries only `networkFingerprint`. */
         ipAddress: entry.ipAddress,
+        networkFingerprint: displayIpFingerprint(entry.ipHash),
         createdAt: entry.createdAt,
         changedFields: fields,
         isEvent: before === null && after === null,

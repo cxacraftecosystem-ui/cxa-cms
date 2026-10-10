@@ -268,7 +268,9 @@ export const GET = route(
       await recordEvent(auditContext, {
         action: "LOGIN_FAILED",
         entityType: "User",
+        entityLabel: email,
         after: {
+          email,
           ...attemptedAddress(email),
           provider,
           reason: "the provider did not confirm that this email address belongs to the account"
@@ -323,8 +325,9 @@ export const GET = route(
         action: "LOGIN_FAILED",
         entityType: "User",
         entityId: existingUser?.id ?? null,
+        entityLabel: email,
         // The SPECIFIC reason, here and only here. The reader is told nothing that distinguishes it.
-        after: { ...attemptedAddress(email), provider, reason: describeRefusal(decision.reason) }
+        after: { email, ...attemptedAddress(email), provider, reason: describeRefusal(decision.reason) }
       });
       return refuse("access_denied");
     }
@@ -338,7 +341,9 @@ export const GET = route(
         action: "LOGIN_FAILED",
         entityType: "User",
         entityId: existingUser.id,
+        entityLabel: email,
         after: {
+          email,
           ...attemptedAddress(email),
           provider,
           reason: existingUser.deletedAt
@@ -381,8 +386,7 @@ export const GET = route(
         {
           action: "UPDATE",
           entityType: "User",
-          // The name only; an address on an account row is stripped anyway (lib/audit-subject.ts).
-          entityLabel: existingUser.name,
+          entityLabel: `${existingUser.name} <${existingUser.email}>`,
           // No revision: a user row is not versioned content, and one here would only be a second copy
           // of the audit entry. Same reasoning as the invitation route.
           revise: false
@@ -425,7 +429,7 @@ export const GET = route(
         {
           action: "CREATE",
           entityType: "User",
-          entityLabel: name,
+          entityLabel: `${name} <${email}>`,
           revise: false
         },
         async (tx) => {
@@ -470,7 +474,7 @@ export const GET = route(
         action: "LOGIN",
         entityType: "User",
         entityId: signedIn.id,
-        // No `entityLabel`: it used to repeat the actor's own address. Screens join `entityId`.
+        entityLabel: signedIn.email,
         after: {
           method: config.label,
           provider,

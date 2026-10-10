@@ -751,7 +751,7 @@ flowchart LR
     subgraph tx["ONE prisma.$transaction"]
         m["mutate(tx) → the row"]
         rev["Revision: entityType, entityId, version, data"]
-        aud["AuditLog: actorId, action, before, after, ipHash, ua"]
+        aud["AuditLog: actorId, actorEmail, action, before, after, ipAddress, ipHash, ua"]
         m --> rev --> aud
     end
     mwh --> tx

@@ -8,9 +8,10 @@ import { DELETED_ACTOR_LABEL } from "@/lib/audit-actor";
 import { displayFieldNames, lockHolderIds, withLockHolderNames } from "@/lib/audit-subject";
 
 /**
- * Taking over another editor's lock writes an audit row filed against the CONTENT (a page, a post), which
- * `scrubAccountIdentity` does not rewrite. It used to record both holders' addresses as `editingHeldBy`;
- * it must name them by account id, and the screens join the name at read time.
+ * Taking over another editor's lock writes an audit row filed against the CONTENT (a page, a post). It
+ * records both holders' addresses as `editingHeldBy` (as before 2026-10-10 — owner decision,
+ * docs/AUDIT-PRIVACY.md) AND their account ids as `editingHeldById`; the screens show the current name
+ * through the id, and the recorded address once the account is gone.
  *
  * No database: `prisma` is replaced on `globalThis` (lib/db.ts reuses it outside production) BEFORE
  * lib/studio/crud.ts is imported, and the transaction is a stand-in that records the audit insert.
@@ -66,27 +67,32 @@ describe("taking over an editing lock", () => {
     row = inserts[0] ?? {};
   });
 
-  it("stores neither holder's address anywhere in the row", () => {
-    const text = JSON.stringify(row);
-    assert.ok(!text.includes(HOLDER_EMAIL), text);
-    assert.ok(!text.includes(TAKER_EMAIL), text);
-    assert.ok(!/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]/i.test(text), text);
+  it("records both holders' addresses, and the taker's email and IP on the row", () => {
+    assert.equal((row.before as Record<string, unknown>).editingHeldBy, HOLDER_EMAIL);
+    assert.equal((row.after as Record<string, unknown>).editingHeldBy, TAKER_EMAIL);
+    assert.equal(row.actorEmail, TAKER_EMAIL);
+    assert.equal(row.ipAddress, "198.51.100.7");
   });
 
-  it("names both holders by account id instead", () => {
+  it("names both holders by account id as well", () => {
     assert.equal((row.before as Record<string, unknown>).editingHeldById, "user_prev");
     assert.equal((row.after as Record<string, unknown>).editingHeldById, "user_new");
     assert.deepEqual(lockHolderIds([row]).sort(), ["user_new", "user_prev"]);
   });
 
-  it("is shown by the joined name at read time, and as 'Deleted user' once the account is gone", () => {
+  it("is shown by the joined name, and by the recorded address once the account is gone", () => {
     const holders = new Map([["user_prev", { name: "Previous Holder", email: HOLDER_EMAIL }]]);
     const shownBefore = withLockHolderNames(row.before as Record<string, unknown>, holders);
     const shownAfter = withLockHolderNames(row.after as Record<string, unknown>, holders);
     assert.equal(shownBefore.editingHeldBy, "Previous Holder");
-    assert.equal(shownAfter.editingHeldBy, DELETED_ACTOR_LABEL);
+    assert.equal(shownAfter.editingHeldBy, TAKER_EMAIL, "better than 'Deleted user'");
     assert.ok(!("editingHeldById" in shownBefore));
     assert.equal(shownAfter.takenOver, true);
+  });
+
+  it("says 'Deleted user' only for a fingerprint-era row (id only) whose account is gone", () => {
+    const idOnly: Record<string, unknown> = { editingHeldById: "user_gone", takenOver: true };
+    assert.equal(withLockHolderNames(idOnly, new Map()).editingHeldBy, DELETED_ACTOR_LABEL);
   });
 
   it("names the changed field 'editingHeldBy' in a list of headlines, as the single-entry view does", () => {

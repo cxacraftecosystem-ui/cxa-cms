@@ -1,8 +1,16 @@
 import { createHash, createHmac, hkdfSync } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { normaliseIp } from "@/lib/request-ip";
 
 /**
- * The audit log's network fingerprint: a keyed hash of the client address, never the address.
+ * The audit log's network fingerprint: a keyed hash of the client address, stored BESIDE the address.
+ *
+ * ⚠ OWNER DECISION, 2026-10-10 (docs/AUDIT-PRIVACY.md): the audit log stores and shows the real client
+ * address again (`audit_logs.ipAddress`, written by lib/audit.ts from the trusted lib/request-ip.ts
+ * derivation). The fingerprint below is still written on every row: it is the only network column on
+ * the rows written between the 2026-10-10 deploy and that decision, and an exact-address search
+ * (`auditIpSearchClauses`) matches those rows through it. The rationale that follows is why the
+ * fingerprint is keyed — it no longer describes what the table holds.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * WHAT IT IS FOR, AND WHAT IT DELIBERATELY CANNOT DO.
@@ -24,8 +32,7 @@ import { normaliseIp } from "@/lib/request-ip";
  *
  * THE KEY. `AUDIT_IP_HASH_SECRET`, at least 32 characters. Without one — or with a value too short to
  * be a key — it is DERIVED from `JWT_SECRET` with HKDF under a label of its own, so a deployment that
- * has not been given the new variable still fingerprints rather than storing nothing (or worse,
- * storing the address). The derivation is one-way; knowing the fingerprint key reveals nothing about
+ * has not been given the new variable still writes a fingerprint beside the address. The derivation is one-way; knowing the fingerprint key reveals nothing about
  * the signing key. The cost is that rotating `JWT_SECRET` also rotates the fingerprints, which is why
  * a dedicated secret is the recommended setting and its absence is a diagnostics warning.
  *
@@ -205,4 +212,21 @@ export function displayIpFingerprint(stored: string | null | undefined): string 
 export function fingerprintSearchHex(input: string): string | null {
   const trimmed = input.trim().toLowerCase().replace(/^net[·.:-]?/, "");
   return /^[0-9a-f]{4,32}$/.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * The search clauses for "rows from this IP address": the stored address, exactly (in its canonical
+ * spelling, and as typed), and — for the rows that carry only a fingerprint — every fingerprint it may
+ * have been stored under. Empty when `q` is not a whole IP address: part of an address is not searched
+ * as one (it would still match `entityLabel` / `entityId` through the ordinary text search).
+ */
+export function auditIpSearchClauses(q: string, env: AuditIpEnv = process.env): Prisma.AuditLogWhereInput[] {
+  const typed = q.trim();
+  const address = normaliseIp(typed);
+  if (!address) return [];
+  const clauses: Prisma.AuditLogWhereInput[] = [{ ipAddress: address }];
+  if (typed !== address) clauses.push({ ipAddress: typed });
+  const candidates = auditIpHashCandidates(address, env);
+  if (candidates.length > 0) clauses.push({ ipHash: { in: candidates } });
+  return clauses;
 }

@@ -301,18 +301,17 @@ enum AuditAction {
 /// Who, when, what, old value, new value. `before`/`after` hold the FULL serialised entity rather
 /// than a diff: a diff computed at write time is only as good as the differ that produced it, and a
 /// rollback needs the whole prior state anyway.
-/// Who did what, when, from which (fingerprinted) network. Written only by lib/audit.ts.
+/// Who did what, when, from where. Written only by lib/audit.ts.
 ///
-/// ⚠ NO RAW EMAIL, NO RAW IP ON NEW ROWS (docs/AUDIT-PRIVACY.md). The actor is `actorId`, and every
-/// screen joins `actor` for the address — so it is shown while the account exists and reads "deleted
-/// user" after a hard delete. The network is `ipHash`, a keyed HMAC that correlates repeat sources
-/// without being reversible by anyone who reads the table or an export of it.
+/// Every row records the actor (`actorId`, and `actorEmail` — the address at the time, denormalised so
+/// a deleted user does not erase the trail) and the client (`ipAddress`, derived only by
+/// lib/request-ip.ts, and `ipHash`, a keyed fingerprint of it). Raw addresses are kept and shown by
+/// owner decision, 2026-10-10 (docs/AUDIT-PRIVACY.md).
 model AuditLog {
   id          String      @id @default(cuid())
   actorId     String?
-  /// LEGACY, read-only. Written before 2026-10; nothing writes it now. Kept so the history of rows
-  /// written before the change still names an account that has since been hard-deleted, until the
-  /// optional scrub in docs/AUDIT-PRIVACY.md is run.
+  /// The actor's address when the row was written. Null on system rows, and on the rows written on
+  /// 2026-10-10 between the deploy that stopped writing it and the owner's reversal.
   actorEmail  String?
   action      AuditAction
   entityType  String
@@ -320,10 +319,13 @@ model AuditLog {
   entityLabel String?
   before      Json?
   after       Json?
-  /// LEGACY, read-only — see `actorEmail`. New rows carry `ipHash` instead.
+  /// The client IP in canonical form (lib/request-ip.ts `normaliseIp`). Null when no trusted hop gave
+  /// one, and on the 2026-10-10 rows that carry only `ipHash`.
   ipAddress   String?
   /// `<keyId>:<hex>` — HMAC-SHA256(AUDIT_IP_HASH_SECRET, normalised address), truncated to 128 bits.
-  /// The key id names which secret produced it, so a rotation is visible rather than silent.
+  /// The key id names which secret produced it, so a rotation is visible rather than silent. Written
+  /// beside `ipAddress`; it is the only network column on the fingerprint-only rows, and an exact
+  /// address search matches them through it.
   ipHash      String?
   userAgent   String?
   createdAt   DateTime    @default(now())

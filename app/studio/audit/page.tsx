@@ -10,10 +10,9 @@ import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canRestoreDeleted, canViewAuditLog } from "@/lib/permissions";
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
-import { auditActorEmailSearch, auditActorName } from "@/lib/audit-actor";
-import { accountsForAuditRows, auditAccountSearch, lockHoldersForAuditRows } from "@/lib/audit-accounts";
+import { auditActorLabel } from "@/lib/audit-actor";
+import { accountsForAuditRows, auditTextSearch, lockHoldersForAuditRows } from "@/lib/audit-accounts";
 import { accountLabel, withLockHolderNames } from "@/lib/audit-subject";
-import { displayIpFingerprint } from "@/lib/audit-ip";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -589,25 +588,15 @@ export default async function StudioAuditPage({
   if (fromDate) createdAt.gte = fromDate;
   if (toDate) createdAt.lte = toDate;
 
-  // Account rows carry no address any more, so an address search resolves through the account (or,
-  // for a refused sign-in, the typed address's fingerprint) — lib/audit-accounts.ts.
-  const accountClauses = q.length > 0 ? await auditAccountSearch(q) : [];
+  // Label, entity id, actor email, an exact IP address, and the account joins — lib/audit-accounts.ts.
+  const searchClauses = q.length > 0 ? await auditTextSearch(q) : [];
 
   const where: Prisma.AuditLogWhereInput = {
     ...(actorId.length > 0 ? { actorId } : {}),
     ...(isAction(actionParam) ? { action: actionParam } : {}),
     ...(entityType.length > 0 ? { entityType } : {}),
     ...(fromDate || toDate ? { createdAt } : {}),
-    ...(q.length > 0
-      ? {
-          OR: [
-            { entityLabel: { contains: q, mode: "insensitive" } },
-            { entityId: { contains: q, mode: "insensitive" } },
-            ...auditActorEmailSearch(q),
-            ...accountClauses
-          ]
-        }
-      : {})
+    ...(q.length > 0 ? { OR: searchClauses } : {})
   };
 
   const [entries, total, actorRows, typeRows] = await prisma.$transaction([
@@ -637,7 +626,7 @@ export default async function StudioAuditPage({
 
   // The account each account row is about, joined by `entityId` — see `accountLabel`.
   const accounts = await accountsForAuditRows(entries);
-  // A lock take-over names both holders by account id; the name is joined here, never stored.
+  // A lock take-over records both holders by address and id; the current name is joined here.
   const lockHolders = await lockHoldersForAuditRows(entries);
 
   const mayRollback = canRestoreDeleted(user);
@@ -703,7 +692,7 @@ export default async function StudioAuditPage({
                 such a button — see `DateField`'s header. */}
             <Field
               label="Search"
-              help="The name of the thing that changed, its id, or the email address of whoever changed it."
+              help="The name of the thing that changed, its id, the email address of whoever changed it, or a whole IP address it came from."
             >
               <Input name="q" type="search" defaultValue={q} placeholder="Search the log" iconNode={<Search />} />
             </Field>
@@ -810,11 +799,13 @@ export default async function StudioAuditPage({
               const before = asRecord(entry.before);
               const after = asRecord(entry.after);
               const diff = buildDiff(withLockHolderNames(before, lockHolders), withLockHolderNames(after, lockHolders));
-              // An account row names its account through the join, never a stored address.
+              // An account row's recorded address, else the joined account (lib/audit-subject.ts).
               const label = accountLabel(entry, entry.entityId ? accounts.get(entry.entityId) : null)?.trim();
-              // Joined from the account: the row stores only `actorId` (lib/audit-actor.ts).
-              const who = auditActorName(entry);
-              const network = displayIpFingerprint(entry.ipHash) ?? entry.ipAddress;
+              // `Name <address>`: the recorded `actorEmail`, or the joined one (lib/audit-actor.ts).
+              const who = auditActorLabel(entry);
+              // The real client address. A row with only a fingerprint shows none (it is still found by
+              // an exact-address search).
+              const network = entry.ipAddress;
               const rollbackable =
                 mayRollback &&
                 before !== null &&

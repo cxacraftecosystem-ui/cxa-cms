@@ -222,8 +222,8 @@ interface ActivityEntry {
 /** One sentence per audit entry: who, what, and what it was called. No enum names, ever. */
 function describeActivity(entry: ActivityEntry): string {
   const phrases: Partial<Record<AuditAction, string>> = ACTION_PHRASES;
-  // Joined from the account: the row stores only `actorId`. `actorEmail` is the legacy column, read
-  // only for rows written before it stopped being filled (lib/audit-actor.ts).
+  // The account's current name, else the address recorded on the row (`actorEmail`) — so an account that
+  // has since been deleted is still named (lib/audit-actor.ts).
   const who = auditActorName(entry, "Somebody");
   const label = entry.entityLabel?.trim();
 
@@ -233,10 +233,9 @@ function describeActivity(entry: ActivityEntry): string {
     case "LOGOUT":
       return `${who} signed out`;
     case "LOGIN_FAILED": {
-      // Never "who": a failed attempt is about the address that was TRIED, which may not be a real
-      // person. The row stores no address (lib/audit-subject.ts); without a join here it reads as the
-      // typed address masked to its domain, or the legacy label on an older row.
-      const tried = entry.entityId ? null : accountLabel(entry, null);
+      // Never "who": a failed attempt names the address that was TRIED, which may not be a real person.
+      // The row records it as its label; a row written without one falls back to `accountLabel`.
+      const tried = label || (entry.entityId ? null : accountLabel(entry, null));
       return `A sign-in for ${tried ?? "an account"} did not succeed`;
     }
     default:

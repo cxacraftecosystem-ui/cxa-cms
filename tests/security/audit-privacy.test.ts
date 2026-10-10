@@ -4,17 +4,19 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
 import { writeAudit, type AuditContext, type TxClient } from "@/lib/audit";
-import { DELETED_ACTOR_LABEL, auditActorEmail, auditActorName } from "@/lib/audit-actor";
+import { DELETED_ACTOR_LABEL, auditActorEmail, auditActorEmailSearch, auditActorLabel, auditActorName } from "@/lib/audit-actor";
 import {
   auditIpHashCandidates,
+  auditIpSearchClauses,
   displayIpFingerprint,
   fingerprintSearchHex,
   hashAuditIp
 } from "@/lib/audit-ip";
 
 /**
- * An audit row names its actor by id and its network by a keyed fingerprint. No raw email address and
- * no raw IP address reaches the insert.
+ * Owner decision, 2026-10-10 (docs/AUDIT-PRIVACY.md): an audit row stores the actor's real email
+ * address and the real client IP address — the IP as derived by lib/request-ip.ts, in canonical form —
+ * BESIDE `actorId` and the keyed fingerprint `ipHash`, which are still written.
  */
 
 const KEY_A = "audit-ip-key-A-0123456789abcdefghijklmnop";
@@ -42,7 +44,7 @@ describe("the audit row", () => {
     else process.env.AUDIT_IP_HASH_SECRET = saved;
   });
 
-  it("stores actorId and an IP fingerprint — never the email or the address", async () => {
+  it("stores the actor's id AND email, and the client IP AND its fingerprint", async () => {
     process.env.AUDIT_IP_HASH_SECRET = KEY_A;
     const { tx, inserts } = recordingTx();
     const context: AuditContext = {
@@ -56,19 +58,30 @@ describe("the audit row", () => {
     assert.equal(inserts.length, 1);
     const row = inserts[0] ?? {};
     assert.equal(row.actorId, "user_123");
-    assert.equal(row.actorEmail, undefined, "the legacy email column is not written");
-    assert.equal(row.ipAddress, undefined, "the legacy address column is not written");
-    assert.equal(row.ipHash, hashAuditIp(IP, { AUDIT_IP_HASH_SECRET: KEY_A }));
-    const serialised = JSON.stringify(row);
-    assert.ok(!serialised.includes("editor@cxa.example.org"));
-    assert.ok(!serialised.includes(IP));
+    assert.equal(row.actorEmail, "editor@cxa.example.org", "the actor's address at the time is recorded");
+    assert.equal(row.ipAddress, IP, "the real client address is recorded");
+    assert.equal(row.ipHash, hashAuditIp(IP, { AUDIT_IP_HASH_SECRET: KEY_A }), "the fingerprint is still written");
   });
 
-  it("writes no fingerprint when there is no trusted address", async () => {
+  it("stores the address in its canonical spelling, the one the fingerprint is computed from", async () => {
+    const { tx, inserts } = recordingTx();
+    await writeAudit(tx, { actor: null, ipAddress: `::ffff:${IP}` }, { action: "LOGIN_FAILED", entityType: "User" });
+    await writeAudit(tx, { actor: null, ipAddress: "2001:DB8:0:0::1" }, { action: "LOGIN_FAILED", entityType: "User" });
+    assert.equal(inserts[0]?.ipAddress, IP);
+    assert.equal(inserts[0]?.ipHash, hashAuditIp(IP));
+    assert.equal(inserts[1]?.ipAddress, "2001:db8::1");
+  });
+
+  it("writes no address and no fingerprint when there is no trusted address", async () => {
     const { tx, inserts } = recordingTx();
     await writeAudit(tx, { actor: null, ipAddress: null }, { action: "LOGIN_FAILED", entityType: "User" });
-    assert.equal(inserts[0]?.ipHash, null);
-    assert.equal(inserts[0]?.actorId, null);
+    await writeAudit(tx, { actor: null, ipAddress: "not-an-ip" }, { action: "LOGIN_FAILED", entityType: "User" });
+    for (const row of inserts) {
+      assert.equal(row.ipAddress, null);
+      assert.equal(row.ipHash, null);
+      assert.equal(row.actorId, null);
+      assert.equal(row.actorEmail, null);
+    }
   });
 });
 
@@ -148,12 +161,58 @@ describe("the IP fingerprint", () => {
   });
 });
 
+describe("searching by IP address", () => {
+  it("matches the stored address exactly, and fingerprint-only rows through every search key", () => {
+    const env = { AUDIT_IP_HASH_SECRET: KEY_B, AUDIT_IP_HASH_PREVIOUS_SECRETS: KEY_A };
+    const clauses = auditIpSearchClauses(` ${IP} `, env);
+    assert.deepEqual(clauses[0], { ipAddress: IP });
+    const hashClause = clauses.find((clause) => "ipHash" in clause) as { ipHash: { in: string[] } } | undefined;
+    assert.ok(hashClause);
+    assert.ok(hashClause.ipHash.in.includes(hashAuditIp(IP, { AUDIT_IP_HASH_SECRET: KEY_A }) ?? ""));
+    assert.ok(hashClause.ipHash.in.includes(hashAuditIp(IP, { AUDIT_IP_HASH_SECRET: KEY_B }) ?? ""));
+  });
+
+  it("finds a spelling variant under the canonical address, and searches nothing for a non-address", () => {
+    assert.deepEqual(auditIpSearchClauses("2001:DB8::1", { AUDIT_IP_HASH_SECRET: KEY_A }).slice(0, 2), [
+      { ipAddress: "2001:db8::1" },
+      { ipAddress: "2001:DB8::1" }
+    ]);
+    assert.deepEqual(auditIpSearchClauses("198.51", { AUDIT_IP_HASH_SECRET: KEY_A }), []);
+    assert.deepEqual(auditIpSearchClauses("asha@cxa.example.org", { AUDIT_IP_HASH_SECRET: KEY_A }), []);
+  });
+});
+
 describe("naming the actor", () => {
-  it("joins the account, falls back to the legacy column, then says the user was deleted", () => {
-    assert.equal(auditActorName({ actor: { name: "Asha", email: "asha@cxa.example.org" } }), "Asha");
+  it("prefers the recorded email, and still names an account that has been hard-deleted", () => {
+    assert.equal(auditActorName({ actor: { name: "Asha", email: "asha@new.example.org" }, actorEmail: "asha@cxa.example.org" }), "Asha");
+    assert.equal(
+      auditActorEmail({ actor: { name: "Asha", email: "asha@new.example.org" }, actorEmail: "asha@cxa.example.org" }),
+      "asha@cxa.example.org",
+      "the address at the time, not today's"
+    );
+    assert.equal(auditActorName({ actor: null, actorEmail: "gone@cxa.example.org" }), "gone@cxa.example.org");
+    assert.equal(auditActorName({ actor: null, actorEmail: "gone@cxa.example.org" }, "Somebody"), "gone@cxa.example.org");
+  });
+
+  it("shows name and email together on the audit screen", () => {
+    assert.equal(
+      auditActorLabel({ actor: { name: "Asha Rao", email: "asha@cxa.example.org" }, actorEmail: "asha@cxa.example.org" }),
+      "Asha Rao <asha@cxa.example.org>"
+    );
+    assert.equal(auditActorLabel({ actor: null, actorEmail: "gone@cxa.example.org" }), "gone@cxa.example.org");
+  });
+
+  it("falls back to the joined address on a fingerprint-only row, and says 'Deleted user' only with neither", () => {
     assert.equal(auditActorEmail({ actor: { name: "Asha", email: "asha@cxa.example.org" }, actorEmail: null }), "asha@cxa.example.org");
-    assert.equal(auditActorName({ actor: null, actorEmail: "old@cxa.example.org" }), "old@cxa.example.org");
     assert.equal(auditActorName({ actor: null, actorEmail: null }), DELETED_ACTOR_LABEL);
+    assert.equal(auditActorLabel({ actor: null, actorEmail: null }), DELETED_ACTOR_LABEL);
     assert.equal(DELETED_ACTOR_LABEL, "Deleted user");
+  });
+
+  it("searches the recorded email column first, and the join for rows without one", () => {
+    assert.deepEqual(auditActorEmailSearch("asha"), [
+      { actorEmail: { contains: "asha", mode: "insensitive" } },
+      { actor: { is: { email: { contains: "asha", mode: "insensitive" } } } }
+    ]);
   });
 });
