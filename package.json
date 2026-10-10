@@ -89,7 +89,7 @@
     "eslint-config-next": "^16.4.0",
     "postcss": "^8.5.29",
     "server-only": "file:./vendor/server-only-noop",
-    "tailwindcss": "^3.4.19",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
