@@ -31,9 +31,10 @@ That brings up four things and runs two more to completion:
 
 Sign in at http://localhost:3000/studio with `admin@cxa.local` / `docker-development-administrator`.
 
-**Uploads work in this stack.** MinIO stands in for S3, and `minio-init` grants anonymous read on the
-bucket — which is what a CDN origin is — so the media pipeline runs end to end, derivatives included.
-MinIO already exposes `ETag` and allows any origin, which a real S3 bucket must be told to do
+**Uploads work in this stack.** silo — a maintained fork of MinIO, which is archived and no longer
+publishes images — stands in for S3 under the service name `minio`, and `minio-init` grants anonymous
+read on the bucket — which is what a CDN origin is — so the media pipeline runs end to end, derivatives included.
+silo already exposes `ETag` and allows any origin, which a real S3 bucket must be told to do
 (`docs/OPERATIONS.md` §1).
 
 ```bash

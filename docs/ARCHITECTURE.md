@@ -88,7 +88,7 @@ flowchart TB
         dapp["app<br/>next start, standalone output"]
         dmig["migrate<br/>one-shot: migrate deploy + seed"]
         dpg[("postgres:17-alpine<br/>host port 55432")]
-        dminio[("MinIO<br/>:9000 API, :9001 console")]
+        dminio[("minio (silo, a MinIO fork)<br/>:9000 API, :9001 console")]
         dinit["minio-init<br/>creates bucket + GetObject-only policy"]
         dmig --> dpg
         dinit --> dminio

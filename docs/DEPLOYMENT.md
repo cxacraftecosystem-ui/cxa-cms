@@ -302,7 +302,8 @@ Diagnostics. Anything the deployment is missing is a sentence on that screen.
 
 ### 2.1 The stack
 
-`docker-compose.yml` brings up Postgres, MinIO, a one-shot migrator and the application:
+`docker-compose.yml` brings up Postgres, MinIO-compatible storage (silo, a maintained MinIO fork, as the
+service `minio`), a one-shot migrator and the application:
 
 ```bash
 docker compose up -d --build
@@ -321,7 +322,7 @@ order:
    the smoke tests can reach them from the host. On a server, remove the `ports:` blocks from `postgres`
    and `minio` and let the compose network carry that traffic. Only `app` needs a published port, and
    only to the reverse proxy — bind it to the loopback interface: `127.0.0.1:3000:3000`.
-4. **Decide about MinIO.** It is real S3-compatible storage and it works, but it is one more thing to
+4. **Decide about the bundled storage (silo, a MinIO fork).** It is real S3-compatible storage and it works, but it is one more thing to
    back up, patch and secure. Managed storage (S3, R2, Backblaze) with the `S3_*` variables pointed at it
    is usually the better trade. Either way, `MINIO_ROOT_PASSWORD` cannot stay `minioadmin`.
 5. **The four addresses.** `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_CDN_URL` and `S3_PUBLIC_BASE_URL` become

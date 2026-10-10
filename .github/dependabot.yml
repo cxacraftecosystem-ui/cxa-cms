@@ -94,8 +94,3 @@ updates:
       - dependency-name: postgres
         update-types:
           - version-update:semver-major
-      # Upstream MinIO is archived and its images are gone from Docker Hub, so there is no newer
-      # version to propose and the lookup only fails. Replacing the local object store is its own
-      # change; remove these two entries with it.
-      - dependency-name: minio/minio
-      - dependency-name: minio/mc
