@@ -809,7 +809,7 @@ function InquiryPanel({ inquiry, assignees, currentUserId, onClose, onChange }: 
           `whitespace-pre-wrap` and nothing else: the message is PLAIN TEXT typed by a stranger, and it is
           rendered as text. Nothing here interprets markup, and nothing here ever should.
         */}
-        <p className="whitespace-pre-wrap break-words rounded-md border border-line-200 bg-surface-50 px-3.5 py-3 text-sm leading-relaxed text-ink-900">
+        <p className="whitespace-pre-wrap wrap-break-word rounded-md border border-line-200 bg-surface-50 px-3.5 py-3 text-sm leading-relaxed text-ink-900">
           {inquiry.message}
         </p>
 

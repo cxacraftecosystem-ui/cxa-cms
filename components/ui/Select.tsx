@@ -494,7 +494,7 @@ const TRIGGER_CLASS =
  * `matchAnchorWidth`. Without it a full-width field on a laptop produces a 1200px list of short
  * labels.
  */
-const PANEL_CLASS = "!overflow-hidden !p-0 flex flex-col max-w-[520px]";
+const PANEL_CLASS = "overflow-hidden! p-0! flex flex-col max-w-[520px]";
 
 /** Diacritics folded so "Jodhpur" is reachable by typing "jodhpur" and "Ahmedābād" by "ahmedabad". */
 function fold(text: string): string {
@@ -713,7 +713,7 @@ function SearchRow({
           placeholder="Type to filter"
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onKeyDown}
-          className="w-full rounded-sm border border-line-200 bg-card py-1.5 pl-8 pr-2 text-sm text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-purple-600 focus:ring-2 focus:ring-purple-600/15"
+          className="w-full rounded-sm border border-line-200 bg-card py-1.5 pl-8 pr-2 text-sm text-ink-900 outline-hidden transition placeholder:text-ink-300 focus:border-purple-600 focus:ring-2 focus:ring-purple-600/15"
         />
       </div>
       {trailing}
@@ -1287,7 +1287,7 @@ export function SearchableMultiSelect({
         type="button"
         onClick={applyBulk}
         onMouseDown={(event) => event.preventDefault()}
-        className="shrink-0 whitespace-nowrap rounded-sm border border-line-200 bg-card px-2 py-1.5 text-xs font-medium text-purple-700 outline-none transition hover:border-purple-300 hover:bg-purple-50 focus-visible:border-purple-600 focus-visible:ring-2 focus-visible:ring-purple-600/20 dark:text-purple-300 dark:hover:bg-purple-950"
+        className="shrink-0 whitespace-nowrap rounded-sm border border-line-200 bg-card px-2 py-1.5 text-xs font-medium text-purple-700 outline-hidden transition hover:border-purple-300 hover:bg-purple-50 focus-visible:border-purple-600 focus-visible:ring-2 focus-visible:ring-purple-600/20 dark:text-purple-300 dark:hover:bg-purple-950"
       >
         {bulkLabel}
       </button>

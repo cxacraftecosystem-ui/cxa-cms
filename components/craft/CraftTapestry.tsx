@@ -68,7 +68,7 @@
  * that varies.
  *
  * It is an inline style rather than a Tailwind class for two reasons: an arbitrary
- * `[mask-image:radial-gradient(…)]` with commas in it is a fight with the class parser, and Safari
+ * `mask-[radial-gradient(…)]` with commas in it is a fight with the class parser, and Safari
  * still wants the `-webkit-` spelling, which React can only write from a style object.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
@@ -190,7 +190,7 @@ const TONE = {
     blockPrint: "opacity-[0.14] dark:opacity-[0.22]",
     kolam: "opacity-[0.5] dark:opacity-[0.66]",
     pigment: "opacity-[0.7] dark:opacity-[0.85]",
-    kolamBox: "bottom-[-10%] right-[-8%] w-[82%] max-w-[46rem] sm:w-[58%] lg:w-[46%]",
+    kolamBox: "bottom-[-10%] right-[-8%] w-[82%] max-w-184 sm:w-[58%] lg:w-[46%]",
     printPitch: 150,
     jaaliPitch: 16,
     grains: 16
@@ -200,7 +200,7 @@ const TONE = {
     blockPrint: "opacity-[0.08] dark:opacity-[0.13]",
     kolam: "opacity-[0.3] dark:opacity-[0.42]",
     pigment: "opacity-[0.45] dark:opacity-[0.6]",
-    kolamBox: "bottom-[-12%] right-[-10%] w-[64%] max-w-[34rem] sm:w-[44%] lg:w-[34%]",
+    kolamBox: "bottom-[-12%] right-[-10%] w-[64%] max-w-136 sm:w-[44%] lg:w-[34%]",
     printPitch: 200,
     jaaliPitch: 22,
     grains: 9

@@ -402,7 +402,7 @@ export function Popover({
             transformOrigin: `${ORIGIN_X[align]} ${resolvedSide === "top" ? "bottom" : "top"}`
           }}
           className={cn(
-            "overflow-y-auto overscroll-contain rounded-lg border border-line-200 bg-card p-1.5 shadow-panel outline-none",
+            "overflow-y-auto overscroll-contain rounded-lg border border-line-200 bg-card p-1.5 shadow-panel outline-hidden",
             className
           )}
         >

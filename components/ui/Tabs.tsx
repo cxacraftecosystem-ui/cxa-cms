@@ -194,7 +194,7 @@ export function Tabs({
           aria-labelledby={tabId(active.id)}
           // Focusable so the panel can be scrolled from the keyboard once the reader tabs off the tab.
           tabIndex={0}
-          className={cn("pt-5 outline-none", panelClassName)}
+          className={cn("pt-5 outline-hidden", panelClassName)}
         >
           {active.content}
         </div>

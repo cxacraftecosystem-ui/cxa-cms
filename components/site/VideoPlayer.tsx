@@ -670,7 +670,7 @@ export function VideoPlayer({
                 id={speedLabelId}
                 value={speed}
                 onChange={(event) => changeSpeed(Number(event.target.value))}
-                className="rounded-md border border-line-200 bg-card px-2 py-1 text-xs text-ink-700 outline-none transition focus-visible:ring-2 focus-visible:ring-purple-600/40"
+                className="rounded-md border border-line-200 bg-card px-2 py-1 text-xs text-ink-700 outline-hidden transition focus-visible:ring-2 focus-visible:ring-purple-600/40"
               >
                 {VIDEO_SPEEDS.map((rate) => (
                   <option key={rate} value={rate}>

@@ -59,10 +59,10 @@ import { cn } from "@/lib/utils";
 
 /** Complete literal class strings — an `h-[${n}rem]` built from data is purged (contract §5). */
 const HEIGHT_CLASS: Record<FormEmbedSectionData["height"], string> = {
-  sm: "h-[28rem]",
-  md: "h-[38rem]",
-  lg: "h-[48rem]",
-  xl: "h-[62rem]"
+  sm: "h-112",
+  md: "h-152",
+  lg: "h-192",
+  xl: "h-248"
 };
 
 /**

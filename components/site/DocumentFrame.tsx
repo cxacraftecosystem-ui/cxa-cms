@@ -47,10 +47,10 @@ export type DocumentFrameHeight = "sm" | "md" | "lg" | "xl";
  * internally at every size, so a shorter frame costs nothing but the number of lines visible at once.
  */
 const HEIGHT_CLASS: Record<DocumentFrameHeight, string> = {
-  sm: "h-[20rem] sm:h-[26rem]",
-  md: "h-[26rem] sm:h-[40rem]",
-  lg: "h-[30rem] sm:h-[54rem]",
-  xl: "h-[34rem] sm:h-[70rem]"
+  sm: "h-80 sm:h-104",
+  md: "h-104 sm:h-160",
+  lg: "h-120 sm:h-216",
+  xl: "h-136 sm:h-280"
 };
 
 export interface DocumentFrameProps {

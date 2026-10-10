@@ -307,12 +307,12 @@ const MDX_RHYTHM = cn(
   // child in the first place — there is nothing before it to be spaced from.
   "[&>*:first-child]:mt-0",
   // ⚠ The breakpoint goes OUTSIDE the arbitrary variant — `sm:[&_h2]:text-3xl`, never
-  // `[&_h2]:sm:text-3xl`. Only the first spelling is the documented order, and the wrong one is a
+  // `sm:[&_h2]:text-3xl`. Only the first spelling is the documented order, and the wrong one is a
   // class that compiles to nothing and fails silently.
   // The promoted level 1. (0,2,0), so it beats the `[&_h2]` sizes below at (0,1,1); everything else a
   // heading needs — the display face, the weight, the tracking, the colour, the recipe's margins and its
   // 1.15 leading — already reaches it, because the element genuinely IS an `<h2>`.
-  "[&_[data-mdx-h1]]:text-3xl sm:[&_[data-mdx-h1]]:text-4xl",
+  "**:data-mdx-h1:text-3xl sm:**:data-mdx-h1:text-4xl",
   "[&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:text-ink-900 sm:[&_h2]:text-3xl",
   "[&_h3]:text-[max(1.25rem,calc(var(--prose-size,1.0625rem)*1.14))] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:text-ink-900 sm:[&_h3]:text-2xl",
   "[&_h4]:font-semibold [&_h4]:tracking-tight [&_h4]:text-ink-900",

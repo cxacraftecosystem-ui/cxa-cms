@@ -175,7 +175,7 @@ export default async function StudioPeoplePage({
   const canReorder = !narrowed && !truncated;
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="People"
         description="Everybody shown on the public site: faculty, scientists, researchers, students, staff, visitors and alumni. Drag a name to change the order they appear in within their group."

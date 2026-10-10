@@ -38,7 +38,7 @@ description: The definitive Design Prototype Workshop web reference — tokens, 
 > | `useAppReducedMotion()`, `useHeroReducedMotion()` | `useReducedMotionPreference()` — `components/motion/useReducedMotionPreference.ts`. One hook, not two. Plus `prefersLessMotionNow()` in `components/motion/gsap/runtime.ts` for the synchronous first-render read. |
 > | `components/guide/guideMotion.ts`, `springy()`, `layoutSpring()` | `components/motion/variants.ts` (`staggerParent`, `riseItem`, `slideItem`, `fadeItem`, `scaleIn`, `swapVariants`, `press`) and `components/motion/constants.ts` (`SPRING_PRESS`, `SPRING_LAYOUT`, …). |
 > | `frontend/components/guide/useGsapHeadline.ts` as GSAP's only consumer | GSAP owns **two** things through `components/motion/gsap/useGsapScope.ts` — the headline's overlapping timeline and the four narrative blocks' scrubbed motion. See `skills/gsap`. |
-> | `frontend/tailwind.config.ts`, `frontend/app/globals.css`, `frontend/fonts/` | `tailwind.config.ts`, `app/globals.css`, `fonts/` at the repository root. Type slots are declared in `lib/typography/fonts.ts`. |
+> | `frontend/tailwind.config.ts`, `frontend/app/globals.css`, `frontend/fonts/` | `app/globals.css` (its `@theme` block is the Tailwind 4 configuration; there is no `tailwind.config.ts`), `fonts/` at the repository root. Type slots are declared in `lib/typography/fonts.ts`. |
 > | §2's two faces (Inter + Jakarta) | Still the defaults, but the family set is much larger now and `lib/typography/fonts.ts` is the register. ⚠ **An OFL face's licence must travel with it** — see `/credits`. |
 > | "protected page" / "inside the app" | `/studio`. "Public pages" ≈ the `(site)` route group. |
 > | Prisma `Decimal` arriving as a JSON string | Still true and still worth reading — this repo uses Prisma too. |
@@ -855,10 +855,10 @@ neither `clsx` nor `tailwind-merge` is a dependency. Later classes do **not** wi
 decides. A `@layer components` class is always beaten by any utility (so `class="field-button w-full"`
 works), but to beat another **utility** you need `!` (e.g. `!bg-transparent`).
 
-⚠ **Content globs are `./app`, `./components`, `./lib` only, `.ts`/`.tsx`.** A class written elsewhere,
+⚠ **The `@source` globs in app/globals.css are `./app`, `./components`, `./lib` only, `.ts`/`.tsx`.** A class written elsewhere,
 or built by string concatenation, is purged. Always write complete literal class strings.
-⚠ `postcss.config.js` loads only `tailwindcss` + `autoprefixer` — **no nesting plugin**. Arbitrary CSS
-nesting in `globals.css` will not compile; `@layer` blocks and plain at-rules do.
+`postcss.config.js` loads only `@tailwindcss/postcss` (Tailwind 4), which compiles CSS nesting; the
+tokens are the `@theme` block at the top of `app/globals.css`.
 
 ### 11.2 Which primitives are live, and which are dormant
 

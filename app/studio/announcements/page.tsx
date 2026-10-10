@@ -55,7 +55,7 @@ export default async function StudioAnnouncementsPage() {
   const total = await prisma.announcement.count({ where: { deletedAt: null } });
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Announcements"
         description="A single band across the top of every page: a closure, a deadline, a call for applications. Only one is ever shown — where two are switched on at once, readers see the one written most recently. An announcement can be given a date to start and a date to stop, and it appears and disappears on its own."

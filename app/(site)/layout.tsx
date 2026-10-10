@@ -203,7 +203,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
 
       <a
         href="#main-content"
-        className="sr-only z-[60] rounded-md bg-purple-700 px-4 py-2 text-sm font-medium text-white shadow-cta focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+        className="sr-only z-60 rounded-md bg-purple-700 px-4 py-2 text-sm font-medium text-white shadow-cta focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
       >
         Skip to content
       </a>
@@ -246,7 +246,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           would then be measured against each other rather than against the fluid cursor's `z-40`,
           and the trail would paint over all of them. See the header of components/site/SplashCursor.tsx.
         */}
-        <main id="main-content" tabIndex={-1} className="page-top flex-1 outline-none">
+        <main id="main-content" tabIndex={-1} className="page-top flex-1 outline-hidden">
           {/*
             INSIDE `<main>`, and first, exactly as AnnouncementBar's own header requires: the header is
             a `position: fixed` pill that occupies no flow space, so a band above it in the document

@@ -83,7 +83,7 @@ export function StoryInvite({ className }: { className?: string }) {
         onMouseEnter={() => void warm()}
         onFocus={() => void warm()}
         onClick={() => void openStory()}
-        className="group inline-flex min-h-11 items-center gap-2.5 font-display text-base font-bold tracking-tight text-gold-300 transition-opacity hover:opacity-100 focus-visible:!outline-logo-cream"
+        className="group inline-flex min-h-11 items-center gap-2.5 font-display text-base font-bold tracking-tight text-gold-300 transition-opacity hover:opacity-100 focus-visible:outline-logo-cream!"
       >
         <span
           aria-hidden="true"

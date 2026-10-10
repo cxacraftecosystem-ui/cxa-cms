@@ -626,7 +626,7 @@ export function MediaGrid({
                     label={<span className="sr-only">Select {asset.fileName}</span>}
                     // `!` on both: `cn()` is a plain join and later classes do NOT win (contract §5),
                     // so the recipe's own `min-h-11`/`py-1.5` would otherwise blow the tile apart.
-                    className="!min-h-0 !py-0"
+                    className="min-h-0! py-0!"
                     inputClassName="bg-card"
                   />
                 </div>

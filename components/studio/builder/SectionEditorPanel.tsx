@@ -273,7 +273,7 @@ export function SectionEditorPanel({
               <summary className="cursor-pointer text-xs font-medium text-ink-700">
                 Show the settings stored for this block
               </summary>
-              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[0.6875rem] leading-relaxed text-ink-500">
+              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-[0.6875rem] leading-relaxed text-ink-500">
                 {safeStringify(value)}
               </pre>
             </details>

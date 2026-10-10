@@ -241,9 +241,9 @@ function CraftImagePickerControl({
         panelRef={panelRef}
         label="Choose a photograph that came with the site"
         width={PANEL_WIDTH}
-        // `!p-0`, with the bang. `Popover` sets `p-1.5`, `cn()` is a plain join and later classes do
+        // `p-0!`, with the bang. `Popover` sets `p-1.5`, `cn()` is a plain join and later classes do
         // NOT win (contract §5) — Tailwind emits `p-1.5` after `p-0`, so an unforced override loses.
-        className="!p-0"
+        className="p-0!"
       >
         <div className="grid grid-cols-2 gap-2 p-2">
           {/*
@@ -288,7 +288,7 @@ function CraftImagePickerControl({
                     : "border-line-200 bg-card hover:border-purple-300 hover:bg-purple-50"
                 )}
               >
-                <span className="relative block aspect-[4/3] w-full overflow-hidden rounded-sm bg-surface-200">
+                <span className="relative block aspect-4/3 w-full overflow-hidden rounded-sm bg-surface-200">
                   {/*
                     Decorative: the title and the region underneath name the photograph, and reading
                     both would say the same words twice.

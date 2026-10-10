@@ -50,7 +50,7 @@ export function Textarea({
       aria-invalid={ariaInvalid ?? (isInvalid ? true : undefined)}
       aria-required={!required && field?.required ? true : undefined}
       className={cn(
-        "field-input min-h-[7rem] resize-y leading-relaxed",
+        "field-input min-h-28 resize-y leading-relaxed",
         isInvalid ? FIELD_INVALID_CLASS : undefined,
         className
       )}

@@ -200,7 +200,7 @@ export default async function StudioResearchPage({
   const baseHref = `/studio/research?${search.toString()}`;
 
   return (
-    <div className="mx-auto w-full max-w-[96rem] space-y-6">
+    <div className="mx-auto w-full max-w-384 space-y-6">
       <StudioPageHeader
         title="Research areas"
         description="The themes the Centre works on. Every project and every publication is filed under one of these, and the research page draws its diagram from them — so an area with nothing filed under it appears on the site as an empty heading."

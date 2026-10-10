@@ -240,7 +240,7 @@ export default async function StudioEventsPage({
   });
 
   return (
-    <div className="mx-auto w-full max-w-[90rem] space-y-6">
+    <div className="mx-auto w-full max-w-360 space-y-6">
       <StudioPageHeader
         title="Events"
         description="Seminars, workshops and conferences, their programmes, their speakers and the people who have registered. Every time on these screens is the Centre's own time."

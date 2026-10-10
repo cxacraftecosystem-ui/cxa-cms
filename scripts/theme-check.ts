@@ -235,8 +235,10 @@ function checkTokenList(): string[] {
     return ["app/globals.css could not be read, so the inverting-token list could not be verified"];
   }
 
-  const open = css.indexOf('[data-theme="dark"]');
-  if (open < 0) return ['no [data-theme="dark"] block found in app/globals.css'];
+  // The `:root` rule, not the first mention: `@custom-variant dark` at the top of the file names the
+  // same selector.
+  const open = css.search(/:root\[data-theme=["']dark["']\]\s*\{/);
+  if (open < 0) return ['no :root[data-theme="dark"] block found in app/globals.css'];
 
   let depth = 0;
   let index = css.indexOf("{", open);

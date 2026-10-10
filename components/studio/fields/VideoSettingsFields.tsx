@@ -210,7 +210,7 @@ export function VideoSettingsFields({
           min={0}
           max={86_400}
           integer
-          inputClassName="max-w-[8rem]"
+          inputClassName="max-w-32"
         />
       ) : null}
 

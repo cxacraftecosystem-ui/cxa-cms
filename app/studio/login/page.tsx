@@ -193,8 +193,8 @@ export default async function StudioLoginPage({
         <div className="max-w-md">
           {/*
             The one gold line on the whole screen. Gold is marketing-only and never appears on a studio
-            screen — the sign-in shell is the documented exception (contract §1.1, tailwind.config.ts:
-            hero, auth and institutional headline spans).
+            screen — the sign-in shell is the documented exception (contract §1.1, and the token header
+            in app/globals.css: hero, auth and institutional headline spans).
           */}
           <p className="text-gold-gradient font-display text-sm font-semibold uppercase tracking-[0.14em]">
             The Centre&rsquo;s own record

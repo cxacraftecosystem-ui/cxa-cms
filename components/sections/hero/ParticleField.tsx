@@ -73,7 +73,7 @@ import { clamp, cn } from "@/lib/utils";
  * The natural-dye palette, as sRGB hex, with the share of the field each one takes.
  *
  * three parses hex, not `oklch()`. These are pigments rather than tokens — they do not appear in
- * tailwind.config.ts and are not expected to follow the brand ramp — but they are chosen to sit on
+ * app/globals.css's `@theme` and are not expected to follow the brand ramp — but they are chosen to sit on
  * the `purple-950` ground the hero paints behind them:
  *
  *   indigo   — Indigofera tinctoria, the vat blue. The commonest, and closest to the ground.

@@ -1212,7 +1212,7 @@ function ValueBox({
         <p className="mt-1 text-xs text-ink-500">This value cannot be shown on a screen.</p>
       ) : (
         <>
-          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[0.6875rem] leading-relaxed text-ink-900">
+          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-[0.6875rem] leading-relaxed text-ink-900">
             {preview.text}
           </pre>
           {preview.truncated ? (

@@ -114,11 +114,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         // "list, 2 items" in the announcement.
         role="list"
         className={cn(
-          "pointer-events-none fixed bottom-0 right-0 z-[110] flex w-full max-w-sm list-none flex-col gap-2.5",
+          "pointer-events-none fixed bottom-0 right-0 z-110 flex w-full max-w-sm list-none flex-col gap-2.5",
           // `pointer-events-none` on the column and `pointer-events-auto` on each card, so an empty
           // viewport does not swallow clicks on the bottom-right corner of every page.
           "[--toast-inset:1rem] sm:[--toast-inset:1.5rem]",
-          "pb-[var(--toast-inset)] pl-[var(--toast-inset)]"
+          "pb-(--toast-inset) pl-(--toast-inset)"
         )}
         // Fixed chrome cannot inherit the padding the scroll lock puts on <body>, so it pays the
         // vanished scrollbar back itself (contract §6). Written inline rather than as `.overlay-frame`

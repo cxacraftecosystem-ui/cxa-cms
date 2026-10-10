@@ -381,7 +381,7 @@ export default async function StudioRedirectsPage({
   const origin = (await requestSiteUrl());
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Redirects"
         description="Send an old web address to a new one. Institutional addresses are quoted in papers, syllabuses and emails that outlive the page they point at, so a page that moves should keep answering its old address rather than showing “page not found”."
@@ -593,7 +593,7 @@ export default async function StudioRedirectsPage({
                         name="permanent"
                         defaultChecked={row.permanent}
                         label="Permanent"
-                        className="!min-h-8 !py-0"
+                        className="min-h-8! py-0!"
                       />
 
                       <p className="flex items-center gap-1.5 text-xs text-ink-500">

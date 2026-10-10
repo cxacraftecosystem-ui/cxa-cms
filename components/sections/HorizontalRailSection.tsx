@@ -75,8 +75,8 @@ export interface HorizontalRailSectionProps {
  */
 const CARD_WIDTH: Record<HorizontalRailSectionData["cardWidth"], { frame: string; sizes: string }> = {
   sm: { frame: "w-60 sm:w-72", sizes: "(min-width: 640px) 18rem, 15rem" },
-  md: { frame: "w-72 sm:w-[22rem]", sizes: "(min-width: 640px) 22rem, 18rem" },
-  lg: { frame: "w-80 sm:w-[30rem]", sizes: "(min-width: 640px) 30rem, 20rem" }
+  md: { frame: "w-72 sm:w-88", sizes: "(min-width: 640px) 22rem, 18rem" },
+  lg: { frame: "w-80 sm:w-120", sizes: "(min-width: 640px) 30rem, 20rem" }
 };
 
 /**

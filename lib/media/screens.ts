@@ -40,9 +40,9 @@ export interface ScreenBucket {
    * The `min-width` for this bucket's media query in CSS PIXELS, or null for the bucket below every
    * breakpoint, which needs no query at all.
    *
-   * ⚠ PIXELS, BECAUSE TAILWIND'S SCREENS ARE PIXELS, AND THE UNIT IS NOT A DETAIL. This project runs
-   * stock Tailwind screens — `640px 768px 1024px 1280px 1536px`, and tailwind.config.ts deliberately
-   * leaves `screens` alone (its own note says so). A picture's framing has to change at the same width
+   * ⚠ PIXELS, BECAUSE THIS PROJECT'S SCREENS ARE PIXELS, AND THE UNIT IS NOT A DETAIL. They are Tailwind
+   * 3's stock screens — `640px 768px 1024px 1280px 1536px` — stated in pixels in app/globals.css's
+   * `@theme` (Tailwind 4's own stock values are the same widths in rem; see the note there). A picture's framing has to change at the same width
    * the LAYOUT changes at, because the frame it is being cropped for is decided by `sm:` / `lg:`
    * utilities on the elements around it.
    *
@@ -66,8 +66,8 @@ export function screenMediaQuery(bucket: ScreenBucket): string | null {
  * The six ranges, ascending, mobile-first.
  *
  * SIX, BECAUSE FIVE BREAKPOINTS MAKE SIX RANGES. Tailwind declares `sm` `md` `lg` `xl` `2xl` and the
- * unprefixed base below all of them — tailwind.config.ts sets no `screens` key, so these are the stock
- * values and they must not be restated as anything else.
+ * unprefixed base below all of them — app/globals.css's `--breakpoint-*` lines, which are Tailwind 3's
+ * stock values, and these must not be restated as anything else.
  *
  * `as const satisfies` rather than an annotation: the annotation would widen every `id` to `string`, and
  * `ScreenBucketId` would become an alias for `string` that catches no typo.

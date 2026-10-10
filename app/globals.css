@@ -1,78 +1,1403 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * Tailwind 4, configured in CSS. `source(none)` plus the three `@source` lines are Tailwind 3's
+ * `content` globs, kept exactly: only ./app, ./components and ./lib are scanned for class names. Left to
+ * its automatic detection Tailwind 4 would also read scripts/, whose checks carry deliberately broken
+ * class strings as fixtures, and compile them into the site's stylesheet.
+ */
+@import "tailwindcss" source(none);
+@source "../app/**/*.{ts,tsx,mdx}";
+@source "../components/**/*.{ts,tsx,mdx}";
+@source "../lib/**/*.{ts,tsx}";
+
+/* globals.css stamps data-theme onto <html> before first paint; the custom selector means
+   `class="dark"` on a container does NOTHING (§5). `dark:` is an exception mechanism. */
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+/**
+ * CxA — Centre of Excellence design tokens on Tailwind v4.
+ *
+ * THE `@theme` BLOCK BELOW + the custom properties further down this file ARE THE SOURCE OF TRUTH
+ * for every colour, radius, shadow, easing and gradient in the product, exactly as `field-repo-frontend` §3–§4 defines them. The ramps below are
+ * character-for-character the Field Repository ramps: a researcher moving between the two products
+ * must not perceive two design languages.
+ *
+ * Purple ramp: OKLCH, hue locked at 305°; purple-700 is THE action colour and never inverts.
+ * Tinted neutrals (ink/line/surface/bg-0) replace grey and DO invert under [data-theme="dark"].
+ * Gold is a marketing accent (hero + auth + institutional headline spans only), never a data screen.
+ * Earth is a second, quieter marketing accent on the same terms — see its own header below.
+ * Shadows are purple-tinted; the stock black `shadow`/`shadow-xl`/`shadow-2xl` must not be used.
+ *
+ * THREE DELIBERATE DIVERGENCES FROM THE FIELD REPOSITORY CONFIG, all strictly additive:
+ *
+ *  1. `surface` exposes the FULL 50→300 ladder. In the Field Repository only `surface: { 50 }` is
+ *     declared, so `bg-surface-100/200/300` silently purge and the legacy `bg-field-100/200/300`
+ *     alias is the only way to reach those rungs (skill §3.3 / §17). Declaring the rungs here makes
+ *     both spellings compile; every existing `field-*` class keeps working unchanged, so this
+ *     removes a footgun without breaking parity.
+ *  2. `amber` is spelled `amber-100/500/800` only in the Field Repository, where it DEEP-MERGES with
+ *     stock Tailwind amber and `amber-50`/`amber-200` quietly resolve to non-brand values (§3.5).
+ *     Here the brand rungs are namespaced as `warn-*` as well, so a component can opt out of the
+ *     merge entirely. `amber-100/500/800` are retained for wording parity with existing components.
+ *  3. `earth` does not exist in the Field Repository at all. It is a NEW ramp rather than a
+ *     re-pointing of an existing one, so a researcher moving between the two products still meets one
+ *     design language: everything they have already seen is character-for-character where it was, and
+ *     the warm rungs are simply a vocabulary this product has and that one has not yet needed.
+ *
+ * (Until Tailwind 4 this lived in tailwind.config.ts; the upgrade moved it here, comments and all.)
+ *
+ * `fontSize`, `spacing`, `screens`, `letterSpacing` and `zIndex` stay STOCK — the z-index ladder is a
+ * convention (§6.4), not a config, and inventing a rung is how overlays end up behind the nav.
+ */
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE EARTH RAMP — terracotta, ochre and umber: the colours of the materials this Centre documents.
+ *
+ * WHERE THE VALUES CAME FROM, because a warm ramp invented by eye is how a site ends up with three
+ * browns that nearly match. Rung 500 is not invented at all: it is `logo.terracotta` — `#CC785C`,
+ * already declared below and already on every piece of the mark — converted to OKLCH, where it lands
+ * at oklch(0.658 0.113 39.2). The ramp is that one measured colour carried in both directions, so an
+ * ochre accent on a page and the terracotta in the logo are the same pigment at two strengths rather
+ * than two warm colours that happen to sit near each other.
+ *
+ * ⚠ THE HUE DRIFTS — 72° at the top to 45° at the foot — WHICH `purple` MUST NEVER DO AND `gold`
+ * ALREADY DOES (90 → 70). Purple is an IDENTITY: one hue, eleven strengths, and a drift in it would
+ * read as the brand printing badly. This is a PIGMENT FAMILY, and the family is the whole point: a
+ * yellow earth (ochre, raw sienna) genuinely is a different hue from a red-brown one (burnt sienna,
+ * umber), and locking them to one figure gives a light end that looks like weak gold and a dark end
+ * that looks like mud. Chroma peaks in the middle and falls at both ends for the same reason a real
+ * pigment does — thinned to a wash it loses saturation, burnt to an umber it loses it again.
+ *
+ * MEASURED, NOT ESTIMATED — the two figures anybody spending this ramp on a light page needs.
+ * Against `--bg-0` in the light theme (#f7f6fb, relative luminance 0.927):
+ *
+ *   • earth-700 (≈ #91492F) …… luminance 0.110 → 6.1:1  ✓ small text, 13px eyebrow capitals included
+ *   • earth-600 …………………………… luminance 0.179 → 4.3:1  ✗ decoration and large text only (WCAG 1.4.3)
+ *
+ * So 700 is the rung a WORD may be set in and 600 is not, however alike the two look side by side.
+ * earth-50 (≈ #FCF5EC) is a paper wash rather than a colour: it is there to be laid under a block.
+ *
+ * ⚠ IT IS LITERAL OKLCH, LIKE `purple` AND `gold`, AND IT MUST NEVER BE GIVEN A DARK TWIN. Brand
+ * colour does not invert, which is exactly what makes an earth rule or an earth hairline safe over a
+ * photograph — and `scripts/theme-check.ts` reads the `[data-theme="dark"]` block of app/globals.css
+ * and FAILS on any `--token` redefined there that its own `INVERTING` list has not heard of. Putting
+ * `--earth-*` into that block would break `npm run check` until somebody edited the script. There is
+ * no reason to; this note is the reason not to.
+ *
+ * WHERE IT IS ACTUALLY SPENT TODAY, because a ramp with no callers is a ramp nobody can judge:
+ * `--earth-700` in app/globals.css tints the eyebrow of every LIGHT block on the hero-led front page,
+ * and `ring-earth-500/25` is the fillet on the hero's second contact sheet. That is the whole of it,
+ * and it is meant to stay close to that: the brand is purple and gold, and this is seasoning.
+ * ⚠ A rung nobody writes out IN FULL compiles to nothing (§5) — which is the right cost for a token
+ * library and the fatal one for a class name assembled from data.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+@theme {
+  /**
+   * THE TYPE LIBRARY. Twelve local variable faces; `lib/typography/fonts.ts` says what each is FOR
+   * and `app/layout.tsx` is what actually defines the custom properties named here.
+   *
+   * ⚠ THE FOUR ORIGINAL KEYS ARE UNTOUCHED, INCLUDING THE TWO THAT LIE. Everything below `mono` is
+   * strictly additive. Repointing `sans`, `display`, `serif` or `mono` would silently restyle every
+   * existing use of them across the public site and ~40 studio screens, which is not a typography
+   * change anybody asked for — a new voice is a new key.
+   *
+   * ⚠ A CLASS THAT IS NOT WRITTEN OUT IN FULL SOMEWHERE UNDER ./app, ./components OR ./lib IS
+   * PURGED. `font-${face.tailwindKey}` compiles to nothing and fails silently, so the manifest
+   * carries `fontClass` as a complete literal string for every face and a picker emits that
+   * (CONTRACT.md §5). The literals in lib/typography/fonts.ts are also what keeps these keys alive
+   * in the build even before a component uses one.
+   */
+  --font-sans:
+    var(--font-jakarta), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display:
+    var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-serif:
+    var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
+  /* ⚠ `font-mono` HAS NEVER BEEN A MONOSPACE, AND THIS LINE KEEPS IT THAT WAY ON PURPOSE. Under Tailwind 3 its
+     stack began `var(--font-mono)`, which nothing defines, and a var() that cannot resolve makes the whole
+     declaration invalid — so every `font-mono` (83 places across 40 files) simply inherited the face
+     around it. (The old config's note said "the system monospace"; the browser disagreed.) In a Tailwind 4
+     `@theme` this name IS that variable, so it points at one nothing defines, which reproduces exactly
+     that. JetBrains Mono is the separate `jetbrains-mono` key; making `font-mono` mean it is a typography
+     change for its own commit — see docs/OUTSTANDING.md. */
+  --font-mono: var(--font-mono-undefined);
+  --font-source-serif:
+    var(--font-source-serif), ui-serif, Georgia, Cambria, serif;
+  --font-newsreader: var(--font-newsreader), ui-serif, Georgia, Cambria, serif;
+  --font-lora: var(--font-lora), ui-serif, Georgia, Cambria, serif;
+  --font-crimson: var(--font-crimson), ui-serif, Georgia, Cambria, serif;
+  --font-fraunces: var(--font-fraunces), ui-serif, Georgia, Cambria, serif;
+  --font-playfair: var(--font-playfair), ui-serif, Georgia, Cambria, serif;
+  --font-work-sans:
+    var(--font-work-sans), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-figtree:
+    var(--font-figtree), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-archivo-narrow:
+    var(--font-archivo-narrow), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-jetbrains-mono:
+    var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-purple-50: oklch(0.977 0.013 305);
+  --color-purple-100: oklch(0.946 0.03 305);
+  --color-purple-200: oklch(0.9 0.058 305);
+  --color-purple-300: oklch(0.828 0.1 305);
+  --color-purple-400: oklch(0.738 0.15 305);
+  --color-purple-500: oklch(0.648 0.19 305);
+  --color-purple-600: oklch(0.56 0.205 305);
+  --color-purple-700: oklch(0.47 0.198 305);
+  --color-purple-800: oklch(0.4 0.18 305);
+  --color-purple-900: oklch(0.34 0.15 305);
+  --color-purple-950: oklch(0.255 0.108 305);
+
+  --color-gold-100: oklch(0.95 0.045 90);
+  --color-gold-200: oklch(0.9 0.08 88);
+  --color-gold-300: oklch(0.85 0.11 86);
+  --color-gold-400: oklch(0.78 0.135 84);
+  --color-gold-500: oklch(0.7 0.145 80);
+  --color-gold-600: oklch(0.6 0.13 75);
+  --color-gold-700: oklch(0.5 0.11 70);
+
+  /* The earth ramp — see THE EARTH RAMP above. Rung 500 is the mark's own terracotta, #CC785C. */
+  --color-earth-50: oklch(0.972 0.014 72);
+  --color-earth-100: oklch(0.942 0.034 70);
+  --color-earth-200: oklch(0.888 0.062 66);
+  --color-earth-300: oklch(0.822 0.09 60);
+  --color-earth-400: oklch(0.752 0.11 50);
+  --color-earth-500: oklch(0.658 0.113 39.2);
+  --color-earth-600: oklch(0.575 0.112 38);
+  --color-earth-700: oklch(0.49 0.105 40);
+  --color-earth-800: oklch(0.405 0.085 42);
+  --color-earth-900: oklch(0.33 0.062 45);
+
+  --color-ink-300: rgb(var(--ink-300));
+  --color-ink-500: rgb(var(--ink-500));
+  --color-ink-700: rgb(var(--ink-700));
+  --color-ink-900: rgb(var(--ink-900));
+  --color-ink: rgb(var(--ink-900));
+  --color-ink-body: rgb(var(--ink-700));
+  --color-ink-muted: rgb(var(--ink-500));
+  --color-ink-soft: rgb(var(--ink-300));
+
+  --color-line-200: rgb(var(--line-200));
+  --color-line-300: rgb(var(--surface-300));
+
+  --color-surface-50: rgb(var(--surface-50));
+  --color-surface-100: rgb(var(--surface-100));
+  --color-surface-200: rgb(var(--surface-200));
+  --color-surface-300: rgb(var(--surface-300));
+
+  --color-bg-0: rgb(var(--bg-0));
+
+  --color-field-50: rgb(var(--surface-50));
+  --color-field-100: rgb(var(--surface-100));
+  --color-field-200: rgb(var(--surface-200));
+  --color-field-300: rgb(var(--surface-300));
+  --color-field-400: oklch(0.738 0.15 305);
+  --color-field-500: oklch(0.56 0.205 305);
+  --color-field-600: oklch(0.47 0.198 305);
+  --color-field-700: oklch(0.4 0.18 305);
+  --color-field-900: rgb(var(--ink-900));
+
+  --color-thread: oklch(0.7 0.145 80);
+  --color-thread-soft: oklch(0.9 0.08 88);
+
+  --color-logo-cream: #faf9f5;
+  --color-logo-terracotta: #cc785c;
+  --color-logo-ink: #181715;
+
+  --color-amber-100: #fef3c7;
+  --color-amber-500: #f59e0b;
+  --color-amber-800: #92400e;
+
+  --color-warn-100: #fef3c7;
+  --color-warn-500: #f59e0b;
+  --color-warn-800: #92400e;
+
+  --color-success-100: #dcfce7;
+  --color-success-600: #15803d;
+
+  --color-error-100: #fee2e2;
+  --color-error-200: #fecaca;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+
+  --color-background: rgb(var(--bg-0));
+  --color-foreground: rgb(var(--ink-900));
+  --color-card: rgb(var(--card));
+  --color-popover: rgb(var(--card));
+  --color-border: rgb(var(--line-200));
+  --color-input: rgb(var(--line-200));
+  --color-ring: oklch(0.56 0.205 305);
+  --color-accent: oklch(0.977 0.013 305);
+  --color-accent-foreground: oklch(0.47 0.198 305);
+  --color-primary: oklch(0.47 0.198 305);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: rgb(var(--ink-500));
+  --color-secondary-foreground: rgb(var(--card));
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  --color-muted: rgb(var(--surface-50));
+  --color-muted-foreground: rgb(var(--ink-500));
+
+  /* Overrides stock. NOTE `rounded` stays 4px (tighter than `sm`) and `rounded-2xl` stays 1rem,
+     numerically IDENTICAL to `lg` — reading a class name is not enough to know the radius (§4). */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --shadow-sm: 0 1px 2px rgba(46, 16, 101, 0.06);
+  --shadow-soft: 0 1px 2px rgba(46, 16, 101, 0.06);
+  --shadow-md: 0 4px 16px rgba(46, 16, 101, 0.08);
+  --shadow-lg: 0 8px 32px rgba(46, 16, 101, 0.12);
+  --shadow-panel: 0 8px 32px rgba(46, 16, 101, 0.12);
+  --shadow-island:
+    0 4px 16px rgba(46, 16, 101, 0.12), 0 1px 2px rgba(46, 16, 101, 0.06);
+  --shadow-cta: 0 8px 24px oklch(0.47 0.198 305 / 0.28);
+  --shadow-glow: 0 8px 24px oklch(0.47 0.198 305 / 0.28);
+  --shadow-glow-soft: 0 4px 16px oklch(0.47 0.198 305 / 0.16);
+  /* Cinematic surfaces only (hero cards, media lightbox chrome) — still purple-tinted. */
+  --shadow-cinema:
+    0 24px 80px rgba(46, 16, 101, 0.18), 0 2px 8px rgba(46, 16, 101, 0.08);
+
+  /* `ease-out` the CLASS is the brand expo curve. `ease-out` inside handwritten CSS is the spec
+     curve — the two look identical in source and are different curves (§4). */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ⚠ THE BREAKPOINTS ARE TAILWIND 3'S, IN PIXELS, AND THAT IS DELIBERATE. Tailwind 4's stock values are the
+     same widths in rem (40rem …), which move when a reader raises the browser's default font size —
+     and lib/media/screens.ts crops every framed picture at these exact pixel widths. Stating them here
+     keeps the layout and the crops switching together; scripts/screens-check.ts reads these lines. */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /*
+   * ⚠ EVERY ANIMATION IN THIS PRODUCT THAT IS NOT FRAMER-MOTION IS IN THIS TABLE, AND EVERY ONE OF
+   * THEM MOVES `transform` OR `opacity` ONLY — with a single, bounded, documented exception.
+   *
+   * The exception is `accordion-down` / `accordion-up`, which animate `height`, a LAYOUT property
+   * that contract §8 otherwise forbids outright. It stays because CSS genuinely cannot animate to
+   * `height: auto` and there is no transform that expresses "this box grew": a `scaleY` would
+   * squash the text inside the panel rather than reveal it, and a `max-height` guess either clips
+   * a long answer or spends the animation on empty space. It is bounded in a way nothing else here
+   * is — 0 ↔ ONE measured pixel value, 0.2s, one panel at a time, on a box the reader has just
+   * pressed — and `components/ui/Accordion.tsx` measures that pixel value with a ResizeObserver
+   * rather than guessing it. Do not copy the exception to anything else.
+   *
+   * `fr-row-flash` moves `background-color`, which is paint rather than layout. It is a 700ms
+   * ONE-SHOT (`1`, not `infinite`) on a single row the reader just caused to change, and the
+   * transform-and-opacity version of it would need an absolutely-positioned overlay child inside
+   * each row — which `components/studio/DataTable.tsx` puts on a `<tr>`, where an absolutely
+   * positioned pseudo-element does not lay out as a reliable overlay across engines. A repaint of
+   * one row, once, is the cheaper of the two mistakes; see the note above the recipe in globals.css.
+   */
+  /*
+   * ⚠ THERE IS NO `sweep` KEYFRAME HERE, AND ITS ABSENCE IS THE FIX RATHER THAN AN OMISSION.
+   *
+   * `animation.sweep` below names a keyframe that is HAND-WRITTEN in app/globals.css, beside
+   * `@keyframes fr-row-flash`. Three things forced that split, and undoing any one of them
+   * reintroduces a defect:
+   *
+   *  1. THE KEYFRAME HAS TWO CONSUMERS AND ONLY ONE OF THEM IS A TAILWIND CLASS. `.skeleton`
+   *     (globals.css, ~20 call sites across the studio) drives it from a raw `animation:`
+   *     declaration on a pseudo-element, because a `::after` cannot wear a utility. Tailwind
+   *     emits a `@keyframes` block ONLY when the matching `animate-*` utility survives the
+   *     content scan — so declaring `keyframes.sweep` here would make every skeleton in the CMS
+   *     depend on `components/ui/ProgressBar.tsx` continuing to write the literal string
+   *     `animate-sweep`. Drop that one class and twenty placeholders stop animating, silently,
+   *     with no error anywhere. Declared in globals.css it is plain CSS outside every `@layer`
+   *     and can never be purged.
+   *  2. THE PREVIOUS ARRANGEMENT SHIPPED THE KEYFRAME TWICE. `shimmer` was declared here AND
+   *     hand-written in globals.css, so the compiled stylesheet carried two `@keyframes shimmer`
+   *     blocks and the later one (globals.css's, since Tailwind's output is injected at the
+   *     `@tailwind utilities` on line 3, under Tailwind 3) silently won for BOTH callers. They happened to be
+   *     identical, so nothing was visibly wrong — which is exactly why it would have survived
+   *     until somebody edited the one that loses.
+   *  3. `animation` STILL BELONGS HERE, because `animate-sweep` has to be a real utility for
+   *     ProgressBar to write as a complete literal (§5). A `animation-name` with no matching
+   *     `@keyframes` in Tailwind's own output is not a dangling reference: CSS resolves an
+   *     animation name against every `@keyframes` in the document, and globals.css is the same
+   *     document.
+   *
+   * WHAT IT REPLACED: `shimmer`, which moved `background-position` — a property no engine
+   * composites, on an `infinite` animation. Twenty row skeletons on a loading table were twenty
+   * permanent main-thread repaint loops, on precisely the screens whose main thread is already
+   * blocked on the fetch the skeletons are standing in for. The replacement translates a child
+   * inside an overflow-hidden frame, which is compositor-only and free.
+   */
+  /*
+   * ⚠ `fr-row-flash` IS NOT DECLARED HERE EITHER, FOR THE SAME REASON AND WITH THE SAME HISTORY.
+   * `.flash-row[data-flash="true"]` in globals.css drives it from a raw `animation:` declaration,
+   * so globals.css hand-writes the keyframe. A copy here was dead — nothing in the repository
+   * writes the literal `animate-fr-row-flash`, so Tailwind purged both the utility and its
+   * keyframe and globals.css's copy was the only one that ever reached a browser. Leaving a
+   * purged duplicate in place is a trap rather than a spare: the first person to write
+   * `animate-fr-row-flash` would have resurrected a SECOND `@keyframes fr-row-flash`, and which
+   * of the two won would have been decided by source order rather than by anybody's intention.
+   */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-ticker-track: ticker-track var(--ticker-duration, 40s) linear
+    infinite;
+  --animate-sweep: sweep 1.8s ease-in-out infinite;
+  --animate-fr-row-flash: fr-row-flash 700ms ease-out 1;
+  --animate-caret-blink: caret-blink 1.2s ease-out infinite;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--accordion-content-height, auto);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--accordion-content-height, auto);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes ticker-track {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(-50%, 0, 0);
+    }
+  }
+  @keyframes caret-blink {
+    0%,
+    70%,
+    100% {
+      opacity: 1;
+    }
+    20%,
+    50% {
+      opacity: 0;
+    }
+  }
+}
 
 /*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: #e5e7eb; /* Tailwind 3's gray-200, the default it gave every border */
+  }
+
+  /* Two more of Tailwind 3's preflight rules that Tailwind 4 dropped, kept so nothing changes: a
+     placeholder in Tailwind 3's grey rather than half the text colour, and the hand cursor on a
+     button. A recipe that sets its own (`.field-input`, `cursor-not-allowed`) still wins. */
+  input::placeholder,
+  textarea::placeholder {
+    opacity: 1;
+    color: #9ca3af;
+  }
+
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  :disabled {
+    cursor: default;
+  }
+
+  /* Form controls take the page's type rather than the browser's. In `@layer base`, not with the other
+     plain rules in `@layer utilities`: there it would beat every `.field-input` and `.field-button`
+     recipe in `@layer components` (cascade layers ignore specificity), where under Tailwind 3 the
+     recipe's class outranked this element selector. */
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  /* Tailwind 3's preflight set code, kbd, samp and pre in the configured mono stack, which began with the
+     undefined `var(--font-mono)` and so inherited the surrounding face (see `--font-mono` in `@theme`).
+     Tailwind 4's preflight falls back to the system monospace instead; this keeps what readers saw. */
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono-undefined);
+  }
+}
+
+@layer components {
+  .field-input {
+    /* ── Form and action recipes (identical to the Field Repository's, §11.1) ───────────────── */
+    @apply w-full rounded-md border border-line-200 bg-card px-3.5 py-2.5 text-sm text-ink-900 outline-hidden transition placeholder:text-ink-300 focus:border-purple-600 focus:ring-4 focus:ring-purple-600/15;
+  }
+}
+
+@layer components {
+  .field-label {
+    @apply text-xs font-medium uppercase tracking-wide text-ink-500;
+  }
+}
+
+@layer components {
+  .field-button {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-purple-800 hover:shadow-cta disabled:cursor-not-allowed disabled:bg-line-200 disabled:text-ink-500 disabled:shadow-none;
+  }
+}
+
+@layer components {
+  .field-button-secondary {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-line-200 bg-card px-4 py-2 text-sm font-medium text-ink-900 transition hover:border-purple-300 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+}
+
+@layer components {
+  .field-button-ghost {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-ink-700 transition hover:bg-surface-100 hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+}
+
+@layer components {
+  .field-danger {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-error-200 bg-card px-3 py-2 text-sm font-medium text-error-600 transition hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-line-200 bg-card shadow-sm;
+  }
+}
+
+/*
+ * ⚠ A PLAIN RULE IN `@layer utilities`, NOT AN `@utility`. The upgrade tool wrote this as `@utility bg-card`,
+ * which would make every `@apply … bg-card` below (.field-input, the buttons, .panel) inline the card's
+ * shadow too. Tailwind 3 only ever gave that shadow to an element that carries the `bg-card` class
+ * itself, and `@apply` in Tailwind 4 cannot see a plain rule — so this keeps exactly that. In the
+ * utilities layer, and doubled, so it still outranks a `shadow-sm` on the same card, as it did.
+ */
+@layer utilities {
+  .bg-card.bg-card {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.04),
+      0 12px 28px -12px oklch(0.47 0.198 305 / 0.22),
+      0 2px 10px -4px oklch(0.47 0.198 305 / 0.14);
+  }
+
+  /* The dark theme needs a deeper, wider glow: the same alphas over a near-black ground are
+     invisible, and a card that floats in the light theme and sits flat in the dark one reads as two
+     different components. Doubled for the same reason as above. */
+  :root[data-theme="dark"] .bg-card.bg-card {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.5),
+      0 14px 34px -12px oklch(0.56 0.205 305 / 0.4),
+      0 2px 12px -4px oklch(0.56 0.205 305 / 0.26);
+  }
+}
+
+@layer components {
+  .display-title {
+    @apply font-display font-bold tracking-tight text-ink-900;
+  }
+}
+
+@layer components {
+  .surface-dark {
+    @apply rounded-lg bg-purple-950 text-white;
+  }
+}
+
+@layer components {
+  .section-band {
+    @apply rounded-lg bg-surface-50;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    /*
+     * The small-caps label every section on the public site opens with.
+     *
+     * ⚠ THE COLOUR COMES THROUGH A VARIABLE INSTEAD OF `@apply text-purple-700`, AND THE INDIRECTION IS
+     * THE WHOLE POINT — it is what lets a PAGE re-tint its eyebrows without winning a specificity fight
+     * it must not win. The earth block further down sets `--eyebrow-ink` on one `<main>`; if it had
+     * instead written `color` at a selector strong enough to beat this recipe, it would also have beaten
+     * every `text-*` UTILITY the eyebrows on dark bands carry — `eyebrow text-gold-300` in the hero, in
+     * the dark CTA band and in SectionHeading's `dark` tone — and turned all three earth on a ground
+     * where earth is unreadable.
+     *
+     * As written, none of that is at risk: a utility is emitted in the utilities layer, AFTER this
+     * components layer, at the same (0,1,0) specificity, so it still wins on source order exactly as it
+     * did before (contract §5). The variable only ever decides what this recipe's OWN default is, and
+     * the fallback is the value that was hard-coded here.
+     */
+    @apply text-[0.8125rem] font-semibold uppercase tracking-[0.14em];
+    color: var(--eyebrow-ink, var(--purple-700));
+  }
+}
+
+@layer components {
+  .file-trigger {
+    @apply inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-purple-300 bg-card px-4 py-2 text-sm font-medium text-purple-700 transition hover:border-purple-400 hover:bg-purple-50;
+  }
+}
+
+@layer components {
+  .page-top {
+    /* ── Institutional page frame ───────────────────────────────────────────────────────────── */
+
+    /*
+     * The one place the header clearance is paid. A page NEVER adds its own top padding for the
+     * header — that is how the Field Repository ended up with three numbers meaning one thing.
+     */
+    padding-top: var(--nav-clearance);
+
+    main&:has(> [data-bleed-top]:first-child) {
+      padding-top: 0;
+    }
+
+    main& > [data-bleed-top]:first-child {
+      --bleed-top: var(--nav-clearance);
+    }
+  }
+}
+
+@layer components {
+  .shell {
+    /* The standard content column. Wide enough for a two-up grid, never wider than the eye tracks. */
+    @apply mx-auto w-full max-w-336 px-5 sm:px-8;
+  }
+}
+
+@layer components {
+  .shell-narrow {
+    @apply mx-auto w-full max-w-208 px-5 sm:px-8;
+  }
+}
+
+@layer components {
+  .prose-measure {
+    /* Long-form prose measure. `--measure` is one number so an article and an MDX page agree. */
+    max-width: var(--measure);
+  }
+}
+
+@layer components {
+  .prose-typeset {
+    /*
+     * ══════════════════════════════════════════════════════════════════════════════════════════════
+     * THE PROSE RECIPE — how a passage of text is actually set
+     *
+     * `lib/typography/typeset.ts` owns the vocabulary and the class names; this owns the rules, because
+     * they are things no utility can say: custom properties, element selectors, `::first-letter`, and a
+     * specificity that has to outrank what `components/RichText.tsx` writes.
+     *
+     * HOW IT BEATS RichText WITHOUT `!important`. RichText puts a literal utility on every node it draws
+     * — `mt-5` on a paragraph, `mt-12 text-2xl sm:text-3xl` on a heading — because there is no
+     * typography plugin here and the ink ladder is the only way prose inverts in the dark theme. A
+     * utility is one class: specificity (0,1,0). Every rule below is a class plus an element:
+     * (0,1,1). So the recipe wins on specificity, in any layer, whatever the source order.
+     *
+     * ⚠ EVERY SPACE IS WRITTEN AS `* + <element>`, NEVER AS A BARE MARGIN ON THE ELEMENT, and that is not
+     * a style preference. A bare `.prose-typeset p { margin-top }` reaches every paragraph in the
+     * document INCLUDING the ones RichText deliberately gives no margin — the label row inside a callout,
+     * the first paragraph of a cell — and would open a gap at the top of each of those boxes. The sibling
+     * combinator says the actual rule: space goes BETWEEN two things, so a block with nothing before it
+     * has nothing to be spaced from. It also means the recipe no longer depends on RichText's own
+     * `first:mt-0` to undo it, though that utility is (0,2,0) and would still win if it did.
+     *
+     * ⚠ WHAT THIS RECIPE DELIBERATELY DOES NOT TOUCH.
+     *
+     *   • **Heading FONT SIZES.** RichText sizes a heading by the LEVEL the editor chose, and clamps
+     *     level 1 and level 2 to the same `<h2>` tag (its own header explains why). A CSS rule on `h2`
+     *     therefore cannot tell those two levels apart, so any size written here would flatten an H1
+     *     into an H2 on every page on the site. The two `max()` guards below are the only exception and
+     *     they exist solely to stop a large reading size overtaking a heading — see them.
+     *   • **Figures, tables, code blocks and callouts.** Their spacing is block furniture at a fixed
+     *     rhythm and it is already right. The controls an editor was given are about TEXT.
+     *   • **Colour, in any form.** Every rung comes from the ink/line/surface ladders and inverts; a
+     *     literal neutral here would be the one part of a passage that did not (contract §1.2).
+     *
+     * ⚠ ORDER MATTERS TWICE IN THIS BLOCK, and both are easy to undo by tidying:
+     *   1. Every `.ts-*` class re-points a custom property that `.prose-typeset` also sets, at the SAME
+     *      specificity (0,1,0) and on the SAME element. Source order is therefore the only thing that
+     *      makes an override win, so the `.ts-*` classes MUST stay below the recipe.
+     *   2. `:is(h2, h3, h4) + *` and `p`/`ul`/`ol` margins are both (0,1,1). The heading rule comes
+     *      last on purpose, so the block after a heading loses its own top margin.
+     * ══════════════════════════════════════════════════════════════════════════════════════════════
+     */
+    /* The defaults every `ts-*` class below re-points. They are the house style's own defaults, so a
+         document rendered with no classes at all is still set properly rather than unset. */
+    --prose-size: clamp(1rem, 0.975rem + 0.13vw, 1.0625rem);
+    --prose-leading: 1.7;
+    --prose-gap: 1.2em;
+    --prose-item-gap: 0.4em;
+
+    /* `--measure` rather than a `max-width`: the reading width stays ONE number for the whole site
+         (contract §7) and `.prose-measure`, which every caller also wears, is what reads it. */
+    --measure: 68ch;
+
+    /*
+       * ⚠ NO `font-family` HERE, AND THAT IS THE DESIGN. The reading face is a real Tailwind utility —
+       * `font-lora`, `font-crimson` — taken straight off `lib/typography/fonts.ts`, and the heading face
+       * is that file's class again through an arbitrary variant. Both land in the utilities layer, which
+       * is emitted AFTER this one, so a family declared here would be overridden anyway; declaring one
+       * would only add a second place a face could come from.
+       */
+
+    /*
+       * `pretty` is set on the container so it reaches paragraphs, list items, captions and callouts
+       * alike; headings take `balance` below. It is the single highest-value declaration in this file:
+       * it is what stops a paragraph ending on a two-letter widow. Browsers that do not know the value
+       * ignore it and wrap as they always did — there is no fallback to write.
+       */
+    text-wrap: pretty;
+
+    /*
+       * An opening quotation mark or bracket hangs into the margin instead of pushing the first line in
+       * by a character. Only WebKit honours it today; everywhere else this line does nothing at all,
+       * which is why it is safe to state plainly rather than hide behind `@supports`.
+       */
+    hanging-punctuation: first last;
+
+    /* A DOI, an archive permalink or a long transliterated compound must break rather than push the
+         measure open and give the whole page a sideways scrollbar. */
+    overflow-wrap: break-word;
+
+    font-kerning: normal;
+    font-variant-ligatures: common-ligatures contextual;
+
+    /*
+     * Body text. Size and leading are set on the ELEMENTS and not on the container, because RichText's
+     * root `<div>` carries `text-base leading-7` — a container-level `line-height` would be overridden
+     * by that class for every descendant, while a custom property passes straight through it.
+     */
+    & :is(p, li) {
+      font-size: var(--prose-size);
+      line-height: var(--prose-leading);
+      /*
+       * ⚠ 3 AND 3 ARE THE PRINT BLOCK'S NUMBERS, COPIED ON PURPOSE. These rules are (0,1,1) and the
+       * `p, li { orphans: 3 }` at the foot of this file is (0,0,1) — so anything different here would
+       * beat the paper edition and quietly undo it. They do nothing on a continuous screen; they are
+       * what a printed or multi-column rendering reads.
+       */
+      orphans: 3;
+      widows: 3;
+    }
+
+    & * + p {
+      margin-top: var(--prose-gap);
+    }
+
+    & * + :is(ul, ol) {
+      margin-top: var(--prose-gap);
+    }
+
+    & * + li {
+      margin-top: var(--prose-item-gap);
+    }
+
+    & * + hr {
+      margin-top: calc(var(--prose-gap) * 2.2);
+    }
+
+    & * + blockquote {
+      margin-top: calc(var(--prose-gap) * 1.5);
+    }
+
+    /*
+     * A quotation is set slightly larger and tighter than the text around it, and the size is applied to
+     * the blockquote while its paragraphs are told to inherit. Re-pointing `--prose-size` on the
+     * blockquote would look neater and is illegal: a custom property whose value reads itself on the
+     * same element is a cycle, and the declaration is thrown away.
+     */
+    & blockquote {
+      font-size: calc(var(--prose-size) * 1.12);
+    }
+
+    & blockquote :is(p, li) {
+      font-size: inherit;
+      line-height: 1.55;
+    }
+
+    /* Numbers in a table are a column to be compared, so they get equal widths and lining figures. In
+       running prose they stay proportional, where they belong. */
+    & :is(th, td) {
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+
+    /*
+     * ── THE TWO ISLANDS THE READING SIZE MUST NOT FLOOD ─────────────────────────────────────────
+     *
+     * A table cell and the footnote list are set SMALL by RichText, on the cell and on the `<section>`
+     * respectively — and both hold ordinary `<p>` and `<li>` elements, which the rules above would drag
+     * back up to reading size. A footnote printed as large as the essay is not a footnote, and a table
+     * whose cells are 17px is a table that no longer fits its column.
+     *
+     * `inherit` rather than a restated size: whatever RichText decides those two contexts are, this
+     * follows it. The footnote hook is the `aria-label` the renderer gives the section — an attribute it
+     * sets for screen readers and therefore will not quietly drop, unlike a utility class.
+     */
+    & :is(th, td) :is(p, li) {
+      font-size: inherit;
+      line-height: inherit;
+    }
+    & [aria-label='Footnotes'] :is(p, li) {
+      font-size: inherit;
+      line-height: inherit;
+    }
+
+    & [aria-label='Footnotes'] :is(ul, ol) {
+      margin-top: 0;
+    }
+
+    /*
+     * ── THE HEADING RHYTHM — the fix this whole recipe was written for ──────────────────────────
+     *
+     * Before it, a heading sat 48px below the previous paragraph and 20px above its own first sentence,
+     * and 20px is also the gap between two ordinary paragraphs. A heading no closer to the text it
+     * introduces than to the text it follows does not read as a title; it reads as a line of bold type
+     * adrift between two blocks.
+     *
+     * `1.6em` is measured against the heading's OWN size, which reproduces RichText's `mt-12` / `mt-10`
+     * / `mt-8` almost exactly at every level — so the space ABOVE a heading is unchanged and now scales
+     * with the size an editor chose. What changes is below it: the heading owns that gap, and the block
+     * that follows gives up its own margin entirely.
+     */
+    & :is(h2, h3, h4) {
+      margin-bottom: 0.5em;
+      text-wrap: balance;
+    }
+
+    & * + :is(h2, h3, h4) {
+      margin-top: 1.6em;
+    }
+
+    & h2 {
+      line-height: 1.15;
+    }
+
+    & h3 {
+      line-height: 1.25;
+    }
+
+    /*
+     * ⚠ THE ONE SIZE THIS FILE RESTATES, AND WHY. `1.125rem` is RichText's `text-lg` for a level-4
+     * heading — the only heading size small enough that a large reading size could overtake it, which
+     * would leave a "heading" set smaller than the paragraph under it. `max()` makes the guard inert at
+     * every size except the two largest. If RichText's level-4 size changes, this number must follow it.
+     */
+    & h4 {
+      line-height: 1.35;
+      font-size: max(1.125rem, calc(var(--prose-size) * 1.06));
+    }
+
+    /*
+     * The same guard for a level-3 heading, and ONLY below `sm`.
+     *
+     * ⚠ It is inside a media query for a reason that is invisible otherwise: RichText sizes a level-3
+     * heading `text-xl sm:text-2xl`, and a `sm:` variant carries no extra specificity — a media query
+     * never adds any. An unguarded rule here would therefore beat `sm:text-2xl` at EVERY width and
+     * silently delete the heading's responsive step. Below `sm` there is no variant to lose.
+     */
+    @media (max-width: 39.9375rem) {
+      & h3 {
+        font-size: max(1.25rem, calc(var(--prose-size) * 1.14));
+      }
+    }
+
+    /* The block after a heading belongs to it. Last of the (0,1,1) margin rules, so it wins the tie. */
+    & :is(h2, h3, h4) + * {
+      margin-top: 0;
+    }
+
+    /* Except another heading, which needs a real pause without the full break of a new section. */
+    & :is(h2, h3, h4) + :is(h2, h3, h4) {
+      margin-top: 0.8em;
+    }
+  }
+}
+
+@layer components {
+  .ts-measure-intimate {
+    /* ── The measure ────────────────────────────────────────────────────────────────────────────── */
+    --measure: 54ch;
+  }
+}
+
+@layer components {
+  .ts-measure-standard {
+    --measure: 68ch;
+  }
+}
+
+@layer components {
+  .ts-measure-generous {
+    --measure: 78ch;
+  }
+}
+
+@layer components {
+  .ts-measure-wide {
+    --measure: 88ch;
+  }
+}
+
+@layer components {
+  .ts-measure-full {
+    /* `none` is a legal `max-width`, so `.prose-measure` stops constraining rather than being removed —
+       which keeps ONE class on the element whatever the measure is. */
+    --measure: none;
+  }
+}
+
+@layer components {
+  .ts-size-small {
+    /* ── The size scale ─────────────────────────────────────────────────────────────────────────────
+     *
+     * Fluid rather than stepped: a `clamp()` grows the text a little as the window does, so a passage is
+     * 16px on a phone and 17px on a desktop without a breakpoint to jump at. The `vw` term is small on
+     * purpose — text that visibly resizes as a window is dragged reads as a bug.
+     */
+    --prose-size: clamp(0.9375rem, 0.92rem + 0.1vw, 1rem);
+  }
+}
+
+@layer components {
+  .ts-size-standard {
+    --prose-size: clamp(1rem, 0.975rem + 0.13vw, 1.0625rem);
+  }
+}
+
+@layer components {
+  .ts-size-large {
+    --prose-size: clamp(1.0625rem, 1.02rem + 0.22vw, 1.1875rem);
+  }
+}
+
+@layer components {
+  .ts-size-feature {
+    --prose-size: clamp(1.125rem, 1.04rem + 0.42vw, 1.3125rem);
+  }
+}
+
+@layer components {
+  .ts-lead-tight {
+    /* ── Leading ────────────────────────────────────────────────────────────────────────────────── */
+    --prose-leading: 1.4;
+  }
+}
+
+@layer components {
+  .ts-lead-snug {
+    --prose-leading: 1.55;
+  }
+}
+
+@layer components {
+  .ts-lead-comfortable {
+    --prose-leading: 1.7;
+  }
+}
+
+@layer components {
+  .ts-lead-relaxed {
+    --prose-leading: 1.85;
+  }
+}
+
+@layer components {
+  .ts-lead-loose {
+    --prose-leading: 2;
+  }
+}
+
+@layer components {
+  .ts-gap-tight {
+    /* ── Paragraph spacing ──────────────────────────────────────────────────────────────────────────
+     *
+     * In `em`, so the rhythm follows the size of the text it separates: a gap fixed in `rem` looks tight
+     * under Feature-sized text and cavernous under Small.
+     */
+    --prose-gap: 0.8em;
+    --prose-item-gap: 0.3em;
+  }
+}
+
+@layer components {
+  .ts-gap-standard {
+    --prose-gap: 1.2em;
+    --prose-item-gap: 0.4em;
+  }
+}
+
+@layer components {
+  .ts-gap-open {
+    --prose-gap: 1.75em;
+    --prose-item-gap: 0.55em;
+  }
+}
+
+@layer components {
+  .ts-para-indented {
+    /*
+     * ── Indented paragraphs — the book setting ──────────────────────────────────────────────────
+     *
+     * `p + p` is the whole rule and it is exact: only a paragraph whose immediate predecessor is also a
+     * paragraph is indented, so the passage's first paragraph, and the first after a heading, a list, a
+     * quotation or a figure, all start flush — which is how indented prose has always been set. The gap
+     * goes at the same time; an indent AND a blank line say the same thing twice.
+     */
+    & p + p {
+      margin-top: 0;
+      text-indent: 1.5em;
+    }
+  }
+}
+
+@layer components {
+  .ts-heading-pretty {
+    /* ── How headings break ─────────────────────────────────────────────────────────────────────── */
+
+    & :is(h2, h3, h4) {
+      text-wrap: pretty;
+    }
+  }
+}
+
+@layer components {
+  .ts-heading-plain {
+    & :is(h2, h3, h4) {
+      text-wrap: wrap;
+    }
+  }
+}
+
+@layer components {
+  .ts-hyphens-on {
+    /*
+     * ── Hyphenation ─────────────────────────────────────────────────────────────────────────────
+     *
+     * ⚠ IT DOES NOTHING WITHOUT A `lang` ATTRIBUTE. Hyphenation is dictionary work, so a browser will
+     * not guess a language; `<html lang>` in app/layout.tsx is what makes this line have an effect.
+     * `hyphenate-limit-chars` keeps it civilised — no word under six letters is broken, and never with
+     * fewer than three letters on either side of the break.
+     */
+    & :is(p, li) {
+      -webkit-hyphens: auto;
+      hyphens: auto;
+      hyphenate-limit-chars: 6 3 3;
+    }
+  }
+}
+
+@layer components {
+  .ts-justify-on {
+    & :is(p, li) {
+      text-align: justify;
+      text-justify: inter-word;
+    }
+  }
+}
+
+@layer components {
+  .ts-dropcap {
+    /*
+     * ── The drop cap ────────────────────────────────────────────────────────────────────────────
+     *
+     * ⚠ THE SELECTOR'S SHAPE IS THE WHOLE CARE IN THIS RULE. `> * >` means "the first paragraph inside
+     * the ONE wrapper `components/RichText.tsx` renders" — the first paragraph of the document, whether
+     * or not a heading precedes it, and nothing deeper. A plainer `p:first-of-type` would also set a
+     * three-line capital in the first paragraph of every callout, every quotation and every list item.
+     * If RichText ever stops rendering exactly one root element, the drop cap stops appearing; it will
+     * not appear in the wrong place.
+     *
+     * `float` rather than `initial-letter`, which is the property actually designed for this and is
+     * WebKit-only: a float behaves the same everywhere, and a treatment that aligned correctly in one
+     * browser and approximately in the rest is harder to judge than one that is the same in all of them.
+     *
+     * The colour comes from the ink ladder, so the capital inverts with the rest of the passage — and it
+     * is deliberately NOT purple: purple-700 is the action colour, and a decorative letter wearing it
+     * teaches a reader that purple is not always something to press (contract §1.1).
+     */
+    & > * > p:first-of-type::first-letter {
+      float: left;
+      font-size: 3.1em;
+      line-height: 0.82;
+      font-weight: 600;
+      padding-right: 0.07em;
+      margin-top: 0.04em;
+      color: rgb(var(--ink-900));
+    }
+  }
+}
+
+@utility ts-quote-hanging {
+  @media (min-width: 40rem) {
+    & blockquote {
+      margin-left: -1.45em;
+      padding-left: 1.25em;
+    }
+  }
+}
+
+@layer components {
+  .flash-row {
+    /*
+     * ── Pull quotes, optically aligned ──────────────────────────────────────────────────────────
+     *
+     * RichText gives a quotation a left rule and 1.25rem of padding, so its words start a quarter of an
+     * inch inside the text around it and the passage develops a dent. Pulling the whole quotation left
+     * by rather more than its own padding puts the QUOTED WORDS back on the text's edge and leaves the
+     * rule hanging in the margin, which is how a quotation is set in print.
+     *
+     * ⚠ FROM 40rem UP ONLY. The negative margin spends about 25px of whatever sits to the left of the
+     * text; below `sm` the shell has only 20px of padding there, so the rule would touch the edge of the
+     * screen. Under that width the quotation stays indented, which is the honest fallback.
+     */
+
+    /*
+     * "THIS ROW, JUST NOW" — the answer to a selection made somewhere else on the page.
+     *
+     * TWO SIGNALS, DELIBERATELY, and only one of them is motion. The ring is a plain static outline:
+     * it is what a reader sees who looked away during the pulse, and — the point — it is the ONLY half
+     * that survives `prefers-reduced-motion`, where the global rule above collapses every animation to
+     * 0.01ms. A "which one" signal that exists only as movement is a signal those readers never get.
+     *
+     * `outline` rather than `box-shadow` or a border: these rows already carry a conditional selected
+     * border and a focus-visible ring, and an outline stacks with both without changing the box.
+     *
+     * Driven by a `data-flash` ATTRIBUTE, not a class, so React can flip it without touching the
+     * className a dozen conditional styles are already composing.
+     */
+    &[data-flash='true'] {
+      outline: 2px solid var(--purple-700);
+      outline-offset: 2px;
+      animation: fr-row-flash 700ms ease-out 1;
+    }
+  }
+}
+
+@layer components {
+  .nav-sheet {
+    /*
+     * The navigation sheet (phones and tablets).
+     *
+     * The PANEL is the scroller: a bounded height, its own overflow, and `overscroll-behavior:
+     * contain` so reaching the last item does not hand the gesture to the page underneath.
+     *
+     * ⚠ THE DOUBLED `max-height` IS PROGRESSIVE ENHANCEMENT, NOT A DUPLICATE. With `vh` alone the
+     * closing items sit below the fold while the phone's address bar shows — which is exactly when a
+     * thumb reaches for the menu. Browsers that know `dvh` take the second declaration.
+     */
+    --nav-sheet-top: 5rem;
+    margin-top: var(--nav-sheet-top);
+    max-height: calc(100vh - var(--nav-sheet-top) - 1rem);
+    max-height: calc(100dvh - var(--nav-sheet-top) - 1rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 1.5rem;
+    /* The home indicator sits over the foot of the sheet; the last item has to clear it. */
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    @media (max-height: 560px) {
+      --nav-sheet-top: 4.25rem;
+      padding: 1rem;
+      padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    }
+  }
+}
+
+@layer components {
+  .nav-frame {
+    /* A phone in landscape leaves barely 350px of height — give the list back the chrome it can spare. */
+
+    /*
+     * Both of these are `position: fixed`, so their containing block is the viewport rather than
+     * <body> and the padding the scroll lock puts on the body cannot reach them. They re-pay the
+     * vanished scrollbar themselves, otherwise the header and the sheet drift right as a menu opens.
+     */
+    padding-left: 0.75rem;
+    padding-right: calc(0.75rem + var(--scroll-gutter, 0px));
+  }
+}
+
+@layer components {
+  .overlay-frame {
+    padding-right: var(--scroll-gutter, 0px);
+  }
+}
+
+@layer components {
+  .skeleton {
+    /*
+     * ══════════════════════════════════════════════════════════════════════════════════════════════
+     * A skeleton placeholder — AND THE ONLY SWEEP VOCABULARY IN THIS PRODUCT
+     * ══════════════════════════════════════════════════════════════════════════════════════════════
+     *
+     * The sweep is the motion half; `background-color` is the static half, so under reduced motion the
+     * block is still visibly a placeholder rather than an empty area of page (§1.5).
+     *
+     * ⚠ IT USED TO ANIMATE `background-position`, WHICH NO ENGINE COMPOSITES. A 200%-wide gradient slid
+     * across the element by `background-position`, `infinite`, on the MAIN THREAD. One placeholder is
+     * nothing; a loading table renders twenty of them (`components/studio/DataTable.tsx` draws
+     * `skeletonRows` bars, `MediaGrid` draws twelve tiles times three bars), and twenty permanent
+     * repaint loops at 60fps land on exactly the screens whose main thread is already blocked on the
+     * fetch these bars are standing in for. The animation was competing with the work it was reporting.
+     *
+     * THE REPLACEMENT IS A TRANSLATED CHILD INSIDE AN OVERFLOW-HIDDEN FRAME, which is the only shape
+     * that expresses "a highlight travels across this box" using nothing but `transform`. The element
+     * becomes the frame (`relative` + `overflow: hidden`) and its `::after` is the travelling highlight.
+     * A pseudo-element rather than a real child because `.skeleton` is worn by ~20 empty `<div>`s across
+     * the studio that this file cannot reach — every one of them is `<div className="skeleton …" />`
+     * with no children, so a `::after` is the only child that can be added from here at all.
+     *
+     * ⚠ THE RESTING TRANSFORM IS `-100%` AND IT IS LOAD-BEARING, not a tidy starting value. A CSS
+     * animation with no `forwards` fill returns the element to its BASE style when it stops, and the
+     * reduced-motion rules at the top of this file stop it after 0.01ms with one iteration. With no base
+     * transform the highlight would come to rest at `translate(0)` — parked in the middle of the frame,
+     * permanently, for every reader who asked for less motion. On `.skeleton` that would be a bright
+     * band across every placeholder; on `ProgressBar`'s indeterminate track it would be worse than
+     * cosmetic, because a purple band sitting halfway along a progress bar reads as "50% done" on a bar
+     * whose entire meaning is that the total is unknown. Parked off the left, the static tint underneath
+     * is all that remains, which is exactly what §1.4 asks for.
+     *
+     * ⚠ ONE KEYFRAME, ONE NAME, ONE DEFINITION. `@keyframes sweep` is at the foot of this file, outside
+     * every `@layer`, so it cannot be purged; the `@theme` block declares `--animate-sweep` (the
+     * `animate-sweep` utility ProgressBar writes) and deliberately declares NO keyframe of that name.
+     * The long note there says why, and reversing it is how twenty skeletons stop animating in silence.
+     * The only other travelling-light animation in the repository is `cxa-jaali-shimmer` in
+     * app/craft-tapestry.css, which is NOT this vocabulary and must not be merged into it: it is a
+     * 46-second architectural conceit moving daylight across a pierced screen, in absolute SVG user
+     * units, and it is already transform-only.
+     */
+    @apply relative overflow-hidden rounded-md bg-surface-200;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      /* See the ⚠ above: this is where the highlight RESTS, not merely where it starts. */
+      transform: translate3d(-100%, 0, 0);
+      background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgb(var(--surface-300) / 0.7) 50%,
+        transparent 100%
+      );
+      animation: sweep 1.8s ease-in-out infinite;
+    }
+  }
+}
+
+@utility grad-brand {
+  background-image: var(--grad-brand);
+}
+
+@utility grad-mesh {
+  background-image: var(--grad-mesh);
+}
+
+@utility text-gold-gradient {
+  /* Gold gradient text — hero headline spans and institutional marketing copy ONLY. */
+  background-image: var(--grad-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility text-gradient-violet {
+  background-image: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility glass-card {
+  /*
+   * Frosted glass.
+   *
+   * ⚠ Requires a TRANSLUCENT backdrop from the caller — the filter refracts what is behind it, and
+   * an opaque fill underneath paints over the result. Glass must never be NESTED: an ancestor with
+   * its own `backdrop-filter` or `opacity < 1` becomes the backdrop root and the child refracts its
+   * parent instead of the page.
+   */
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+@utility glass-dark {
+  background: rgba(30, 27, 46, 0.5);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+@utility ambient-light {
+  background-image: var(--grad-mesh);
+}
+
+@utility noise {
+  /*
+   * Film-grain noise.
+   *
+   * An inline SVG `feTurbulence` as a data URI: no network request, no image asset to keep in step,
+   * and it scales to any element. Very low alpha — grain that is visible as grain reads as a
+   * rendering fault; grain you cannot see is what stops a large flat gradient from banding.
+   */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+@utility mask-edges-x {
+  /*
+   * Edge fades for horizontal scrollers (logo rows, tag rails, the news ticker).
+   *
+   * `mask-image` rather than an overlaid gradient, because an overlay has to know the background
+   * colour behind it and would be wrong in the other theme.
+   */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 6%,
+    black 94%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 6%,
+    black 94%,
+    transparent
+  );
+}
+
+@utility text-balance {
+  /*
+   * Balanced headline wrapping. Progressive: browsers without `text-wrap: balance` simply wrap
+   * normally, which is the pre-existing behaviour and not a regression.
+   */
+  text-wrap: balance;
+}
+
+@utility text-pretty {
+  text-wrap: pretty;
+}
+
+@layer utilities {
+  /*
  * ════════════════════════════════════════════════════════════════════════════
  * CxA — Centre of Excellence
  *
- * Semantic neutrals live here as bare "R G B" triplets so tailwind.config.ts can consume them as
- * `rgb(var(--token) / <alpha-value>)` and EVERY opacity modifier keeps working. Flipping a theme is
- * therefore a matter of re-pointing these eleven numbers — no page ever hardcodes a neutral.
+ * Semantic neutrals live here as bare "R G B" triplets so the `@theme` block at the top of this file can
+ * consume them as `rgb(var(--token))`, and EVERY opacity modifier keeps working (Tailwind 4 mixes the
+ * alpha in with color-mix()). Flipping a theme is therefore a matter of re-pointing these eleven
+ * numbers — no page ever hardcodes a neutral.
  *
- * The purple and gold ramps stay literal in the Tailwind config: brand colour does not invert.
+ * The purple and gold ramps stay literal in `@theme`: brand colour does not invert.
  *
- * ⚠ postcss.config.js loads only `tailwindcss` + `autoprefixer` — THERE IS NO NESTING PLUGIN. Plain
- * at-rules and `@layer` blocks compile; arbitrary CSS nesting does NOT.
+ * ⚠ WHY THESE RULES SIT IN `@layer utilities`: Tailwind 4 uses real cascade layers, and CSS outside every
+ * layer would beat every utility whatever its specificity. Tailwind 3 emitted this file's plain rules
+ * AFTER its utilities and let ordinary specificity decide; inside `@layer utilities`, after the
+ * utilities, they behave exactly as they did. postcss.config.js loads only `@tailwindcss/postcss`.
  * ════════════════════════════════════════════════════════════════════════════
  */
 
-:root {
-  color-scheme: light;
+  :root {
+    color-scheme: light;
 
-  /* Page canvas, cards and the tinted panel ladder (surface-50 → 300 = legacy field-50 → 300). */
-  --bg-0: 247 246 251; /* #f7f6fb */
-  --card: 255 255 255;
-  --surface-50: 250 249 253; /* #faf9fd */
-  --surface-100: 243 241 250; /* #f3f1fa */
-  --surface-200: 233 230 245; /* #e9e6f5 */
-  --surface-300: 220 215 238; /* #dcd7ee */
-  --line-200: 228 226 239; /* #e4e2ef */
+    /* Page canvas, cards and the tinted panel ladder (surface-50 → 300 = legacy field-50 → 300). */
+    --bg-0: 247 246 251; /* #f7f6fb */
+    --card: 255 255 255;
+    --surface-50: 250 249 253; /* #faf9fd */
+    --surface-100: 243 241 250; /* #f3f1fa */
+    --surface-200: 233 230 245; /* #e9e6f5 */
+    --surface-300: 220 215 238; /* #dcd7ee */
+    --line-200: 228 226 239; /* #e4e2ef */
 
-  /* Type ladder: headings → body → muted → placeholder. */
-  --ink-900: 30 27 46; /* #1e1b2e */
-  --ink-700: 58 54 81; /* #3a3651 */
-  --ink-500: 97 93 122; /* #615d7a */
-  --ink-300: 167 163 188; /* #a7a3bc */
+    /* Type ladder: headings → body → muted → placeholder. */
+    --ink-900: 30 27 46; /* #1e1b2e */
+    --ink-700: 58 54 81; /* #3a3651 */
+    --ink-500: 97 93 122; /* #615d7a */
+    --ink-300: 167 163 188; /* #a7a3bc */
 
-  /* Derived aliases — they follow the triplets into whichever theme is active. */
-  --background: rgb(var(--bg-0));
-  --foreground: rgb(var(--ink-900));
+    /* Derived aliases — they follow the triplets into whichever theme is active. */
+    --background: rgb(var(--bg-0));
+    --foreground: rgb(var(--ink-900));
 
-  /* Raw brand values for handwritten CSS (a Tailwind class cannot be used inside @keyframes). */
-  --purple-500: oklch(0.648 0.19 305);
-  --purple-600: oklch(0.56 0.205 305);
-  --purple-700: oklch(0.47 0.198 305);
-  --purple-900: oklch(0.34 0.15 305);
-  --purple-950: oklch(0.255 0.108 305);
-  --gold-300: oklch(0.85 0.11 86);
-  --gold-500: oklch(0.7 0.145 80);
-  /*
+    /* Raw brand values for handwritten CSS (a Tailwind class cannot be used inside @keyframes). */
+    --purple-500: oklch(0.648 0.19 305);
+    --purple-600: oklch(0.56 0.205 305);
+    --purple-700: oklch(0.47 0.198 305);
+    --purple-900: oklch(0.34 0.15 305);
+    --purple-950: oklch(0.255 0.108 305);
+    --gold-300: oklch(0.85 0.11 86);
+    --gold-500: oklch(0.7 0.145 80);
+    /*
    * The one rung of the `earth` ramp that handwritten CSS reaches for — the umber a word may be set
-   * in. tailwind.config.ts owns the ramp and the arithmetic behind it (6.1:1 on `--bg-0`, which is
+   * in. The `@theme` block owns the ramp and the arithmetic behind it (6.1:1 on `--bg-0`, which is
    * what lets 13px capitals wear it); this is the same value in the form a `color:` can take.
    *
    * ⚠ ONLY THE RUNGS THAT ARE USED, exactly as the purple and gold lines above do it. A raw copy of
    * a ramp nobody reads is a second source of truth that drifts silently, and this file has no way of
    * noticing when it has.
    */
-  --earth-700: oklch(0.49 0.105 40);
+    --earth-700: oklch(0.49 0.105 40);
 
-  /* Gradients — exactly three recipes. Anything else is a fourth thing to keep in step. */
-  --grad-brand: linear-gradient(135deg, oklch(0.47 0.198 305) 0%, oklch(0.34 0.15 305) 100%);
-  --grad-mesh:
-    radial-gradient(40rem 40rem at 12% 18%, oklch(0.648 0.19 305 / 0.16), transparent 60%),
-    radial-gradient(34rem 34rem at 88% 12%, rgba(245, 158, 11, 0.1), transparent 60%),
-    radial-gradient(46rem 46rem at 70% 90%, oklch(0.56 0.205 305 / 0.12), transparent 65%);
-  --grad-gold: linear-gradient(
-    115deg,
-    oklch(0.9 0.08 88) 0%,
-    oklch(0.7 0.145 80) 42%,
-    oklch(0.85 0.11 86) 58%,
-    oklch(0.6 0.13 75) 100%
-  );
+    /* Gradients — exactly three recipes. Anything else is a fourth thing to keep in step. */
+    --grad-brand: linear-gradient(
+      135deg,
+      oklch(0.47 0.198 305) 0%,
+      oklch(0.34 0.15 305) 100%
+    );
+    --grad-mesh:
+      radial-gradient(
+        40rem 40rem at 12% 18%,
+        oklch(0.648 0.19 305 / 0.16),
+        transparent 60%
+      ),
+      radial-gradient(
+        34rem 34rem at 88% 12%,
+        rgba(245, 158, 11, 0.1),
+        transparent 60%
+      ),
+      radial-gradient(
+        46rem 46rem at 70% 90%,
+        oklch(0.56 0.205 305 / 0.12),
+        transparent 65%
+      );
+    --grad-gold: linear-gradient(
+      115deg,
+      oklch(0.9 0.08 88) 0%,
+      oklch(0.7 0.145 80) 42%,
+      oklch(0.85 0.11 86) 58%,
+      oklch(0.6 0.13 75) 100%
+    );
 
-  /*
+    /*
    * The nav clearance contract, in ONE place.
    *
    * The Field Repository declared a `--header-clearance` with zero consumers (skill §3.3), so the
@@ -80,40 +1405,52 @@
    * variable is REAL: the site header reads it, `.page-top` pays it, and every anchor target uses
    * `scroll-margin-top: var(--nav-clearance)`. Move the header and everything follows.
    */
-  --nav-clearance: 6rem;
-  --nav-clearance-compact: 4.5rem;
+    --nav-clearance: 6rem;
+    --nav-clearance-compact: 4.5rem;
 
-  /* The reading measure for long-form prose. One number, so an article and an MDX page agree. */
-  --measure: 68ch;
-}
+    /* The reading measure for long-form prose. One number, so an article and an MDX page agree. */
+    --measure: 68ch;
+  }
 
-/*
+  /*
  * Dark theme. The neutrals stay purple-tinted (never pure grey) so the brand cast survives the
  * inversion, and the ink ladder mirrors the light one: 900 = headings, 300 = placeholders.
  * `data-theme` is stamped onto <html> BEFORE FIRST PAINT by the boot script in app/layout.tsx.
  */
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg-0: 17 15 25; /* #110f19 */
-  --card: 26 23 37; /* #1a1725 */
-  --surface-50: 32 28 45; /* #201c2d */
-  --surface-100: 38 33 53; /* #262135 */
-  --surface-200: 46 40 64; /* #2e2840 */
-  --surface-300: 58 51 80; /* #3a3350 */
-  --line-200: 52 46 71; /* #342e47 */
-  --ink-900: 242 240 249; /* #f2f0f9 */
-  --ink-700: 208 203 223; /* #d0cbdf */
-  --ink-500: 158 152 178; /* #9e98b2 */
-  --ink-300: 110 104 132; /* #6e6884 */
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --bg-0: 17 15 25; /* #110f19 */
+    --card: 26 23 37; /* #1a1725 */
+    --surface-50: 32 28 45; /* #201c2d */
+    --surface-100: 38 33 53; /* #262135 */
+    --surface-200: 46 40 64; /* #2e2840 */
+    --surface-300: 58 51 80; /* #3a3350 */
+    --line-200: 52 46 71; /* #342e47 */
+    --ink-900: 242 240 249; /* #f2f0f9 */
+    --ink-700: 208 203 223; /* #d0cbdf */
+    --ink-500: 158 152 178; /* #9e98b2 */
+    --ink-300: 110 104 132; /* #6e6884 */
 
-  /* The mesh backdrop needs more punch to read against a dark canvas. */
-  --grad-mesh:
-    radial-gradient(40rem 40rem at 12% 18%, oklch(0.648 0.19 305 / 0.24), transparent 60%),
-    radial-gradient(34rem 34rem at 88% 12%, rgba(245, 158, 11, 0.08), transparent 60%),
-    radial-gradient(46rem 46rem at 70% 90%, oklch(0.56 0.205 305 / 0.2), transparent 65%);
-}
+    /* The mesh backdrop needs more punch to read against a dark canvas. */
+    --grad-mesh:
+      radial-gradient(
+        40rem 40rem at 12% 18%,
+        oklch(0.648 0.19 305 / 0.24),
+        transparent 60%
+      ),
+      radial-gradient(
+        34rem 34rem at 88% 12%,
+        rgba(245, 158, 11, 0.08),
+        transparent 60%
+      ),
+      radial-gradient(
+        46rem 46rem at 70% 90%,
+        oklch(0.56 0.205 305 / 0.2),
+        transparent 65%
+      );
+  }
 
-/*
+  /*
  * High contrast. Re-points the LOW-CONTRAST END of each ladder (borders, muted and placeholder text)
  * rather than patching individual components — every page inherits it for free.
  *
@@ -121,37 +1458,37 @@
  * dark+contrast block below exists. Add a token to one contrast block and you MUST add it to the
  * other, or dark mode silently keeps the low-contrast value.
  */
-:root[data-high-contrast="true"] {
-  --line-200: 124 118 152;
-  --surface-300: 124 118 152;
-  --ink-500: 58 54 81; /* muted text → body strength */
-  --ink-300: 97 93 122; /* placeholders → muted strength */
-}
+  :root[data-high-contrast='true'] {
+    --line-200: 124 118 152;
+    --surface-300: 124 118 152;
+    --ink-500: 58 54 81; /* muted text → body strength */
+    --ink-300: 97 93 122; /* placeholders → muted strength */
+  }
 
-:root[data-theme="dark"][data-high-contrast="true"] {
-  --line-200: 150 143 180;
-  --surface-300: 150 143 180;
-  --ink-700: 236 233 246;
-  --ink-500: 214 209 229;
-  --ink-300: 176 170 196;
-}
+  :root[data-theme='dark'][data-high-contrast='true'] {
+    --line-200: 150 143 180;
+    --surface-300: 150 143 180;
+    --ink-700: 236 233 246;
+    --ink-500: 214 209 229;
+    --ink-300: 176 170 196;
+  }
 
-/* Larger text. Everything is sized in rem, so scaling the root scales the whole interface. */
-:root[data-larger-text="true"] {
-  font-size: 112.5%; /* 16px → 18px */
-}
+  /* Larger text. Everything is sized in rem, so scaling the root scales the whole interface. */
+  :root[data-larger-text='true'] {
+    font-size: 112.5%; /* 16px → 18px */
+  }
 
-* {
-  box-sizing: border-box;
-}
+  * {
+    box-sizing: border-box;
+  }
 
-html,
-body {
-  min-height: 100%;
-}
+  html,
+  body {
+    min-height: 100%;
+  }
 
-html {
-  /*
+  html {
+    /*
    * Native smooth scrolling for in-page anchors. Lenis takes over on the public site and disables
    * this to avoid two smoothing systems fighting; the reduced-motion rules below neutralise BOTH.
    * Route changes stay instant: `data-scroll-behavior="smooth"` on `<html>` (app/layout.tsx) is what
@@ -162,61 +1499,56 @@ html {
    * every element INSIDE the root still leaves it standing. Both reduced-motion blocks below must
    * therefore match `<html>` itself — see the note above them.
    */
-  scroll-behavior: smooth;
-}
+    scroll-behavior: smooth;
+  }
 
-body {
-  margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-  /* Plus Jakarta Sans is the site's ONE voice by the owner's decision — headings always were, and
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    /* Plus Jakarta Sans is the site's ONE voice by the owner's decision — headings always were, and
      the interface and body copy now match, with Inter kept loaded as the metric-adjacent fallback
-     (both faces ship without a true italic, so nothing is lost in the swap). `font-sans` in
-     tailwind.config.ts carries the identical stack; these two must move together. */
-  font-family: var(--font-jakarta), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
+     (both faces ship without a true italic, so nothing is lost in the swap). `font-sans`
+     (`--font-sans` in `@theme`) carries the identical stack; these two must move together. */
+    font-family:
+      var(--font-jakarta), var(--font-inter), ui-sans-serif, system-ui,
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-/*
+  /*
  * Every anchor target clears the fixed header by the SAME number the header is tall. Declared once
  * here rather than as a `scroll-mt-28` repeated on every heading, which is how the two drift apart.
  */
-:target,
-[id][data-anchor] {
-  scroll-margin-top: var(--nav-clearance);
-}
+  :target,
+  [id][data-anchor] {
+    scroll-margin-top: var(--nav-clearance);
+  }
 
-/* Visible keyboard focus. Inputs keep their own ring; see `.field-input`. */
-a:focus-visible,
-button:focus-visible,
-[role="button"]:focus-visible,
-[tabindex]:focus-visible,
-summary:focus-visible {
-  outline: 2px solid var(--purple-700);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
+  /* Visible keyboard focus. Inputs keep their own ring; see `.field-input`. */
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  [tabindex]:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--purple-700);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
 
-/* High contrast also thickens the ring — the outline is the only cue a keyboard user gets. */
-:root[data-high-contrast="true"] a:focus-visible,
-:root[data-high-contrast="true"] button:focus-visible,
-:root[data-high-contrast="true"] [role="button"]:focus-visible,
-:root[data-high-contrast="true"] [tabindex]:focus-visible,
-:root[data-high-contrast="true"] summary:focus-visible,
-:root[data-high-contrast="true"] :is(input, select, textarea):focus-visible {
-  outline-width: 3px;
-  outline-offset: 3px;
-}
+  /* High contrast also thickens the ring — the outline is the only cue a keyboard user gets. */
+  :root[data-high-contrast='true'] a:focus-visible,
+  :root[data-high-contrast='true'] button:focus-visible,
+  :root[data-high-contrast='true'] [role='button']:focus-visible,
+  :root[data-high-contrast='true'] [tabindex]:focus-visible,
+  :root[data-high-contrast='true'] summary:focus-visible,
+  :root[data-high-contrast='true'] :is(input, select, textarea):focus-visible {
+    outline-width: 3px;
+    outline-offset: 3px;
+  }
 
-/*
+  /*
  * Reduced motion — TWO SOURCES, UNIONED, NEVER SUBTRACTED.
  *
  * A media query cannot be OR-ed with a selector, so the same declarations are written twice: once
@@ -242,10 +1574,23 @@ summary:focus-visible {
  * ⚠ CSS CANNOT REACH FRAMER-MOTION, which writes inline styles. Every framer animation must branch
  * in JS via `useReducedMotionPreference()`. See components/motion/useReducedMotionPreference.ts.
  */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0s !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  :root[data-reduced-motion='true'],
+  :root[data-reduced-motion='true'] *,
+  :root[data-reduced-motion='true'] *::before,
+  :root[data-reduced-motion='true'] *::after {
     animation-duration: 0.01ms !important;
     animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
@@ -253,52 +1598,39 @@ summary:focus-visible {
     transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
-}
 
-:root[data-reduced-motion="true"],
-:root[data-reduced-motion="true"] *,
-:root[data-reduced-motion="true"] *::before,
-:root[data-reduced-motion="true"] *::after {
-  animation-duration: 0.01ms !important;
-  animation-delay: 0s !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
-  transition-delay: 0s !important;
-  scroll-behavior: auto !important;
-}
+  /* Themed scrollbars — bg-0 track, line-200 thumb, purple on hover. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
 
-/* Themed scrollbars — bg-0 track, line-200 thumb, purple on hover. */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
+  ::-webkit-scrollbar-track {
+    background: rgb(var(--bg-0));
+  }
 
-::-webkit-scrollbar-track {
-  background: rgb(var(--bg-0));
-}
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--line-200));
+    border-radius: 9999px;
+    border: 2px solid rgb(var(--bg-0));
+  }
 
-::-webkit-scrollbar-thumb {
-  background-color: rgb(var(--line-200));
-  border-radius: 9999px;
-  border: 2px solid rgb(var(--bg-0));
-}
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.828 0.1 305); /* purple-300 */
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background-color: oklch(0.828 0.1 305); /* purple-300 */
-}
-
-/*
+  /*
  * Firefox fallback ONLY. Guarded, because setting `scrollbar-color` unguarded in Chromium disables
  * the styled `::-webkit-scrollbar` rules above and you get the platform default back.
  */
-@supports not selector(::-webkit-scrollbar) {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(var(--line-200)) rgb(var(--bg-0));
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgb(var(--line-200)) rgb(var(--bg-0));
+    }
   }
-}
 
-/*
+  /*
  * Background scroll lock, worn by <html> while a sheet or lightbox is open.
  *
  * On the ROOT ELEMENT and not only <body>, because iOS Safari quietly ignores `overflow: hidden` on
@@ -306,124 +1638,30 @@ summary:focus-visible {
  * set in the instant before this class lands: freezing the document takes the scrollbar with it, and
  * without paying that width back as padding every centred thing on the page jumps sideways.
  */
-html.scroll-locked,
-html.scroll-locked body {
-  overflow: hidden;
-  overscroll-behavior: none;
-}
+  html.scroll-locked,
+  html.scroll-locked body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
 
-html.scroll-locked body {
-  padding-right: var(--scroll-gutter, 0px);
-}
+  html.scroll-locked body {
+    padding-right: var(--scroll-gutter, 0px);
+  }
 
-/* Clean number inputs — no native spinner arrows; values change by typing. */
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
+  /* Clean number inputs — no native spinner arrows; values change by typing. */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
 
-input[type="number"] {
-  -moz-appearance: textfield;
-  appearance: textfield;
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }
 
 @layer components {
-  /* ── Form and action recipes (identical to the Field Repository's, §11.1) ───────────────── */
-
-  .field-input {
-    @apply w-full rounded-md border border-line-200 bg-card px-3.5 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-purple-600 focus:ring-4 focus:ring-purple-600/15;
-  }
-
-  .field-label {
-    @apply text-xs font-medium uppercase tracking-wide text-ink-500;
-  }
-
-  .field-button {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-purple-800 hover:shadow-cta disabled:cursor-not-allowed disabled:bg-line-200 disabled:text-ink-500 disabled:shadow-none;
-  }
-
-  .field-button-secondary {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-line-200 bg-card px-4 py-2 text-sm font-medium text-ink-900 transition hover:border-purple-300 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-60;
-  }
-
-  .field-button-ghost {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-ink-700 transition hover:bg-surface-100 hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-60;
-  }
-
-  .field-danger {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-error-200 bg-card px-3 py-2 text-sm font-medium text-error-600 transition hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-60;
-  }
-
-  .panel {
-    @apply rounded-lg border border-line-200 bg-card shadow-sm;
-  }
-
-
-  .bg-card.bg-card {
-    box-shadow:
-      0 1px 2px rgb(0 0 0 / 0.04),
-      0 12px 28px -12px oklch(0.47 0.198 305 / 0.22),
-      0 2px 10px -4px oklch(0.47 0.198 305 / 0.14);
-  }
-
-  /* The dark theme needs a deeper, wider glow: the same alphas over a near-black ground are
-     invisible, and a card that floats in the light theme and sits flat in the dark one reads as two
-     different components. Doubled for the same reason as above. */
-  :root[data-theme="dark"] .bg-card.bg-card {
-    box-shadow:
-      0 1px 2px rgb(0 0 0 / 0.5),
-      0 14px 34px -12px oklch(0.56 0.205 305 / 0.4),
-      0 2px 12px -4px oklch(0.56 0.205 305 / 0.26);
-  }
-
-  .display-title {
-    @apply font-display font-bold tracking-tight text-ink-900;
-  }
-
-  .surface-dark {
-    @apply rounded-lg bg-purple-950 text-white;
-  }
-
-  .section-band {
-    @apply rounded-lg bg-surface-50;
-  }
-
-  /*
-   * The small-caps label every section on the public site opens with.
-   *
-   * ⚠ THE COLOUR COMES THROUGH A VARIABLE INSTEAD OF `@apply text-purple-700`, AND THE INDIRECTION IS
-   * THE WHOLE POINT — it is what lets a PAGE re-tint its eyebrows without winning a specificity fight
-   * it must not win. The earth block further down sets `--eyebrow-ink` on one `<main>`; if it had
-   * instead written `color` at a selector strong enough to beat this recipe, it would also have beaten
-   * every `text-*` UTILITY the eyebrows on dark bands carry — `eyebrow text-gold-300` in the hero, in
-   * the dark CTA band and in SectionHeading's `dark` tone — and turned all three earth on a ground
-   * where earth is unreadable.
-   *
-   * As written, none of that is at risk: a utility is emitted in the utilities layer, AFTER this
-   * components layer, at the same (0,1,0) specificity, so it still wins on source order exactly as it
-   * did before (contract §5). The variable only ever decides what this recipe's OWN default is, and
-   * the fallback is the value that was hard-coded here.
-   */
-  .eyebrow {
-    @apply text-[0.8125rem] font-semibold uppercase tracking-[0.14em];
-    color: var(--eyebrow-ink, var(--purple-700));
-  }
-
-  .file-trigger {
-    @apply inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-purple-300 bg-card px-4 py-2 text-sm font-medium text-purple-700 transition hover:border-purple-400 hover:bg-purple-50;
-  }
-
-  /* ── Institutional page frame ───────────────────────────────────────────────────────────── */
-
-  /*
-   * The one place the header clearance is paid. A page NEVER adds its own top padding for the
-   * header — that is how the Field Repository ended up with three numbers meaning one thing.
-   */
-  .page-top {
-    padding-top: var(--nav-clearance);
-  }
-
   /*
    * A FULL-BLEED HERO TAKES THE CLEARANCE ONTO ITSELF, so its artwork reaches the top of the
    * viewport and the floating header sits ON it rather than in a band of page canvas above it.
@@ -451,20 +1689,12 @@ input[type="number"] {
     --bleed-top: 0px;
   }
 
-  main.page-top:has(> [data-bleed-top]:first-child) {
-    padding-top: 0;
-  }
-
-  main.page-top > [data-bleed-top]:first-child {
-    --bleed-top: var(--nav-clearance);
-  }
-
   /*
    * ══════════════════════════════════════════════════════════════════════════════════════════════
    * THE EARTH SEASONING — two warm notes on the hero-led page, and deliberately only two
    *
    * The Centre's subject is terracotta, ochre, madder, umber and turmeric, and the front page was
-   * telling that story entirely in violet and gold. So the `earth` ramp (tailwind.config.ts, built
+   * telling that story entirely in violet and gold. So the `earth` ramp (`@theme`, built
    * outwards from the mark's own `#CC785C`) gets spent here — twice, on the page whose subject it is.
    *
    * ⚠ RESTRAINT IS THE REQUIREMENT, NOT A STYLE PREFERENCE. The brand is purple and gold; a front
@@ -527,551 +1757,6 @@ input[type="number"] {
     );
   }
 
-  /* The standard content column. Wide enough for a two-up grid, never wider than the eye tracks. */
-  .shell {
-    @apply mx-auto w-full max-w-[84rem] px-5 sm:px-8;
-  }
-
-  .shell-narrow {
-    @apply mx-auto w-full max-w-[52rem] px-5 sm:px-8;
-  }
-
-  /* Long-form prose measure. `--measure` is one number so an article and an MDX page agree. */
-  .prose-measure {
-    max-width: var(--measure);
-  }
-
-  /*
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   * THE PROSE RECIPE — how a passage of text is actually set
-   *
-   * `lib/typography/typeset.ts` owns the vocabulary and the class names; this owns the rules, because
-   * they are things no utility can say: custom properties, element selectors, `::first-letter`, and a
-   * specificity that has to outrank what `components/RichText.tsx` writes.
-   *
-   * HOW IT BEATS RichText WITHOUT `!important`. RichText puts a literal utility on every node it draws
-   * — `mt-5` on a paragraph, `mt-12 text-2xl sm:text-3xl` on a heading — because there is no
-   * typography plugin here and the ink ladder is the only way prose inverts in the dark theme. A
-   * utility is one class: specificity (0,1,0). Every rule below is a class plus an element:
-   * (0,1,1). So the recipe wins on specificity, in any layer, whatever the source order.
-   *
-   * ⚠ EVERY SPACE IS WRITTEN AS `* + <element>`, NEVER AS A BARE MARGIN ON THE ELEMENT, and that is not
-   * a style preference. A bare `.prose-typeset p { margin-top }` reaches every paragraph in the
-   * document INCLUDING the ones RichText deliberately gives no margin — the label row inside a callout,
-   * the first paragraph of a cell — and would open a gap at the top of each of those boxes. The sibling
-   * combinator says the actual rule: space goes BETWEEN two things, so a block with nothing before it
-   * has nothing to be spaced from. It also means the recipe no longer depends on RichText's own
-   * `first:mt-0` to undo it, though that utility is (0,2,0) and would still win if it did.
-   *
-   * ⚠ WHAT THIS RECIPE DELIBERATELY DOES NOT TOUCH.
-   *
-   *   • **Heading FONT SIZES.** RichText sizes a heading by the LEVEL the editor chose, and clamps
-   *     level 1 and level 2 to the same `<h2>` tag (its own header explains why). A CSS rule on `h2`
-   *     therefore cannot tell those two levels apart, so any size written here would flatten an H1
-   *     into an H2 on every page on the site. The two `max()` guards below are the only exception and
-   *     they exist solely to stop a large reading size overtaking a heading — see them.
-   *   • **Figures, tables, code blocks and callouts.** Their spacing is block furniture at a fixed
-   *     rhythm and it is already right. The controls an editor was given are about TEXT.
-   *   • **Colour, in any form.** Every rung comes from the ink/line/surface ladders and inverts; a
-   *     literal neutral here would be the one part of a passage that did not (contract §1.2).
-   *
-   * ⚠ ORDER MATTERS TWICE IN THIS BLOCK, and both are easy to undo by tidying:
-   *   1. Every `.ts-*` class re-points a custom property that `.prose-typeset` also sets, at the SAME
-   *      specificity (0,1,0) and on the SAME element. Source order is therefore the only thing that
-   *      makes an override win, so the `.ts-*` classes MUST stay below the recipe.
-   *   2. `:is(h2, h3, h4) + *` and `p`/`ul`/`ol` margins are both (0,1,1). The heading rule comes
-   *      last on purpose, so the block after a heading loses its own top margin.
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   */
-  .prose-typeset {
-    /* The defaults every `ts-*` class below re-points. They are the house style's own defaults, so a
-       document rendered with no classes at all is still set properly rather than unset. */
-    --prose-size: clamp(1rem, 0.975rem + 0.13vw, 1.0625rem);
-    --prose-leading: 1.7;
-    --prose-gap: 1.2em;
-    --prose-item-gap: 0.4em;
-
-    /* `--measure` rather than a `max-width`: the reading width stays ONE number for the whole site
-       (contract §7) and `.prose-measure`, which every caller also wears, is what reads it. */
-    --measure: 68ch;
-
-    /*
-     * ⚠ NO `font-family` HERE, AND THAT IS THE DESIGN. The reading face is a real Tailwind utility —
-     * `font-lora`, `font-crimson` — taken straight off `lib/typography/fonts.ts`, and the heading face
-     * is that file's class again through an arbitrary variant. Both land in the utilities layer, which
-     * is emitted AFTER this one, so a family declared here would be overridden anyway; declaring one
-     * would only add a second place a face could come from.
-     */
-
-    /*
-     * `pretty` is set on the container so it reaches paragraphs, list items, captions and callouts
-     * alike; headings take `balance` below. It is the single highest-value declaration in this file:
-     * it is what stops a paragraph ending on a two-letter widow. Browsers that do not know the value
-     * ignore it and wrap as they always did — there is no fallback to write.
-     */
-    text-wrap: pretty;
-
-    /*
-     * An opening quotation mark or bracket hangs into the margin instead of pushing the first line in
-     * by a character. Only WebKit honours it today; everywhere else this line does nothing at all,
-     * which is why it is safe to state plainly rather than hide behind `@supports`.
-     */
-    hanging-punctuation: first last;
-
-    /* A DOI, an archive permalink or a long transliterated compound must break rather than push the
-       measure open and give the whole page a sideways scrollbar. */
-    overflow-wrap: break-word;
-
-    font-kerning: normal;
-    font-variant-ligatures: common-ligatures contextual;
-  }
-
-  /*
-   * Body text. Size and leading are set on the ELEMENTS and not on the container, because RichText's
-   * root `<div>` carries `text-base leading-7` — a container-level `line-height` would be overridden
-   * by that class for every descendant, while a custom property passes straight through it.
-   */
-  .prose-typeset :is(p, li) {
-    font-size: var(--prose-size);
-    line-height: var(--prose-leading);
-    /*
-     * ⚠ 3 AND 3 ARE THE PRINT BLOCK'S NUMBERS, COPIED ON PURPOSE. These rules are (0,1,1) and the
-     * `p, li { orphans: 3 }` at the foot of this file is (0,0,1) — so anything different here would
-     * beat the paper edition and quietly undo it. They do nothing on a continuous screen; they are
-     * what a printed or multi-column rendering reads.
-     */
-    orphans: 3;
-    widows: 3;
-  }
-
-  .prose-typeset * + p,
-  .prose-typeset * + :is(ul, ol) {
-    margin-top: var(--prose-gap);
-  }
-
-  .prose-typeset * + li {
-    margin-top: var(--prose-item-gap);
-  }
-
-  .prose-typeset * + hr {
-    margin-top: calc(var(--prose-gap) * 2.2);
-  }
-
-  .prose-typeset * + blockquote {
-    margin-top: calc(var(--prose-gap) * 1.5);
-  }
-
-  /*
-   * A quotation is set slightly larger and tighter than the text around it, and the size is applied to
-   * the blockquote while its paragraphs are told to inherit. Re-pointing `--prose-size` on the
-   * blockquote would look neater and is illegal: a custom property whose value reads itself on the
-   * same element is a cycle, and the declaration is thrown away.
-   */
-  .prose-typeset blockquote {
-    font-size: calc(var(--prose-size) * 1.12);
-  }
-
-  .prose-typeset blockquote :is(p, li) {
-    font-size: inherit;
-    line-height: 1.55;
-  }
-
-  /* Numbers in a table are a column to be compared, so they get equal widths and lining figures. In
-     running prose they stay proportional, where they belong. */
-  .prose-typeset :is(th, td) {
-    font-variant-numeric: tabular-nums lining-nums;
-  }
-
-  /*
-   * ── THE TWO ISLANDS THE READING SIZE MUST NOT FLOOD ─────────────────────────────────────────
-   *
-   * A table cell and the footnote list are set SMALL by RichText, on the cell and on the `<section>`
-   * respectively — and both hold ordinary `<p>` and `<li>` elements, which the rules above would drag
-   * back up to reading size. A footnote printed as large as the essay is not a footnote, and a table
-   * whose cells are 17px is a table that no longer fits its column.
-   *
-   * `inherit` rather than a restated size: whatever RichText decides those two contexts are, this
-   * follows it. The footnote hook is the `aria-label` the renderer gives the section — an attribute it
-   * sets for screen readers and therefore will not quietly drop, unlike a utility class.
-   */
-  .prose-typeset :is(th, td) :is(p, li),
-  .prose-typeset [aria-label="Footnotes"] :is(p, li) {
-    font-size: inherit;
-    line-height: inherit;
-  }
-
-  .prose-typeset [aria-label="Footnotes"] :is(ul, ol) {
-    margin-top: 0;
-  }
-
-  /*
-   * ── THE HEADING RHYTHM — the fix this whole recipe was written for ──────────────────────────
-   *
-   * Before it, a heading sat 48px below the previous paragraph and 20px above its own first sentence,
-   * and 20px is also the gap between two ordinary paragraphs. A heading no closer to the text it
-   * introduces than to the text it follows does not read as a title; it reads as a line of bold type
-   * adrift between two blocks.
-   *
-   * `1.6em` is measured against the heading's OWN size, which reproduces RichText's `mt-12` / `mt-10`
-   * / `mt-8` almost exactly at every level — so the space ABOVE a heading is unchanged and now scales
-   * with the size an editor chose. What changes is below it: the heading owns that gap, and the block
-   * that follows gives up its own margin entirely.
-   */
-  .prose-typeset :is(h2, h3, h4) {
-    margin-bottom: 0.5em;
-    text-wrap: balance;
-  }
-
-  .prose-typeset * + :is(h2, h3, h4) {
-    margin-top: 1.6em;
-  }
-
-  .prose-typeset h2 {
-    line-height: 1.15;
-  }
-
-  .prose-typeset h3 {
-    line-height: 1.25;
-  }
-
-  /*
-   * ⚠ THE ONE SIZE THIS FILE RESTATES, AND WHY. `1.125rem` is RichText's `text-lg` for a level-4
-   * heading — the only heading size small enough that a large reading size could overtake it, which
-   * would leave a "heading" set smaller than the paragraph under it. `max()` makes the guard inert at
-   * every size except the two largest. If RichText's level-4 size changes, this number must follow it.
-   */
-  .prose-typeset h4 {
-    line-height: 1.35;
-    font-size: max(1.125rem, calc(var(--prose-size) * 1.06));
-  }
-
-  /*
-   * The same guard for a level-3 heading, and ONLY below `sm`.
-   *
-   * ⚠ It is inside a media query for a reason that is invisible otherwise: RichText sizes a level-3
-   * heading `text-xl sm:text-2xl`, and a `sm:` variant carries no extra specificity — a media query
-   * never adds any. An unguarded rule here would therefore beat `sm:text-2xl` at EVERY width and
-   * silently delete the heading's responsive step. Below `sm` there is no variant to lose.
-   */
-  @media (max-width: 39.9375rem) {
-    .prose-typeset h3 {
-      font-size: max(1.25rem, calc(var(--prose-size) * 1.14));
-    }
-  }
-
-  /* The block after a heading belongs to it. Last of the (0,1,1) margin rules, so it wins the tie. */
-  .prose-typeset :is(h2, h3, h4) + * {
-    margin-top: 0;
-  }
-
-  /* Except another heading, which needs a real pause without the full break of a new section. */
-  .prose-typeset :is(h2, h3, h4) + :is(h2, h3, h4) {
-    margin-top: 0.8em;
-  }
-
-  /* ── The measure ────────────────────────────────────────────────────────────────────────────── */
-
-  .ts-measure-intimate {
-    --measure: 54ch;
-  }
-
-  .ts-measure-standard {
-    --measure: 68ch;
-  }
-
-  .ts-measure-generous {
-    --measure: 78ch;
-  }
-
-  .ts-measure-wide {
-    --measure: 88ch;
-  }
-
-  /* `none` is a legal `max-width`, so `.prose-measure` stops constraining rather than being removed —
-     which keeps ONE class on the element whatever the measure is. */
-  .ts-measure-full {
-    --measure: none;
-  }
-
-  /* ── The size scale ─────────────────────────────────────────────────────────────────────────────
-   *
-   * Fluid rather than stepped: a `clamp()` grows the text a little as the window does, so a passage is
-   * 16px on a phone and 17px on a desktop without a breakpoint to jump at. The `vw` term is small on
-   * purpose — text that visibly resizes as a window is dragged reads as a bug.
-   */
-  .ts-size-small {
-    --prose-size: clamp(0.9375rem, 0.92rem + 0.1vw, 1rem);
-  }
-
-  .ts-size-standard {
-    --prose-size: clamp(1rem, 0.975rem + 0.13vw, 1.0625rem);
-  }
-
-  .ts-size-large {
-    --prose-size: clamp(1.0625rem, 1.02rem + 0.22vw, 1.1875rem);
-  }
-
-  .ts-size-feature {
-    --prose-size: clamp(1.125rem, 1.04rem + 0.42vw, 1.3125rem);
-  }
-
-  /* ── Leading ────────────────────────────────────────────────────────────────────────────────── */
-
-  .ts-lead-tight {
-    --prose-leading: 1.4;
-  }
-
-  .ts-lead-snug {
-    --prose-leading: 1.55;
-  }
-
-  .ts-lead-comfortable {
-    --prose-leading: 1.7;
-  }
-
-  .ts-lead-relaxed {
-    --prose-leading: 1.85;
-  }
-
-  .ts-lead-loose {
-    --prose-leading: 2;
-  }
-
-  /* ── Paragraph spacing ──────────────────────────────────────────────────────────────────────────
-   *
-   * In `em`, so the rhythm follows the size of the text it separates: a gap fixed in `rem` looks tight
-   * under Feature-sized text and cavernous under Small.
-   */
-  .ts-gap-tight {
-    --prose-gap: 0.8em;
-    --prose-item-gap: 0.3em;
-  }
-
-  .ts-gap-standard {
-    --prose-gap: 1.2em;
-    --prose-item-gap: 0.4em;
-  }
-
-  .ts-gap-open {
-    --prose-gap: 1.75em;
-    --prose-item-gap: 0.55em;
-  }
-
-  /*
-   * ── Indented paragraphs — the book setting ──────────────────────────────────────────────────
-   *
-   * `p + p` is the whole rule and it is exact: only a paragraph whose immediate predecessor is also a
-   * paragraph is indented, so the passage's first paragraph, and the first after a heading, a list, a
-   * quotation or a figure, all start flush — which is how indented prose has always been set. The gap
-   * goes at the same time; an indent AND a blank line say the same thing twice.
-   */
-  .ts-para-indented p + p {
-    margin-top: 0;
-    text-indent: 1.5em;
-  }
-
-  /* ── How headings break ─────────────────────────────────────────────────────────────────────── */
-
-  .ts-heading-pretty :is(h2, h3, h4) {
-    text-wrap: pretty;
-  }
-
-  .ts-heading-plain :is(h2, h3, h4) {
-    text-wrap: wrap;
-  }
-
-  /*
-   * ── Hyphenation ─────────────────────────────────────────────────────────────────────────────
-   *
-   * ⚠ IT DOES NOTHING WITHOUT A `lang` ATTRIBUTE. Hyphenation is dictionary work, so a browser will
-   * not guess a language; `<html lang>` in app/layout.tsx is what makes this line have an effect.
-   * `hyphenate-limit-chars` keeps it civilised — no word under six letters is broken, and never with
-   * fewer than three letters on either side of the break.
-   */
-  .ts-hyphens-on :is(p, li) {
-    -webkit-hyphens: auto;
-    hyphens: auto;
-    hyphenate-limit-chars: 6 3 3;
-  }
-
-  .ts-justify-on :is(p, li) {
-    text-align: justify;
-    text-justify: inter-word;
-  }
-
-  /*
-   * ── The drop cap ────────────────────────────────────────────────────────────────────────────
-   *
-   * ⚠ THE SELECTOR'S SHAPE IS THE WHOLE CARE IN THIS RULE. `> * >` means "the first paragraph inside
-   * the ONE wrapper `components/RichText.tsx` renders" — the first paragraph of the document, whether
-   * or not a heading precedes it, and nothing deeper. A plainer `p:first-of-type` would also set a
-   * three-line capital in the first paragraph of every callout, every quotation and every list item.
-   * If RichText ever stops rendering exactly one root element, the drop cap stops appearing; it will
-   * not appear in the wrong place.
-   *
-   * `float` rather than `initial-letter`, which is the property actually designed for this and is
-   * WebKit-only: a float behaves the same everywhere, and a treatment that aligned correctly in one
-   * browser and approximately in the rest is harder to judge than one that is the same in all of them.
-   *
-   * The colour comes from the ink ladder, so the capital inverts with the rest of the passage — and it
-   * is deliberately NOT purple: purple-700 is the action colour, and a decorative letter wearing it
-   * teaches a reader that purple is not always something to press (contract §1.1).
-   */
-  .ts-dropcap > * > p:first-of-type::first-letter {
-    float: left;
-    font-size: 3.1em;
-    line-height: 0.82;
-    font-weight: 600;
-    padding-right: 0.07em;
-    margin-top: 0.04em;
-    color: rgb(var(--ink-900));
-  }
-
-  /*
-   * ── Pull quotes, optically aligned ──────────────────────────────────────────────────────────
-   *
-   * RichText gives a quotation a left rule and 1.25rem of padding, so its words start a quarter of an
-   * inch inside the text around it and the passage develops a dent. Pulling the whole quotation left
-   * by rather more than its own padding puts the QUOTED WORDS back on the text's edge and leaves the
-   * rule hanging in the margin, which is how a quotation is set in print.
-   *
-   * ⚠ FROM 40rem UP ONLY. The negative margin spends about 25px of whatever sits to the left of the
-   * text; below `sm` the shell has only 20px of padding there, so the rule would touch the edge of the
-   * screen. Under that width the quotation stays indented, which is the honest fallback.
-   */
-  @media (min-width: 40rem) {
-    .ts-quote-hanging blockquote {
-      margin-left: -1.45em;
-      padding-left: 1.25em;
-    }
-  }
-
-  /*
-   * "THIS ROW, JUST NOW" — the answer to a selection made somewhere else on the page.
-   *
-   * TWO SIGNALS, DELIBERATELY, and only one of them is motion. The ring is a plain static outline:
-   * it is what a reader sees who looked away during the pulse, and — the point — it is the ONLY half
-   * that survives `prefers-reduced-motion`, where the global rule above collapses every animation to
-   * 0.01ms. A "which one" signal that exists only as movement is a signal those readers never get.
-   *
-   * `outline` rather than `box-shadow` or a border: these rows already carry a conditional selected
-   * border and a focus-visible ring, and an outline stacks with both without changing the box.
-   *
-   * Driven by a `data-flash` ATTRIBUTE, not a class, so React can flip it without touching the
-   * className a dozen conditional styles are already composing.
-   */
-  .flash-row[data-flash="true"] {
-    outline: 2px solid var(--purple-700);
-    outline-offset: 2px;
-    animation: fr-row-flash 700ms ease-out 1;
-  }
-
-  /*
-   * The navigation sheet (phones and tablets).
-   *
-   * The PANEL is the scroller: a bounded height, its own overflow, and `overscroll-behavior:
-   * contain` so reaching the last item does not hand the gesture to the page underneath.
-   *
-   * ⚠ THE DOUBLED `max-height` IS PROGRESSIVE ENHANCEMENT, NOT A DUPLICATE. With `vh` alone the
-   * closing items sit below the fold while the phone's address bar shows — which is exactly when a
-   * thumb reaches for the menu. Browsers that know `dvh` take the second declaration.
-   */
-  .nav-sheet {
-    --nav-sheet-top: 5rem;
-    margin-top: var(--nav-sheet-top);
-    max-height: calc(100vh - var(--nav-sheet-top) - 1rem);
-    max-height: calc(100dvh - var(--nav-sheet-top) - 1rem);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    padding: 1.5rem;
-    /* The home indicator sits over the foot of the sheet; the last item has to clear it. */
-    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
-  }
-
-  /* A phone in landscape leaves barely 350px of height — give the list back the chrome it can spare. */
-  @media (max-height: 560px) {
-    .nav-sheet {
-      --nav-sheet-top: 4.25rem;
-      padding: 1rem;
-      padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
-    }
-  }
-
-  /*
-   * Both of these are `position: fixed`, so their containing block is the viewport rather than
-   * <body> and the padding the scroll lock puts on the body cannot reach them. They re-pay the
-   * vanished scrollbar themselves, otherwise the header and the sheet drift right as a menu opens.
-   */
-  .nav-frame {
-    padding-left: 0.75rem;
-    padding-right: calc(0.75rem + var(--scroll-gutter, 0px));
-  }
-
-  .overlay-frame {
-    padding-right: var(--scroll-gutter, 0px);
-  }
-
-  /*
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   * A skeleton placeholder — AND THE ONLY SWEEP VOCABULARY IN THIS PRODUCT
-   * ══════════════════════════════════════════════════════════════════════════════════════════════
-   *
-   * The sweep is the motion half; `background-color` is the static half, so under reduced motion the
-   * block is still visibly a placeholder rather than an empty area of page (§1.5).
-   *
-   * ⚠ IT USED TO ANIMATE `background-position`, WHICH NO ENGINE COMPOSITES. A 200%-wide gradient slid
-   * across the element by `background-position`, `infinite`, on the MAIN THREAD. One placeholder is
-   * nothing; a loading table renders twenty of them (`components/studio/DataTable.tsx` draws
-   * `skeletonRows` bars, `MediaGrid` draws twelve tiles times three bars), and twenty permanent
-   * repaint loops at 60fps land on exactly the screens whose main thread is already blocked on the
-   * fetch these bars are standing in for. The animation was competing with the work it was reporting.
-   *
-   * THE REPLACEMENT IS A TRANSLATED CHILD INSIDE AN OVERFLOW-HIDDEN FRAME, which is the only shape
-   * that expresses "a highlight travels across this box" using nothing but `transform`. The element
-   * becomes the frame (`relative` + `overflow: hidden`) and its `::after` is the travelling highlight.
-   * A pseudo-element rather than a real child because `.skeleton` is worn by ~20 empty `<div>`s across
-   * the studio that this file cannot reach — every one of them is `<div className="skeleton …" />`
-   * with no children, so a `::after` is the only child that can be added from here at all.
-   *
-   * ⚠ THE RESTING TRANSFORM IS `-100%` AND IT IS LOAD-BEARING, not a tidy starting value. A CSS
-   * animation with no `forwards` fill returns the element to its BASE style when it stops, and the
-   * reduced-motion rules at the top of this file stop it after 0.01ms with one iteration. With no base
-   * transform the highlight would come to rest at `translate(0)` — parked in the middle of the frame,
-   * permanently, for every reader who asked for less motion. On `.skeleton` that would be a bright
-   * band across every placeholder; on `ProgressBar`'s indeterminate track it would be worse than
-   * cosmetic, because a purple band sitting halfway along a progress bar reads as "50% done" on a bar
-   * whose entire meaning is that the total is unknown. Parked off the left, the static tint underneath
-   * is all that remains, which is exactly what §1.4 asks for.
-   *
-   * ⚠ ONE KEYFRAME, ONE NAME, ONE DEFINITION. `@keyframes sweep` is at the foot of this file, outside
-   * every `@layer`, so it cannot be purged; tailwind.config.ts declares `animation.sweep` (the
-   * `animate-sweep` utility ProgressBar writes) and deliberately declares NO keyframe of that name.
-   * The long note there says why, and reversing it is how twenty skeletons stop animating in silence.
-   * The only other travelling-light animation in the repository is `cxa-jaali-shimmer` in
-   * app/craft-tapestry.css, which is NOT this vocabulary and must not be merged into it: it is a
-   * 46-second architectural conceit moving daylight across a pierced screen, in absolute SVG user
-   * units, and it is already transform-only.
-   */
-  .skeleton {
-    @apply relative overflow-hidden rounded-md bg-surface-200;
-  }
-
-  .skeleton::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    /* See the ⚠ above: this is where the highlight RESTS, not merely where it starts. */
-    transform: translate3d(-100%, 0, 0);
-    background-image: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgb(var(--surface-300) / 0.7) 50%,
-      transparent 100%
-    );
-    animation: sweep 1.8s ease-in-out infinite;
-  }
-
   /*
    * A SHUT DISCLOSURE PANEL — `components/ui/Accordion.tsx`.
    *
@@ -1095,7 +1780,8 @@ input[type="number"] {
   }
 }
 
-/*
+@layer utilities {
+  /*
  * ONE PULSE, NOT A LOOP. A repeating highlight reads as an error state and pulls the eye away from
  * whatever the reader chose to look at next. The purple is the product's single action colour, at
  * the low alpha that reads as a wash over a white or purple-50 row rather than as a second fill.
@@ -1110,19 +1796,19 @@ input[type="number"] {
  * row, ONE iteration, 700ms, and only in answer to something the reader just did. Recorded here so
  * the next audit does not re-find it as an unexamined violation of §8.
  */
-@keyframes fr-row-flash {
-  0% {
-    background-color: oklch(0.47 0.198 305 / 0.22);
+  @keyframes fr-row-flash {
+    0% {
+      background-color: oklch(0.47 0.198 305 / 0.22);
+    }
+    60% {
+      background-color: oklch(0.47 0.198 305 / 0.1);
+    }
+    100% {
+      background-color: transparent;
+    }
   }
-  60% {
-    background-color: oklch(0.47 0.198 305 / 0.1);
-  }
-  100% {
-    background-color: transparent;
-  }
-}
 
-/*
+  /*
  * THE SWEEP — one keyframe, one definition, two callers.
  *
  * `.skeleton::after` above and the `animate-sweep` utility that `components/ui/ProgressBar.tsx`
@@ -1143,7 +1829,7 @@ input[type="number"] {
  *
  * ⚠ AND THE TIMING — `1.8s ease-in-out infinite` — IS WRITTEN IN TWO PLACES ON PURPOSE, WHICH IS THE
  * LESSER OF TWO EVILS RATHER THAN AN OVERSIGHT. `.skeleton::after` declares it directly, and
- * `animation.sweep` in tailwind.config.ts declares it for the `animate-sweep` utility ProgressBar
+ * `--animate-sweep` in `@theme` declares it for the `animate-sweep` utility ProgressBar
  * writes. The two must agree, or a loading table and the upload bar beside it sweep at different rates
  * on the same screen. The one-definition alternative — `.skeleton::after { @apply animate-sweep; }` —
  * was considered and rejected: it would make every skeleton in the CMS depend on a key in the Tailwind
@@ -1152,102 +1838,13 @@ input[type="number"] {
  * in two files, with a ⚠ in both, is cheaper than twenty placeholders that stop animating because
  * somebody tidied a config.
  */
-@keyframes sweep {
-  from {
-    transform: translate3d(-100%, 0, 0);
-  }
-  to {
-    transform: translate3d(100%, 0, 0);
-  }
-}
-
-@layer utilities {
-  .grad-brand {
-    background-image: var(--grad-brand);
-  }
-
-  .grad-mesh {
-    background-image: var(--grad-mesh);
-  }
-
-  /* Gold gradient text — hero headline spans and institutional marketing copy ONLY. */
-  .text-gold-gradient {
-    background-image: var(--grad-gold);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .text-gradient-violet {
-    background-image: var(--grad-brand);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  /*
-   * Frosted glass.
-   *
-   * ⚠ Requires a TRANSLUCENT backdrop from the caller — the filter refracts what is behind it, and
-   * an opaque fill underneath paints over the result. Glass must never be NESTED: an ancestor with
-   * its own `backdrop-filter` or `opacity < 1` becomes the backdrop root and the child refracts its
-   * parent instead of the page.
-   */
-  .glass-card {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    border: 1px solid rgba(255, 255, 255, 0.6);
-  }
-
-  .glass-dark {
-    background: rgba(30, 27, 46, 0.5);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-  }
-
-  .ambient-light {
-    background-image: var(--grad-mesh);
-  }
-
-  /*
-   * Film-grain noise.
-   *
-   * An inline SVG `feTurbulence` as a data URI: no network request, no image asset to keep in step,
-   * and it scales to any element. Very low alpha — grain that is visible as grain reads as a
-   * rendering fault; grain you cannot see is what stops a large flat gradient from banding.
-   */
-  .noise::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.035;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-
-  /*
-   * Edge fades for horizontal scrollers (logo rows, tag rails, the news ticker).
-   *
-   * `mask-image` rather than an overlaid gradient, because an overlay has to know the background
-   * colour behind it and would be wrong in the other theme.
-   */
-  .mask-edges-x {
-    -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
-    mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
-  }
-
-  /*
-   * Balanced headline wrapping. Progressive: browsers without `text-wrap: balance` simply wrap
-   * normally, which is the pre-existing behaviour and not a regression.
-   */
-  .text-balance {
-    text-wrap: balance;
-  }
-
-  .text-pretty {
-    text-wrap: pretty;
+  @keyframes sweep {
+    from {
+      transform: translate3d(-100%, 0, 0);
+    }
+    to {
+      transform: translate3d(100%, 0, 0);
+    }
   }
 }
 
@@ -1285,6 +1882,10 @@ input[type="number"] {
  * printed page predictable.
  * ════════════════════════════════════════════════════════════════════════════
  */
+/* In `@layer utilities` for the reason given where the file's last layer opens: outside every layer these
+   `!important` paper rules would LOSE to every `!` utility (cascade layers reverse for important
+   declarations), where under Tailwind 3 specificity and order decided. */
+@layer utilities {
 @media print {
   /* ── 1. The page box ────────────────────────────────────────────────────────────────────────
    * A generous, symmetrical margin: printed research gets annotated in the margin, and a duplex
@@ -2025,7 +2626,16 @@ input[type="number"] {
     padding-left: 0 !important;
   }
 }
+} /* @layer utilities — the paper edition */
 
+/*
+ * ⚠ EVERYTHING FROM HERE TO THE END OF THE FILE IS IN `@layer utilities`. Tailwind 4 uses real cascade
+ * layers, and a rule outside every layer beats every utility whatever the specificities — which would
+ * turn the `bg-card` defaults at the foot of this file into overrides of `absolute`, `fixed` and every
+ * `z-` rung on 92 files (the note there says what that did once already). Inside the utilities layer,
+ * after the utilities, specificity decides again, exactly as it did under Tailwind 3.
+ */
+@layer utilities {
 /*
  * ════════════════════════════════════════════════════════════════════════════
  * THE EMBROIDERED MARGIN — the drawn half of components/site/EmbroideryEdge.tsx
@@ -2175,7 +2785,7 @@ input[type="number"] {
 /*
  * ⚠ THE CURVE IS WRITTEN OUT AND IT IS NOT THE CSS KEYWORD `ease-out`. `EASE_OUT` in
  * components/motion/constants.ts is cubic-bezier(0.16, 1, 0.3, 1) — the house curve, the same one
- * tailwind.config.ts gives the `ease-out` CLASS — and the identically-spelled CSS keyword is a
+ * `@theme`'s `--ease-out` gives the `ease-out` CLASS — and the identically-spelled CSS keyword is a
  * different, much lazier curve (contract §4). 500ms is `DURATION.rise`, the standard below-the-fold
  * rise-and-fade, in the milliseconds CSS wants rather than the seconds framer wants.
  *
@@ -2241,12 +2851,12 @@ input[type="number"] {
  * because an inline style cannot hold a media query.
  *
  * The per-width rules are generated by `pictureCss()` in lib/media/screens.ts and emitted next to the
- * image as a `<style>` block, one rule per band, keyed on a hash of the geometry. This rule is the static
+ * image as a `\3c style>` block, one rule per band, keyed on a hash of the geometry. This rule is the static
  * half: it never changes, so it belongs in the stylesheet rather than being repeated per image.
  *
  * ⚠ THE FALLBACKS ARE THE UNCROPPED CASE, EXACTLY. `100% / 100% / 0 / 0` is what `cropFrameStyle(FULL_CROP)`
  * produces and what `next/image`'s own `fill` does — so a `.cxa-crop` element whose variables never
- * arrive (a `<style>` block stripped by a proxy, CSS that failed to load) shows the whole photograph
+ * arrive (a `\3c style>` block stripped by a proxy, CSS that failed to load) shows the whole photograph
  * cover-fitted instead of collapsing to nothing. A missing variable must degrade to today's behaviour,
  * never to an empty frame.
  *
@@ -2319,7 +2929,9 @@ input[type="number"] {
 
 
 /*
- * ⚠ OUTSIDE `@layer components`, AND THAT IS THE ONLY THING THAT ACTUALLY WORKS.
+ * ⚠ OUTSIDE `@layer components`, AND THAT IS THE ONLY THING THAT ACTUALLY WORKS. (Written for Tailwind 3; under
+ * Tailwind 4 it is in `@layer utilities` — see the note where that layer opens — and `@apply` cannot see a
+ * plain rule in any layer, so the evasion below holds.)
  *
  * Two shapes were tried inside the layer and BOTH were still inlined into `.field-input` by
  * `@apply` — `:where(.bg-card)` and `[class~="bg-card"]` alike. Tailwind v3 collects every
@@ -2418,10 +3030,11 @@ input[type="number"] {
  * `:where()` is (0,0,0), so BOTH declarations are defaults again — exactly what the note above
  * promises — and it costs nothing that was wanted: a card that says nothing still gets `relative`
  * and rung 45, and the `@apply` evasion is untouched because this is still an attribute selector
- * rather than a class rule. It must never be unwrapped, and it must never go back inside a layer.
+ * rather than a class rule. It must never be unwrapped, and it must never go into `@layer components`
+ * or out of every layer: under Tailwind 4 it belongs exactly where it is, in `@layer utilities`.
  */
 :where([class~="bg-card"]) {
   position: relative;
   z-index: 45;
 }
-
+} /* @layer utilities — opened above THE EMBROIDERED MARGIN */

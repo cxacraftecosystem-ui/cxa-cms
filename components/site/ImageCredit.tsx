@@ -79,7 +79,7 @@ export function ImageCredit({ image, variant = "inline", className }: ImageCredi
         // also already the ground colour laid under photographs by the hero and the parallax banner,
         // so the chip reads as part of the picture's own furniture rather than a grey box on top of it.
         variant === "overlay" &&
-          "inline-block rounded-sm bg-purple-950/70 px-2 py-1 text-white backdrop-blur-sm",
+          "inline-block rounded-sm bg-purple-950/70 px-2 py-1 text-white backdrop-blur-xs",
         className
       )}
     >

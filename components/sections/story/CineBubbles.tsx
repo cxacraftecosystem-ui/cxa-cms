@@ -21,7 +21,7 @@
  * ⚠ THE SHIMMER IS A TRANSLATED CHILD INSIDE AN `overflow-hidden` CHIP, never an animated
  * `background-position`. The gradient sweep is one element moving on the compositor; the
  * background-position version of the same effect is a main-thread repaint of every chip on every
- * frame, which is the exact defect tailwind.config.ts's `keyframes` note records having removed from
+ * frame, which is the exact defect the `sweep` note in app/globals.css records having removed from
  * the loading skeletons. It is also `aria-hidden` and rendered ONLY when motion is allowed.
  *
  * ⚠ WHAT REDUCED MOTION GETS: a plain fade, at zero duration, with no displacement, no overshoot and
@@ -52,7 +52,7 @@ import { cn } from "@/lib/utils";
  * opening paragraph: these springs are a feel, and that feel is "arrives without a visible bounce".
  *
  * So the bounce comes from the house's OTHER settled bounce value — `transitionTimingFunction.spring`
- * in tailwind.config.ts, `cubic-bezier(0.34, 1.56, 0.64, 1)`, which every `ease-spring` class in the
+ * (`--ease-spring` in app/globals.css), `cubic-bezier(0.34, 1.56, 0.64, 1)`, which every `ease-spring` class in the
  * product already uses. It is restated here as a tuple because a JS animation cannot name a CSS
  * timing function, exactly as `EASE_OUT` restates the `ease-out` class. If a genuinely under-damped
  * spring is ever added to constants.ts, this is the one call site to move over.

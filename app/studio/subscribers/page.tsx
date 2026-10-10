@@ -735,7 +735,7 @@ export default async function StudioSubscribersPage({
   const filtered = q.length > 0 || status !== null || source !== null;
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Newsletter subscribers"
         /*
@@ -929,7 +929,7 @@ export default async function StudioSubscribersPage({
                   </span>
                 </p>
                 {row.error ? (
-                  <p className="mt-1.5 break-words font-mono text-[0.6875rem] leading-relaxed text-error-700">
+                  <p className="mt-1.5 wrap-break-word font-mono text-[0.6875rem] leading-relaxed text-error-700">
                     {row.error}
                   </p>
                 ) : null}

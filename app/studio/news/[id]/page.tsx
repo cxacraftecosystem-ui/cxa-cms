@@ -183,7 +183,7 @@ export default async function StudioArticlePage({
   const publicPath = `/news/${post.slug}`;
 
   return (
-    <div className="mx-auto w-full max-w-[96rem] space-y-6">
+    <div className="mx-auto w-full max-w-384 space-y-6">
       <StudioPageHeader
         title={post.title.trim().length > 0 ? post.title : "Untitled article"}
         back={{ href: "/studio/news", label: "News" }}

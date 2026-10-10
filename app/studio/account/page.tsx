@@ -535,7 +535,7 @@ export default async function StudioAccountPage({
       : "";
 
   return (
-    <div className="mx-auto w-full max-w-[52rem] space-y-6">
+    <div className="mx-auto w-full max-w-208 space-y-6">
       <StudioPageHeader
         title="Your account"
         description="Your name and picture as colleagues see them, the address you sign in with, your password, and the second step that protects it."

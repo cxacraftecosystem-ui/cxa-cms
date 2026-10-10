@@ -84,7 +84,7 @@ import { cn } from "@/lib/utils";
  *
  * A WebGL paint property cannot read a CSS custom property and maplibre's colour parser does not
  * accept `oklch()`, so the one action colour has to be written here as the hex it renders to. If the
- * purple ramp in tailwind.config.ts ever moves, this moves with it.
+ * purple ramp in app/globals.css's `@theme` ever moves, this moves with it.
  */
 const PIN_FILL = "#772cb1";
 
@@ -93,8 +93,8 @@ export type MapHeight = "sm" | "md" | "lg";
 /** Complete literal class strings — a height built by concatenation is purged (contract §5). */
 const HEIGHT_CLASS: Record<MapHeight, string> = {
   sm: "h-64",
-  md: "h-[26rem]",
-  lg: "h-[34rem]"
+  md: "h-104",
+  lg: "h-136"
 };
 
 export interface MapPoint {

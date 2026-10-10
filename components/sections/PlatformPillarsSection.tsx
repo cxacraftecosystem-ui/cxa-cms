@@ -287,7 +287,7 @@ function PillarWords({ pillar }: { pillar: keyof typeof PILLAR_TITLES }) {
   return (
     <>
       {/* A gold hairline leads the words in — the thread's own gesture, one panel wide. */}
-      <span aria-hidden="true" className="mt-6 block h-px w-10 bg-gradient-to-r from-gold-300/80 to-transparent" />
+      <span aria-hidden="true" className="mt-6 block h-px w-10 bg-linear-to-r from-gold-300/80 to-transparent" />
       <h3 className="display-title mt-3 text-lg text-white">{PILLAR_TITLES[pillar]}</h3>
       <p className="mt-2.5 text-sm leading-relaxed text-white/65">{PILLAR_LINES[pillar]}</p>
     </>

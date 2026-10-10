@@ -50,8 +50,9 @@ fix each one needs.
 - **Smaller image sizes are never regenerated.** A picture above `DERIVE_MAX_BYTES`, or one whose sizes
   failed, keeps serving the full-size file; the only remedy is replacing it. Fix: a "make sizes again"
   action on the media item.
-- **`font-mono` does not resolve to JetBrains Mono.** It points at `--font-mono`, which nothing defines;
-  `font-jetbrains-mono` is the working key. Fix: define `--font-mono`, or point the key at the face.
+- **`font-mono` is not a monospace.** It points at a variable nothing defines, so it inherits the face
+  around it (as it always has — app/globals.css says why); `font-jetbrains-mono` is the working key. Fix:
+  point `--font-mono` at JetBrains Mono, and check the 83 places that use it.
 - **A category or tag rename reindexes at most `REINDEX_LIMIT` articles at once.** The rest keep their
   old label in the site search until the next *Rebuild index*. Fix: queue the remainder.
 - **Plain-markdown images in an MDX article render nothing.** The public page no longer explains this
@@ -416,7 +417,7 @@ font-check`, now part of `npm run check`) makes 261 offline assertions — every
 matches its recorded byte count and SHA-256, and carries the `wOF2` signature; every face's licence text
 ships, is not truncated, and names the licence it claims; nothing on disk is undeclared and no licence
 is orphaned; `TYPE_LIBRARY_BYTES` agrees with the sum; and every face is declared in `app/layout.tsx`
-and keyed in `tailwind.config.ts`, because a face missing from either renders as a silent fallback.
+and keyed in the `@theme` block of `app/globals.css`, because a face missing from either renders as a silent fallback.
 
 ⚠ **Proven to discriminate before being trusted**, per defect class 11: removing one licence names that
 family and fails; flipping a single byte inside a `.woff2` is caught by the hash and not the byte count;

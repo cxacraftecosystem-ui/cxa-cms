@@ -365,7 +365,7 @@ export function MediaPicker({
           placeholder="Search files"
           value={filters.q}
           onValueChange={(value) => setFilters((current) => ({ ...current, q: value, page: 1 }))}
-          className="sm:min-w-[14rem] sm:flex-1"
+          className="sm:min-w-56 sm:flex-1"
         />
 
         {/* `Field` (a real `<label>`) is right here: these are NATIVE `<select>`s, so there is no
@@ -512,7 +512,7 @@ export function MediaPicker({
                 >
                   {thumb ? (
                     <span
-                      // Inline, not a Tailwind class: an `aspect-[16/9]` assembled from stored data
+                      // Inline, not a Tailwind class: an `aspect-video` assembled from stored data
                       // would be purged by the content scanner (contract §5).
                       style={{ aspectRatio: String(keptAspect(asset, crop)) }}
                       className="relative block w-14 shrink-0 overflow-hidden rounded-sm border border-line-200 bg-surface-100"

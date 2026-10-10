@@ -514,7 +514,7 @@ export function MapForm({ data, onChange, onDirty }: SectionFormProps<MapSection
         min={1}
         max={20}
         integer
-        inputClassName="max-w-[8rem]"
+        inputClassName="max-w-32"
       />
 
       <Field

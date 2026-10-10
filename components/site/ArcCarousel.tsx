@@ -196,12 +196,12 @@ function ArcFan({ items }: ArcCarouselProps) {
   return (
     <div>
       {/*
-        The stage. `h-[30rem]` is the whole arc drawing: tall enough for the centred card plus the
+        The stage. `h-120` is the whole arc drawing: tall enough for the centred card plus the
         drop of its neighbours down the curve, and everything past the curve is clipped here.
       */}
       <div
         ref={stageRef}
-        className="relative h-[30rem] overflow-hidden"
+        className="relative h-120 overflow-hidden"
         onScroll={(event) => {
           // The browser scrolled the clip box to reveal a focused card — undo it; the focus
           // handler below has already turned the fan to do the same job without breaking geometry.
@@ -331,7 +331,7 @@ function ArcCard({
           state exactly because its box is fixed by the geometry above. The frame reserves the space,
           so nothing shifts when the bytes arrive.
         */
-        <span className="relative block aspect-[4/5] w-full">
+        <span className="relative block aspect-4/5 w-full">
           {/* `pointer-events-none`: an `<img>` is natively draggable, and a native image drag
               starting mid-gesture steals the pointer from the fan. Clicks pass to the link. */}
           <Image
@@ -344,7 +344,7 @@ function ArcCard({
         </span>
       ) : (
         // Stated rather than blank — an editor who can see the hole can fill it (contract §1.6).
-        <div className="flex aspect-[4/5] w-full items-center justify-center bg-surface-100 p-6">
+        <div className="flex aspect-4/5 w-full items-center justify-center bg-surface-100 p-6">
           <p className="text-center text-xs text-ink-500">No photograph has been chosen for this card.</p>
         </div>
       )}

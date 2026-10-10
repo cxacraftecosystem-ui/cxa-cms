@@ -172,7 +172,7 @@ export default async function StudioNavigationPage() {
   const livePagePaths = livePages.map((page) => pagePath(page.slug));
 
   return (
-    <div className="mx-auto w-full max-w-[84rem]">
+    <div className="mx-auto w-full max-w-336">
       <StudioPageHeader
         title="Navigation"
         description="The menus a visitor uses to find their way around: the main menu across the top, the links at the foot of every page, and the small strip above the header. A menu with nothing in it is left off the site rather than shown as a blank strip."

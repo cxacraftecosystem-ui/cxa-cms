@@ -239,7 +239,7 @@ export function Artifact3D({ objectKey, title, className }: Artifact3DProps) {
         // gallery captions beside it.
         role="group"
         aria-label={`Three-dimensional model of ${title}`}
-        className="relative h-[24rem] overflow-hidden rounded-lg border border-line-200 bg-surface-100 sm:h-[30rem]"
+        className="relative h-96 overflow-hidden rounded-lg border border-line-200 bg-surface-100 sm:h-120"
       >
         {modules ? (
           // The boundary is OUTSIDE the canvas on purpose: a loader failure inside the three.js tree
@@ -437,7 +437,7 @@ function ViewerFrame({ children, className }: { children: ReactNode; className?:
   return (
     <div
       className={cn(
-        "flex min-h-[16rem] items-center justify-center rounded-lg border border-dashed border-line-200 bg-surface-50",
+        "flex min-h-64 items-center justify-center rounded-lg border border-dashed border-line-200 bg-surface-50",
         className
       )}
     >

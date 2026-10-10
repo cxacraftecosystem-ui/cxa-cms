@@ -62,7 +62,7 @@ export function QuoteSection({ data, section, resolved }: QuoteSectionProps) {
           <figure className={cn("mx-auto flex max-w-3xl flex-col", ALIGN_CLASS[data.alignment])}>
             <Quote aria-hidden="true" className="h-10 w-10 text-purple-200" />
 
-            <blockquote className="display-title mt-6 text-balance text-2xl leading-snug sm:text-3xl lg:text-4xl">
+            <blockquote className="display-title mt-6 text-balance text-2xl leading-snug sm:text-3xl lg:text-4xl sm:leading-9 lg:leading-10">
               {data.quote}
             </blockquote>
 

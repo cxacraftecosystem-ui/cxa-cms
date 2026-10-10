@@ -444,7 +444,7 @@ export function RevisionHistory({
                                   <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-success-600">
                                     Version {revision.version}
                                   </p>
-                                  <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[0.6875rem] leading-relaxed text-ink-900">
+                                  <pre className="mt-1 whitespace-pre-wrap wrap-break-word font-mono text-[0.6875rem] leading-relaxed text-ink-900">
                                     {before.text}
                                   </pre>
                                   {before.truncated ? (
@@ -458,7 +458,7 @@ export function RevisionHistory({
                                   <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-ink-500">
                                     On screen now
                                   </p>
-                                  <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[0.6875rem] leading-relaxed text-ink-900">
+                                  <pre className="mt-1 whitespace-pre-wrap wrap-break-word font-mono text-[0.6875rem] leading-relaxed text-ink-900">
                                     {after.text}
                                   </pre>
                                   {after.truncated ? (

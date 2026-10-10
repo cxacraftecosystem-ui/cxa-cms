@@ -88,7 +88,7 @@ export default async function StudioNewsTaxonomyPage() {
   }));
 
   return (
-    <div className="mx-auto w-full max-w-[72rem] space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6">
       <StudioPageHeader
         title="Categories and tags"
         back={{ href: "/studio/news", label: "News" }}

@@ -82,9 +82,9 @@ type BannerAlign = ParallaxBannerSectionData["align"];
  * The other two are fixed rem heights, so nothing about them depends on the viewport at all.
  */
 const HEIGHT_CLASS: Record<BannerHeight, string> = {
-  md: "min-h-[20rem] sm:min-h-[24rem]",
-  lg: "min-h-[26rem] sm:min-h-[32rem] lg:min-h-[36rem]",
-  screen: "min-h-[100vh] supports-[height:100svh]:min-h-[100svh]"
+  md: "min-h-80 sm:min-h-96",
+  lg: "min-h-104 sm:min-h-128 lg:min-h-144",
+  screen: "min-h-screen supports-[height:100svh]:min-h-svh"
 };
 
 /**
@@ -99,8 +99,8 @@ const HEIGHT_CLASS: Record<BannerHeight, string> = {
  * is a scrim over the wrong part of the picture.
  */
 const SCRIM_CLASS: Record<BannerOverlay, string> = {
-  scrim: "bg-gradient-to-t from-purple-950/85 via-purple-950/40 to-transparent",
-  deep: "bg-gradient-to-t from-purple-950/95 via-purple-950/70 to-purple-950/25",
+  scrim: "bg-linear-to-t from-purple-950/85 via-purple-950/40 to-transparent",
+  deep: "bg-linear-to-t from-purple-950/95 via-purple-950/70 to-purple-950/25",
   none: ""
 };
 
@@ -235,7 +235,7 @@ export function ParallaxBannerSection({ data, section, resolved }: ParallaxBanne
               // site: the picture stopped at x=1024 at BOTH 1440px (416px of bare purple to its
               // right) and 1920px (896px bare, 47% of the band). A ratio plus a height is already two
               // constraints; the width has to be told, or CSS solves for it.
-              "[&>div]:h-full [&>div]:w-full [&>div]:!rounded-none [&>div]:!border-0 [&>div]:!shadow-none"
+              "[&>div]:h-full [&>div]:w-full [&>div]:rounded-none! [&>div]:border-0! [&>div]:shadow-none!"
             )}
             emptyLabel="No photograph has been chosen for this banner yet."
           />
@@ -291,7 +291,7 @@ export function ParallaxBannerSection({ data, section, resolved }: ParallaxBanne
               {body ? (
                 <p
                   className={cn(
-                    "max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg",
+                    "max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg sm:leading-7",
                     (eyebrow || heading) && "mt-4"
                   )}
                 >
@@ -306,7 +306,7 @@ export function ParallaxBannerSection({ data, section, resolved }: ParallaxBanne
                     // The shadow above is inherited, and a button is not type over a photograph — it
                     // is a white plate with purple words on it, where a black glow under the label
                     // reads as a printing fault.
-                    data.overlay === "none" && "[text-shadow:none]"
+                    data.overlay === "none" && "text-shadow-none"
                   )}
                 >
                   <LinkButton
@@ -316,7 +316,7 @@ export function ParallaxBannerSection({ data, section, resolved }: ParallaxBanne
                     // The purple fill has nothing to sit against on a photograph, so the action
                     // inverts — the same swap, for the same reason, that the hero makes over its own
                     // dark ground. It does not invert with the theme because the band does not.
-                    className="!bg-white !text-purple-800 hover:!bg-purple-50 hover:!shadow-none"
+                    className="bg-white! text-purple-800! hover:bg-purple-50! hover:shadow-none!"
                   >
                     {action.label}
                   </LinkButton>

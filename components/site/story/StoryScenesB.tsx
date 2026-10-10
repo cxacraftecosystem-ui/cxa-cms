@@ -80,7 +80,7 @@ export function SceneEnables({ reduce }: SceneProps) {
             <dt className="font-display text-xl font-extrabold uppercase tracking-[0.04em] text-gold-300 sm:text-2xl">
               {entry.verb}
             </dt>
-            <dd className="text-sm leading-relaxed text-white/70 sm:text-base">{entry.line}</dd>
+            <dd className="text-sm leading-relaxed text-white/70 sm:text-base sm:leading-6">{entry.line}</dd>
           </motion.div>
         ))}
       </dl>
@@ -436,7 +436,7 @@ export function SceneIdentity({
       </motion.div>
 
       <motion.div variants={phrase(reduce, 2.3)} initial="hidden" animate="visible">
-        <p className="mt-4 font-display text-base font-semibold uppercase leading-relaxed tracking-[0.14em] text-white/75 sm:text-lg">
+        <p className="mt-4 font-display text-base font-semibold uppercase leading-relaxed tracking-[0.14em] text-white/75 sm:text-lg sm:leading-7">
           For unified AI-enabled
           <br />
           craft ecosystem platform
@@ -462,7 +462,7 @@ export function SceneIdentity({
             event.stopPropagation();
             onFinish();
           }}
-          className="mt-10 inline-flex min-h-11 items-center gap-2 rounded-full border border-gold-300/40 bg-gold-300/10 px-6 font-display text-sm font-bold text-gold-200 transition hover:border-gold-300/70 hover:bg-gold-300/20 focus-visible:!outline-logo-cream"
+          className="mt-10 inline-flex min-h-11 items-center gap-2 rounded-full border border-gold-300/40 bg-gold-300/10 px-6 font-display text-sm font-bold text-gold-200 transition hover:border-gold-300/70 hover:bg-gold-300/20 focus-visible:outline-logo-cream!"
         >
           Begin exploring
           <span aria-hidden="true">→</span>

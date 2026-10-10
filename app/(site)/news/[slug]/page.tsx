@@ -399,7 +399,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
               ══════════════════════════════════════════════════════════════════════════════════════
               ⚠ THE STANDFIRST IS A PROP RATHER THAN A `<p>` OF THIS PAGE'S OWN, AND THE ARITHMETIC FOR
                 WHY IS THE WHOLE NOTE. It used to be drawn here as
-                `<p className="prose-measure text-lg leading-relaxed text-ink-700 sm:text-xl">`, with
+                `<p className="prose-measure text-lg leading-relaxed text-ink-700 sm:text-xl sm:leading-7">`, with
                 the body in a sibling `<div className="mt-10">`. Every one of those classes is a plain
                 utility on the element, specificity (0,1,0) — and `sm:` adds none at all, because a
                 media query never does. Inside `.prose-typeset` the rule
@@ -412,7 +412,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
                 `ProseArticle` sets the deck as `<p data-lead>` with `leadParagraphClassName()` — the
                 same paragraph `components/RichText.tsx` draws for a `leadParagraph` node an editor
                 inserted from the Style menu — and the recipe's own
-                `[&_[data-lead]]:text-[max(1.125rem,calc(var(--prose-size)*1.18))]` reaches it at
+                `**:data-lead:text-[max(1.125rem,calc(var(--prose-size)*1.18))]` reaches it at
                 (0,2,0), which beats the (0,1,1) reading-size rule. So the deck is now a step ABOVE the
                 body at every house size instead of a fixed 18–20px beside it, and a deck typed into the
                 body and a deck typed into the Excerpt field are finally the same piece of type.

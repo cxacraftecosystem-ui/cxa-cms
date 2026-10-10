@@ -263,7 +263,7 @@ export function ContactFormSection({ data, section, contact = null }: ContactFor
               <div
                 ref={confirmationRef}
                 tabIndex={-1}
-                className="rounded-lg border border-line-200 bg-card p-6 outline-none sm:p-8"
+                className="rounded-lg border border-line-200 bg-card p-6 outline-hidden sm:p-8"
               >
                 <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-success-100 text-success-600">
                   <CheckCircle2 aria-hidden="true" className="h-5 w-5" />
@@ -290,7 +290,7 @@ export function ContactFormSection({ data, section, contact = null }: ContactFor
                     ref={formErrorRef}
                     role="alert"
                     tabIndex={-1}
-                    className="flex items-start gap-2.5 rounded-md border border-error-200 bg-error-100 px-4 py-3 text-sm text-error-700 outline-none"
+                    className="flex items-start gap-2.5 rounded-md border border-error-200 bg-error-100 px-4 py-3 text-sm text-error-700 outline-hidden"
                   >
                     <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>{formError}</span>

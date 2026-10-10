@@ -230,7 +230,7 @@ export function ParallaxBannerForm({
         min={SPEED_MIN}
         max={SPEED_MAX}
         integer
-        inputClassName="max-w-[8rem]"
+        inputClassName="max-w-32"
       />
 
       {/*

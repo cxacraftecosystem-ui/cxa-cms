@@ -522,7 +522,7 @@ export default async function StudioAnalyticsPage({
   const maxCountryViews = byCountry.reduce((highest, row) => Math.max(highest, row._sum?.views ?? 0), 0);
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Analytics"
         description="How many people read each page, what they downloaded, and what they searched for. Counted on this site itself — nothing is sent to anybody else."

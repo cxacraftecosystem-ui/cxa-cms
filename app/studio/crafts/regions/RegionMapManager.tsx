@@ -387,7 +387,7 @@ function RegionRow({
 
           {/* Aligned with the inputs, under the fields' label-and-help rows. Disabled while there is
               nothing to save or the fields' own errors above say why (contract §10). */}
-          <div className="pt-[3.25rem]">
+          <div className="pt-13">
             <Button
               variant="secondary"
               size="sm"
@@ -401,7 +401,7 @@ function RegionRow({
           </div>
 
           {/* Aligned with Save, so the row's two verbs sit on one line rather than one above the other. */}
-          <div className="pt-[3.25rem]">
+          <div className="pt-13">
             <RowActions subject={region.name} actions={actions} />
           </div>
         </div>

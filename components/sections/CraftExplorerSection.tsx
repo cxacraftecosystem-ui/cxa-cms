@@ -454,7 +454,7 @@ function CraftTimeline({
                   transform class on it would be overwritten (contract §8). */}
               <span
                 aria-hidden="true"
-                className="absolute -left-[4.5px] top-1.5 h-2 w-2 rounded-full bg-purple-700"
+                className="absolute left-[-4.5px] top-1.5 h-2 w-2 rounded-full bg-purple-700"
               />
 
               <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">

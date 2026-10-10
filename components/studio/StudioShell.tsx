@@ -326,7 +326,7 @@ export function StudioShell({ user, children }: StudioShellProps) {
       */}
       <a
         href="#studio-main"
-        className="sr-only z-[60] rounded-md bg-purple-700 px-4 py-2 text-sm font-medium text-white shadow-cta focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+        className="sr-only z-60 rounded-md bg-purple-700 px-4 py-2 text-sm font-medium text-white shadow-cta focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
       >
         Skip to the main area
       </a>
@@ -351,11 +351,11 @@ export function StudioShell({ user, children }: StudioShellProps) {
         className={cn(
           // One complete literal class string per state. A padding built by concatenation is purged,
           // and two competing `lg:pl-*` utilities in one string would be decided by CSS source order.
-          collapsed ? "lg:pl-[4.5rem]" : "lg:pl-64",
+          collapsed ? "lg:pl-18" : "lg:pl-64",
           // 220ms and the brand curve: the width duration from the motion vocabulary (contract §8),
           // and `ease-out` the CLASS is the house expo curve rather than the CSS keyword of the same
           // name. Held back until `ready` — see the header.
-          ready ? "transition-[padding] duration-[220ms] ease-out" : undefined
+          ready ? "transition-[padding] duration-220 ease-out" : undefined
         )}
       >
         <StudioTopBar
@@ -372,7 +372,7 @@ export function StudioShell({ user, children }: StudioShellProps) {
           The gutters are paid ONCE, here — a screen adds vertical rhythm inside, never another
           horizontal pad, or the studio ends up with three numbers meaning one margin.
         */}
-        <main id="studio-main" tabIndex={-1} className="px-4 py-6 outline-none sm:px-6 lg:px-8">
+        <main id="studio-main" tabIndex={-1} className="px-4 py-6 outline-hidden sm:px-6 lg:px-8">
           {children}
         </main>
       </div>
@@ -408,7 +408,7 @@ export function StudioShell({ user, children }: StudioShellProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduce ? 0 : DURATION.scrim, ease: EASE_OUT }}
-            className="fixed inset-0 z-40 bg-ink-900/50 backdrop-blur-sm lg:hidden"
+            className="fixed inset-0 z-40 bg-ink-900/50 backdrop-blur-xs lg:hidden"
           />
         ) : null}
 
@@ -430,7 +430,7 @@ export function StudioShell({ user, children }: StudioShellProps) {
             animate={reduce ? { opacity: 1 } : { x: 0 }}
             exit={reduce ? { opacity: 0 } : { x: "-100%" }}
             transition={reduce ? { duration: 0 } : SPRING_ISLAND}
-            className="fixed inset-y-0 left-0 z-50 w-[17.5rem] max-w-[calc(100vw-3rem)] shadow-panel outline-none lg:hidden"
+            className="fixed inset-y-0 left-0 z-50 w-70 max-w-[calc(100vw-3rem)] shadow-panel outline-hidden lg:hidden"
           >
             <StudioSidebar sections={sections} collapsed={false} variant="sheet" onClose={closeNav} />
           </motion.div>

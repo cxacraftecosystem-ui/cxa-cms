@@ -251,7 +251,7 @@ export default async function GalleryAlbumPage({
    * bug that looks like a broken thumbnail rather than a broken index.
    *
    * ⚠ AND THE PER-SCREEN FRAMING IS DELIBERATELY NOT CARRIED IN HERE, though the tiles below use it. The
-   * viewer draws the whole photograph at its OWN proportions (`aspect={ratio}` plus `!object-contain` in
+   * viewer draws the whole photograph at its OWN proportions (`aspect={ratio}` plus `object-contain!` in
    * MediaLightbox.tsx), so there is no per-width frame for a rectangle to fit — and a crop drawn for a
    * 4:3 tile would trim the picture a reader has just asked to see in full.
    */

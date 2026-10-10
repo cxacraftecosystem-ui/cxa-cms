@@ -118,7 +118,7 @@ const CHIP_ON = "border-purple-700 bg-purple-700 text-white hover:bg-purple-800"
  * material a reader consults, not material they read through.
  */
 const CITATION_TEXT =
-  "rounded-md border border-line-200 bg-surface-50 py-3 pr-3.5 pl-[calc(0.875rem+1.5em)] -indent-[1.5em] text-[0.9375rem] leading-relaxed text-ink-700";
+  "rounded-md border border-line-200 bg-surface-50 py-3 pr-3.5 pl-[calc(0.875rem+1.5em)] indent-[-1.5em] text-[0.9375rem] leading-relaxed text-ink-700";
 
 export type CitationBlockLayout = "switcher" | "all";
 

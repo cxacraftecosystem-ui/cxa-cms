@@ -89,7 +89,7 @@ export default async function StudioNewArticlePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[96rem] space-y-6">
+    <div className="mx-auto w-full max-w-384 space-y-6">
       <StudioPageHeader
         title="New article"
         back={{ href: "/studio/news", label: "News" }}

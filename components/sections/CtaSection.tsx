@@ -99,7 +99,7 @@ export function CtaSection({ data, section }: CtaSectionProps) {
               icon={ArrowRight}
               iconPosition="end"
               className={
-                brand ? "!bg-white !text-purple-800 hover:!bg-gold-100 hover:!shadow-none" : undefined
+                brand ? "bg-white! text-purple-800! hover:bg-gold-100! hover:shadow-none!" : undefined
               }
             >
               {primary.label}
@@ -112,7 +112,7 @@ export function CtaSection({ data, section }: CtaSectionProps) {
               variant="secondary"
               className={
                 brand
-                  ? "!border-white/40 !bg-transparent !text-white hover:!border-white hover:!bg-white/10"
+                  ? "border-white/40! bg-transparent! text-white! hover:border-white! hover:bg-white/10!"
                   : undefined
               }
             >

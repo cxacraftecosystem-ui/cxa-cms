@@ -175,7 +175,7 @@ interface Placement {
    * The row's framing, resolved. Null where nobody framed it, which is nearly every picture.
    *
    * ⚠ IT IS USED ON THE GALLERY TILE AND NOWHERE ELSE, and the two omissions are deliberate. The LIGHTBOX
-   * draws the whole photograph at its own proportions (`!object-contain` in MediaLightbox.tsx), so there is
+   * draws the whole photograph at its own proportions (`object-contain!` in MediaLightbox.tsx), so there is
    * no per-width frame for a rectangle to fit. And a restoration PAIR is two photographs registered against
    * each other in one frame whose shape is the "after"'s — re-framing one half per width would slide the
    * seam across the subject, so `BeforeAfterSlider` is handed the plain rows and the editor is not offered

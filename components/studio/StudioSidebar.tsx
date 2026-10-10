@@ -157,7 +157,7 @@ export function StudioSidebar({
         variant === "fixed" ? "border-r border-line-200" : "",
         // One complete literal class string per state; a width assembled by concatenation is purged,
         // and two competing width utilities in one string would be decided by CSS source order (§5).
-        variant === "sheet" ? "w-[17.5rem]" : dense ? "w-[4.5rem]" : "w-64"
+        variant === "sheet" ? "w-70" : dense ? "w-18" : "w-64"
       )}
     >
       <div

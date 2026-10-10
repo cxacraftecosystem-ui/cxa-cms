@@ -193,9 +193,9 @@ const SCALES: Record<RichTextVariant, Scale> = {
     lead: "mt-6 text-lg leading-8 text-ink-900 first:mt-0 sm:text-xl sm:leading-9",
     dropCap: `mt-5 first:mt-0 ${DROP_CAP_ARTICLE}`,
     heading: {
-      1: "mt-12 text-3xl leading-tight sm:text-4xl",
-      2: "mt-12 text-2xl leading-snug sm:text-3xl",
-      3: "mt-10 text-xl leading-snug sm:text-2xl",
+      1: "mt-12 text-3xl leading-tight sm:text-4xl sm:leading-10",
+      2: "mt-12 text-2xl leading-snug sm:text-3xl sm:leading-9",
+      3: "mt-10 text-xl leading-snug sm:text-2xl sm:leading-8",
       4: "mt-8 text-lg leading-snug"
     },
     list: "mt-5 pl-6 first:mt-0",
@@ -204,7 +204,7 @@ const SCALES: Record<RichTextVariant, Scale> = {
     // No left rule and no quotation marks: the rules above and below are what say "this is lifted out",
     // and a quote mark drawn in CSS is a quote mark that neither copies nor reads aloud.
     pullQuote:
-      "my-10 border-y border-line-200 py-7 text-center font-display text-2xl font-medium leading-snug tracking-tight text-ink-900 first:mt-0 sm:text-3xl",
+      "my-10 border-y border-line-200 py-7 text-center font-display text-2xl font-medium leading-snug tracking-tight text-ink-900 first:mt-0 sm:text-3xl sm:leading-9",
     attribution: "mt-4 text-sm not-italic leading-6 text-ink-500",
     sideNote: "mt-6 border-l border-line-200 pl-4 text-sm leading-6 text-ink-500 first:mt-0",
     definitionList: "mt-6 first:mt-0",

@@ -446,7 +446,7 @@ export function FolderTree({
             tabIndex={tabbable ? 0 : -1}
             onKeyDown={onItemKeyDown(node)}
             onFocus={() => setFocusedId(folder.id)}
-            className="outline-none"
+            className="outline-hidden"
           >
             <span
               className={cn(

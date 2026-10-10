@@ -239,7 +239,7 @@ export default async function StudioNewsPage({
   });
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="News"
         description="Announcements, reports and stories for the newsroom. An author writes and edits their own drafts; an editor publishes them and can edit anyone's."

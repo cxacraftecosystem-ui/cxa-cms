@@ -537,13 +537,13 @@ export function ExpandOnHover({ items, className }: ExpandOnHoverProps) {
                   initial={false}
                   animate={{ opacity: isActive ? 1 : 0 }}
                   transition={labelTransition}
-                  className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-purple-950/85 via-purple-950/40 to-transparent p-4"
+                  className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-linear-to-t from-purple-950/85 via-purple-950/40 to-transparent p-4"
                 >
-                  <span className="block w-56 text-sm font-semibold leading-snug text-white lg:w-[22rem]">
+                  <span className="block w-56 text-sm font-semibold leading-snug text-white lg:w-88">
                     {item.title}
                   </span>
                   {item.meta ? (
-                    <span className="mt-1 block w-56 text-xs text-white/80 lg:w-[22rem]">
+                    <span className="mt-1 block w-56 text-xs text-white/80 lg:w-88">
                       {item.meta}
                     </span>
                   ) : null}

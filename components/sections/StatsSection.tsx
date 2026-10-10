@@ -391,7 +391,7 @@ export function StatsSection({ data, section, resolved }: StatsSectionProps) {
                   branch passes `className` straight through, which is `undefined` here). Every path
                   through this paragraph now sets digits the same way, whatever the toggle says.
                 */}
-                <p className="display-title mt-5 text-4xl leading-none tabular-nums sm:text-5xl">
+                <p className="display-title mt-5 text-4xl leading-none tabular-nums sm:text-5xl sm:leading-none">
                   {data.countUp ? <CountUp value={figure.display} /> : figure.display}
                   {figure.suffix ? (
                     <span className="ml-1 align-baseline text-2xl text-ink-500">{figure.suffix}</span>

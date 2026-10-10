@@ -65,7 +65,7 @@ export default async function StudioNewPagePage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="New page"
         back={{ href: "/studio/pages", label: "Pages" }}

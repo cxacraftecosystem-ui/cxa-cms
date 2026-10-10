@@ -160,7 +160,7 @@ export default async function StudioPublicationPage({
     : blankValue();
 
   return (
-    <div className="mx-auto w-full max-w-[76rem]">
+    <div className="mx-auto w-full max-w-304">
       <StudioPageHeader
         title={isNew ? "New publication" : (publication?.title ?? "Publication")}
         description={

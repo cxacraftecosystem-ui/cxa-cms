@@ -436,7 +436,7 @@ export function PickerUpload({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <label
           htmlFor={inputId}
-          className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-line-200 bg-card px-3 py-1.5 text-sm font-medium text-ink-700 transition hover:border-purple-300 hover:text-purple-700 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-purple-600 aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+          className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-line-200 bg-card px-3 py-1.5 text-sm font-medium text-ink-700 transition hover:border-purple-300 hover:text-purple-700 focus-within:outline-solid focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-purple-600 aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
           aria-disabled={busy || undefined}
         >
           <Upload aria-hidden="true" className="h-4 w-4" />

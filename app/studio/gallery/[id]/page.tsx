@@ -218,7 +218,7 @@ export default async function StudioAlbumPage({ params }: { params: Promise<{ id
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 
   return (
-    <div className="mx-auto w-full max-w-[84rem]">
+    <div className="mx-auto w-full max-w-336">
       <StudioPageHeader
         title={creating ? "New album" : draft.title.trim().length > 0 ? draft.title : "Untitled album"}
         description="An album is a set of pictures from one occasion. The order you put them in here is the order a visitor sees, and the first picture is what shows in the gallery listing unless you choose another."

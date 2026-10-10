@@ -242,7 +242,7 @@ export default async function StudioEventPage({
   const timeZoneLabel = `${centreZoneName(now, "long") || CENTRE_TIME_ZONE}${zoneShort ? ` (${zoneShort})` : ""}`;
 
   return (
-    <div className="mx-auto w-full max-w-[96rem] space-y-6">
+    <div className="mx-auto w-full max-w-384 space-y-6">
       <StudioPageHeader
         title={creating ? "New event" : event ? event.title : "Event"}
         back={{ href: "/studio/events", label: "Events" }}

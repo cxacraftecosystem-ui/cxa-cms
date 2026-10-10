@@ -132,7 +132,7 @@ export function BigLine({
   return (
     <Tag
       className={cn(
-        "font-display text-3xl font-extrabold uppercase leading-[1.12] tracking-[0.02em] text-white sm:text-4xl md:text-5xl",
+        "font-display text-3xl font-extrabold uppercase leading-[1.12] tracking-[0.02em] text-white sm:text-4xl md:text-5xl sm:leading-10 md:leading-none",
         className
       )}
     >
@@ -146,7 +146,7 @@ export function SupportLine({ className, children }: { className?: string; child
   return (
     <p
       className={cn(
-        "mx-auto max-w-[46ch] text-base leading-relaxed text-white/75 sm:text-lg",
+        "mx-auto max-w-[46ch] text-base leading-relaxed text-white/75 sm:text-lg sm:leading-7",
         className
       )}
     >
@@ -198,7 +198,7 @@ export function FlowArrow({ reduce, delay }: { reduce: boolean; delay: number })
       variants={quiet(reduce, delay)}
       initial="hidden"
       animate="visible"
-      className="my-1 block h-5 w-px bg-gradient-to-b from-white/40 to-white/10"
+      className="my-1 block h-5 w-px bg-linear-to-b from-white/40 to-white/10"
     />
   );
 }

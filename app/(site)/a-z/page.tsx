@@ -60,7 +60,7 @@ import { getSettingCached } from "@/lib/settings/service";
  * everything (contract §7).
  *
  * The `!` is what makes it stick. That rule is `:target, [id][data-anchor] { … }` written in
- * globals.css AFTER `@tailwind utilities`, so it has the same specificity as a `scroll-mt-*` utility
+ * globals.css's `@layer utilities`, after the utilities, so it has the same specificity as a `scroll-mt-*` utility
  * and wins on source order — and `:target` matches precisely when a jump link has just been clicked,
  * which is the only moment this margin is ever read. A plain utility here would look right in the
  * source and do nothing in the one case it exists for.
@@ -642,7 +642,7 @@ export default async function AzIndexPage() {
         costs a little blank space above the heading; under-clearing hides the heading itself.
       */}
       <section className="shell pb-24 [--az-jump:4.5rem]">
-        <div className="sticky top-[var(--nav-clearance)] z-10 -mx-5 border-b border-line-200 bg-bg-0/90 px-5 py-2 backdrop-blur sm:-mx-8 sm:px-8">
+        <div className="sticky top-(--nav-clearance) z-10 -mx-5 border-b border-line-200 bg-bg-0/90 px-5 py-2 backdrop-blur-sm sm:-mx-8 sm:px-8">
           <nav aria-label="Jump to a letter">
             {/*
               ONE ROW, ALWAYS. Twenty-seven targets cannot fit across a phone, and letting them wrap
@@ -776,7 +776,7 @@ function LetterSection({ group }: { group: LetterGroup }) {
   return (
     <section
       id={group.anchorId}
-      className="!scroll-mt-[calc(var(--nav-clearance)+var(--az-jump))] pt-12"
+      className="scroll-mt-[calc(var(--nav-clearance)+var(--az-jump))]! pt-12"
     >
       <Reveal amount="some">
         <div className="flex items-baseline gap-4 border-b border-line-200 pb-3">

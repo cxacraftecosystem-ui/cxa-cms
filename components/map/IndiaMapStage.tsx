@@ -47,7 +47,7 @@ export function IndiaMapStage({
         hrefBase={hrefBase}
         hoveredKey={hoveredKey ?? pinnedKey}
         onHover={setHoveredKey}
-        className="lg:max-h-[34rem] lg:overflow-y-auto lg:overscroll-contain"
+        className="lg:max-h-136 lg:overflow-y-auto lg:overscroll-contain"
       />
     </div>
   );

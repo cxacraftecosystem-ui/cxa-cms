@@ -46,7 +46,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * HEIGHT IS ANIMATED THROUGH `--accordion-content-height`, which the `accordion-down` /
- * `accordion-up` keyframes in tailwind.config.ts read. CSS cannot animate to `height: auto`, so the
+ * `accordion-up` keyframes in app/globals.css's `@theme` read. CSS cannot animate to `height: auto`, so the
  * real measured height has to be handed to the keyframes as a number. A `ResizeObserver` on the
  * content writes it DIRECTLY TO THE NODE rather than through React state: the observer fires on every
  * content resize, and routing that through a render would lay out the panel again and wake the

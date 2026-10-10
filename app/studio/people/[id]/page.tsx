@@ -167,7 +167,7 @@ export default async function StudioPersonPage({
   const attached = person ? person._count.projects + person._count.publications : 0;
 
   return (
-    <div className="mx-auto w-full max-w-[72rem]">
+    <div className="mx-auto w-full max-w-6xl">
       <StudioPageHeader
         title={isNew ? "New profile" : (person?.name ?? "Person")}
         description={

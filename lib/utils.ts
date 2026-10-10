@@ -21,7 +21,7 @@ type ClassValue = string | false | null | undefined;
  *
  * The consequence you must design around: **later classes do NOT win.** CSS source order decides. A
  * `@layer components` recipe is always beaten by any utility (so `className="field-button w-full"`
- * works as written), but to beat another *utility* you need `!` — e.g. `!bg-transparent`.
+ * works as written), but to beat another *utility* you need `!` — e.g. `bg-transparent!`.
  */
 export function cn(...classes: ClassValue[]): string {
   return classes.filter(Boolean).join(" ");

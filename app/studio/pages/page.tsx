@@ -211,7 +211,7 @@ export default async function StudioPagesPage({
   }));
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Pages"
         description="Every web address on the site that you build yourself, block by block. Pages marked “Built in” are ones the site's own code and menus rely on — they can be edited but not deleted."

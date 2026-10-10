@@ -85,7 +85,7 @@ export const SPRING_TOAST = {
 } as const satisfies Transition;
 
 /**
- * The house curve — the same cubic as the `ease-out` CLASS in tailwind.config.ts,
+ * The house curve — the same cubic as the `ease-out` CLASS (`--ease-out` in app/globals.css),
  * `cubic-bezier(0.16, 1, 0.3, 1)`.
  *
  * ⚠ It is NOT the CSS keyword `ease-out`. Handwritten CSS that says `ease-out` gets the spec curve,

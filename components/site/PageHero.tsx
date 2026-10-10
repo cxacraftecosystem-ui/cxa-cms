@@ -87,8 +87,8 @@ const EYEBROW_CLASS: Record<PageHeroTone, string> = {
 };
 
 const DESCRIPTION_CLASS: Record<PageHeroTone, string> = {
-  light: "text-lg leading-relaxed text-ink-500 sm:text-xl",
-  dark: "text-lg leading-relaxed text-white/75 sm:text-xl"
+  light: "text-lg leading-relaxed text-ink-500 sm:text-xl sm:leading-7",
+  dark: "text-lg leading-relaxed text-white/75 sm:text-xl sm:leading-7"
 };
 
 const META_CLASS: Record<PageHeroTone, string> = {

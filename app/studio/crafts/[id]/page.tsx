@@ -203,7 +203,7 @@ export default async function StudioCraftPage({
     : blankValue();
 
   return (
-    <div className="mx-auto w-full max-w-[76rem]">
+    <div className="mx-auto w-full max-w-304">
       <StudioPageHeader
         title={isNew ? "New craft record" : (craft?.name ?? "Craft record")}
         description={

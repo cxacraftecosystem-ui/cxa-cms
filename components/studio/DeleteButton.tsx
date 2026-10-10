@@ -198,9 +198,9 @@ export function DeleteButton({
       isLoading={isDeleting}
       loadingLabel="deleting"
       onClick={() => void run()}
-      // `!px-2.5` because `cn()` is a plain join and later classes do NOT win (contract §5): the
+      // `px-2.5!` because `cn()` is a plain join and later classes do NOT win (contract §5): the
       // recipe's `px-4` would otherwise leave an icon-only button as wide as one with a label.
-      className={cn(iconOnly && "!px-2.5", className)}
+      className={cn(iconOnly && "px-2.5!", className)}
     >
       {/* Icon-only still carries the words, kept for screen readers and voice control ("click delete").
           Not an `aria-label`: Button puts its children in a polite live region so the wait announces

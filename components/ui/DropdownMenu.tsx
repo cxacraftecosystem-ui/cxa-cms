@@ -243,7 +243,7 @@ export function DropdownMenu({
         // carries `role="menu"` — and nothing sits between the menu and its items.
         id={menuId}
         labelledBy={triggerId}
-        className={cn("min-w-[12rem] max-w-[20rem]", menuClassName)}
+        className={cn("min-w-48 max-w-[20rem]", menuClassName)}
       >
         {items.map((entry) =>
           isMenuItem(entry) ? (

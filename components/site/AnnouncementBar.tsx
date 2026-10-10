@@ -369,7 +369,7 @@ export async function AnnouncementBar() {
  *
  * In `app/(site)/layout.tsx`, as the FIRST CHILD of `<main id="main-content">`:
  *
- *     <main id="main-content" tabIndex={-1} className="page-top flex-1 outline-none">
+ *     <main id="main-content" tabIndex={-1} className="page-top flex-1 outline-hidden">
  *       <AnnouncementBar />
  *       {children}
  *     </main>

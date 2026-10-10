@@ -253,7 +253,7 @@ export function SceneQuestion({ reduce }: SceneProps) {
             variants={phrase(reduce, 1.7 + index * 1.15, 12)}
             initial="hidden"
             animate="visible"
-            className="max-w-[52ch] text-base leading-relaxed text-white/70 sm:text-lg"
+            className="max-w-[52ch] text-base leading-relaxed text-white/70 sm:text-lg sm:leading-7"
           >
             {question}
           </motion.p>

@@ -684,7 +684,7 @@ export function CraftEditor({
               autoCapitalize="off"
               autoCorrect="off"
               placeholder="hi"
-              className="max-w-[12rem] font-mono text-xs"
+              className="max-w-48 font-mono text-xs"
             />
             <datalist id="craft-language-tags">
               {LANGUAGE_SUGGESTIONS.map((entry) => (
@@ -902,7 +902,7 @@ export function CraftEditor({
             onChange={(event) => update({ originYear: event.target.value })}
             placeholder="-3000"
             spellCheck={false}
-            className="max-w-[12rem]"
+            className="max-w-48"
           />
 
           {/* The convention, confirmed as it is typed. Not a live region: it changes on every keystroke. */}

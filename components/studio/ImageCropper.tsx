@@ -568,7 +568,7 @@ export function ImageCropper({
 
   const handleClass =
     "absolute h-4 w-4 touch-none rounded-sm border-2 border-white bg-purple-700 shadow-panel " +
-    "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-purple-600/25";
+    "focus-visible:outline-hidden focus-visible:ring-4 focus-visible:ring-purple-600/25";
 
   return (
     <Dialog
@@ -688,7 +688,7 @@ export function ImageCropper({
                     })
                   }
                   onError={() => setLoadError(true)}
-                  className="block max-h-[24rem] max-w-full select-none rounded-sm"
+                  className="block max-h-96 max-w-full select-none rounded-sm"
                   draggable={false}
                 />
 
@@ -736,7 +736,7 @@ export function ImageCropper({
                   onKeyDown={onKeyDown("move")}
                   style={boxStyle}
                   className={cn(
-                    "absolute cursor-move touch-none border-2 border-white outline-none",
+                    "absolute cursor-move touch-none border-2 border-white outline-hidden",
                     "focus-visible:ring-4 focus-visible:ring-purple-600/40",
                     boxMotionClass
                   )}
@@ -782,7 +782,7 @@ export function ImageCropper({
                 {PREVIEW_FRAMES.map((frame) => (
                   <li key={frame.id} className="min-w-0">
                     <div
-                      // Inline, not a Tailwind class: an `aspect-[16/9]` assembled from data would be
+                      // Inline, not a Tailwind class: an `aspect-video` assembled from data would be
                       // purged by the content scanner (contract §5).
                       style={{ aspectRatio: frame.ratio }}
                       className="relative w-full overflow-hidden rounded-md border border-line-200 bg-surface-100"

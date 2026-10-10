@@ -205,14 +205,14 @@ export function ActionStepsSection({ data, section }: ActionStepsSectionProps) {
       >
         {/*
           THE SPINE. A hairline from just below this step's node to the top of the next one's, so the
-          line reads as joining two steps rather than as running off the end of the list. `left-[1.375rem]`
+          line reads as joining two steps rather than as running off the end of the list. `left-5.5`
           is half of the 44px node, which is what puts the line through its centre. Omitted on the last
           step, which has nothing below it to join.
         */}
         {!isLast ? (
           <span
             aria-hidden="true"
-            className="absolute bottom-0 left-[1.375rem] top-12 w-px bg-line-200"
+            className="absolute bottom-0 left-5.5 top-12 w-px bg-line-200"
           />
         ) : null}
 

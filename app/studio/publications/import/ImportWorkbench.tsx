@@ -411,7 +411,7 @@ export function ImportWorkbench() {
                             // `!` on both, because `cn()` is a plain join and later classes do not win
                             // (contract §5): the recipe's own padding would otherwise make each row 44px
                             // taller than the rest of the table.
-                            className="!min-h-0 !py-0 justify-center"
+                            className="min-h-0! py-0! justify-center"
                           />
                         </td>
 
@@ -572,7 +572,7 @@ export function ImportWorkbench() {
                   {OUTCOME_WORD[entry.outcome]}
                 </Badge>
 
-                <span className="min-w-[14rem] flex-1">
+                <span className="min-w-56 flex-1">
                   {entry.outcome === "created" && entry.id !== null ? (
                     <Link
                       href={`/studio/publications/${entry.id}`}

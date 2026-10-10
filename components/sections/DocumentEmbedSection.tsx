@@ -232,7 +232,7 @@ function DownloadCard({
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="display-title break-words text-base leading-snug">{facts.fileName}</p>
+          <p className="display-title wrap-break-word text-base leading-snug">{facts.fileName}</p>
 
           <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-ink-500">
             <Badge size="sm">{facts.label}</Badge>

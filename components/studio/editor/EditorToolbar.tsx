@@ -1372,7 +1372,7 @@ function ToolbarMenu({
       >
         <Icon aria-hidden="true" className="h-4 w-4" />
         {menu.caption ? (
-          <span className="max-w-[8.5rem] truncate">{menu.caption}</span>
+          <span className="max-w-34 truncate">{menu.caption}</span>
         ) : null}
         <ChevronDown aria-hidden="true" className="h-3 w-3 shrink-0" />
       </button>
@@ -1496,7 +1496,7 @@ function OrderedListStartField({
         disabled={disabled}
         onChange={(event) => commit(event.target.value)}
         // Both halves of the ring named: a bare `ring-4` is stock BLUE (contract §3).
-        className="mt-1 w-24 rounded-md border border-line-200 bg-card px-2 py-1 text-sm text-ink-900 outline-none transition focus:border-purple-600 focus:ring-4 focus:ring-purple-600/15 disabled:cursor-not-allowed disabled:text-ink-300"
+        className="mt-1 w-24 rounded-md border border-line-200 bg-card px-2 py-1 text-sm text-ink-900 outline-hidden transition focus:border-purple-600 focus:ring-4 focus:ring-purple-600/15 disabled:cursor-not-allowed disabled:text-ink-300"
       />
       <p className="mt-1.5 text-xs leading-relaxed text-ink-500">
         {`Whole numbers from ${ORDERED_LIST_START_MIN} to ${ORDERED_LIST_START_MAX}. Use it to carry on a list that a picture or a note interrupted.`}

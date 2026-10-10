@@ -467,7 +467,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
    * Every member and every partner fetched is DRAWN — `TEAM_LIMIT` and `PARTNER_LIMIT` are applied in the
    * query above — so there is no face and no mark here whose alternates would be fetched for nothing. On a
    * logo the override that earns its keep is a different PHOTOGRAPH rather than a rectangle: the marks below
-   * are `!object-contain`, so a crop would deface one instead of reframing it.
+   * are `object-contain!`, so a crop would deface one instead of reframing it.
    */
   const memberFramings = project.members.map(
     (member) => (member.person.photoScreens ?? null) as unknown as ScreenFraming | null
@@ -604,7 +604,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
   /**
    * ⚠ THE FRAMING IS DELIBERATELY NOT CARRIED INTO THE VIEWER, though the tiles above use it. The lightbox
-   * draws the whole photograph at its OWN proportions (`aspect={ratio}` plus `!object-contain` in
+   * draws the whole photograph at its OWN proportions (`aspect={ratio}` plus `object-contain!` in
    * MediaLightbox.tsx), so there is no per-width frame for a rectangle to fit — and a crop drawn for a 4:3
    * tile would trim the picture a reader has just asked to see in full.
    */
@@ -1103,7 +1103,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                     // A logo must never be cropped, so `object-contain` — and it needs the `!` because
                     // `cn()` is a plain join and MediaImage's own `object-cover` would otherwise win on
                     // Tailwind's source order (contract §5).
-                    imageClassName="!object-contain p-3"
+                    imageClassName="object-contain! p-3"
                   />
                   <span className="mt-3 block text-sm font-medium leading-snug text-ink-900">
                     {partner.name}

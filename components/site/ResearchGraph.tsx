@@ -577,7 +577,7 @@ export function ResearchGraph({
           role="group"
           aria-label={figureLabel}
           onKeyDown={onKeyDown}
-          className="h-auto w-full min-w-[44rem]"
+          className="h-auto w-full min-w-176"
         >
           {/* Edges say nothing a reader is not told in words — the list names every project. */}
           <g aria-hidden="true" fill="none">
@@ -615,7 +615,7 @@ export function ResearchGraph({
                   node.detail ? `, ${node.detail}` : ""
                 }${links > 0 ? `, ${links} ${links === 1 ? "connection" : "connections"} in this graph` : ""}`}
                 // The roving tab stop: exactly one node is reachable by Tab, and the arrows do the
-                // rest. No `outline-none` — the global `a:focus-visible` outline traces the node, and
+                // rest. No `outline-hidden` — the global `a:focus-visible` outline traces the node, and
                 // the purple ring below is the second, static half of the same signal.
                 tabIndex={index === stop ? 0 : -1}
                 onFocus={() => {

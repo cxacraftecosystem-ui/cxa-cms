@@ -4,7 +4,7 @@
  *
  * WHY THIS FILE EXISTS AT ALL. Everything else in `components/craft/` is
  * expressed as Tailwind utilities, but `@keyframes` cannot be. These three
- * cannot be borrowed from tailwind.config.ts either: the kolam draw needs
+ * cannot be borrowed from the `@theme` block in globals.css either: the kolam draw needs
  * `stroke-dashoffset`, and both the pigment and the jaali light need per-element
  * amplitudes fed in as custom properties, which a shared animation utility has
  * no way to carry.
@@ -15,10 +15,10 @@
  * So `KolamLattice`, `PigmentDrift` and `JaaliScreen` each carry their own
  * `import`, and any one of them works when used on its own.
  *
- * ⚠ NO `@layer` AND NO `@apply` HERE. postcss.config.js loads only `tailwindcss`
- * and `autoprefixer`, and Tailwind processes each stylesheet on its own: an
- * `@layer components` block in a file with no `@tailwind` directive above it is a
- * build error, not a no-op. Plain rules and plain at-rules only.
+ * ⚠ NO `@layer` AND NO `@apply` HERE. Tailwind processes each stylesheet on its
+ * own: `@apply` in a file that does not `@reference` globals.css is a build error,
+ * and a bare `@layer` here would be a native cascade layer outside Tailwind's
+ * order. Plain rules and plain at-rules only.
  *
  * ⚠ THE CURVES ARE WRITTEN OUT IN FULL, DELIBERATELY. The literal keyword
  * `ease-out` inside handwritten CSS is the CSS specification's curve, NOT the

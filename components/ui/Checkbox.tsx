@@ -17,7 +17,7 @@
  * into the accessible name and read out in full every time the box is focused (see Field.tsx).
  *
  * FOCUS KEEPS THE PLATFORM OUTLINE and ADDS the brand ring — a deliberate deviation from
- * `.field-input`, which sets `outline-none`. The high-contrast block in globals.css thickens
+ * `.field-input`, which sets `outline-hidden`. The high-contrast block in globals.css thickens
  * `input:focus-visible` outlines to 3px, and on a 20px control that outline is the strongest cue
  * available; the ring alone at 15% alpha is not enough to find. The ring colour is NAMED, because a
  * bare `ring-4` is stock BLUE (contract §3).

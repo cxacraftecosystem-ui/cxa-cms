@@ -35,7 +35,7 @@
  * one theme, which is exactly how the footer's accessibility-menu bug survived review (see the header of
  * SiteFooter.tsx).
  *
- * The fix is not a pile of `[&_.field-label]:!text-white` overrides reaching into another component's
+ * The fix is not a pile of `[&_.field-label]:text-white!` overrides reaching into another component's
  * internals — those break silently the day `Field` renames a class, and they break in one theme only. It
  * is to put the form on an ORDINARY THEMED SURFACE floating above the band, so every control inside is
  * correct in both themes by construction and nothing is overridden at all. `EventRegistration`'s success
@@ -295,7 +295,7 @@ export function NewsletterSignup({
          */
         role="status"
         className={cn(
-          "rounded-lg border border-success-600/25 bg-card p-5 shadow-sm outline-none sm:p-6",
+          "rounded-lg border border-success-600/25 bg-card p-5 shadow-sm outline-hidden sm:p-6",
           className
         )}
       >
@@ -352,7 +352,7 @@ export function NewsletterSignup({
           // `alert`: the reader has just tried to do something and been stopped, which is the one case
           // that warrants interrupting them.
           role="alert"
-          className="mt-4 flex items-start gap-2.5 rounded-md border border-error-200 bg-error-100 px-3.5 py-3 text-sm leading-relaxed text-error-700 outline-none"
+          className="mt-4 flex items-start gap-2.5 rounded-md border border-error-200 bg-error-100 px-3.5 py-3 text-sm leading-relaxed text-error-700 outline-hidden"
         >
           <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
@@ -428,7 +428,7 @@ export function NewsletterSignup({
           required
           label={currentConsentText()}
           /**
-           * ⚠ `!items-start` WITH THE BANG, AND IT IS NOT OPTIONAL.
+           * ⚠ `items-start!` WITH THE BANG, AND IT IS NOT OPTIONAL.
            *
            * `Checkbox` sets `items-center` on its label, which is right for a three-word label and wrong
            * for this one — the consent sentence runs to three lines, and centring puts the box halfway
@@ -438,7 +438,7 @@ export function NewsletterSignup({
            * every time. `!` is the only thing that beats it (contract §5, and the same reason SiteFooter's
            * accessibility-menu overrides carry it).
            */
-          className="!items-start"
+          className="items-start!"
           aria-invalid={consentError ? true : undefined}
         />
 

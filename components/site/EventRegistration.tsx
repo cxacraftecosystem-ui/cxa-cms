@@ -387,7 +387,7 @@ export function EventRegistration({
          * panel is the ordinary card surface and only the heading and its glyph carry the success colour.
          */
         className={cn(
-          "rounded-lg border border-success-600/25 bg-surface-50 p-5 outline-none sm:p-6",
+          "rounded-lg border border-success-600/25 bg-surface-50 p-5 outline-hidden sm:p-6",
           className
         )}
       >
@@ -512,7 +512,7 @@ export function EventRegistration({
           ref={failureRef}
           tabIndex={-1}
           role="alert"
-          className="mt-5 flex items-start gap-2.5 rounded-md border border-error-200 bg-error-100 px-4 py-3 text-sm leading-relaxed text-error-700 outline-none"
+          className="mt-5 flex items-start gap-2.5 rounded-md border border-error-200 bg-error-100 px-4 py-3 text-sm leading-relaxed text-error-700 outline-hidden"
         >
           <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
           <span>

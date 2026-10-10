@@ -403,10 +403,10 @@ export default function CinematicStory({ onComplete }: CinematicStoryProps) {
       // ancestor's padding, so paying it here alone would be inert.
       style={{ paddingRight: "var(--scroll-gutter, 0px)" }}
       className={cn(
-        // z-[100]: the DIALOG rung of the ladder (contract §6), because that is what this is — a
+        // z-100: the DIALOG rung of the ladder (contract §6), because that is what this is — a
         // modal dialog that happens to fill the screen. Above the header (50) and popovers (70);
         // below the toast viewport (110), which may correctly speak over it.
-        "fixed inset-0 z-[100] select-none overflow-hidden bg-purple-950 text-white",
+        "fixed inset-0 z-100 select-none overflow-hidden bg-purple-950 text-white",
         leaving && "pointer-events-none"
       )}
     >
@@ -418,7 +418,7 @@ export default function CinematicStory({ onComplete }: CinematicStoryProps) {
         {/* Fine grain so the big soft gradient does not band on a large cheap panel. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 opacity-[0.04] [background-image:radial-gradient(rgba(255,255,255,0.9)_0.5px,transparent_0.5px)] [background-size:24px_24px]"
+          className="pointer-events-none absolute inset-0 opacity-[0.04] bg-[radial-gradient(rgba(255,255,255,0.9)_0.5px,transparent_0.5px)] bg-size-[24px_24px]"
         />
 
         <AnimatePresence>
@@ -471,7 +471,7 @@ export default function CinematicStory({ onComplete }: CinematicStoryProps) {
               event.stopPropagation();
               setPaused((current) => !current);
             }}
-            className="rounded-full px-4 py-2 font-display text-sm font-medium text-white/60 transition-colors hover:text-white focus-visible:!outline-logo-cream"
+            className="rounded-full px-4 py-2 font-display text-sm font-medium text-white/60 transition-colors hover:text-white focus-visible:outline-logo-cream!"
           >
             {paused ? "Resume" : "Pause"}
           </button>
@@ -482,7 +482,7 @@ export default function CinematicStory({ onComplete }: CinematicStoryProps) {
               event.stopPropagation();
               finish();
             }}
-            className="rounded-full px-4 py-2 font-display text-sm font-medium text-white/60 transition-colors hover:text-white focus-visible:!outline-logo-cream"
+            className="rounded-full px-4 py-2 font-display text-sm font-medium text-white/60 transition-colors hover:text-white focus-visible:outline-logo-cream!"
           >
             Skip the story <span aria-hidden="true">→</span>
           </button>

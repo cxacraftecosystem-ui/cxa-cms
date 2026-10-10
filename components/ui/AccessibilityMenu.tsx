@@ -215,7 +215,7 @@ export function AccessibilityMenu({
           // kept inside while it is open, so a keyboard reader cannot tab out and lose the panel.
           tabIndex={-1}
           className={cn(
-            "absolute z-[70] w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-line-200 bg-card p-4 shadow-panel",
+            "absolute z-70 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-line-200 bg-card p-4 shadow-panel",
             SIDE_CLASS[side],
             ALIGN_CLASS[align]
           )}
@@ -343,7 +343,7 @@ function SwitchRow({ label, description, checked, onChange }: SwitchRowProps) {
               The knob is a plain CSS transition, so the global reduced-motion rule collapses it to an
               instant jump — the POSITION is the signal, and it survives either way.
 
-              ⚠ IT TRAVELS ON `transform`, NEVER ON A MARGIN. `ml-0.5` → `ml-[1.125rem]` under
+              ⚠ IT TRAVELS ON `transform`, NEVER ON A MARGIN. `ml-0.5` → `ml-4.5` under
               `transition-all` animated `margin-left`, which forces layout on every frame of the
               flip — and `transition-all` would have picked up any other property that changed with
               it. `translate-x-4` is the same 16px journey (2px → 18px) on the compositor, and it is

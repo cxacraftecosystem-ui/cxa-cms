@@ -161,7 +161,7 @@ export default async function PagePreview({ params, searchParams }: PreviewPageP
         design being reviewed.
       */}
       <div className="border-b border-purple-200 bg-purple-50 px-5 py-2.5 text-purple-900 sm:px-8">
-        <p className="mx-auto flex max-w-[84rem] flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium">
+        <p className="mx-auto flex max-w-336 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium">
           <Eye aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
           <span>
             Preview of <span className="font-semibold">{page.title || "Untitled page"}</span> —{" "}
@@ -177,7 +177,7 @@ export default async function PagePreview({ params, searchParams }: PreviewPageP
 
       {notice ? (
         <div className="border-b border-amber-500/40 bg-amber-100 px-5 py-2.5 text-amber-800 sm:px-8">
-          <p className="mx-auto flex max-w-[84rem] items-start gap-2 text-xs leading-relaxed">
+          <p className="mx-auto flex max-w-336 items-start gap-2 text-xs leading-relaxed">
             <TriangleAlert aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>{notice}</span>
           </p>
@@ -191,7 +191,7 @@ export default async function PagePreview({ params, searchParams }: PreviewPageP
           counts the blocks it could not place, and this is the only place that number can be said.
         */
         <div className="border-b border-amber-500/40 bg-amber-100 px-5 py-2.5 text-amber-800 sm:px-8">
-          <p className="mx-auto flex max-w-[84rem] items-start gap-2 text-xs leading-relaxed">
+          <p className="mx-auto flex max-w-336 items-start gap-2 text-xs leading-relaxed">
             <TriangleAlert aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
               {unmatched === 1

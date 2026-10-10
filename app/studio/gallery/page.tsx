@@ -243,7 +243,7 @@ export default async function StudioGalleryPage({
   const filtered = q.length > 0 || statusFilter.length > 0 || categoryFilter.length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Gallery"
         description="Photo albums, grouped by occasion. Each album holds pictures in a set order, with a caption on each one, and can present a picture as a video, a panorama or the way into a virtual tour."

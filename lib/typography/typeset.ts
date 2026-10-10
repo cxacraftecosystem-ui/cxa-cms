@@ -212,25 +212,25 @@ const FALLBACK_FACE_CLASS = "font-sans";
  */
 const DISPLAY_FACE_CLASS: Record<HeadingFaceId, string> = {
   jakarta:
-    "[&_h2]:font-display [&_h3]:font-display [&_h4]:font-display [&_[data-pull-quote]]:font-display",
-  inter: "[&_h2]:font-sans [&_h3]:font-sans [&_h4]:font-sans [&_[data-pull-quote]]:font-sans",
+    "[&_h2]:font-display [&_h3]:font-display [&_h4]:font-display **:data-pull-quote:font-display",
+  inter: "[&_h2]:font-sans [&_h3]:font-sans [&_h4]:font-sans **:data-pull-quote:font-sans",
   "work-sans":
-    "[&_h2]:font-work-sans [&_h3]:font-work-sans [&_h4]:font-work-sans [&_[data-pull-quote]]:font-work-sans",
+    "[&_h2]:font-work-sans [&_h3]:font-work-sans [&_h4]:font-work-sans **:data-pull-quote:font-work-sans",
   figtree:
-    "[&_h2]:font-figtree [&_h3]:font-figtree [&_h4]:font-figtree [&_[data-pull-quote]]:font-figtree",
+    "[&_h2]:font-figtree [&_h3]:font-figtree [&_h4]:font-figtree **:data-pull-quote:font-figtree",
   "archivo-narrow":
-    "[&_h2]:font-archivo-narrow [&_h3]:font-archivo-narrow [&_h4]:font-archivo-narrow [&_[data-pull-quote]]:font-archivo-narrow",
+    "[&_h2]:font-archivo-narrow [&_h3]:font-archivo-narrow [&_h4]:font-archivo-narrow **:data-pull-quote:font-archivo-narrow",
   "source-serif-4":
-    "[&_h2]:font-source-serif [&_h3]:font-source-serif [&_h4]:font-source-serif [&_[data-pull-quote]]:font-source-serif",
+    "[&_h2]:font-source-serif [&_h3]:font-source-serif [&_h4]:font-source-serif **:data-pull-quote:font-source-serif",
   newsreader:
-    "[&_h2]:font-newsreader [&_h3]:font-newsreader [&_h4]:font-newsreader [&_[data-pull-quote]]:font-newsreader",
-  lora: "[&_h2]:font-lora [&_h3]:font-lora [&_h4]:font-lora [&_[data-pull-quote]]:font-lora",
+    "[&_h2]:font-newsreader [&_h3]:font-newsreader [&_h4]:font-newsreader **:data-pull-quote:font-newsreader",
+  lora: "[&_h2]:font-lora [&_h3]:font-lora [&_h4]:font-lora **:data-pull-quote:font-lora",
   "crimson-pro":
-    "[&_h2]:font-crimson [&_h3]:font-crimson [&_h4]:font-crimson [&_[data-pull-quote]]:font-crimson",
+    "[&_h2]:font-crimson [&_h3]:font-crimson [&_h4]:font-crimson **:data-pull-quote:font-crimson",
   fraunces:
-    "[&_h2]:font-fraunces [&_h3]:font-fraunces [&_h4]:font-fraunces [&_[data-pull-quote]]:font-fraunces",
+    "[&_h2]:font-fraunces [&_h3]:font-fraunces [&_h4]:font-fraunces **:data-pull-quote:font-fraunces",
   "playfair-display":
-    "[&_h2]:font-playfair [&_h3]:font-playfair [&_h4]:font-playfair [&_[data-pull-quote]]:font-playfair"
+    "[&_h2]:font-playfair [&_h3]:font-playfair [&_h4]:font-playfair **:data-pull-quote:font-playfair"
 };
 
 // ── Measure (line length) ────────────────────────────────────────────────────
@@ -852,15 +852,15 @@ export function resolveTypeset({
  */
 const PROSE_NODE_HOOK_CLASS = [
   // The lead paragraph — the standfirst.
-  "[&_[data-lead]]:text-[max(1.125rem,calc(var(--prose-size,1.0625rem)*1.18))]",
-  "[&_[data-lead]]:leading-[1.5]",
-  "[&_[data-lead]]:text-ink-900",
+  "**:data-lead:text-[max(1.125rem,calc(var(--prose-size,1.0625rem)*1.18))]",
+  "**:data-lead:leading-normal",
+  "**:data-lead:text-ink-900",
   // The pull quote. Display sizes, so they are stock steps rather than a multiple of the reading size
   // — this is type set to be looked at rather than read, and it is the one place on a prose page where
   // a fixed size is the right answer.
-  "[&_[data-pull-quote]]:my-10",
-  "[&_[data-pull-quote]]:text-2xl",
-  "sm:[&_[data-pull-quote]]:text-3xl",
+  "**:data-pull-quote:my-10",
+  "**:data-pull-quote:text-2xl",
+  "sm:**:data-pull-quote:text-3xl",
   // ⚠ Its own paragraphs need both of these restated. `.prose-typeset blockquote :is(p, li)` is
   // (0,1,2) and sets `line-height: 1.55` for a READING-size quotation, which is loose at 30px; and
   // `.ts-justify-on :is(p, li)` would justify the words of a centred quote, because justification and

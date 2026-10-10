@@ -75,12 +75,12 @@ import { cn } from "@/lib/utils";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BIG =
-  "font-display text-3xl font-extrabold uppercase leading-[1.14] tracking-[0.02em] text-white sm:text-4xl lg:text-5xl";
+  "font-display text-3xl font-extrabold uppercase leading-[1.14] tracking-[0.02em] text-white sm:text-4xl lg:text-5xl sm:leading-10 lg:leading-none";
 
 const HUGE =
-  "font-display text-4xl font-extrabold uppercase leading-[1.1] tracking-[0.02em] text-white sm:text-5xl lg:text-6xl";
+  "font-display text-4xl font-extrabold uppercase leading-[1.1] tracking-[0.02em] text-white sm:text-5xl lg:text-6xl sm:leading-none lg:leading-none";
 
-const SUPPORT = "text-base leading-relaxed text-white/70 sm:text-lg";
+const SUPPORT = "text-base leading-relaxed text-white/70 sm:text-lg sm:leading-7";
 
 const KICKER = "text-xs font-semibold uppercase tracking-[0.24em] text-gold-300";
 
@@ -567,7 +567,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-20">
           <span
             data-cine-orb="-9"
-            className="absolute -left-[18%] top-[2%] h-[58vmax] w-[58vmax]"
+            className="absolute left-[-18%] top-[2%] h-[58vmax] w-[58vmax]"
           >
             <span
               className="cxa-cine-orb block h-full w-full rounded-full"
@@ -578,7 +578,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
           </span>
           <span
             data-cine-orb="14"
-            className="absolute -right-[22%] top-[30%] h-[64vmax] w-[64vmax]"
+            className="absolute right-[-22%] top-[30%] h-[64vmax] w-[64vmax]"
           >
             <span
               className="cxa-cine-orb--counter block h-full w-full rounded-full"
@@ -589,7 +589,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
           </span>
           <span
             data-cine-orb="-6"
-            className="absolute -left-[12%] bottom-[4%] h-[52vmax] w-[52vmax]"
+            className="absolute left-[-12%] bottom-[4%] h-[52vmax] w-[52vmax]"
           >
             <span
               className="cxa-cine-orb block h-full w-full rounded-full"
@@ -599,7 +599,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
             />
           </span>
           {/* Fine grain so the big soft gradients never band. */}
-          <div className="absolute inset-0 opacity-[0.05] [background-image:radial-gradient(rgba(255,255,255,0.9)_0.5px,transparent_0.5px)] [background-size:22px_22px]" />
+          <div className="absolute inset-0 opacity-[0.05] bg-[radial-gradient(rgba(255,255,255,0.9)_0.5px,transparent_0.5px)] bg-size-[22px_22px]" />
         </div>
 
         {/* ── The spine thread: mordant to dye, drawn by the reader ─────────── */}
@@ -612,7 +612,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
           // painted over it (the review measured the alternative as the piece's dominant frame
           // cost). This is NOT the banned blanket `will-change` on photographs — the layer is a
           // hairline on transparency, and its backing store is correspondingly cheap.
-          className="pointer-events-none absolute inset-0 -z-10 h-full w-full [transform:translateZ(0)]"
+          className="pointer-events-none absolute inset-0 -z-10 h-full w-full transform-[translateZ(0)]"
         >
           <defs>
             <linearGradient id="cine-thread-gold" x1="0" y1="0" x2="0" y2="1">
@@ -682,7 +682,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
         {/* A memory of the hero's weave, fading as the story begins. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/25 to-transparent"
+          className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-linear-to-b from-black/25 to-transparent"
         />
 
         {/* ════════════════════ MOVEMENT I — More than what we make ════════════════════ */}
@@ -712,7 +712,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                 {/*
                   ⚠ THE RAIL AND THE BEADS SHARE ONE AXIS AT x = 4px, AND THEY DID NOT BEFORE.
                   The rail was `left-[3px] w-px` — one pixel spanning 3→4, so its centre fell on
-                  3.5. Each bead is 8px wide at `-left-[25px]` inside an `<ol>` with `pl-6`, which
+                  3.5. Each bead is 8px wide at `left-[-25px]` inside an `<ol>` with `pl-6`, which
                   puts its left edge at 24 − 25 = −1 and its centre on 3. Half a pixel apart, on
                   every bead, all the way down: the thread visibly misses the middle of each dot
                   instead of running through it.
@@ -725,7 +725,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                 >
                   <div
                     data-cine-knowing-rail
-                    className="h-full w-full origin-top bg-gradient-to-b from-gold-300/70 to-gold-300/20"
+                    className="h-full w-full origin-top bg-linear-to-b from-gold-300/70 to-gold-300/20"
                   />
                 </div>
                 <ol className="space-y-4 pl-6">
@@ -825,7 +825,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                 and the four fields adrift around it at their own drift rates. The names repeat in
                 the paragraph below for every reader the picture cannot reach. */}
             <div
-              className="relative mx-auto mt-20 hidden h-[26rem] max-w-4xl sm:block"
+              className="relative mx-auto mt-20 hidden h-104 max-w-4xl sm:block"
               aria-hidden="true"
             >
               <JaaliLight className="inset-0" />
@@ -833,15 +833,15 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                 {CHAIN.map((word, index) => (
                   <div key={word} className="flex flex-col items-center">
                     {index > 0 ? (
-                      <span className="my-1.5 block h-6 w-px bg-gradient-to-b from-gold-300/70 to-gold-300/20" />
+                      <span className="my-1.5 block h-6 w-px bg-linear-to-b from-gold-300/70 to-gold-300/20" />
                     ) : null}
-                    <span className={cn(CHIP, "!border-gold-300/40 !text-gold-200")}>{word}</span>
+                    <span className={cn(CHIP, "border-gold-300/40! text-gold-200!")}>{word}</span>
                   </div>
                 ))}
               </div>
               {APART.map((field) => (
                 <span key={field.word} data-cine-drift={field.rate} className={cn("absolute", field.seat)}>
-                  <span className={cn(CHIP, "!border-white/10 !text-white/55")}>{field.word}</span>
+                  <span className={cn(CHIP, "border-white/10! text-white/55!")}>{field.word}</span>
                 </span>
               ))}
             </div>
@@ -924,7 +924,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                 sticky on wide screens so it keeps the reader company through all four stanzas. */}
             <div className="lg:order-2">
               <div className="lg:sticky lg:top-[calc(var(--nav-clearance)+2rem)]">
-                <PointerDrift depth={14} className="relative mx-auto flex h-[24rem] max-w-xl items-center justify-center sm:h-[30rem]">
+                <PointerDrift depth={14} className="relative mx-auto flex h-96 max-w-xl items-center justify-center sm:h-120">
                   <div
                     aria-hidden="true"
                     className="pointer-events-none absolute left-1/2 top-1/2 h-[120%] w-[120%] -translate-x-1/2 -translate-y-1/2 rounded-full"
@@ -1037,7 +1037,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                 <div aria-hidden="true" className="absolute bottom-4 left-[7px] top-4 w-px bg-gold-300/25 sm:left-[9px]">
                   <div
                     data-cine-rail
-                    className="h-full w-full origin-top bg-gradient-to-b from-gold-300 to-gold-500"
+                    className="h-full w-full origin-top bg-linear-to-b from-gold-300 to-gold-500"
                   />
                 </div>
 
@@ -1047,15 +1047,15 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                       <div data-cine-verb="" className="group">
                         <span
                           aria-hidden="true"
-                          className="absolute -left-10 top-2 h-[15px] w-[15px] rounded-full border-2 border-gold-300/40 bg-purple-950 transition-colors duration-300 ease-out [.is-lit_&]:border-gold-300 [.is-lit_&]:bg-gold-300 sm:-left-14"
+                          className="absolute -left-10 top-2 h-[15px] w-[15px] rounded-full border-2 border-gold-300/40 bg-purple-950 transition-colors duration-300 ease-out in-[.is-lit]:border-gold-300 in-[.is-lit]:bg-gold-300 sm:-left-14"
                         />
                         <div className="flex items-center gap-4">
-                          <p className="font-display text-2xl font-extrabold uppercase tracking-[0.04em] text-white/85 transition-colors duration-300 ease-out [.is-lit_&]:text-gold-300 sm:text-3xl">
+                          <p className="font-display text-2xl font-extrabold uppercase tracking-[0.04em] text-white/85 transition-colors duration-300 ease-out in-[.is-lit]:text-gold-300 sm:text-3xl">
                             {entry.verb}
                           </p>
                           <span
                             aria-hidden="true"
-                            className="opacity-25 transition-opacity duration-300 ease-out [.is-lit_&]:opacity-100"
+                            className="opacity-25 transition-opacity duration-300 ease-out in-[.is-lit]:opacity-100"
                           >
                             <ButiMark id={entry.buti} className="w-8 text-gold-300" />
                           </span>
@@ -1164,7 +1164,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                     {index > 0 ? (
                       <span
                         aria-hidden="true"
-                        className="mx-2 block h-px w-6 bg-gradient-to-r from-gold-300/60 to-gold-300/15 sm:w-10"
+                        className="mx-2 block h-px w-6 bg-linear-to-r from-gold-300/60 to-gold-300/15 sm:w-10"
                       />
                     ) : null}
                     <span
@@ -1173,7 +1173,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                         CHIP,
                         "transition-colors duration-300 ease-out",
                         last
-                          ? "!border-gold-300/50 !text-gold-200"
+                          ? "border-gold-300/50! text-gold-200!"
                           : "[&.is-lit]:border-gold-300/40 [&.is-lit]:text-gold-200"
                       )}
                     >
@@ -1201,7 +1201,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                 the boxes). The ring needs the room a tablet has. */}
             <div
               data-cine-ring=""
-              className="relative mx-auto mt-24 flex max-w-5xl flex-col items-center justify-center py-14 md:min-h-[40rem] md:py-0"
+              className="relative mx-auto mt-24 flex max-w-5xl flex-col items-center justify-center py-14 md:min-h-160 md:py-0"
             >
               <div
                 aria-hidden="true"
@@ -1221,7 +1221,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
                     data-rot={entry.rot}
                     className={cn("absolute", entry.seat)}
                   >
-                    <span className={cn(CHIP, "!border-white/10 !text-white/60")}>{entry.word}</span>
+                    <span className={cn(CHIP, "border-white/10! text-white/60!")}>{entry.word}</span>
                   </span>
                 ))}
               </div>
@@ -1242,7 +1242,7 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
               <KolamMark cols={5} rows={3} className="mx-auto w-24 text-gold-300/70 sm:w-28" />
               <p className={cn(KICKER, "mt-8")}>IIT Kharagpur</p>
               <CineLine as="p" text="Centre of Excellence" className={cn(HUGE, "mt-4")} />
-              <p className="mt-4 font-display text-base font-semibold uppercase leading-relaxed tracking-[0.14em] text-white/75 sm:text-lg">
+              <p className="mt-4 font-display text-base font-semibold uppercase leading-relaxed tracking-[0.14em] text-white/75 sm:text-lg sm:leading-7">
                 For unified AI-enabled
                 <br />
                 craft ecosystem platform

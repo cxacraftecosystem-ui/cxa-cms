@@ -157,7 +157,7 @@ interface Editorial {
    * of these strings verbatim.
    */
   fontClass: string;
-  /** The `theme.extend.fontFamily` key in tailwind.config.ts that `fontClass` comes from. */
+  /** The `--font-<key>` in app/globals.css's `@theme` that `fontClass` comes from. */
   tailwindKey: string;
   /**
    * THE SENTENCE AN ADMINISTRATOR READS IN THE PICKER. What this face is for, and when to choose it
@@ -918,7 +918,7 @@ ${LICENCE_NOTE.map((line) => ` * ${line}`).join("\n")}
  * come from the Fontsource API and from the bytes on disk. Editing here is how a description comes to
  * disagree with the face it describes.
  *
- * ⚠ A FACE HERE MUST ALSO BE DECLARED IN app/layout.tsx AND KEYED IN tailwind.config.ts. Nothing in
+ * ⚠ A FACE HERE MUST ALSO BE DECLARED IN app/layout.tsx AND KEYED IN app/globals.css's \`@theme\`. Nothing in
  * TypeScript enforces that: \`fontClass\` is a string, and a class Tailwind never generated is a class
  * that silently does nothing. The fetcher cross-checks layout.tsx on every run and fails if a
  * \`cssVariable\` or \`weightRange\` is missing from it.

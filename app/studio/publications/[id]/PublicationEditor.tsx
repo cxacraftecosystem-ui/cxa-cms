@@ -512,7 +512,7 @@ export function PublicationEditor({
             inputMode="numeric"
             value={value.year}
             onChange={(event) => update({ year: event.target.value })}
-            className="max-w-[10rem]"
+            className="max-w-40"
           />
         </Field>
 
@@ -542,7 +542,7 @@ export function PublicationEditor({
             value={value.pages}
             onChange={(event) => update({ pages: event.target.value })}
             placeholder="45–67"
-            className="max-w-[14rem]"
+            className="max-w-56"
           />
         </Field>
       </FormSection>
@@ -910,7 +910,7 @@ function CitationPreview({ citable }: { citable: CitablePublication }) {
             NOT a live region. It changes on every keystroke, and a polite region here would read the
             whole citation out again after every character (contract §11).
           */}
-          <p className="prose-measure mt-1 break-words text-sm leading-relaxed text-ink-900">
+          <p className="prose-measure mt-1 wrap-break-word text-sm leading-relaxed text-ink-900">
             {entry.text.trim().length > 0
               ? entry.text
               : "Nothing to show yet — fill in the title, the authors and the year."}

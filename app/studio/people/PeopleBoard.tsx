@@ -538,7 +538,7 @@ function PersonBoardRow({
         className="h-11 w-11 shrink-0"
       />
 
-      <span className="min-w-[12rem] flex-1">
+      <span className="min-w-48 flex-1">
         <Link
           href={`/studio/people/${person.id}`}
           className="rounded font-medium text-ink-900 underline-offset-4 transition-colors hover:text-purple-700 hover:underline"

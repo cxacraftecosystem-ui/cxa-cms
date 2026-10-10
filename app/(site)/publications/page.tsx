@@ -480,7 +480,7 @@ export default async function PublicationsPage({
                   // never restate it as a `scroll-mt-*` (contract §7). z-10 is the ladder's rung for
                   // sticky in-page chrome and must never exceed the header's 50 (contract §6).
                   data-anchor=""
-                  className="display-title sticky top-[var(--nav-clearance)] z-10 border-b border-line-200 bg-bg-0 pb-2 text-sm font-semibold uppercase tracking-[0.14em] text-ink-500"
+                  className="display-title sticky top-(--nav-clearance) z-10 border-b border-line-200 bg-bg-0 pb-2 text-sm font-semibold uppercase tracking-[0.14em] text-ink-500"
                 >
                   {group.year}
                   <span className="ml-2 font-sans font-normal normal-case tracking-normal text-ink-300">

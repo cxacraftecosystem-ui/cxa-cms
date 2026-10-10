@@ -68,7 +68,7 @@ export interface SiteFooterProps {
 
 /** Complete literal class strings — a name assembled by concatenation is purged (contract §5). */
 const FOOTER_LINK =
-  "inline-flex min-h-9 items-center gap-1.5 text-sm text-white/70 transition hover:text-white focus-visible:!outline-logo-cream";
+  "inline-flex min-h-9 items-center gap-1.5 text-sm text-white/70 transition hover:text-white focus-visible:outline-logo-cream!";
 
 /** Gold-300 — ChartMate's own column-heading rung, and the middle of the ramp the band runs. */
 const COLUMN_HEADING = "text-xs font-semibold uppercase tracking-[0.14em] text-gold-300";
@@ -103,20 +103,20 @@ export function SiteFooter({ branding, contact, social, footer, items }: SiteFoo
       outer element carries no text, so the themed token under unconditionally-white type is never
       in play (theme-check's rule).
 
-      ⚠ `z-[45]` IS ALSO THE FLUID CURSOR'S STACKING CONTRACT, not decoration — see the header of
+      ⚠ `z-45` IS ALSO THE FLUID CURSOR'S STACKING CONTRACT, not decoration — see the header of
       `components/site/SplashCursor.tsx`. That canvas is `fixed … z-40`, and this band is a large
-      opaque surface the trail would otherwise smear straight across. An ARBITRARY value, because tailwind.config.ts keeps `zIndex` stock (…40, 50) and 45 is not a class. It is the same rung `.bg-card`
+      opaque surface the trail would otherwise smear straight across. Not a rung of the stock ladder (…40, 50): Tailwind 4 writes any number as `z-45`. It is the same rung `.bg-card`
       takes in globals.css, for the same reason and against the same canvas — above the trail, below
       the z-50 header.
     */
-    <footer className="relative z-[45] bg-bg-0">
+    <footer className="relative z-45 bg-bg-0">
       {/* `text-white` lives HERE, beside the literal purple-950 it depends on — putting it on the
           themed outer element above is exactly the inverting-scrim defect theme-check exists to
           catch (it did). */}
       <div
         // The splash cursor stands down over the closing band, like the other purple grounds.
         data-splash-off=""
-        className="noise relative isolate mx-auto max-w-[96rem] overflow-hidden rounded-t-[2.5rem] bg-purple-950 text-white md:rounded-t-[3rem]"
+        className="noise relative isolate mx-auto max-w-384 overflow-hidden rounded-t-[2.5rem] bg-purple-950 text-white md:rounded-t-[3rem]"
       >
       {/* The mesh glow. Ornament, so it is out of the accessibility tree and out of the way of the
           pointer; `.grad-mesh` is one of the three sanctioned gradient recipes (contract §4). */}
@@ -164,7 +164,7 @@ export function SiteFooter({ branding, contact, social, footer, items }: SiteFoo
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold-300">
               IIT Kharagpur · Centre of Excellence
             </p>
-            <p className="mt-4 font-display text-3xl font-extrabold leading-[1.12] tracking-tight text-white sm:text-4xl md:text-[2.75rem]">
+            <p className="mt-4 font-display text-3xl font-extrabold leading-[1.12] tracking-tight text-white sm:text-4xl md:text-[2.75rem] sm:leading-10">
               Where heritage meets{" "}
               <span className="text-gold-gradient">intelligence.</span>
             </p>
@@ -247,7 +247,7 @@ export function SiteFooter({ branding, contact, social, footer, items }: SiteFoo
                         */
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/80 transition hover:border-gold-400/50 hover:bg-gold-500/10 hover:text-gold-200 focus-visible:!outline-logo-cream"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/80 transition hover:border-gold-400/50 hover:bg-gold-500/10 hover:text-gold-200 focus-visible:outline-logo-cream!"
                       >
                         <Icon aria-hidden="true" className="h-4 w-4" />
                         {/* The icon is decorative; this is the link's whole accessible name. */}
@@ -426,7 +426,7 @@ export function SiteFooter({ branding, contact, social, footer, items }: SiteFoo
             showLabel
             className={cn(
               "shrink-0",
-              "[&>button]:!text-white [&>button:hover]:!bg-white/10 [&>button:hover]:!text-white"
+              "[&>button]:text-white! [&>button:hover]:bg-white/10! [&>button:hover]:text-white!"
             )}
           />
         </div>

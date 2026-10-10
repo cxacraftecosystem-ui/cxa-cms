@@ -239,15 +239,16 @@ check(
  * ⚠ A FACE THE LAYOUT DOES NOT DECLARE IS A PICKER OPTION THAT RENDERS AS A FALLBACK, silently.
  * `next/font/local` refuses non-literal arguments, so every face has to be typed out by hand in
  * `app/layout.tsx` — which means it can be forgotten, and nothing downstream would say so. Likewise a
- * `tailwindKey` with no entry in `tailwind.config.ts` compiles `font-lora` to nothing at all.
+ * `tailwindKey` with no `--font-<key>` in the `@theme` block of app/globals.css compiles `font-lora` to
+ * nothing at all.
  *
  * This is the cheap half of the check the fetcher does properly; it is here because it costs a
  * millisecond and the fetcher only runs when somebody deliberately runs it.
  */
 const layout = readIfPresent(path.join(ROOT, "app", "layout.tsx"));
-const tailwind = readIfPresent(path.join(ROOT, "tailwind.config.ts"));
+const tailwind = readIfPresent(path.join(ROOT, "app", "globals.css"));
 check(layout !== null, "app/layout.tsx could not be read");
-check(tailwind !== null, "tailwind.config.ts could not be read");
+check(tailwind !== null, "app/globals.css could not be read");
 
 for (const face of FONT_FACES) {
   if (layout !== null) {
@@ -258,8 +259,8 @@ for (const face of FONT_FACES) {
   }
   if (tailwind !== null) {
     check(
-      new RegExp(`["']?${face.tailwindKey}["']?\\s*:`).test(tailwind),
-      `${face.id}: fontFamily key "${face.tailwindKey}" is absent from tailwind.config.ts — "${face.fontClass}" compiles to nothing`
+      new RegExp(`^\\s*--font-${face.tailwindKey}\\s*:`, "m").test(tailwind),
+      `${face.id}: --font-${face.tailwindKey} is absent from the @theme block in app/globals.css — "${face.fontClass}" compiles to nothing`
     );
   }
 }

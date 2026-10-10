@@ -35,7 +35,7 @@ export default async function StudioPublicationImportPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-[76rem]">
+    <div className="mx-auto w-full max-w-304">
       <StudioPageHeader
         title="Import publications"
         description="Paste BibTeX from a reference manager, or a list of DOIs, and check what will be added before anything is created. Everything that arrives this way is created as a draft, so nothing appears on the public site until you publish it."

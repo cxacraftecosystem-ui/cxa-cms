@@ -969,7 +969,7 @@ export function EventEditor({
                     capacity: raw.length === 0 || !Number.isFinite(parsed) ? null : Math.max(0, parsed)
                   }));
                 }}
-                className="max-w-[8rem]"
+                className="max-w-32"
               />
             </Field>
 

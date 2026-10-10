@@ -630,7 +630,7 @@ export function ProjectEditor({
             value={value.fundingCurrency}
             onChange={(event) => update({ fundingCurrency: event.target.value })}
             placeholder="INR"
-            className="max-w-[10rem]"
+            className="max-w-40"
           />
         </Field>
 
@@ -711,9 +711,9 @@ export function ProjectEditor({
               value={value.progress}
               onChange={(event) => update({ progress: event.target.value })}
               suffix="%"
-              className="max-w-[9rem]"
+              className="max-w-36"
             />
-            <div className="min-w-[14rem] flex-1">
+            <div className="min-w-56 flex-1">
               {progressNumber > 0 ? (
                 <ProgressBar
                   value={clamp(progressNumber, 0, 100)}
@@ -1007,7 +1007,7 @@ export function ProjectEditor({
             inputMode="numeric"
             value={value.sortOrder}
             onChange={(event) => update({ sortOrder: event.target.value })}
-            className="max-w-[10rem]"
+            className="max-w-40"
           />
         </Field>
       </FormSection>
@@ -1136,7 +1136,7 @@ function TeamRoles({
             >
               <span className="shrink-0 text-xs tabular-nums text-ink-500">{index + 1}</span>
 
-              <span className="min-w-[10rem] flex-1 text-sm text-ink-900">
+              <span className="min-w-40 flex-1 text-sm text-ink-900">
                 {name ??
                   (missing
                     ? "This person has been deleted, so this row will be ignored"
@@ -1148,7 +1148,7 @@ function TeamRoles({
                 onChange={(event) => onRoleChange(member.personId, event.target.value)}
                 placeholder="Principal investigator"
                 aria-label={`What ${name ?? `person ${index + 1}`} does on this project`}
-                className="min-w-[12rem] flex-1"
+                className="min-w-48 flex-1"
               />
             </li>
           );
@@ -1262,7 +1262,7 @@ function GalleryEditor({
                 className="w-28 shrink-0"
               />
 
-              <div className="min-w-[14rem] flex-1 space-y-1.5">
+              <div className="min-w-56 flex-1 space-y-1.5">
                 <p className="truncate text-xs text-ink-500">{entry.asset.fileName}</p>
                 <Input
                   value={entry.caption}

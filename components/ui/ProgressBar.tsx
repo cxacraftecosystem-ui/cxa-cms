@@ -125,7 +125,7 @@ export function ProgressBar({
           // purged (contract §5). 220ms is `DURATION.page`, the contract's figure for this bar.
           <div
             style={{ transform: `translateX(${percent - 100}%)` }}
-            className="h-full w-full rounded-full bg-purple-700 transition-transform duration-[220ms] ease-out"
+            className="h-full w-full rounded-full bg-purple-700 transition-transform duration-220 ease-out"
           />
         ) : (
           <>
@@ -144,7 +144,7 @@ export function ProgressBar({
             */}
             <span
               aria-hidden="true"
-              className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-purple-600 to-transparent animate-sweep"
+              className="absolute inset-0 -translate-x-full bg-linear-to-r from-transparent via-purple-600 to-transparent animate-sweep"
             />
           </>
         )}

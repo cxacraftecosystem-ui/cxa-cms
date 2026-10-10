@@ -158,7 +158,7 @@ export default async function StudioResearchAreaPage({
   const filedUnder = area ? area._count.projects + area._count.publications : 0;
 
   return (
-    <div className="mx-auto w-full max-w-[72rem]">
+    <div className="mx-auto w-full max-w-6xl">
       <StudioPageHeader
         title={isNew ? "New research area" : (area?.title ?? "Research area")}
         description={

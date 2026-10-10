@@ -177,7 +177,7 @@ export function PublicationListSection({
                     "display-title border-b border-line-200 pb-2 text-sm font-semibold uppercase tracking-[0.14em] text-ink-500",
                     // z-10 is the ladder's rung for sticky in-page chrome; the offset is the header
                     // clearance contract, never a hand-picked number (contract §6, §7).
-                    sticky ? "sticky top-[var(--nav-clearance)] z-10 bg-bg-0" : undefined
+                    sticky ? "sticky top-(--nav-clearance) z-10 bg-bg-0" : undefined
                   )}
                 >
                   {group.year}

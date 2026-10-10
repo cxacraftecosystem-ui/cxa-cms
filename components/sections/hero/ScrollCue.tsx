@@ -104,7 +104,7 @@ export function ScrollCue({ className }: ScrollCueProps) {
           down the frame rather than as a divider that has been placed there — the same gradient
           hairline the hero's eyebrow uses, turned through ninety degrees.
         */}
-        <span aria-hidden="true" className="h-10 w-px bg-gradient-to-b from-transparent to-gold-500/70" />
+        <span aria-hidden="true" className="h-10 w-px bg-linear-to-b from-transparent to-gold-500/70" />
 
         {/*
           No `initial`, so the resting chevron is what framer writes into the prerendered markup and

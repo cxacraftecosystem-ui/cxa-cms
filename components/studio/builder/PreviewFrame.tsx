@@ -51,7 +51,7 @@
  * unsaved work. The notice under the toolbar states which of the two the reader is looking at, always.
  *
  * LIGHT AND DARK ARE APPLIED BY WRITING `data-theme` INTO THE FRAME'S OWN DOCUMENT, which is the
- * attribute `lib/preferences.ts` puts on `<html>` and `tailwind.config.ts` keys `dark:` off. The frame
+ * attribute `lib/preferences.ts` puts on `<html>` and app/globals.css's `@custom-variant dark` keys `dark:` off. The frame
  * is same-origin, so this is a plain attribute write; it is done after every load, because the boot
  * script inside the frame sets the attribute from the reader's OWN stored preference the moment it
  * loads, and would otherwise win.

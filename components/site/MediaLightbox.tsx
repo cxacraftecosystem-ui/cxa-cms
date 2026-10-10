@@ -294,7 +294,7 @@ function LightboxSurface({ items, index, onClose, onIndexChange, label }: Lightb
       aria-modal="true"
       aria-label={label ? `${label} — image viewer` : "Image viewer"}
       tabIndex={-1}
-      className="fixed inset-0 outline-none"
+      className="fixed inset-0 outline-hidden"
       // Inline rather than utilities: 100 is a ladder rung and not a stock Tailwind z-index, and a
       // fixed element cannot inherit the padding the scroll lock puts on <body>, so it re-pays the
       // vanished scrollbar itself (contract §6).
@@ -312,7 +312,7 @@ function LightboxSurface({ items, index, onClose, onIndexChange, label }: Lightb
          * inverts (#1e1b2e → #f2f0f9), which made the dark theme's lightbox open as a near-white
          * flash and left every white control on it invisible. See ImageCredit.tsx for the full note.
          */
-        className="absolute inset-0 bg-purple-950/92 backdrop-blur-sm"
+        className="absolute inset-0 bg-purple-950/92 backdrop-blur-xs"
       />
 
       <motion.div
@@ -381,7 +381,7 @@ function LightboxSurface({ items, index, onClose, onIndexChange, label }: Lightb
                     sizes="100vw"
                     targetWidth={2560}
                     className="w-full shadow-cinema"
-                    imageClassName="!object-contain"
+                    imageClassName="object-contain!"
                   />
                 </div>
               </div>

@@ -37,9 +37,9 @@ import { cn } from "@/lib/utils";
 /** Complete literal class strings — an `aspect-[${r}]` built from data is purged (contract §5). */
 const ASPECT_CLASS: Record<EmbedAspectRatio, string> = {
   "16:9": "aspect-video",
-  "4:3": "aspect-[4/3]",
+  "4:3": "aspect-4/3",
   "1:1": "aspect-square",
-  "9:16": "aspect-[9/16]"
+  "9:16": "aspect-9/16"
 };
 
 /**

@@ -195,9 +195,9 @@ const EYEBROW_CLASS: Record<Alignment, string> = {
  * a gradient pointing the other way reads as a mistake nobody can name.
  */
 const EYEBROW_RULE_CLASS: Record<Alignment, string> = {
-  left: "h-px w-10 shrink-0 bg-gradient-to-r from-transparent to-gold-500/80",
-  center: "h-px w-10 shrink-0 bg-gradient-to-r from-transparent via-gold-500/80 to-transparent",
-  right: "h-px w-10 shrink-0 bg-gradient-to-l from-transparent to-gold-500/80"
+  left: "h-px w-10 shrink-0 bg-linear-to-r from-transparent to-gold-500/80",
+  center: "h-px w-10 shrink-0 bg-linear-to-r from-transparent via-gold-500/80 to-transparent",
+  right: "h-px w-10 shrink-0 bg-linear-to-l from-transparent to-gold-500/80"
 };
 
 const ACTIONS_CLASS: Record<Alignment, string> = {
@@ -247,11 +247,11 @@ const FIGURE_CLASS: Record<Alignment, string> = {
  * and neither inverts.
  */
 const SCRIM_CLASS: Record<Alignment, string> = {
-  left: "bg-gradient-to-r from-purple-950/90 via-purple-950/55 to-purple-950/20",
+  left: "bg-linear-to-r from-purple-950/90 via-purple-950/55 to-purple-950/20",
   // Centred words sit in the middle BAND of the frame, so the gradient runs top-to-bottom and is
   // heaviest across the middle. A left-to-right ramp would put its darkest edge where nothing is.
-  center: "bg-gradient-to-b from-purple-950/45 via-purple-950/90 to-purple-950/55",
-  right: "bg-gradient-to-l from-purple-950/90 via-purple-950/55 to-purple-950/20"
+  center: "bg-linear-to-b from-purple-950/45 via-purple-950/90 to-purple-950/55",
+  right: "bg-linear-to-l from-purple-950/90 via-purple-950/55 to-purple-950/20"
 };
 
 /**
@@ -270,9 +270,9 @@ const SCRIM_CLASS: Record<Alignment, string> = {
  */
 const HEADLINE_CLASS = {
   withPlates:
-    "display-title text-pretty text-[2.4rem] leading-[1.06] text-white sm:text-5xl md:text-6xl lg:text-[3.9rem] lg:leading-[1.03] xl:text-[4.6rem] 2xl:text-[5.25rem] 2xl:leading-[1.0]",
+    "display-title text-pretty text-[2.4rem] leading-[1.06] text-white sm:text-5xl md:text-6xl lg:text-[3.9rem] lg:leading-[1.03] xl:text-[4.6rem] 2xl:text-[5.25rem] 2xl:leading-none sm:leading-none md:leading-none",
   alone:
-    "display-title text-balance text-[2.4rem] leading-[1.06] text-white sm:text-5xl md:text-6xl lg:text-7xl xl:text-[5.25rem] xl:leading-[1.02]",
+    "display-title text-balance text-[2.4rem] leading-[1.06] text-white sm:text-5xl md:text-6xl lg:text-7xl xl:text-[5.25rem] xl:leading-[1.02] sm:leading-none md:leading-none lg:leading-none",
   /**
    * The LONG tier, for a headline past `LONG_HEADLINE_CHARS`. The Centre's own identity line —
    * "Centre of Excellence for unified AI-enabled craft ecosystem platform", 69 characters — set
@@ -673,12 +673,12 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
       // to the value it had.
       className={cn(
         "relative isolate flex w-full items-center overflow-hidden bg-purple-950",
-        "min-h-[calc(88vh_+_var(--bleed-top))] supports-[height:88svh]:min-h-[calc(88svh_+_var(--bleed-top))]",
+        "min-h-[calc(88vh+var(--bleed-top))] supports-[height:88svh]:min-h-[calc(88svh+var(--bleed-top))]",
         // 2.5/3.5rem, down from 4/6: the box is `items-center`, so the base padding is mostly a
         // floor under short viewports — and at 6rem, a 768-tall laptop gave the words less room
         // than the whitespace. The bleed term is unchanged: the clearance contract in globals.css
         // does not care what the base is, only that the two sides carry the same `--bleed-top`.
-        "pt-[calc(2.5rem_+_var(--bleed-top))] md:pt-[calc(3.5rem_+_var(--bleed-top))]",
+        "pt-[calc(2.5rem+var(--bleed-top))] md:pt-[calc(3.5rem+var(--bleed-top))]",
         bottomPadding
       )}
     >
@@ -723,7 +723,7 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
             {backdrop === "video" && asset ? (
               <>
                 {/*
-                  The still gets a positioning wrapper of its own rather than an `!absolute` on
+                  The still gets a positioning wrapper of its own rather than an `absolute!` on
                   `MediaImage`'s frame. That frame is `relative`, and ⚠ `.relative` is defined AFTER
                   `.absolute` in Tailwind's own output — so an `absolute` passed in through `className`
                   loses on source order and the layer would sit in flow, pushing the film below it.
@@ -862,7 +862,7 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
           Two vignettes and a hairline, and together they are what makes the band read as a plate
           rather than as a screenshot that ran out.
 
-          ⚠ THE FOOT USED TO BE `bg-gradient-to-t from-bg-0`, fading the hero into the page canvas over
+          ⚠ THE FOOT USED TO BE `bg-linear-to-t from-bg-0`, fading the hero into the page canvas over
           160px, AND THAT IS THE PALE BAND AT THE BOTTOM OF THE SCREENSHOT THIS WORK STARTED FROM. In
           the dark theme it is invisible and harmless; in the light theme it interpolates #f7f6fb into
           deep indigo across a sixth of the hero, which is not a hand-off but fog — and it fogged the
@@ -871,9 +871,9 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
           an edge somebody drew. The section beneath it opens on the page's own canvas, which is what
           every other block on the site does.
         */}
-        <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-purple-950/65 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-purple-950 via-purple-950/55 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-gold-500/45 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-32 bg-linear-to-b from-purple-950/65 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-44 bg-linear-to-t from-purple-950 via-purple-950/55 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-px bg-linear-to-r from-transparent via-gold-500/45 to-transparent" />
       </div>
 
       <div className="shell relative">
@@ -949,7 +949,7 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
               <motion.p
                 data-reveal=""
                 variants={riseItem(reduce)}
-                className="mt-6 max-w-[54ch] text-lg leading-relaxed text-white/80 sm:text-xl md:text-[1.3125rem]"
+                className="mt-6 max-w-[54ch] text-lg leading-relaxed text-white/80 sm:text-xl md:text-[1.3125rem] sm:leading-7"
               >
                 {data.body}
               </motion.p>
@@ -969,7 +969,7 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
                     // The purple fill has nothing to sit against on this ground, so the action inverts.
                     // `!` because `cn()` is a plain join and one utility cannot beat another on source
                     // order alone (contract §5).
-                    className="!bg-white !text-purple-800 hover:!bg-gold-100 hover:!shadow-none"
+                    className="bg-white! text-purple-800! hover:bg-gold-100! hover:shadow-none!"
                   >
                     {primary.label}
                   </LinkButton>
@@ -979,7 +979,7 @@ export function HeroSection({ data, section, resolved, figures = [] }: HeroSecti
                   <LinkButton
                     href={secondary.href}
                     variant="secondary"
-                    className="!border-white/40 !bg-transparent !text-white hover:!border-white hover:!bg-white/10"
+                    className="border-white/40! bg-transparent! text-white! hover:border-white! hover:bg-white/10!"
                   >
                     {secondary.label}
                   </LinkButton>
@@ -1183,7 +1183,7 @@ function SheetPlate({
    * `earth` RAMP. It was `ring-white/15` — a neutral, which is what you reach for when the only job
    * is "separate this from the ground", and it made the pair read as one frame in gold and one frame
    * in nothing. earth-500 IS the mark's own terracotta (#CC785C; the ramp is built outwards from it,
-   * see tailwind.config.ts), so the vitrine now holds two objects lit by two threads the Centre
+   * see app/globals.css), so the vitrine now holds two objects lit by two threads the Centre
    * actually owns — gold on the plate the eye lands on, the warmer and quieter one beside it. The
    * hierarchy is unchanged, and stated in colour rather than only in size.
    *
@@ -1195,11 +1195,11 @@ function SheetPlate({
   return (
     <div
       className={cn(
-        // The mount. `backdrop-blur-sm` is a genuine backdrop-filter over the tapestry beneath, and it
+        // The mount. `backdrop-blur-xs` is a genuine backdrop-filter over the tapestry beneath, and it
         // is inert for the half-second of the entrance while framer holds the wrapper below full
         // opacity (an ancestor with `opacity < 1` becomes the backdrop root — see `.glass-card` in
         // globals.css). A border that arrives unfrosted and settles frosted is not worth a branch.
-        "rounded-lg bg-purple-950/70 p-2.5 shadow-cinema backdrop-blur-sm ring-1",
+        "rounded-lg bg-purple-950/70 p-2.5 shadow-cinema backdrop-blur-xs ring-1",
         fillet ? "ring-gold-500/30" : "ring-earth-500/25",
         className
       )}

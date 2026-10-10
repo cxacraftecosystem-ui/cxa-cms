@@ -85,7 +85,7 @@ export interface MediaImageProps {
   alt?: string;
   /**
    * Classes for the `<img>` itself. It is `object-cover` by default; because `cn()` is a plain join
-   * and later classes do NOT win (contract §5), overriding that needs `!object-contain`.
+   * and later classes do NOT win (contract §5), overriding that needs `object-contain!`.
    */
   imageClassName?: string;
   /**
@@ -93,7 +93,7 @@ export interface MediaImageProps {
    *
    * ⚠ THIS EXISTS FOR THE STUDIO, AND NOTHING ON THE PUBLIC SITE SHOULD PASS IT. A screen whose job is
    * to show an editor what they HAVE — the media library's detail preview, which deliberately asks for
-   * `!object-contain` — must show the whole photograph, or the crop dialog opens on a picture that has
+   * `object-contain!` — must show the whole photograph, or the crop dialog opens on a picture that has
    * already had the crop applied to it and the editor is cropping a crop. Everywhere a reader sees an
    * image, the crop is the point and this stays at its default.
    */
@@ -179,7 +179,7 @@ export function MediaImage({
   const src = mediaSrc(shown, sourceWidth);
   const alt = altOverride ?? mediaAlt(shown);
   const ratio = resolveAspect(aspect, shown);
-  // Inline, not a Tailwind class: an arbitrary `aspect-[3/2]` assembled from data would be purged.
+  // Inline, not a Tailwind class: an arbitrary `aspect-3/2` assembled from data would be purged.
   const frameStyle = ratio ? { aspectRatio: ratio } : undefined;
   const radiusClass = RADIUS_CLASSES[rounded];
 

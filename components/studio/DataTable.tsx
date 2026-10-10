@@ -629,7 +629,7 @@ export function DataTable<Row>({
                     // `!` on both: `cn()` is a plain join and later classes do NOT win (contract §5),
                     // so the recipe's own `min-h-11`/`py-1.5` would otherwise make every row 44px
                     // taller than the rest of the table.
-                    className="!min-h-0 !py-0 justify-center"
+                    className="min-h-0! py-0! justify-center"
                   />
                 </th>
               ) : null}
@@ -795,7 +795,7 @@ export function DataTable<Row>({
                             // `!` on both: `cn()` is a plain join and later classes do NOT win (contract §5),
                     // so the recipe's own `min-h-11`/`py-1.5` would otherwise make every row 44px
                     // taller than the rest of the table.
-                    className="!min-h-0 !py-0 justify-center"
+                    className="min-h-0! py-0! justify-center"
                           />
                         ) : null}
                       </td>

@@ -213,7 +213,7 @@ function NavSheetSurface({
         // the plain-join `cn()` next to another `touch-*` class, and this declaration must land on
         // THIS element and no ancestor (see the file header).
         style={{ touchAction: "none" }}
-        className="absolute inset-0 cursor-pointer bg-ink-900/50 backdrop-blur-sm"
+        className="absolute inset-0 cursor-pointer bg-ink-900/50 backdrop-blur-xs"
       />
 
       <motion.div
@@ -234,7 +234,7 @@ function NavSheetSurface({
         // because `cn()` is a plain join and a `px-*` utility on the overlay would out-specify
         // `.overlay-frame` and silently take the scroll-gutter payment with it. `.nav-sheet` owns the
         // height ceiling, the overflow and the safe-area padding.
-        className="nav-sheet relative mx-auto w-[min(100%-1.5rem,42rem)] rounded-lg border border-line-200 bg-card shadow-cinema outline-none"
+        className="nav-sheet relative mx-auto w-[min(100%-1.5rem,42rem)] rounded-lg border border-line-200 bg-card shadow-cinema outline-hidden"
       >
         <ul className="flex flex-col gap-1">
           {items.map((item) => (

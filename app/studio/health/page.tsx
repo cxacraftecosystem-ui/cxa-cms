@@ -114,7 +114,7 @@ export default async function StudioHealthPage() {
   const anyUrgent = mine.some((entry) => entry.severity === "urgent");
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-8">
+    <div className="mx-auto w-full max-w-336 space-y-8">
       <StudioPageHeader
         title="Content health"
         description="Everything this software can tell you about the state of the site without knowing the work: what is missing, what contradicts itself, and what has been left half-finished. Every line says why it matters and takes you to the screen that fixes it."
@@ -360,7 +360,7 @@ function FindingRow({ finding }: { finding: HealthFinding }) {
           <>
             <ul className="mt-2 space-y-1">
               {finding.examples.map((example) => (
-                <li key={example} className="break-words text-xs leading-relaxed text-ink-700">
+                <li key={example} className="wrap-break-word text-xs leading-relaxed text-ink-700">
                   {example}
                 </li>
               ))}

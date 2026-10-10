@@ -612,7 +612,7 @@ export function MediaDetailPanel({
                 // is about the file rather than presenting the picture for its content.
                 alt=""
                 className="w-full bg-surface-100"
-                imageClassName="!object-contain"
+                imageClassName="object-contain!"
                 /**
                  * ⚠ THE WHOLE PICTURE, DELIBERATELY UNCROPPED. This preview's job is to show an editor
                  * what the FILE is; the panel below it, headed "What the site shows of this picture", is
@@ -650,7 +650,7 @@ export function MediaDetailPanel({
                           would buy a second copy of bytes the panel has already loaded above.
                         */}
                         <div
-                          // Inline, not a Tailwind class: an `aspect-[16/9]` assembled from stored
+                          // Inline, not a Tailwind class: an `aspect-video` assembled from stored
                           // data would be purged by the content scanner (contract §5).
                           style={{ aspectRatio: String(cropPreviewRatio(data.cropAspect)) }}
                           className="relative w-full overflow-hidden rounded-sm border border-line-200 bg-surface-100"

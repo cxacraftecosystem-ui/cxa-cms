@@ -125,10 +125,10 @@ const WRAP_CLASS = {
  * object.
  */
 const SEAT_CLASS =
-  "relative mx-auto min-h-[8rem] w-full [perspective:1000px] sm:min-h-[7.5rem]";
+  "relative mx-auto min-h-32 w-full perspective-[1000px] sm:min-h-30";
 
 /** The statement's own type, unchanged from the three paragraphs this replaced. */
-const LINE_CLASS = "mx-auto max-w-[40ch] text-lg leading-relaxed text-white/70 sm:text-xl";
+const LINE_CLASS = "mx-auto max-w-[40ch] text-lg leading-relaxed text-white/70 sm:text-xl sm:leading-7";
 
 export interface CineFlipDeckProps {
   /** The statements, in reading order. Every one of them is rendered, always. */
@@ -177,7 +177,7 @@ export function CineFlipDeck({ lines, className }: CineFlipDeckProps) {
                 key={line}
                 // What the `<noscript>` rescue in CinematicScroll.tsx keys on. See this file's header.
                 data-cine-flip=""
-                className={cn(LINE_CLASS, "absolute inset-x-0 top-0 [backface-visibility:hidden]")}
+                className={cn(LINE_CLASS, "absolute inset-x-0 top-0 backface-hidden")}
                 /*
                  * `initial` is stated rather than left to default to `animate`, because it is what
                  * framer writes into the SERVER-rendered markup: the first question arrives on the

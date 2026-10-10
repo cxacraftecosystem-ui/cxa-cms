@@ -22,9 +22,9 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import resolveConfig from "tailwindcss/resolveConfig";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
-import tailwindConfig from "../tailwind.config";
 import { bucketKeysAgree, screenFramingSchema, screenFramingSchemaKeys } from "../lib/media/framing-schema";
 import { FULL_CROP, cropFrameStyle, cropImageStyle, storedCrop, type CropRect } from "../lib/media/crop";
 import {
@@ -258,18 +258,18 @@ function bandAt(picture: Picture, width: number) {
     "a bucket's max does not abut the next bucket's min"
   );
   /**
-   * ⚠ THE BOUNDARIES ARE ASSERTED AGAINST TAILWIND'S RESOLVED CONFIG, NOT AGAINST A COPY OF IT.
+   * ⚠ THE BOUNDARIES ARE ASSERTED AGAINST THE BREAKPOINTS TAILWIND IS GIVEN, NOT AGAINST A COPY OF THEM.
    *
    * A picture's framing has to change at the same width the LAYOUT changes at — the frame being cropped
    * for is decided by the `sm:` / `lg:` utilities on the elements around it. Restating 640/768/1024 here
-   * as literals would be a second source of truth that drifts silently the day somebody adds a `screens`
-   * key to tailwind.config.ts. Reading the resolved config means that day is a failing assertion instead.
+   * as literals would be a second source of truth that drifts silently the day somebody moves a
+   * breakpoint. They are read from the `--breakpoint-*` lines of app/globals.css's `@theme` — Tailwind 4
+   * takes its screens from exactly those — so that day is a failing assertion instead.
    */
-  // `as unknown as` because resolveConfig's own types declare `screens` as possibly undefined for a
-  // config it has just resolved defaults into. The assertion below is what actually proves it is there.
-  const tailwindScreens = resolveConfig(tailwindConfig as never).theme?.screens as unknown as
-    | Record<string, string>
-    | undefined;
+  const themeCss = readFileSync(path.join(process.cwd(), "app", "globals.css"), "utf8");
+  const tailwindScreens: Record<string, string> = Object.fromEntries(
+    Array.from(themeCss.matchAll(/^\s*--breakpoint-([a-z0-9]+)\s*:\s*([^;]+);/gm), (m) => [m[1], (m[2] ?? "").trim()])
+  );
   const expected = SCREEN_BUCKETS.filter((bucket) => bucket.minWidthPx !== null).map((bucket) => ({
     id: bucket.id,
     px: bucket.minWidthPx

@@ -496,7 +496,7 @@ export function OpenCollectionImport({
                   // `accent-*`, not `text-*`: a native radio takes its fill from `accent-color`, and
                   // `text-purple-700` on one paints nothing at all. The ring colour is named because
                   // a bare `ring-2` is stock BLUE (contract §3).
-                  className="h-4 w-4 accent-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600/40"
+                  className="h-4 w-4 accent-purple-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600/40"
                 />
                 <span>{choice.label}</span>
               </label>
@@ -597,9 +597,9 @@ export function OpenCollectionImport({
                       type="button"
                       aria-pressed={isChosen}
                       onClick={() => toggle(item)}
-                      className="min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600/40"
+                      className="min-w-0 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-purple-600/40"
                     >
-                      <span className="relative block aspect-[4/3] w-full overflow-hidden rounded-sm bg-surface-200">
+                      <span className="relative block aspect-4/3 w-full overflow-hidden rounded-sm bg-surface-200">
                         {item.thumbnailUrl ? (
                           <Image
                             src={item.thumbnailUrl}
@@ -651,7 +651,7 @@ export function OpenCollectionImport({
 
                     <p
                       className={cn(
-                        "mt-1.5 break-words text-[0.6875rem] leading-relaxed text-ink-500",
+                        "mt-1.5 wrap-break-word text-[0.6875rem] leading-relaxed text-ink-500",
                         longCredit && !isExpanded ? "line-clamp-3" : ""
                       )}
                     >
@@ -713,7 +713,7 @@ export function OpenCollectionImport({
               {rows.map((row) => (
                 <li key={row.key} className="text-xs leading-relaxed">
                   <span className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="min-w-0 break-words font-medium text-ink-900">{row.title}</span>
+                    <span className="min-w-0 wrap-break-word font-medium text-ink-900">{row.title}</span>
                     <span
                       className={cn(
                         "shrink-0",
@@ -760,7 +760,7 @@ export function OpenCollectionImport({
             <ul className="mt-2 space-y-1.5">
               {failures.map((row) => (
                 <li key={row.key} className="text-xs leading-relaxed">
-                  <span className="block break-words font-medium">{row.title}</span>
+                  <span className="block wrap-break-word font-medium">{row.title}</span>
                   <span className="block">{row.message}</span>
                 </li>
               ))}

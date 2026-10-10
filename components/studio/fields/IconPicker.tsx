@@ -243,10 +243,10 @@ function IconPickerControl({ value, onChange }: { value: string; onChange: (next
         anchorRef={triggerRef}
         label="Choose an icon"
         width={320}
-        // `!p-0`, with the bang. `Popover` sets `p-1.5` and `cn()` is a plain join — later classes do NOT
+        // `p-0!`, with the bang. `Popover` sets `p-1.5` and `cn()` is a plain join — later classes do NOT
         // win, and Tailwind emits `p-1.5` after `p-0`, so an unforced override loses (contract §5). The
         // panel needs no padding of its own because the sticky search bar has to reach its edges.
-        className="!p-0"
+        className="p-0!"
       >
         {/* The panel itself is the scroller, so the search box has to stick to its top or it scrolls
             away from the results it is filtering. z-10 is the sticky-chrome rung (contract §6). */}

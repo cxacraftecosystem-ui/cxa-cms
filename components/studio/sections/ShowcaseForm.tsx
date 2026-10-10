@@ -443,7 +443,7 @@ export function ShowcaseFields<T extends ShowcaseLike>({
           min={1}
           max={maxLimit}
           integer
-          inputClassName="max-w-[8rem]"
+          inputClassName="max-w-32"
         />
       )}
 

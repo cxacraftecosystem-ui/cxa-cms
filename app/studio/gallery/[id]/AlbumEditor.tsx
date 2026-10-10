@@ -760,7 +760,7 @@ export function AlbumEditor({
                   size="sm"
                   // The framing goes with the picture it was drawn on — see `coverScreens` on `AlbumDraft`.
                   onClick={() => patchDraft({ coverId: null, coverScreens: null })}
-                  className="ml-2 !px-2"
+                  className="ml-2 px-2!"
                 >
                   Clear the cover
                 </Button>
@@ -778,7 +778,7 @@ export function AlbumEditor({
                   size="sm"
                   // The framing goes with the picture it was drawn on — see `spineScreens` on `AlbumDraft`.
                   onClick={() => patchDraft({ spineId: null, spineScreens: null })}
-                  className="ml-2 !px-2"
+                  className="ml-2 px-2!"
                 >
                   Clear the spine
                 </Button>

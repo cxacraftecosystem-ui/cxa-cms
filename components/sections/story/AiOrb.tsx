@@ -313,7 +313,7 @@ export function AiOrb({ className }: { className?: string }) {
           type="button"
           aria-pressed={listening}
           onClick={toggleListening}
-          className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-full border border-gold-300/30 bg-gold-300/5 px-5 font-display text-sm font-semibold text-gold-200 transition hover:border-gold-300/60 hover:bg-gold-300/15 focus-visible:!outline-logo-cream"
+          className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-full border border-gold-300/30 bg-gold-300/5 px-5 font-display text-sm font-semibold text-gold-200 transition hover:border-gold-300/60 hover:bg-gold-300/15 focus-visible:outline-logo-cream!"
         >
           {listening ? (
             <>

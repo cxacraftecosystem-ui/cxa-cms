@@ -72,7 +72,7 @@ import { siteName, siteUrl } from "@/lib/env";
  * that renders as Georgia, with nothing anywhere saying why.
  *
  * ⚠ **A NEW FACE IS THREE EDITS, NOT ONE:** the `ROSTER` in `scripts/fetch-fonts.ts` (which fetches it
- * and writes the manifest), a `localFont()` call here, and a `fontFamily` key in `tailwind.config.ts`.
+ * and writes the manifest), a `localFont()` call here, and a `--font-<key>` in the `@theme` block of app/globals.css.
  * Miss the third and the class is purged; miss this one and the variable resolves to nothing. Neither
  * failure produces an error anywhere.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -228,11 +228,12 @@ const archivoNarrow = localFont({
  * ── Monospace ────────────────────────────────────────────────────────────────────────────────
  *
  * ⚠ This does NOT become `font-mono`. That key points at `--font-mono`, which nothing in the project
- * defines, so `font-mono` has always resolved to the reader's system monospace — and 83 places across
+ * defines, so `font-mono` has always resolved to the face around it (an unresolvable var() voids the
+ * declaration) — not a monospace at all — and 83 places across
  * 40 files are set that way today, nearly all of them studio identifiers and JSON diffs. Defining
  * `--font-mono` here would restyle every one of them in a commit about adding fonts, and would change
  * the metrics of the audit log's `<pre>` blocks and the recovery-code inputs at the same time. So the
- * real face gets its own key, `font-jetbrains-mono`, and a screen opts in. See tailwind.config.ts.
+ * real face gets its own key, `font-jetbrains-mono`, and a screen opts in. See `--font-mono` in app/globals.css.
  */
 const jetbrainsMono = localFont({
   src: [

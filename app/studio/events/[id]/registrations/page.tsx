@@ -233,7 +233,7 @@ export default async function StudioEventRegistrationsPage({
   const timeZoneLabel = `${centreZoneName(now, "long") || CENTRE_TIME_ZONE}${zoneShort ? ` (${zoneShort})` : ""}`;
 
   return (
-    <div className="mx-auto w-full max-w-[90rem] space-y-6">
+    <div className="mx-auto w-full max-w-360 space-y-6">
       <StudioPageHeader
         title="Registrations"
         back={{ href: `/studio/events/${encodeURIComponent(event.id)}`, label: event.title }}

@@ -102,7 +102,7 @@ export function PointerGlow({ children, className, tint = "oklch(0.7 0.145 80" }
             }
       }
       /*
-       * ⚠ `z-[45]` PUTS THIS PANEL ABOVE THE FLUID CURSOR, which is `fixed … z-40`. It is the same
+       * ⚠ `z-45` PUTS THIS PANEL ABOVE THE FLUID CURSOR, which is `fixed … z-40`. It is the same
        * rung `.bg-card` takes in globals.css and for the same reason — but this panel is
        * `grad-brand`, not `bg-card`, so it was not covered by that rule and the trail smeared
        * straight across the invitation. Anything that is a card in the reader's eyes has to be on
@@ -111,7 +111,7 @@ export function PointerGlow({ children, className, tint = "oklch(0.7 0.145 80" }
        * `isolate` is what keeps the glow's `-z-10` inside this element; without it the layer would
        * be measured against the page and could slide behind the panel entirely.
        */
-      className={cn("relative isolate z-[45]", className)}
+      className={cn("relative isolate z-45", className)}
     >
       {/*
         `isolate` on the panel above is what keeps this `-z-10` inside it. Without it the layer

@@ -535,7 +535,7 @@ export function ResearchAreaEditor({
             inputMode="numeric"
             value={value.sortOrder}
             onChange={(event) => update({ sortOrder: event.target.value })}
-            className="max-w-[10rem]"
+            className="max-w-40"
           />
         </Field>
       </FormSection>

@@ -126,7 +126,7 @@ const MASK_GUARD = "invisible supports-[mask-size:contain]:visible";
  * 21.6% of the radius blank) sits well inside the orb, so the orb genuinely rises THROUGH the
  * mandala rather than in front of a hole cut for it.
  */
-const REACH = "absolute -inset-[36%]";
+const REACH = "absolute inset-[-36%]";
 
 /**
  * The two coaxial halves of the artwork, selected by where their paint is rather than by cutting
@@ -281,7 +281,7 @@ export function MandalaOrb({ scrollTarget, children }: MandalaOrbProps) {
           light appears to come from inside the ornament rather than from a lamp set before it. */}
       <motion.div
         aria-hidden="true"
-        className="pointer-events-none absolute -inset-[12%] rounded-full"
+        className="pointer-events-none absolute inset-[-12%] rounded-full"
         style={{
           background: GLOW_PAINT,
           scale: reduce ? REST.glowScale : glowScale,

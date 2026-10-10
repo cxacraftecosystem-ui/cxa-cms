@@ -71,7 +71,7 @@ export default async function StudioCraftSchoolsPage() {
   const filed = schools.filter((school) => school.craftCount > 0).length;
 
   return (
-    <div className="mx-auto w-full max-w-[72rem] space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6">
       <StudioPageHeader
         title="Schools and traditions"
         back={{ href: "/studio/crafts", label: "Craft archive" }}

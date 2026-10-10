@@ -778,7 +778,7 @@ export function PageEditor({
                 sortOrder: Number.isFinite(next) ? next : 0
               }));
             }}
-            className="max-w-[8rem]"
+            className="max-w-32"
           />
         </Field>
       </FormSection>

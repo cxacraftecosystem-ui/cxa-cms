@@ -103,7 +103,7 @@ nothing — which is what makes 880 KB on disk cost nothing per page.
 copy contains the above copyright notice and this license" — a *name and a URL in the manifest is not
 that*. The texts live in `fonts/licences/`, one per face plus an index. `npm run font-check` fails if
 one is missing, truncated, or is not the licence it claims to be, and also verifies every declared file
-exists, hashes as recorded, and is declared in `app/layout.tsx` and `tailwind.config.ts`. This is
+exists, hashes as recorded, and is declared in `app/layout.tsx` and in the `@theme` block of `app/globals.css`. This is
 distinct from the CC BY photographs, whose licence obliges attribution to the **reader** and which are
 credited on `/credits`.
 
@@ -158,8 +158,10 @@ always beaten by any utility (so `className="field-button w-full"` works), but t
 ⚠ **Content globs are `./app`, `./components`, `./lib` only.** A class written elsewhere, or built by
 string concatenation, is purged. **Always write complete literal class strings.**
 
-⚠ `postcss.config.js` loads only `tailwindcss` + `autoprefixer` — **no nesting plugin.** Arbitrary
-CSS nesting in `globals.css` will not compile; `@layer` blocks and plain at-rules do.
+Tailwind 4 is configured in CSS: the `@theme` block at the top of `app/globals.css` holds the tokens,
+and `@source` names the only folders scanned for class names (`app`, `components`, `lib`).
+`postcss.config.js` loads only `@tailwindcss/postcss`, which compiles CSS nesting. Recipes that were
+`@layer components` classes in Tailwind 3 still are, so any utility on the same element still wins.
 
 ---
 

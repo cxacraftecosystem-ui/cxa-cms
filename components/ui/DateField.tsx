@@ -568,11 +568,11 @@ function DateFieldControl({
         // field the 252px grid would sit under one corner of it with an acre of nothing beside.
         align="end"
         label={`Calendar for ${label}`}
-        // `!p-3`, with the bang. `Popover` sets `p-1.5` and `cn()` is a plain join, so a later class
+        // `p-3!`, with the bang. `Popover` sets `p-1.5` and `cn()` is a plain join, so a later class
         // decides nothing (contract §5); padding utilities are emitted in ascending order, which would
-        // happen to work today and stop working the day the value changed. IconPicker's `!p-0` carries
+        // happen to work today and stop working the day the value changed. IconPicker's `p-0!` carries
         // the same note.
-        className="!p-3"
+        className="p-3!"
       >
         <Calendar
           mode="single"

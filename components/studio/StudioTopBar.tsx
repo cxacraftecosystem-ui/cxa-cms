@@ -324,7 +324,7 @@ export function StudioTopBar({
         >
           {initialsOf(user.name, user.email)}
         </span>
-        <span className="hidden max-w-[10rem] truncate font-medium xl:inline">{user.name}</span>
+        <span className="hidden max-w-40 truncate font-medium xl:inline">{user.name}</span>
         {/* The same name, hidden from eyes only, at the widths where the visible copy is not rendered.
             Split this way so the accessible name is "Ada Lovelace — your account" at EVERY width: a
             control whose spoken name changes with the viewport is a control voice input cannot reach. */}
@@ -343,10 +343,10 @@ export function StudioTopBar({
         role="dialog"
         label="Your account"
         width={288}
-        // `!p-0` and not `p-0`: Popover's own `p-1.5` is a utility too, and `cn()` is a plain join, so
+        // `p-0!` and not `p-0`: Popover's own `p-1.5` is a utility too, and `cn()` is a plain join, so
         // CSS source order decides — Tailwind emits `p-1.5` after `p-0` and would win (contract §5).
         // The rows below carry their own padding so the dividers can reach both edges.
-        className="!p-0"
+        className="p-0!"
       >
         <div className="border-b border-line-200 px-4 py-3">
           <p className="truncate text-sm font-semibold text-ink-900">{user.name}</p>

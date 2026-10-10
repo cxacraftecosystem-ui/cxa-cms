@@ -251,7 +251,7 @@ function PartnerLogo({
          reads a framing defensively, which is what makes a hand-edited row degrade to no framing.
 
          ⚠ What this is worth on a LOGO is mostly the alternate photograph, not the rectangle: the mark
-         below is `!object-contain` because a cropped logo is a defaced logo, so the useful override here
+         below is `object-contain!` because a cropped logo is a defaced logo, so the useful override here
          is "show the monogram on a phone and the full wordmark on a desktop". */
       picture={pictureFromMap(
         partner.logoId,
@@ -265,9 +265,9 @@ function PartnerLogo({
       sizes="160px"
       className="w-full"
       imageClassName={cn(
-        // `!object-contain` because MediaImage sets `object-cover` first and `cn()` is a plain join,
+        // `object-contain!` because MediaImage sets `object-cover` first and `cn()` is a plain join,
         // so a later utility does not win (contract §5). A cropped logo is a defaced logo.
-        "!object-contain p-2 transition duration-300 ease-out",
+        "object-contain! p-2 transition duration-300 ease-out",
         // Driven from the frame rather than the image, so the whole target restores the colour —
         // hovering the padding beside a narrow wordmark should count as hovering the logo.
         monochrome ? "grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100" : undefined

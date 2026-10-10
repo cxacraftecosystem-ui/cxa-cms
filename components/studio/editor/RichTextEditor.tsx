@@ -147,8 +147,8 @@ export interface RichTextEditorProps {
  * but a heading that looks like a heading here must look like a heading there.
  */
 const EDITOR_PROSE_CLASS = [
-  // The surface itself. `outline-none` because the box around it carries the focus ring.
-  "min-h-full px-4 py-3 text-base leading-7 text-ink-700 outline-none",
+  // The surface itself. `outline-hidden` because the box around it carries the focus ring.
+  "min-h-full px-4 py-3 text-base leading-7 text-ink-700 outline-hidden",
 
   // Paragraphs
   "[&_p]:mt-4 [&_p:first-child]:mt-0",
@@ -180,24 +180,24 @@ const EDITOR_PROSE_CLASS = [
   // Standfirst and drop cap. Both are their own node types, so both are plain `<p>` elements carrying
   // a marker attribute — and an attribute selector (0,2,0) beats the bare `[&_p]` rules above (0,1,1),
   // which is why they do not need `!`.
-  "[&_[data-lead]]:mt-5 [&_[data-lead]]:text-lg [&_[data-lead]]:leading-8 [&_[data-lead]]:text-ink-900",
-  "[&_[data-drop-cap]]:first-letter:float-left [&_[data-drop-cap]]:first-letter:mr-2.5 [&_[data-drop-cap]]:first-letter:mt-1 [&_[data-drop-cap]]:first-letter:font-display [&_[data-drop-cap]]:first-letter:text-5xl [&_[data-drop-cap]]:first-letter:font-bold [&_[data-drop-cap]]:first-letter:leading-[0.78] [&_[data-drop-cap]]:first-letter:text-ink-900",
+  "**:data-lead:mt-5 **:data-lead:text-lg **:data-lead:leading-8 **:data-lead:text-ink-900",
+  "**:data-drop-cap:first-letter:float-left **:data-drop-cap:first-letter:mr-2.5 **:data-drop-cap:first-letter:mt-1 **:data-drop-cap:first-letter:font-display **:data-drop-cap:first-letter:text-5xl **:data-drop-cap:first-letter:font-bold **:data-drop-cap:first-letter:leading-[0.78] **:data-drop-cap:first-letter:text-ink-900",
   // The float has to be closed inside the paragraph that owns it, or a short opening line lets the
   // next block wrap around the cap. Same trap as the renderer's — see RichText.tsx's DROP_CAP note.
-  "[&_[data-drop-cap]]:after:block [&_[data-drop-cap]]:after:clear-left [&_[data-drop-cap]]:after:content-['']",
+  "**:data-drop-cap:after:block **:data-drop-cap:after:clear-left **:data-drop-cap:after:content-['']",
 
   // Pull quote. It IS a `<blockquote>`, so it inherits the purple left rule above and has to put it
   // back — the rules above and below are what say "lifted out of the argument", and a left bar as well
   // would make it read as an ordinary quote that had been shouted.
-  "[&_[data-pull-quote]]:my-6 [&_[data-pull-quote]]:border-y [&_[data-pull-quote]]:border-l-0 [&_[data-pull-quote]]:border-line-200 [&_[data-pull-quote]]:py-5 [&_[data-pull-quote]]:pl-0 [&_[data-pull-quote]]:text-center [&_[data-pull-quote]]:font-display [&_[data-pull-quote]]:text-2xl [&_[data-pull-quote]]:font-medium [&_[data-pull-quote]]:leading-snug [&_[data-pull-quote]]:tracking-tight [&_[data-pull-quote]]:text-ink-900",
+  "**:data-pull-quote:my-6 **:data-pull-quote:border-y **:data-pull-quote:border-l-0 **:data-pull-quote:border-line-200 **:data-pull-quote:py-5 **:data-pull-quote:pl-0 **:data-pull-quote:text-center **:data-pull-quote:font-display **:data-pull-quote:text-2xl **:data-pull-quote:font-medium **:data-pull-quote:leading-snug **:data-pull-quote:tracking-tight **:data-pull-quote:text-ink-900",
 
   // The credit line closing either kind of quote. The em dash is drawn here rather than typed, so an
   // author cannot end up with two of them, and it is `content` so it never enters the document.
-  "[&_[data-attribution]]:mt-3 [&_[data-attribution]]:text-sm [&_[data-attribution]]:not-italic [&_[data-attribution]]:leading-6 [&_[data-attribution]]:text-ink-500",
-  "[&_[data-attribution]]:before:content-['—_']",
+  "**:data-attribution:mt-3 **:data-attribution:text-sm **:data-attribution:not-italic **:data-attribution:leading-6 **:data-attribution:text-ink-500",
+  "**:data-attribution:before:content-['—_']",
 
   // Side note: quieter than a quote, unboxed unlike a callout.
-  "[&_[data-side-note]]:mt-5 [&_[data-side-note]]:border-l [&_[data-side-note]]:border-line-200 [&_[data-side-note]]:pl-4 [&_[data-side-note]]:text-sm [&_[data-side-note]]:leading-6 [&_[data-side-note]]:text-ink-500",
+  "**:data-side-note:mt-5 **:data-side-note:border-l **:data-side-note:border-line-200 **:data-side-note:pl-4 **:data-side-note:text-sm **:data-side-note:leading-6 **:data-side-note:text-ink-500",
   "[&_[data-side-note]>p:first-child]:mt-0",
 
   // Definition list
@@ -216,9 +216,9 @@ const EDITOR_PROSE_CLASS = [
    * One column below `sm` for the same reason the published page does it: two columns of prose in a
    * narrow studio panel is four words a line.
    */
-  "[&_[data-columns]]:mt-5 [&_[data-columns]]:gap-8",
-  "sm:[&_[data-columns='2']]:columns-2",
-  "sm:[&_[data-columns='3']]:columns-2 lg:[&_[data-columns='3']]:columns-3",
+  "**:data-columns:mt-5 **:data-columns:gap-8",
+  "sm:**:data-[columns='2']:columns-2",
+  "sm:**:data-[columns='3']:columns-2 lg:**:data-[columns='3']:columns-3",
   "[&_[data-columns]_figure]:break-inside-avoid [&_[data-columns]_pre]:break-inside-avoid",
 
   // Figures. The caption is a real editable node, so it gets the caption treatment and a prompt when
@@ -241,9 +241,9 @@ const EDITOR_PROSE_CLASS = [
     emits. Every class is literal — a class assembled from data is purged (contract §5) — and the
     selected state uses the ring colour every other selected node in this surface uses.
   */
-  "[&_[data-video-embed]]:mt-4 [&_[data-video-embed]]:cursor-default [&_[data-video-embed]]:rounded-md [&_[data-video-embed]]:border [&_[data-video-embed]]:border-line-200 [&_[data-video-embed]]:bg-surface-50 [&_[data-video-embed]]:px-3 [&_[data-video-embed]]:py-2.5",
-  "[&_[data-video-embed-source]]:block [&_[data-video-embed-source]]:text-xs [&_[data-video-embed-source]]:font-semibold [&_[data-video-embed-source]]:uppercase [&_[data-video-embed-source]]:tracking-wide [&_[data-video-embed-source]]:text-ink-500",
-  "[&_[data-video-embed-title]]:mt-0.5 [&_[data-video-embed-title]]:block [&_[data-video-embed-title]]:text-sm [&_[data-video-embed-title]]:leading-6 [&_[data-video-embed-title]]:text-ink-900",
+  "**:data-video-embed:mt-4 **:data-video-embed:cursor-default **:data-video-embed:rounded-md **:data-video-embed:border **:data-video-embed:border-line-200 **:data-video-embed:bg-surface-50 **:data-video-embed:px-3 **:data-video-embed:py-2.5",
+  "**:data-video-embed-source:block **:data-video-embed-source:text-xs **:data-video-embed-source:font-semibold **:data-video-embed-source:uppercase **:data-video-embed-source:tracking-wide **:data-video-embed-source:text-ink-500",
+  "**:data-video-embed-title:mt-0.5 **:data-video-embed-title:block **:data-video-embed-title:text-sm **:data-video-embed-title:leading-6 **:data-video-embed-title:text-ink-900",
   "[&_[data-video-embed].ProseMirror-selectednode]:border-purple-600 [&_[data-video-embed].ProseMirror-selectednode]:ring-2 [&_[data-video-embed].ProseMirror-selectednode]:ring-purple-600/25",
 
   // Rule, and its ornament variant.
@@ -274,21 +274,21 @@ const EDITOR_PROSE_CLASS = [
   // Small caps. `font-variant-caps` has no stock utility, so it is an arbitrary property; the face has
   // no real small-cap glyphs and the browser synthesises them, which is the same thing the published
   // page does. See the `SmallCaps` mark for why that is still the right property.
-  "[&_[data-small-caps]]:[font-variant-caps:small-caps]",
+  "**:data-small-caps:[font-variant-caps:small-caps]",
 
   // Letter spacing and text colour: three named steps each, on stock Tailwind's own scales. Attribute
   // values here are words, so they need no quoting — unlike `data-columns` above.
-  "[&_[data-tracking=tight]]:tracking-tight [&_[data-tracking=wide]]:tracking-wide [&_[data-tracking=wider]]:tracking-wider",
+  "**:data-[tracking=tight]:tracking-tight **:data-[tracking=wide]:tracking-wide **:data-[tracking=wider]:tracking-wider",
   // ⚠ These three must beat `[&_strong]:text-ink-900` on a bold coloured run, and they do: an
   // attribute selector scores (0,2,0) against a type selector's (0,1,1). The renderer solves the same
   // problem by nesting order instead — see the mark-order ⚠ in RichText.tsx.
-  "[&_[data-colour=strong]]:text-ink-900 [&_[data-colour=muted]]:text-ink-500",
-  "[&_[data-colour=brand]]:text-purple-700 dark:[&_[data-colour=brand]]:text-purple-300",
+  "**:data-[colour=strong]:text-ink-900 **:data-[colour=muted]:text-ink-500",
+  "**:data-[colour=brand]:text-purple-700 dark:**:data-[colour=brand]:text-purple-300",
 
   // Pictures. The amber outline is the studio's nag for a missing description: not an error — a
   // picture without one still publishes — but the author is the only person who can write it.
   "[&_img]:mt-4 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-md [&_img]:border [&_img]:border-line-200",
-  "[&_img[data-alt-missing]]:outline [&_img[data-alt-missing]]:outline-2 [&_img[data-alt-missing]]:outline-offset-2 [&_img[data-alt-missing]]:outline-warn-500",
+  "[&_img[data-alt-missing]]:outline-solid [&_img[data-alt-missing]]:outline-2 [&_img[data-alt-missing]]:outline-offset-2 [&_img[data-alt-missing]]:outline-warn-500",
 
   // Tables. `.tableWrapper` and `.selectedCell` are prosemirror-tables' own class names; without the
   // second one a multi-cell selection is invisible and "Merge" looks broken.
@@ -301,16 +301,16 @@ const EDITOR_PROSE_CLASS = [
   // Callouts. The left bar carries the tone as a colour AND the `::before` carries it as the very word
   // the published page prints (contract §11 — colour never carries meaning alone). The four words are
   // CALLOUT_TONE_LABELS; changing one means changing both.
-  "[&_[data-callout]]:mt-5 [&_[data-callout]]:rounded-md [&_[data-callout]]:border [&_[data-callout]]:border-line-200 [&_[data-callout]]:border-l-4 [&_[data-callout]]:bg-surface-50 [&_[data-callout]]:p-3",
-  "[&_[data-callout]]:before:mb-1 [&_[data-callout]]:before:block [&_[data-callout]]:before:text-xs [&_[data-callout]]:before:font-semibold [&_[data-callout]]:before:uppercase [&_[data-callout]]:before:tracking-wide [&_[data-callout]]:before:text-ink-500",
-  "[&_[data-callout=note]]:border-l-purple-700 [&_[data-callout=note]]:before:content-['Note']",
-  "[&_[data-callout=tip]]:border-l-success-600 [&_[data-callout=tip]]:before:content-['Tip']",
-  "[&_[data-callout=warning]]:border-l-warn-500 [&_[data-callout=warning]]:before:content-['Warning']",
-  "[&_[data-callout=danger]]:border-l-error-600 [&_[data-callout=danger]]:before:content-['Important']",
+  "**:data-callout:mt-5 **:data-callout:rounded-md **:data-callout:border **:data-callout:border-line-200 **:data-callout:border-l-4 **:data-callout:bg-surface-50 **:data-callout:p-3",
+  "**:data-callout:before:mb-1 **:data-callout:before:block **:data-callout:before:text-xs **:data-callout:before:font-semibold **:data-callout:before:uppercase **:data-callout:before:tracking-wide **:data-callout:before:text-ink-500",
+  "**:data-[callout=note]:border-l-purple-700 **:data-[callout=note]:before:content-['Note']",
+  "**:data-[callout=tip]:border-l-success-600 **:data-[callout=tip]:before:content-['Tip']",
+  "**:data-[callout=warning]:border-l-warn-500 **:data-[callout=warning]:before:content-['Warning']",
+  "**:data-[callout=danger]:border-l-error-600 **:data-[callout=danger]:before:content-['Important']",
   "[&_[data-callout]>p:first-child]:mt-0",
 
   // Footnotes sit inline while they are being written and move to the foot of the published page.
-  "[&_[data-footnote]]:rounded [&_[data-footnote]]:bg-purple-100 [&_[data-footnote]]:px-1 [&_[data-footnote]]:align-super [&_[data-footnote]]:text-[0.75em] [&_[data-footnote]]:text-purple-700",
+  "**:data-footnote:rounded **:data-footnote:bg-purple-100 **:data-footnote:px-1 **:data-footnote:align-super **:data-footnote:text-[0.75em] **:data-footnote:text-purple-700",
 
   // The placeholder. `data-placeholder` is written by the Placeholder extension; the pseudo-element is
   // floated so it occupies no space and the caret sits in front of it.

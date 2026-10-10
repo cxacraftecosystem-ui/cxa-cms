@@ -154,12 +154,12 @@ function weekdayNames(weekStartsOn: 0 | 1): { short: string; long: string }[] {
  * ring that also fired on pointer-driven focus would flash on every single click.
  */
 const DAY_BUTTON =
-  "relative mx-auto flex h-9 w-9 items-center justify-center rounded-md text-sm tabular-nums outline-none transition-colors " +
+  "relative mx-auto flex h-9 w-9 items-center justify-center rounded-md text-sm tabular-nums outline-hidden transition-colors " +
   "focus-visible:ring-2 focus-visible:ring-purple-700 focus-visible:ring-offset-1 focus-visible:ring-offset-card";
 
 /** Shared by the two month-navigation buttons. Ported from the source's `NAV_BUTTON`. */
 const NAV_BUTTON =
-  "inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-ink-700 outline-none transition-colors " +
+  "inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-ink-700 outline-hidden transition-colors " +
   "hover:bg-purple-50 hover:text-purple-700 dark:hover:bg-purple-950 dark:hover:text-purple-200 " +
   "focus-visible:ring-2 focus-visible:ring-purple-700 focus-visible:ring-offset-2 focus-visible:ring-offset-card " +
   "disabled:pointer-events-none disabled:text-ink-300";
@@ -173,7 +173,7 @@ const NAV_BUTTON =
  * `[&:not([data-selected])]` guards.
  *
  * ⚠ EVERY PURPLE HERE NEEDS AN EXPLICIT `dark:` PARTNER, and this is the part of the port that is
- * easiest to drop. The purple ramp is brand colour and DOES NOT invert with the theme (tailwind.config.ts:
+ * easiest to drop. The purple ramp is brand colour and DOES NOT invert with the theme (app/globals.css's token header:
  * "purple-700 is THE action colour and never inverts"), so purple-50 is near-white in both modes — as a
  * hover it painted a white bar across a dark calendar, and purple-700 text on a dark card is unreadable.
  * The counterparts below are the ones the source landed on, and they are the same ones the searchable
@@ -276,7 +276,7 @@ export function Calendar(props: CalendarProps) {
    * fade reads as "this is a different month" either way.
    *
    * ⚠ IT IS framer-motion RATHER THAN AN `animate-in` UTILITY. `tailwindcss-animate` is not a plugin
-   * in this repository (`plugins: []` in tailwind.config.ts), so `animate-in fade-in` compiles to
+   * in this repository (app/globals.css loads no Tailwind plugin), so `animate-in fade-in` compiles to
    * nothing at all — no error, no animation, and no way to tell the two apart by reading the source.
    * framer-motion is already a dependency and already animates every Popover and Dialog here.
    *

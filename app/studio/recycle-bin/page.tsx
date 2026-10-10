@@ -483,7 +483,7 @@ export default async function StudioRecycleBinPage({
   const now = requestTime();
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Recycle bin"
         description="Everything that has been deleted recently, grouped by what it is. Restoring puts something back exactly as it was; deleting it for good cannot be undone by anybody."

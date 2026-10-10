@@ -89,7 +89,7 @@ export function StateNotice({ notice, headingLevel = 2, className }: StateNotice
       tabIndex={-1}
       role={notice.tone === "problem" ? "alert" : "status"}
       className={cn(
-        "rounded-lg border bg-card p-5 shadow-sm outline-none sm:p-6",
+        "rounded-lg border bg-card p-5 shadow-sm outline-hidden sm:p-6",
         TONE_BORDER[notice.tone],
         className
       )}

@@ -644,7 +644,7 @@ export default async function StudioAuditPage({
     carried.toString().length > 0 ? `/studio/audit?${carried.toString()}` : "/studio/audit";
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Audit log"
         description="Every change made in this studio, with the name of whoever made it and the state it replaced. Nothing here can be edited or removed — it is the record you read when something has gone wrong."
@@ -845,7 +845,7 @@ export default async function StudioAuditPage({
                                 <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-ink-500">
                                   Before
                                 </p>
-                                <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[0.6875rem] leading-relaxed text-ink-900">
+                                <pre className="mt-1 whitespace-pre-wrap wrap-break-word font-mono text-[0.6875rem] leading-relaxed text-ink-900">
                                   {row.before}
                                 </pre>
                                 {row.beforeCut ? (
@@ -859,7 +859,7 @@ export default async function StudioAuditPage({
                                 <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-purple-700">
                                   After
                                 </p>
-                                <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[0.6875rem] leading-relaxed text-ink-900">
+                                <pre className="mt-1 whitespace-pre-wrap wrap-break-word font-mono text-[0.6875rem] leading-relaxed text-ink-900">
                                   {row.after}
                                 </pre>
                                 {row.afterCut ? (

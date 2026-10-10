@@ -344,7 +344,7 @@ function DialogSurface({
         // A press that begins inside the panel and ends on the backdrop fires its click on the shared
         // ancestor, not on the backdrop — so a text selection dragged past the edge cannot dismiss.
         className={cn(
-          "absolute inset-0 bg-ink-900/50 backdrop-blur-sm",
+          "absolute inset-0 bg-ink-900/50 backdrop-blur-xs",
           backdropDismisses ? "cursor-pointer" : "cursor-default"
         )}
       />
@@ -366,7 +366,7 @@ function DialogSurface({
         className={cn(
           // `relative` and later in DOM order than the backdrop, which is what puts it above without
           // inventing a second z-index inside the dialog's own stacking context.
-          "relative flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-lg border border-line-200 bg-card shadow-cinema outline-none",
+          "relative flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-lg border border-line-200 bg-card shadow-cinema outline-hidden",
           SIZE_CLASS[size],
           className
         )}

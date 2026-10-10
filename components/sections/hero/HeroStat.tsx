@@ -143,7 +143,7 @@ export function HeroStat({ value, label, className }: HeroStatProps) {
         (`globals.css:346` — `font-display font-bold tracking-tight text-ink-900`) sets no
         `font-variant-numeric` of its own, so this class is the only thing on the element asking for it.
       */}
-      <p className="display-title mt-4 text-3xl leading-none tabular-nums text-white sm:text-4xl">
+      <p className="display-title mt-4 text-3xl leading-none tabular-nums text-white sm:text-4xl sm:leading-10">
         {groupIndian(rounded)}
       </p>
 

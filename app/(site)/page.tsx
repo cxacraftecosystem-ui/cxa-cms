@@ -380,12 +380,12 @@ const SEAL_MASK_STYLE: CSSProperties = {
  * as a considered choice. Each mark states ONE height. The DC mark's is the value `lg:` would have
  * produced; the seal's is no longer, and the next note is why.
  *
- * ⚠ THE SEAL IS `h-[3.375rem]`, AN ARBITRARY VALUE, AND IT HAD TO BE ONE. The instruction was the IIT
+ * ⚠ THE SEAL IS `h-13.5`, AN ARBITRARY VALUE, AND IT HAD TO BE ONE. The instruction was the IIT
  * mark 50% larger, and 1.5 × `h-9` (2.25rem) is 3.375rem. Tailwind's scale steps 2.25rem straight to
  * `h-10` (2.5rem), `h-11`, `h-12` and `h-14` (3.5rem) with no rung on 3.375: the nearest are `h-12`
  * at +33% and `h-14` at +56%, and neither is the number that was asked for. So the number that was
  * asked for is written out. It is a whole literal class name, which is the only form Tailwind's
- * scanner can see (contract §5, and the `aspect-[268/300]` note below says the same thing again).
+ * scanner can see (contract §5, and the `aspect-268/300` note below says the same thing again).
  *
  * ⚠ THE SEAL'S PLATE NOW STANDS TALLER THAN THE BAND IT RIDES IN, AND THAT IS THE CHOICE, NOT AN
  * OVERSIGHT. The row is `h-14` (3.5rem); the seal's plate is 3.375rem of mark plus `py-1.5`, so
@@ -453,7 +453,7 @@ function LandingCornerMarks() {
     >
       {/* TOP-LEFT — the DC Handicrafts mark in its own colours, on the cream plate its red wordmark
           needs to survive any ground. `bg-logo-cream` is this repository's own token
-          (tailwind.config.ts: `logo: { cream: "#FAF9F5" }`) and is character-for-character the
+          (`--color-logo-cream: #faf9f5` in app/globals.css) and is character-for-character the
           designer portal's, so nothing had to be invented or approximated for it. */}
       <a
         href={DC_HANDICRAFTS.href}
@@ -489,13 +489,13 @@ function LandingCornerMarks() {
         className="pointer-events-auto flex shrink-0 rounded-md transition hover:-translate-y-0.5 active:translate-y-0"
       >
         <span className="flex items-center justify-center rounded-md bg-purple-950 px-2 py-1.5 shadow-md">
-          {/* `aspect-[268/300]` is the seal's intrinsic ratio, written out IN FULL rather than built
+          {/* `aspect-268/300` is the seal's intrinsic ratio, written out IN FULL rather than built
               from IIT_KHARAGPUR's numbers: Tailwind scans this file for whole class names and cannot
               interpolate one (contract §5), so an assembled string would compile to nothing and the
               box would collapse. `mask-size: contain` letterboxes the mark inside it, so the 0.08%
-              rounding off the true 267.538×299.737 can never distort the seal. `h-[3.375rem]` is
+              rounding off the true 267.538×299.737 can never distort the seal. `h-13.5` is
               1.5 × the `h-9` this box carried before — the header above has the whole of that sum. */}
-          <span aria-hidden className="block aspect-[268/300] h-[3.375rem]" style={SEAL_MASK_STYLE} />
+          <span aria-hidden className="block aspect-268/300 h-13.5" style={SEAL_MASK_STYLE} />
         </span>
         <span className="sr-only">{IIT_KHARAGPUR.name} — iitkgp.ac.in (opens in a new tab)</span>
       </a>

@@ -96,7 +96,7 @@ export default async function StudioTemplateEditorPage({
 
   if (template.rowId === null) {
     return (
-      <div className="mx-auto w-full max-w-[64rem] space-y-6">
+      <div className="mx-auto w-full max-w-5xl space-y-6">
         <StudioPageHeader
           title={template.name}
           description="One of the arrangements built into this software. It cannot be edited here — customise it to make a version of your own, which stands in its place everywhere from the moment it is saved."
@@ -118,7 +118,7 @@ export default async function StudioTemplateEditorPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[64rem] space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <StudioPageHeader
         title={template.name}
         description="What a page made from this template starts as: the words a colleague reads when choosing it, and the blocks it puts on the page, in order."

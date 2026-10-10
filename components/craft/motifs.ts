@@ -86,7 +86,7 @@ export function hashRange(
 export interface NaturalDye {
   /** The dyestuff, by the name the trade uses and by its source. */
   readonly label: string;
-  /** OKLCH, in the same notation as tailwind.config.ts. */
+  /** OKLCH, in the same notation as the `@theme` block in app/globals.css. */
   readonly color: string;
 }
 
@@ -113,7 +113,7 @@ export interface NaturalDye {
  *
  * ⚠ THESE ARE A COPY OF THE RAMP AND WILL NOT FOLLOW A CHANGE TO IT. `ParticleField.tsx` carries
  * the same warning for the same reason: an SVG paint attribute cannot hold a Tailwind class. If
- * tailwind.config.ts moves, move these with it.
+ * ramp in app/globals.css's `@theme` moves, move these with it.
  */
 export const NATURAL_DYES = {
   indigo: {

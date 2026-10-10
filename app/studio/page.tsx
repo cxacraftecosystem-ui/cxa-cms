@@ -639,7 +639,7 @@ export default async function StudioDashboardPage() {
   const oversightClear = oversight.every((figure) => !figure.concern);
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-10">
+    <div className="mx-auto w-full max-w-336 space-y-10">
       <header>
         <h1 className="display-title text-2xl sm:text-3xl">Dashboard</h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-500">

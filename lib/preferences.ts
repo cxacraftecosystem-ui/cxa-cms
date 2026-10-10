@@ -10,8 +10,8 @@
  *   data-larger-text="true"            — ditto
  *   data-high-contrast="true"          — ditto
  *
- * The "present only when on" rule matters. `tailwind.config.ts` sets
- * `darkMode: ["class", '[data-theme="dark"]']`, so `dark:` compiles to `:is([data-theme="dark"] *)`
+ * The "present only when on" rule matters. app/globals.css declares
+ * `@custom-variant dark (&:is([data-theme="dark"] *))`, so `dark:` compiles to `:is([data-theme="dark"] *)`
  * and — this is the trap — **`class="dark"` on a container does nothing.** `dark:` is an EXCEPTION
  * mechanism for the handful of cases a token cannot express, not the theming mechanism.
  *

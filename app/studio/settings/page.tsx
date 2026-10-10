@@ -58,7 +58,7 @@ export default async function StudioSettingsPage() {
   const settings = await getSettings();
 
   return (
-    <div className="mx-auto w-full max-w-[64rem] space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <StudioPageHeader
         title="Settings"
         description="What the site calls itself, how to reach the Centre, and which parts of the website exist at all. Every one of these appears on the public site, so a change here is visible everywhere within seconds of being saved."

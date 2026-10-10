@@ -520,7 +520,7 @@ export function CraftMap({ points, selectedId, onSelect, label, className }: Cra
           // as text in the list beside it, so nothing here is available only to someone who can see.
           role="group"
           aria-label={label}
-          className="h-[24rem] w-full sm:h-[30rem] lg:h-[calc(100dvh-10rem)]"
+          className="h-96 w-full sm:h-120 lg:h-[calc(100dvh-10rem)]"
         />
 
         {failed ? (
@@ -789,7 +789,7 @@ export function CraftExplorerPanes({
             label="Map of where these crafts are practised"
           />
         ) : (
-          <div className="flex h-[24rem] items-center justify-center rounded-lg border border-dashed border-line-200 bg-surface-50 p-6 sm:h-[30rem]">
+          <div className="flex h-96 items-center justify-center rounded-lg border border-dashed border-line-200 bg-surface-50 p-6 sm:h-120">
             <p className="prose-measure text-center text-sm leading-relaxed text-ink-500">
               None of the crafts in this selection has a recorded location, so there is nothing to
               place on a map. They are all listed beside it.
@@ -879,7 +879,7 @@ export function CraftExplorerPanes({
                     className="w-16 shrink-0 self-start sm:w-20"
                   />
                 ) : (
-                  <div className="flex w-16 shrink-0 items-center justify-center self-start rounded-sm bg-purple-50 [aspect-ratio:1/1] sm:w-20">
+                  <div className="flex w-16 shrink-0 items-center justify-center self-start rounded-sm bg-purple-50 aspect-square sm:w-20">
                     <CraftPlate slug={craft.slug} />
                   </div>
                 )}

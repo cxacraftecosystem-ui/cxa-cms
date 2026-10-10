@@ -81,12 +81,12 @@ type ProcessLayout = ProcessStepsSectionData["layout"];
  * content scanner and the rail simply vanishes (contract §5).
  */
 const RAIL_POSITION: Record<ProcessLayout, string> = {
-  alternating: "left-[1.375rem] lg:left-1/2",
-  column: "left-[1.375rem]"
+  alternating: "left-5.5 lg:left-1/2",
+  column: "left-5.5"
 };
 
 const MARK_POSITION: Record<ProcessLayout, string> = {
-  alternating: "left-0 lg:left-1/2 lg:-ml-[1.375rem]",
+  alternating: "left-0 lg:left-1/2 lg:-ml-5.5",
   column: "left-0"
 };
 

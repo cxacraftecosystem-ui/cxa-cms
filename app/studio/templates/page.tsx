@@ -406,7 +406,7 @@ export default async function StudioTemplatesPage({
   const retiredCount = list.items.length - offered.length;
 
   return (
-    <div className="mx-auto w-full max-w-[84rem] space-y-6">
+    <div className="mx-auto w-full max-w-336 space-y-6">
       <StudioPageHeader
         title="Page templates"
         description="Ready-made arrangements of blocks for the pages an institution needs most. Choosing one creates a new page with those blocks already in place, as a draft, and takes you straight to it."
