@@ -190,7 +190,35 @@ export const RATE_LIMITS = {
    * The token is long enough that guessing is not a real threat; the limit exists so that it stays true
    * if the token is ever shortened, and so a broken client cannot hammer it.
    */
-  setPassword: { limit: 10, windowSeconds: 15 * 60 }
+  setPassword: { limit: 10, windowSeconds: 15 * 60 },
+
+  /**
+   * "Forgot your password?" requests, PER IP ADDRESS — `app/api/auth/forgot-password/route.ts`.
+   *
+   * Five per quarter hour is a person who mistyped their address twice and tried again later. It is the
+   * limit that answers 429, which is safe because it says something about the CONNECTION and nothing
+   * about any account.
+   */
+  passwordResetRequest: { limit: 5, windowSeconds: 15 * 60 },
+
+  /**
+   * The same requests, PER TARGET ADDRESS — consumed by `requestPasswordReset` in
+   * lib/auth/password-reset.ts with a hand-built key (an HMAC of the address under a subkey of the app
+   * secret, so the store never holds a reversible list of addresses), the way `searchLog` is. Counted
+   * ONLY for an active account with a password, i.e. only when an email is about to be sent.
+   *
+   * ⚠ SILENT. Over the limit, the request gets exactly the same answer and simply sends nothing (and the
+   * audit row says why). A 429 here would confirm that an address had been asked about, which is the one
+   * thing the endpoint must never vary on. Three an hour is enough for "it went to spam, send another";
+   * it is what stops somebody filling one colleague's inbox from many connections at once.
+   *
+   * ⚠ KNOWN LIMITATION, INHERENT TO ANY PER-TARGET LIMIT: anybody who knows an address can spend its three
+   * an hour, every hour, and the owner's own request is then silently not mailed. An administrator's
+   * "Make a password link" / "Email them a password link" does not go through this bucket and is the way
+   * round it; the audit log shows the `address-rate-limited` requests and where they came from.
+   * docs/SIGN-IN.md, "Forgotten passwords".
+   */
+  passwordResetAddress: { limit: 3, windowSeconds: 60 * 60 }
 } as const satisfies Record<string, RateLimitPolicy>;
 
 export type RateLimitName = keyof typeof RATE_LIMITS;

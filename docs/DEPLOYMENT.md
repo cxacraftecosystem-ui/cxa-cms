@@ -68,10 +68,11 @@ Set these for **Production**, **Preview** and **Development** unless a row says 
 | `NEWSLETTER_FROM_ADDRESS` | runtime | The From address — an identity verified in SES. ⚠ See §1.9 on why it should be on a domain the Centre controls. |
 | `NEWSLETTER_FROM_NAME` | runtime | Optional. The From display name; defaults to `NEXT_PUBLIC_SITE_NAME`. |
 | `SES_CONFIGURATION_SET` | runtime | Optional. An SES configuration set to send through. |
+| `AUTH_EMAIL_FROM_ADDRESS`, `AUTH_EMAIL_FROM_NAME` | runtime | Optional. The From line for **password-reset email** (“Forgot your password?” and Users → “Email them a password link”); each falls back to `NEWSLETTER_FROM_ADDRESS` / `NEWSLETTER_FROM_NAME`. Same SES keys and region. §1.9. |
 | `NEWSLETTER_DRAIN_SECRET` | runtime | **Secret.** The bearer the GitHub Actions drain schedule presents to `/api/cron/newsletter-drain` (Vercel's daily fallback cron presents `CRON_SECRET`). The same value goes in the repository secret of the same name. §1.7. |
 | `SES_FEEDBACK_TOPIC_ARNS` | runtime | Optional, comma-separated. The SNS topics whose bounce/complaint notifications are accepted; defaults to `arn:aws:sns:ap-south-1:626159998512:ses-feedback`. §1.9. |
 | `MEDIA_PURGE_AFTER_DAYS` | runtime | Defaults to 30. |
-| `LOG_ARCHIVE_DESTINATION_IS_PRIVATE` | runtime | ⚠ **A precondition, not a preference, and it defaults to refusing.** Unset, `/api/cron/logs-archive` archives **nothing** every night and a log drain would be refused too — so the 90-day retention clause 4 obliges is being met by Postgres alone, with no object-storage evidence. Set it only once the bucket policy excludes `files/logs/*` from anonymous `GetObject`, because that is what it asserts. `OPERATIONS.md` §3. |
+| `LOG_ARCHIVE_DESTINATION_IS_PRIVATE` | runtime | ⚠ **A precondition, not a preference, and it defaults to refusing.** Unset, `/api/cron/logs-archive` archives **nothing** every night and a log drain would be refused too — so the 90-day retention clause 4 obliges is being met by Postgres alone, with no object-storage evidence. Set it only once the bucket policy limits anonymous `GetObject` to public prefixes that exclude `files/logs/*`, and no lifecycle rule under 90 days applies to that prefix, because that is what it attests. Production (`cxa-media-prod`: public `media/*`, `models/*`, `craft/*` only) set it on 2026-10-10. `OPERATIONS.md` §3. |
 | `ACCESS_LOG_ENABLED`, `ACCESS_LOG_RETENTION_DAYS` | runtime | Default `true` and `180`. Off, no `access_logs` row is written for anything; below 90 the retention variable **throws**, because 90 is the term in the undertaking and not a preference. |
 | `VERCEL_LOG_DRAIN_SECRET`, `VERCEL_LOG_DRAIN_VERIFY` | runtime | **Pro plan only** — Log Drains do not exist on Hobby, so leaving both blank is correct here. `OPERATIONS.md` §9. |
 | `GOOGLE_*`, `MICROSOFT_*`, `YAHOO_*` | runtime | Each optional and independent. `docs/SIGN-IN.md`. |
@@ -293,8 +294,9 @@ column and the search index hours late. `ARCHITECTURE.md` §3.2 is the long vers
   through something that can (both GitHub workflows do). The log drain receiver still redacts `secret`
   from archived URLs (`OPERATIONS.md` §9) as a backstop for old callers.
 - ⚠ **`logs-archive` has two preconditions that are not environment variables you can guess at.**
-  `LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true` — which is an assertion that the bucket policy excludes
-  `files/logs/*` from anonymous `GetObject` — and a lifecycle rule of **at least 90 days** on that
+  `LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true` — which attests that the bucket policy's anonymous
+  `GetObject` is limited to public prefixes that exclude `files/logs/*` (true of production since
+  2026-10-10, when the flag was set there) — and a lifecycle rule of **at least 90 days** on that
   prefix, with no shorter bucket-wide rule applying to it. Without the first the job archives nothing,
   nightly, while returning 200. Without the second the bucket deletes the evidence on its own schedule
   and the job still reports success. Both are in `OPERATIONS.md` §3 and in `.env.example`.
@@ -365,6 +367,35 @@ The endpoint fetches the confirmation URL itself; `aws sns list-subscriptions-by
 the subscription with a real ARN rather than `PendingConfirmation`. The SES identity's bounce and
 complaint notifications (or a configuration set's event destination for Bounce and Complaint) must
 publish to that topic. Delivery notifications are not needed and are ignored.
+
+**Password-reset email (added 2026-10-10).** The same SES account, region, keys and configuration set send
+account mail: "Forgot your password?" on the studio sign-in screen and **Users → Email them a password
+link**. Both mint the existing single-use set-password link (`lib/auth/credential-token.ts`, 2 hours) and
+send it **immediately** through `createSesTransactionalMailer` (`lib/auth/auth-mail.ts`) — never through the
+newsletter outbox, never subject to newsletter consent, bounce state or unsubscribe, with no
+`List-Unsubscribe` header, no tracking pixel and the link written verbatim. The link's origin is always
+`NEXT_PUBLIC_SITE_URL`, never the request's `Host`.
+
+- **From line.** `AUTH_EMAIL_FROM_ADDRESS` / `AUTH_EMAIL_FROM_NAME` are optional overrides (e.g.
+  `studio@aicraft.iitkgp.ac.in`); unset, the newsletter's From line is used. The address must be on a
+  verified identity. Settings → Diagnostics shows whether password-reset email is set up and its address.
+- **IAM.** Sending account mail needs only `ses:SendEmail`. (The newsletter drain's `ses:GetAccount` is
+  for reading the sending rate and is not used here.)
+- ⚠ **Sandbox.** While the SES account is in the **sandbox**, SES delivers only to **verified recipient
+  addresses** — a reset to anybody else is refused, the Users screen says "could not be emailed — make a
+  link instead", and the self-service form still answers its one neutral sentence (the audit log records
+  `email-failed`). Request production access in the SES console before relying on it.
+- ⚠ **Domain identity pending.** The `aicraft.iitkgp.ac.in` domain identity stays **PENDING** until its
+  **three DKIM CNAME records** and the **`bounce.aicraft.iitkgp.ac.in` custom MAIL FROM records** (the MX
+  and the SPF TXT) are added to DNS. Until then a From address on that domain fails with "identity not
+  verified".
+- ⚠ **No click tracking on `SES_CONFIGURATION_SET`.** If the configuration set has open/click tracking
+  switched on, SES rewrites links through an AWS redirect, which would carry a live password credential
+  through a third party's logs. Keep tracking off on that set.
+- **Limits.** Five requests per 15 minutes per client IP (answered 429), and three emails per hour per
+  target address (silent — the answer never varies, so it cannot reveal that an address exists). Every
+  request is audited, unknown addresses included. A request revokes nothing; sessions are revoked when the
+  link is used, and an account with two-step verification still needs its code to sign in afterwards.
 
 ---
 
@@ -496,7 +527,8 @@ here there is no plan limit, so `publish` goes back on its ten-minute schedule:
 That state is reported on the studio's diagnostics panel and written to `audit_logs` every night it
 happens, which is where to check it — not in the exit status. The MinIO default policy in
 `docker/minio-public-read.json` grants anonymous `GetObject` on the **whole bucket**, so on this path
-the flag is a real piece of work and not a formality.
+the flag is a real piece of work and not a formality — unlike production, whose policy limits anonymous
+reads to `media/*`, `models/*` and `craft/*` (`OPERATIONS.md` §3).
 
 ### 2.6 One process, and what a second one costs
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { authMailInfo } from "@/lib/auth/auth-mail";
 import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageUsers } from "@/lib/permissions";
@@ -76,16 +77,22 @@ export default async function StudioUsersPage() {
   ]);
 
   /**
-   * Whether an invitation or a password link can actually be delivered.
+   * Whether an INVITATION can be delivered by email.
    *
-   * No mail transport is configured on this installation — there is nothing in `lib/env.ts` for one — so
-   * this is `false` and the screen says so plainly, offering a one-off link to pass on by hand instead. A
-   * screen that promised an email nobody would receive would leave a colleague waiting for days.
-   *
-   * ⚠ When a transport is added, this is the one line to change, and the route handler that mints the link
-   * has to start sending it. The copy on the client already covers both cases.
+   * Still `false`: `app/api/studio/users/route.ts` does not send invitations, so the screen offers a
+   * one-off link to pass on by hand. A screen that promised an email nobody would receive would leave a
+   * colleague waiting for days. ⚠ When that route starts sending through lib/auth/auth-mail.ts, this is
+   * the line to change.
    */
   const canSendEmail = false;
+
+  /**
+   * Whether a PASSWORD LINK can be emailed — Amazon SES set up for account mail (lib/auth/auth-mail.ts).
+   * Read from the environment, server-side, because `lib/env.ts` must never reach the client. When it is
+   * false the "Email them a password link" button is absent and a sentence says why; "Make a password
+   * link" works either way.
+   */
+  const canEmailPasswordLinks = authMailInfo().configured;
 
   return (
     <div className="mx-auto w-full max-w-[100rem] space-y-6">
@@ -112,6 +119,7 @@ export default async function StudioUsersPage() {
         activeAdministrators={activeAdministrators}
         activeMasterAdmins={activeMasterAdmins}
         canSendEmail={canSendEmail}
+        canEmailPasswordLinks={canEmailPasswordLinks}
       />
     </div>
   );

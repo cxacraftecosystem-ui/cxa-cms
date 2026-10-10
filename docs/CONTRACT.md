@@ -406,6 +406,9 @@ that merely reads the database is a Server Component and must stay one.
 | `lib/auth/cookies.ts` | `ACCESS_COOKIE`, `REFRESH_COOKIE`, `SESSION_HINT_COOKIE`, `*CookieOptions()` |
 | `lib/auth/password.ts` | `hashPassword`, `verifyPassword`, `passwordProblems` |
 | `lib/auth/totp.ts` | `generateTotpSecret`, `verifyTotp`, `totpUri`, `encryptSecret`, `decryptSecret`, `generateRecoveryCodes` |
+| `lib/auth/totp-qr.ts` | **server-only** — `totpQrDrawing`, `qrMatrix`, `qrPath`, `QR_QUIET_ZONE_MODULES` |
+| `lib/auth/password-reset.ts` | **server-only** — `requestPasswordReset`, `emailResetLinkToAccount`, `loadResetTarget`, `resetRefusal`, `recordAdminReset`, `PASSWORD_RESET_REQUEST_ENTITY`, `passwordResetRequestLabel`, `addressBucket` |
+| `lib/auth/auth-mail.ts` | **server-only** — `activeAuthMailer`, `setAuthMailer`, `authMailInfo`, `renderPasswordResetEmail` |
 | `lib/audit.ts` | `mutateWithHistory`, `writeAudit`, `recordEvent`, `writeRevision`, `listRevisions`, `getRevision`, `AuditContext` |
 | `lib/content.ts` | `isLive`, `livePublishableWhere`, `liveStatusWhere`, `STATUS_LABELS`, `STATUS_TONES`, `describeStatus` |
 | `lib/preferences.ts` | `Preferences`, `DEFAULT_PREFERENCES`, `readStoredPreferences`, `writeStoredPreferences`, `applyPreferences`, `resolveTheme`, `PREFERENCES_BOOT_SCRIPT`, `THEME_COLOR` |
@@ -444,6 +447,16 @@ Icons are `lucide-react`, and only `lucide-react`. The one exception is not a se
 marks lucide withdrew in 1.0 (GitHub, LinkedIn, X/Twitter, YouTube, Instagram, Facebook) are kept in
 `components/icons/brands.ts`, as lucide 0.471 drew them and built with lucide's own `createLucideIcon`,
 so the social and share links did not lose their icons. Nothing is added to that file.
+
+**No new dependency — with ONE dated, owner-approved exception.** On **2026-10-10** the owner approved
+`qr` (paulmillr/qr, **pinned exactly at 0.7.2**, MIT/Apache-2.0) for the two-step verification setup
+square on Studio → Account, and for nothing else. It was taken because it has **zero runtime
+dependencies and no install scripts**, and because it ships a decoder, so
+`tests/security/totp-qr.test.ts` proves the square decodes to exactly the `otpauth://` URI. It is
+imported in ONE file, `lib/auth/totp-qr.ts`, which is `server-only`: the square is drawn as SVG geometry
+during the server render and never generated in a browser or by an external service, because the URI
+carries the shared secret. A second use of it, or a bump, is a new decision for the owner — not a
+precedent.
 
 ---
 

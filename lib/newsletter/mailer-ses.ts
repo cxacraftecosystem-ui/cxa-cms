@@ -179,16 +179,19 @@ export interface SesClientLike {
   send(command: SendEmailCommand | GetAccountCommand): Promise<unknown>;
 }
 
+/** The real client. One construction, shared by the newsletter mailer and the account-mail sender below. */
+function defaultSesClient(env: SesEnv): SesClientLike {
+  return new SESv2Client({
+    region: env.region,
+    credentials: { accessKeyId: env.accessKeyId, secretAccessKey: env.secretAccessKey },
+    // Two attempts inside the SDK for a blip; anything longer is the outbox's backoff, which can wait
+    // minutes rather than holding a request open.
+    maxAttempts: 2
+  });
+}
+
 export function createSesMailer(env: SesEnv, client?: SesClientLike): NewsletterMailer {
-  const ses: SesClientLike =
-    client ??
-    new SESv2Client({
-      region: env.region,
-      credentials: { accessKeyId: env.accessKeyId, secretAccessKey: env.secretAccessKey },
-      // Two attempts inside the SDK for a blip; anything longer is the outbox's backoff, which can wait
-      // minutes rather than holding a request open.
-      maxAttempts: 2
-    });
+  const ses: SesClientLike = client ?? defaultSesClient(env);
 
   return {
     name: "Amazon SES",
@@ -225,6 +228,85 @@ export function createSesMailer(env: SesEnv, client?: SesClientLike): Newsletter
         const classified = classifySesError(error);
         console.warn(`[newsletter] could not read the SES sending quota (${classified.code}).`);
         return null;
+      }
+    }
+  };
+}
+
+// ── Account mail ────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One ACCOUNT message — today only the password-reset link (lib/auth/auth-mail.ts).
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * NOT A `NewsletterMessage`, ON PURPOSE. Account mail is not newsletter mail and must not be able to turn
+ * into it:
+ *
+ *   • It is SENT IMMEDIATELY by the request that asked for it, through `send` below — never written to
+ *     the newsletter outbox and never touched by the drain. A reset link that arrives an hour late, after
+ *     a retry, has usually expired, and one replayed by a drain is a second live credential in a mailbox.
+ *   • It carries NO `List-Unsubscribe` headers and is never checked against newsletter consent, bounce or
+ *     complaint state. Somebody who unsubscribed from the newsletter has not unsubscribed from being able
+ *     to get back into their own account.
+ *   • It has no `kind` from the newsletter enum; the SES tag is `auth-<tag>`, so the provider's metrics
+ *     split account mail from issues without anybody reading an address.
+ *
+ * ⚠ NO TRACKING, by construction: no pixel, no rewritten link. The body carries the set-password URL
+ * VERBATIM. (A configuration set with SES click tracking switched on would still rewrite it through an
+ * AWS redirect — docs/DEPLOYMENT.md §1.9 says not to enable that on `SES_CONFIGURATION_SET`.)
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export interface TransactionalMessage {
+  /** The account's own address, as stored. */
+  to: string;
+  subject: string;
+  bodyText: string;
+  bodyHtml: string;
+  /** A short lower-case word for the SES `kind` tag, e.g. `password-reset`. */
+  tag: string;
+}
+
+/** What sends one. The same contract as `NewsletterMailer.send`: it THROWS a `MailSendError` on failure. */
+export interface TransactionalMailer {
+  readonly name: string;
+  send(message: TransactionalMessage): Promise<{ providerMessageId: string | null }>;
+}
+
+/** The SendEmail request for one account message. Exported so the tests can see exactly what is sent. */
+export function buildTransactionalSendEmailInput(
+  env: SesEnv,
+  message: TransactionalMessage
+): SendEmailCommandInput {
+  return {
+    FromEmailAddress: formatFromAddress(env.fromName, env.fromAddress),
+    Destination: { ToAddresses: [message.to] },
+    ConfigurationSetName: env.configurationSet,
+    Content: {
+      Simple: {
+        Subject: { Data: message.subject, Charset: "UTF-8" },
+        Body: {
+          Text: { Data: message.bodyText, Charset: "UTF-8" },
+          Html: { Data: message.bodyHtml, Charset: "UTF-8" }
+        }
+      }
+    },
+    EmailTags: [{ Name: "kind", Value: `auth-${message.tag}`.toLowerCase().replace(/[^a-z0-9_-]/g, "-") }]
+  };
+}
+
+/** The account-mail sender over the same SES account, client and error classification as the newsletter. */
+export function createSesTransactionalMailer(env: SesEnv, client?: SesClientLike): TransactionalMailer {
+  const ses: SesClientLike = client ?? defaultSesClient(env);
+  return {
+    name: "Amazon SES",
+    async send(message) {
+      try {
+        const result = (await ses.send(new SendEmailCommand(buildTransactionalSendEmailInput(env, message)))) as {
+          MessageId?: string;
+        };
+        return { providerMessageId: result.MessageId ?? null };
+      } catch (error) {
+        throw classifySesError(error);
       }
     }
   };

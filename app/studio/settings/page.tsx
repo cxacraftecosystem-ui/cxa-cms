@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageSettings } from "@/lib/permissions";
+import { authMailInfo } from "@/lib/auth/auth-mail";
 import { configurationWarnings, storageConfigured } from "@/lib/env";
 import { getSettings } from "@/lib/settings/service";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
@@ -68,6 +69,9 @@ export default async function StudioSettingsPage() {
         settings={settings}
         diagnostics={configurationWarnings()}
         storageReady={storageConfigured()}
+        // One plain line, configured or not: whether "Forgot your password?" and "Email them a password
+        // link" can actually send. Read here because lib/env.ts must never reach the client.
+        passwordResetEmail={authMailInfo()}
       />
     </div>
   );

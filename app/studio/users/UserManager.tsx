@@ -106,6 +106,8 @@ const USER_ENDPOINTS = {
   detail: (id: string) => `/api/studio/users/${encodeURIComponent(id)}`,
   revokeSessions: (id: string) => `/api/studio/users/${encodeURIComponent(id)}/sessions`,
   passwordReset: (id: string) => `/api/studio/users/${encodeURIComponent(id)}/password-reset`,
+  emailPasswordReset: (id: string) =>
+    `/api/studio/users/${encodeURIComponent(id)}/password-reset/email`,
   disableTwoFactor: (id: string) => `/api/studio/users/${encodeURIComponent(id)}/two-factor`
 } as const;
 
@@ -307,13 +309,23 @@ export interface UserManagerProps {
   activeMasterAdmins?: number;
   /** True when a mail transport is configured, so an invitation can actually be delivered. */
   canSendEmail: boolean;
+  /**
+   * True when Amazon SES is set up for ACCOUNT mail (`authMailInfo()` in lib/auth/auth-mail.ts), so
+   * "Email them a password link" can work.
+   *
+   * ⚠ SEPARATE FROM `canSendEmail` ON PURPOSE. That one still describes INVITATIONS, which are not emailed
+   * by anything yet, and all its copy ("a one-time link is shown here") stays true. Folding the two
+   * together would have made the invitation form promise an email nobody sends.
+   */
+  canEmailPasswordLinks: boolean;
 }
 
 export function UserManager({
   currentUser,
   activeAdministrators,
   activeMasterAdmins,
-  canSendEmail
+  canSendEmail,
+  canEmailPasswordLinks
 }: UserManagerProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -752,6 +764,7 @@ export function UserManager({
                 activeAdministrators={administrators}
                 activeMasterAdmins={masterAdmins}
                 canSendEmail={canSendEmail}
+                canEmailPasswordLinks={canEmailPasswordLinks}
                 onClose={() => setActiveId(null)}
                 // Both halves again, for the reason set out beside the invitation: a role change or a
                 // switched-off account moves an account in or out of a lockout count, and that count is
@@ -967,6 +980,8 @@ interface UserPanelProps {
   /** `null` when no answer has carried the count. Nothing is assumed from it — see `UserManagerProps`. */
   activeMasterAdmins: number | null;
   canSendEmail: boolean;
+  /** See `UserManagerProps.canEmailPasswordLinks`. */
+  canEmailPasswordLinks: boolean;
   onClose: () => void;
   onChanged: () => void;
   onHandoverLink: (link: { label: string; url: string }) => void;
@@ -981,6 +996,7 @@ function UserPanel({
   activeAdministrators,
   activeMasterAdmins,
   canSendEmail,
+  canEmailPasswordLinks,
   onClose,
   onChanged,
   onHandoverLink,
@@ -1201,6 +1217,46 @@ function UserPanel({
       "No link has been made"
     );
   }, [canSendEmail, confirm, onHandoverLink, run, user.email, user.id, user.name]);
+
+  /**
+   * "Email them a password link" — the same act as the button above, delivered by Amazon SES to the
+   * account's own address. The server applies exactly the same permission (`resetRefusal`), and only
+   * revokes sessions once SES has accepted the message.
+   *
+   * ⚠ A FAILURE IS SHOWN, NEVER SWALLOWED. `run` hands a thrown error to `onFailed`, which prints the
+   * server's sentence verbatim — and that sentence says nothing changed and suggests making a link instead.
+   * No link comes back on success: it is in their mailbox, and nowhere else.
+   */
+  const emailPasswordLink = useCallback(async () => {
+    const agreed = await confirm({
+      title: `Email ${user.name} a link to set a new password?`,
+      body: (
+        <>
+          <p>
+            A one-time link is emailed to {user.email}. It works once and lasts two hours. Once it has been
+            sent, {isSelf ? "you are" : "they are"} signed out of every device until the link is used.
+          </p>
+          <p className="mt-2">
+            If the email does not arrive — a spam folder, or an address the mail service will not deliver to
+            yet — use &ldquo;Make a password link&rdquo; and pass it on yourself.
+          </p>
+        </>
+      ),
+      confirmLabel: "Email the link",
+      cancelLabel: "Not now",
+      tone: "default"
+    });
+    if (!agreed) return;
+
+    await run(
+      "password-email",
+      async () => {
+        await post<{ emailed?: boolean }>(USER_ENDPOINTS.emailPasswordReset(user.id));
+      },
+      `A password link has been emailed to ${user.email}`,
+      "The password link has not been emailed"
+    );
+  }, [confirm, isSelf, run, user.email, user.id, user.name]);
 
   const disableTwoFactor = useCallback(async () => {
     const agreed = await confirm({
@@ -1606,7 +1662,7 @@ function UserPanel({
 
       <FormSection
         title="Help them back in"
-        description="Nobody in this studio can read or set somebody else's password. These are the two things that can be done instead."
+        description="Nobody in this studio can read or set somebody else's password. Give them a one-time link to choose their own — to copy and pass on, or emailed straight to their address — or sign them out everywhere."
       >
         <div className="flex flex-wrap gap-2">
           <Button
@@ -1620,6 +1676,19 @@ function UserPanel({
             {canSendEmail ? "Email a password link" : "Make a password link"}
           </Button>
 
+          {canEmailPasswordLinks ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Mail}
+              isLoading={busy === "password-email"}
+              loadingLabel="sending"
+              onClick={() => void emailPasswordLink()}
+            >
+              Email them a password link
+            </Button>
+          ) : null}
+
           <Button
             variant="secondary"
             size="sm"
@@ -1631,6 +1700,15 @@ function UserPanel({
             Sign out of every device
           </Button>
         </div>
+
+        {!canEmailPasswordLinks ? (
+          // Said, not hidden silently: an administrator who expected an email button needs to know why there
+          // is none, and what to do instead.
+          <HelpText>
+            Email is not set up on this site, so a password link cannot be emailed from here. Make a link
+            instead and pass it on in a way you trust.
+          </HelpText>
+        ) : null}
       </FormSection>
 
       <FormSection

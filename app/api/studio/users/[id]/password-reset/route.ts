@@ -1,21 +1,26 @@
 import type { NextRequest } from "next/server";
-import { assertSameOrigin, conflict, forbidden, ok, route } from "@/lib/api";
-import { mutateWithHistory } from "@/lib/audit";
+import { assertSameOrigin, ok, route } from "@/lib/api";
 import {
   RESET_TTL_HOURS,
   issueCredentialLink
 } from "@/lib/auth/credential-token";
 import { requireCapability } from "@/lib/auth/current-user";
-import { revokeAllSessionsForUser } from "@/lib/auth/session";
-import { prisma } from "@/lib/db";
-import { canManageUser, canManageUsers } from "@/lib/permissions";
-import { buildAuditContext, found } from "@/lib/studio/crud";
+import {
+  REVOCATION_NOTE,
+  loadResetTarget,
+  recordAdminReset,
+  resetRefusal
+} from "@/lib/auth/password-reset";
+import { canManageUsers } from "@/lib/permissions";
+import { buildAuditContext } from "@/lib/studio/crud";
 
 /**
  * Give somebody a way to set a new password.
  *
- * Serves `POST /api/studio/users/{id}/password-reset`, called by "Make a password link" /
- * "Email a password link" in `app/studio/users/UserManager.tsx`.
+ * Serves `POST /api/studio/users/{id}/password-reset`, called by "Make a password link" in
+ * `app/studio/users/UserManager.tsx`. Its sibling `./email/route.ts` serves "Email them a password link":
+ * the SAME checks (`resetRefusal`), the SAME token and the SAME audit-and-revoke (`recordAdminReset`), all
+ * from lib/auth/password-reset.ts, with SES delivering the link instead of this response.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * NOBODY HERE SETS SOMEBODY ELSE'S PASSWORD. That is the whole design, and it has four parts.
@@ -52,18 +57,6 @@ import { buildAuditContext, found } from "@/lib/studio/crud";
 
 export const dynamic = "force-dynamic";
 
-/** Word-for-word the note in `app/api/studio/users/[id]/route.ts`. One act, one description. */
-const REVOCATION_NOTE =
-  "Every device they were signed in on has to sign in again. A page they already have open may keep " +
-  "reading the studio for up to half an hour until its short-lived token expires, but it cannot renew and " +
-  "every change it attempts is checked against the account as it is now.";
-
-async function countActiveSessions(userId: string): Promise<number> {
-  return prisma.session.count({
-    where: { userId, revokedAt: null, expiresAt: { gt: new Date() } }
-  });
-}
-
 export const POST = route(
   async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
     assertSameOrigin(request);
@@ -76,45 +69,15 @@ export const POST = route(
     const { id } = await params;
 
     /**
-     * `passwordHash` is selected here — see point 3 in the header. It goes straight into
-     * `issueCredentialLink`, which turns it into a 16-character digest, and the row itself is never
-     * put in a response by this handler. Check that before adding one.
+     * `passwordHash` is read by `loadResetTarget` — see point 3 in the header. It goes straight into
+     * `issueCredentialLink`, which turns it into a 16-character digest, and the row itself is never put in
+     * a response by this handler. Check that before adding one.
      */
-    const target = found(
-      await prisma.user.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          isActive: true,
-          deletedAt: true,
-          passwordHash: true
-        }
-      }),
-      "That account"
-    );
+    const target = await loadResetTarget(id);
 
-    if (target.deletedAt) {
-      throw conflict(
-        "That account has been deleted, so there is nobody to let back in. Restore it first, then make a link."
-      );
-    }
-    if (!target.isActive) {
-      // Refused rather than issued. A link that sets a password on an account which cannot sign in
-      // sends somebody through the whole exercise to be refused at the door, and it is not obvious to
-      // them why. Switching the account back on is the missing step, so the message names it.
-      throw conflict(
-        `${target.name}'s account is switched off, so a new password would not let them in. Switch the account back on first, then make a link.`
-      );
-    }
-
-    if (target.id !== actor.id && !canManageUser(actor, { id: target.id, role: target.role })) {
-      throw forbidden(
-        "You cannot make a password link for this person, because they are at the same level of access as you or above it. Only somebody with more access than they have can do it."
-      );
-    }
+    // Deleted, switched off, or at/above the actor's level — the one rule both buttons share.
+    const refusal = resetRefusal(actor, target, "link");
+    if (refusal) throw refusal;
 
     const { link, expiresAt } = issueCredentialLink({
       userId: target.id,
@@ -122,47 +85,17 @@ export const POST = route(
       purpose: "reset"
     });
 
-    const sessionsEnded = await countActiveSessions(target.id);
-
-    await mutateWithHistory<{ id: string }>(
-      buildAuditContext(request, actor),
-      {
-        action: "PERMISSION_CHANGE",
-        entityType: "User",
-        entityLabel: `${target.name} <${target.email}>`,
-        revise: false,
-        /**
-         * METADATA ONLY. The token is a credential, and an audit log is read by more people than the
-         * users table is and gets exported. `redact()` in lib/audit.ts strips secrets by NAME and would
-         * not catch this one, so it simply never goes in.
-         */
-        before: {
-          activeSessions: sessionsEnded,
-          hadPassword: target.passwordHash !== null,
-          linkExpiresAt: expiresAt
-        }
-      },
-      async (tx) =>
-        tx.user.update({
-          where: { id: target.id },
-          // The sign-in throttle is cleared: a link is asked for because somebody cannot get in, and
-          // eight failed attempts followed by a fifteen-minute lock is usually why they asked.
-          data: { failedLogins: 0, lockedUntil: null },
-          select: { id: true }
-        })
-    );
-
-    // ⚠ See point 4 in the header. This is not tidying up; it is half of what a reset means.
-    await revokeAllSessionsForUser(target.id);
+    // The audit entry, the cleared throttle and — ⚠ point 4 — every session revoked.
+    const sessionsEnded = await recordAdminReset(buildAuditContext(request, actor), target, {
+      expiresAt,
+      emailed: false
+    });
 
     /**
-     * NO MAIL TRANSPORT IS CONFIGURED ON THIS INSTALLATION — there is nothing for one in `lib/env.ts`,
-     * and `app/studio/users/page.tsx` hands the screen `canSendEmail = false` to match. So the link
-     * comes back for an administrator to pass on by a means they trust, and the screen says exactly
-     * that beside it.
-     *
-     * ⚠ When a transport is added, this route sends the link and stops returning it. `emailed` is what
-     * the client branches on, so its copy is already correct for both.
+     * THIS BUTTON HANDS THE LINK BACK, ALWAYS — even now that SES can send mail. It is the way in that
+     * works when email does not (no SES, the sandbox, an address that bounces), and the administrator
+     * passes it on by a means they trust; the screen says exactly that beside it. Emailing is the other
+     * button, `./email/route.ts`, which never returns the link.
      *
      * The token is NOT returned separately. It is inside `link`, and a credential that appears twice in
      * one answer is a credential in two places that have to be kept out of logs.

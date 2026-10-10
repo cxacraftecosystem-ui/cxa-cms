@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { currentUser } from "@/lib/auth/current-user";
@@ -260,12 +261,28 @@ export default async function StudioLoginPage({
               <div className="mt-7">
                 <LoginForm next={next} providers={providers} signInError={signInError} />
               </div>
+
+              {/*
+                THE SELF-SERVICE WAY BACK IN. Always rendered, whether or not email is set up: hiding it when
+                SES is missing would tell a stranger something about this installation, and the screen it
+                opens answers every request with the same sentence either way (and says an administrator can
+                make a link). It is a plain address under `/studio/login/`, which the proxy's matcher already
+                leaves open to a signed-out reader.
+              */}
+              <p className="mt-5 text-sm">
+                <Link
+                  href="/studio/login/forgot"
+                  className="font-medium text-purple-700 underline-offset-4 hover:underline focus-visible:underline"
+                >
+                  Forgot your password?
+                </Link>
+              </p>
             </div>
           </div>
 
           <p className="mt-6 text-xs leading-relaxed text-ink-500">
-            Forgotten your password? An administrator can set a new one for you. Nothing on this screen
-            is visible to the public, and this page is never listed by search engines.
+            Forgotten your password? Ask for a link above, or an administrator can make you one. Nothing on
+            this screen is visible to the public, and this page is never listed by search engines.
           </p>
         </div>
       </main>

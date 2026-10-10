@@ -465,9 +465,14 @@ export interface SettingsFormProps {
   diagnostics: readonly string[];
   /** True when object storage is configured, so the media pickers can say why they are empty. */
   storageReady: boolean;
+  /**
+   * Whether password-reset email can be sent (`authMailInfo()` in lib/auth/auth-mail.ts), and from which
+   * address. Optional so a caller that predates it renders exactly as before.
+   */
+  passwordResetEmail?: { configured: boolean; fromAddress: string | null };
 }
 
-export function SettingsForm({ settings, diagnostics, storageReady }: SettingsFormProps) {
+export function SettingsForm({ settings, diagnostics, storageReady, passwordResetEmail }: SettingsFormProps) {
   const [group, setGroup] = useState<SettingsGroup>("branding");
   /** One draft per group, so switching tabs does not throw away unsaved work in the one you left. */
   const [drafts, setDrafts] = useState<Record<string, Document>>(() => documentsFrom(settings));
@@ -668,6 +673,33 @@ export function SettingsForm({ settings, diagnostics, storageReady }: SettingsFo
             Because the file store is not set up, the picture fields below cannot be filled in — there is
             nothing to choose from and nothing can be uploaded.
           </HelpText>
+        ) : null}
+
+        {/*
+          PASSWORD-RESET EMAIL, stated either way — a word and an icon, not colour alone (contract §11). It is
+          its own line rather than one of the warnings above because "not set up" is a legitimate state (an
+          administrator can still make links by hand), and because when it IS set up the sending address is
+          the one thing worth checking: an address outside the verified SES identity fails every send.
+        */}
+        {passwordResetEmail ? (
+          passwordResetEmail.configured ? (
+            <p className="flex items-start gap-2 text-sm leading-relaxed text-ink-700">
+              <CircleCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-success-600" />
+              <span>
+                Password-reset email: set up
+                {passwordResetEmail.fromAddress ? ` — sent from ${passwordResetEmail.fromAddress}` : ""}.
+                While Amazon SES is in its sandbox, only verified addresses receive it.
+              </span>
+            </p>
+          ) : (
+            <p className="flex items-start gap-2 text-sm leading-relaxed text-ink-700">
+              <Wrench aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-800" />
+              <span>
+                Password-reset email: not set up. &ldquo;Forgot your password?&rdquo; sends nothing and the
+                Users screen cannot email a link; administrators can still make a link and pass it on.
+              </span>
+            </p>
+          )
         ) : null}
       </FormSection>
 

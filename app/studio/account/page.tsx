@@ -25,6 +25,7 @@ import {
   totpUri,
   verifyTotp
 } from "@/lib/auth/totp";
+import { totpQrDrawing } from "@/lib/auth/totp-qr";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { isProduction, siteName } from "@/lib/env";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
@@ -64,11 +65,20 @@ import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
  * from `lib/auth/totp.ts` and enforce exactly the same three rules, so the two cannot disagree about the
  * cryptography — only about how the secret gets from one step to the next. If either changes, both change.
  *
- * ⚠ THERE IS NO SCANNABLE SQUARE, AND THE SCREEN SAYS SO RATHER THAN PRETENDING. Drawing a QR code means
- * a QR encoder, and no dependency may be added (contract §13); hand-rolling one is four hundred lines of
- * bit-twiddling whose failure mode is a square that silently will not scan, which is worse than no square.
- * What is offered instead does the same job: a link that opens the authenticator app directly on a phone,
- * and the setup key in readable groups for typing in by hand. Every authenticator accepts both.
+ * THE SCANNABLE SQUARE IS DRAWN ON THE SERVER — OWNER-APPROVED EXCEPTION TO CONTRACT §13, 2026-10-10.
+ * This screen used to say "there is no scannable square", because drawing one needs a QR encoder and no
+ * dependency could be added; hand-rolling one is four hundred lines of bit-twiddling whose failure mode is
+ * a square that silently will not scan. The owner approved ONE small, zero-dependency encoder (`qr`,
+ * pinned exactly) for this, and `lib/auth/totp-qr.ts` turns the `otpauth://` URI into SVG geometry
+ * during THIS render. The secret still never touches JavaScript: the square is plain server-rendered
+ * markup in a `no-store` response, there is no client component, no image request, no `data:` URL and no
+ * external QR service. `tests/security/totp-qr.test.ts` decodes the drawn square back to the exact URI,
+ * which is what retires the "silently will not scan" objection.
+ *
+ * THE OTHER TWO WAYS IN STAY, because not everybody can scan: a link that opens the authenticator app
+ * directly on a phone (where the camera is the device holding the screen), and the setup key in readable
+ * groups for typing in by hand — for a screen reader user, for a desk with no second device, and for an
+ * app that cannot read a square. Every authenticator accepts all three.
  *
  * ⚠ HOW IT IS REACHED, AND WHY THAT IS NOT A DETAIL. Like every studio screen this file declares no link
  * to itself: it is listed once in `components/studio/StudioNav.ts`, which is what the sidebar and the
@@ -535,6 +545,21 @@ export default async function StudioAccountPage({
     pendingSecret.length > 0
       ? totpUri({ secret: pendingSecret, accountName: user.email, issuer: siteName() })
       : "";
+  /**
+   * The square, drawn here, in this server render, from the URI above — see the header. Null when there is
+   * no setup in progress, and null if the encoder ever refuses the URI (a capacity overflow would need an
+   * address hundreds of characters long): the link and the typed key below still work, so a failure to draw
+   * costs the convenience and never the setup.
+   */
+  let qr: ReturnType<typeof totpQrDrawing> | null = null;
+  if (uri) {
+    try {
+      qr = totpQrDrawing(uri);
+    } catch (error) {
+      // Logged without the URI, which carries the secret.
+      console.error("[account] the two-step verification QR code could not be drawn", (error as Error)?.name);
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-208 space-y-6">
@@ -894,14 +919,40 @@ export default async function StudioAccountPage({
                 </li>
 
                 <li className="text-sm leading-relaxed text-ink-700">
-                  <span className="font-semibold text-ink-900">2. Add this account.</span> On the phone you
-                  are reading this on, the link below opens the app with everything filled in. On a computer,
-                  choose “enter a setup key” in the app and type the key underneath.
-                  {/*
-                    ⚠ NO QR CODE — see the file header. This link does the same job on the device where a
-                    camera would be used, and the key does it everywhere else. A `data-allow-unsaved` is
-                    unnecessary here: there is no unsaved work on this screen to guard.
-                  */}
+                  <span className="font-semibold text-ink-900">2. Add this account.</span>{" "}
+                  {qr
+                    ? "On a computer, choose “scan a QR code” in the app and point your phone at the square below. "
+                    : ""}
+                  On the phone you are reading this on, the link below opens the app with everything filled in.
+                  If you cannot scan, choose “enter a setup key” in the app and type the key underneath.
+                  {qr ? (
+                    /*
+                      THE SQUARE — drawn on the server from the URI (see the file header and
+                      lib/auth/totp-qr.ts). It is ALWAYS black on white, whatever the theme, and that is the
+                      one deliberate exception to "never hardcode a neutral" (contract §1.2) on this screen:
+                      a scanner needs dark modules on a light ground, and a square inverted by the dark theme
+                      is one most authenticator apps refuse to read. The white square carries its own
+                      four-module quiet zone, so the near-black page around it in the dark theme never
+                      touches a finder pattern.
+
+                      `role="img"` + an `aria-label` that names what it is FOR and never what it encodes —
+                      the secret must not be read aloud or end up in an accessibility tree dump. The
+                      visible instruction above and the typed key below are the non-visual route.
+                    */
+                    <span className="mt-3 block">
+                      <svg
+                        role="img"
+                        aria-label={`QR code that adds your ${siteName()} studio sign-in to an authenticator app`}
+                        viewBox={`0 0 ${qr.size} ${qr.size}`}
+                        shapeRendering="crispEdges"
+                        className="block h-52 w-52 rounded-md border border-line-200"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <rect width={qr.size} height={qr.size} fill="#ffffff" />
+                        <path d={qr.path} fill="#000000" />
+                      </svg>
+                    </span>
+                  ) : null}
                   <span className="mt-2 block">
                     <a href={uri} className={buttonClasses({ variant: "secondary", size: "sm" })}>
                       <Smartphone aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />

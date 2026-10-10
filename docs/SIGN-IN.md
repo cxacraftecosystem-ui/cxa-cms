@@ -136,6 +136,36 @@ returns it.
 
 ---
 
+## Forgotten passwords
+
+**"Forgot your password?"** on the sign-in screen (`/studio/login/forgot`) emails a one-time link to an
+active account that signs in with a password — the same 2-hour, single-use set-password link an
+administrator can make, sent immediately through Amazon SES (docs/DEPLOYMENT.md §1.9). The screen gives
+**the same answer at the same speed for every address**, so it cannot be used to find out who has an
+account; the work happens after the response is sent. It is rate-limited per connection and, silently,
+per address, and every request — unknown addresses included — is in the audit log with the address and IP,
+as **"Created · a password-link request for …"** (an anonymous request, like a contact enquiry — never
+as a permission change, because asking changes nobody's access; the account that matched, if any, is
+`accountId` in the row's details).
+
+**Known limitation of the per-address limit.** It allows three emails an hour to one address, counted only
+for an active account with a password. Because anybody can type anybody's address, a stranger can use up a
+colleague's three every hour, and the colleague's own request is then not mailed — silently, since the
+screen must give every address the same answer. This is inherent to any limit on the *target*; without it,
+one inbox could be flooded from many connections. The way round it is an administrator: **Make a password
+link** or **Email them a password link** (below) are not counted against it. The audit log shows such
+requests with outcome `address-rate-limited` and the IP addresses they came from.
+
+Asking revokes nothing (anyone can type anyone's address). Using the link sets the password and signs out
+every device, and **two-step verification is still required** to sign in afterwards.
+
+On **Studio → Users → Help them back in**, an administrator can **Make a password link** (copy it and pass
+it on) or, when email is set up, **Email them a password link** to the account's own address — same
+permission, same link, and if the email cannot be sent the screen says so and nothing changes.
+
+The two-step verification setup on **Studio → Account** shows a QR code, drawn on the server, beside the
+typed setup key.
+
 ## If you are locked out
 
 The seed creates the first master administrator and its access grant together, and backfills a grant

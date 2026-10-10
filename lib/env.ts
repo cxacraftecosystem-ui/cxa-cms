@@ -169,6 +169,49 @@ export function sesEnv(): SesEnv {
 }
 
 /**
+ * The sender for ACCOUNT mail — the password-reset link (lib/auth/auth-mail.ts) — through the SAME SES
+ * account and the same IAM user as the newsletter.
+ *
+ * ⚠ ONLY THE FROM LINE MAY DIFFER. `AUTH_EMAIL_FROM_ADDRESS` / `AUTH_EMAIL_FROM_NAME` are optional
+ * overrides so a reset can come from e.g. `studio@…` rather than `news@…`; each falls back to its
+ * newsletter counterpart, and the name finally to the site name. The region, the keys and the
+ * configuration set are `sesEnv()`'s, read by the same names — a second set of SES credentials for one
+ * kind of mail would be a second key to leak and to rotate, for no gain.
+ *
+ * ⚠ THE OVERRIDE ADDRESS MUST BE ON A VERIFIED SES IDENTITY. An address on the verified domain is covered
+ * by the domain identity; an address anywhere else fails every send with "identity not verified", which
+ * the screens report as "could not be sent" rather than pretending.
+ *
+ * Configured when the two SES keys are set and EITHER from-address is, so an installation that sends no
+ * newsletter can still send password links.
+ */
+export function authEmailConfigured(): boolean {
+  return Boolean(
+    read("SES_ACCESS_KEY_ID") &&
+      read("SES_SECRET_ACCESS_KEY") &&
+      (read("AUTH_EMAIL_FROM_ADDRESS") ?? read("NEWSLETTER_FROM_ADDRESS"))
+  );
+}
+
+export function authEmailEnv(): SesEnv {
+  const fromAddress = read("AUTH_EMAIL_FROM_ADDRESS") ?? read("NEWSLETTER_FROM_ADDRESS");
+  if (!fromAddress) {
+    throw new Error(
+      "Missing required environment variable AUTH_EMAIL_FROM_ADDRESS (or NEWSLETTER_FROM_ADDRESS). " +
+        "Copy .env.example to .env and fill it in."
+    );
+  }
+  return {
+    region: read("SES_REGION") ?? "ap-south-1",
+    accessKeyId: required("SES_ACCESS_KEY_ID"),
+    secretAccessKey: required("SES_SECRET_ACCESS_KEY"),
+    fromAddress,
+    fromName: read("AUTH_EMAIL_FROM_NAME") ?? read("NEWSLETTER_FROM_NAME") ?? siteName(),
+    configurationSet: read("SES_CONFIGURATION_SET")
+  };
+}
+
+/**
  * The bearer the newsletter drain accepts from the GitHub Actions schedule. Undefined when unset, in
  * which case only Vercel's own cron (which presents `CRON_SECRET`) can drive the drain.
  */
@@ -336,12 +379,15 @@ export function accessLogEnabled(): boolean {
  * Has an operator stated that the log archive's destination is NOT anonymously readable?
  *
  * ⚠ IT DEFAULTS TO "NO", AND EVERYTHING THAT WRITES UNDER `files/logs/` IS EXPECTED TO REFUSE ON IT.
- * The media bucket grants anonymous `s3:GetObject` on every key (docker/minio-public-read.json, and
- * docker-compose.yml says a real S3 bucket "needs the same care"), while archive keys are derived
+ * Anonymous `s3:GetObject` is limited to the bucket's listed public prefixes — in production
+ * (`cxa-media-prod`, verified 2026-10-10) `media/*`, `models/*` and `craft/*` only; local MinIO
+ * (docker/minio-public-read.json) still grants the whole bucket — while archive keys are derived
  * from a date on purpose so a reader can fetch a range without listing. Anonymous GetObject plus a
- * derivable key is publication. `archiveDestinationPrivacy()` in lib/logArchive.ts wraps this with
- * the sentence that names the bucket policy and the fix; both the nightly archive job and the log
- * drain receiver refuse until this says yes.
+ * derivable key is publication. A yes here is the operator's ATTESTATION that `files/logs/` stays
+ * outside the public prefixes and that no lifecycle rule under 90 days applies to it; production set
+ * it on 2026-10-10. `archiveDestinationPrivacy()` in lib/logArchive.ts wraps this with the sentence
+ * that names the bucket policy and the fix; both the nightly archive job and the log drain receiver
+ * refuse until this says yes.
  *
  * ⚠ IT RETURNS A MALFORMED VALUE RATHER THAN THROWING ON IT, WHICH DIVERGES FROM `readBool` ABOVE ON
  * PURPOSE. `readBool` throws on an unrecognised value and is right to: silently substituting a
@@ -465,10 +511,11 @@ export function configurationWarnings(): string[] {
           "the nightly log archive is writing NOTHING and no platform log drain delivery would be " +
           "retained either. The IIT KGP hosting undertaking requires website logs to be retained for " +
           "at least 90 days and produced to CIC on request. The rows themselves are safe — nothing " +
-          "deletes them — but there is no archive in object storage. Give the bucket a policy that " +
-          "excludes files/logs/* from anonymous GetObject (or give the archive a private bucket of " +
-          "its own), then set LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true and the next runs back-fill " +
-          "every pending day inside the scan window."
+          "deletes them — but there is no archive in object storage. Check that the bucket policy " +
+          "allows anonymous GetObject only on the public prefixes and that files/logs/ is not one of " +
+          "them (or give the archive a private bucket of its own), and that no lifecycle rule under " +
+          "90 days applies to files/logs/; then set LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true and the " +
+          "next runs back-fill every pending day inside the scan window."
       );
     }
   }

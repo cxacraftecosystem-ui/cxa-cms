@@ -95,8 +95,11 @@ export interface LoginFormProps {
   signInError: string | null;
 }
 
-/** A body from `lib/api.ts` always carries `message`. Anything else gets the caller's fallback. */
-function messageFrom(payload: unknown, fallback: string): string {
+/**
+ * A body from `lib/api.ts` always carries `message`. Anything else gets the caller's fallback.
+ * Exported for `../login/forgot/ForgotPasswordForm.tsx`, which reads the same body shape the same way.
+ */
+export function messageFrom(payload: unknown, fallback: string): string {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return fallback;
   const value = (payload as Record<string, unknown>).message;
   if (typeof value === "string" && value.trim().length > 0) return value.trim();
@@ -118,7 +121,7 @@ function isTwoFactorChallenge(payload: unknown): boolean {
  * Under ninety seconds the answer is given in seconds, because "try again in 1 minute" for a 20-second
  * wait makes somebody sit and watch a clock for three times longer than they needed to.
  */
-function describeRetryAfter(raw: string | null): string | null {
+export function describeRetryAfter(raw: string | null): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
