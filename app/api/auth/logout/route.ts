@@ -52,8 +52,8 @@ export const POST = route(async (request: NextRequest) => {
       {
         action: "LOGOUT",
         entityType: "User",
-        entityId: claims?.sub ?? null,
-        entityLabel: claims?.email ?? null
+        // No `entityLabel`: it used to be the leaver's own address. Screens join `entityId` for a name.
+        entityId: claims?.sub ?? null
       }
     );
   }

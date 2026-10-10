@@ -4,6 +4,8 @@ import "server-only";
 // ambiguous between "JSON null" and "SQL NULL" and it refuses to guess.
 import { Prisma, type AuditAction } from "@prisma/client";
 import { ApiError } from "@/lib/api";
+import { hashAuditIp } from "@/lib/audit-ip";
+import { scrubAccountIdentity } from "@/lib/audit-subject";
 import { prisma } from "@/lib/db";
 import type { SessionUser } from "@/lib/auth/current-user";
 
@@ -22,11 +24,33 @@ import type { SessionUser } from "@/lib/auth/current-user";
 
 export type TxClient = Prisma.TransactionClient;
 
-/** The subset of a request an audit entry needs. Assembled once per route. */
+/**
+ * The subset of a request an audit entry needs. Assembled once per route.
+ *
+ * ⚠ `actor.email` and `ipAddress` ARE INPUTS, NOT WHAT IS STORED. The row records `actorId` (the
+ * address is joined from the user at read time) and `ipHash`, a keyed fingerprint of the address
+ * (lib/audit-ip.ts). Neither raw value reaches the table — see `auditRowIdentity` and
+ * docs/AUDIT-PRIVACY.md. `email` stays in the type so the many call sites that pass a session user
+ * need not change.
+ */
 export interface AuditContext {
   actor: Pick<SessionUser, "id" | "email"> | null;
   ipAddress?: string | null;
   userAgent?: string | null;
+}
+
+/**
+ * The identifying columns of an audit row, from a context: the actor's id, and the fingerprint of the
+ * address. Exported so the tests can pin that no raw email or IP is ever among them.
+ *
+ * `actorEmail` and `ipAddress` are deliberately ABSENT rather than set to null: they are legacy
+ * columns, and leaving them out of the insert is the whole of "stop writing them".
+ */
+export function auditRowIdentity(context: AuditContext): { actorId: string | null; ipHash: string | null } {
+  return {
+    actorId: context.actor?.id ?? null,
+    ipHash: hashAuditIp(context.ipAddress)
+  };
 }
 
 /**
@@ -78,10 +102,35 @@ export interface AuditInput {
   action: AuditAction;
   entityType: string;
   entityId?: string | null;
-  /** A human handle — a title, a name, an email. Denormalised so a purged row still reads sensibly. */
+  /**
+   * A human handle — a title, a name. Denormalised so a purged row still reads sensibly. On an account
+   * row an address is stripped from it before the insert (see `auditRowData`).
+   */
   entityLabel?: string | null;
   before?: unknown;
   after?: unknown;
+}
+
+/**
+ * The whole insert for one entry — the ONE place a row is assembled, for both writers below.
+ *
+ * Account rows (entityType `User`, and every sign-in event) go through `scrubAccountIdentity` first:
+ * their label and payloads lose every email address, because those rows used to carry the actor's own
+ * address under another column name (`entityLabel` on every sign-in and sign-out). lib/audit-subject.ts
+ * says what replaces it.
+ */
+export function auditRowData(context: AuditContext, input: AuditInput) {
+  const scrubbed = scrubAccountIdentity(input);
+  return {
+    ...auditRowIdentity(context),
+    action: scrubbed.action,
+    entityType: scrubbed.entityType,
+    entityId: scrubbed.entityId ?? null,
+    entityLabel: scrubbed.entityLabel ?? null,
+    before: toJsonColumn(scrubbed.before),
+    after: toJsonColumn(scrubbed.after),
+    userAgent: context.userAgent?.slice(0, 512) ?? null
+  };
 }
 
 /** Write an audit entry on an existing transaction. Prefer this — see the rule at the top. */
@@ -90,20 +139,7 @@ export async function writeAudit(
   context: AuditContext,
   input: AuditInput
 ): Promise<void> {
-  await tx.auditLog.create({
-    data: {
-      actorId: context.actor?.id ?? null,
-      actorEmail: context.actor?.email ?? null,
-      action: input.action,
-      entityType: input.entityType,
-      entityId: input.entityId ?? null,
-      entityLabel: input.entityLabel ?? null,
-      before: toJsonColumn(input.before),
-      after: toJsonColumn(input.after),
-      ipAddress: context.ipAddress ?? null,
-      userAgent: context.userAgent?.slice(0, 512) ?? null
-    }
-  });
+  await tx.auditLog.create({ data: auditRowData(context, input) });
 }
 
 /**
@@ -115,20 +151,7 @@ export async function writeAudit(
  */
 export async function recordEvent(context: AuditContext, input: AuditInput): Promise<void> {
   try {
-    await prisma.auditLog.create({
-      data: {
-        actorId: context.actor?.id ?? null,
-        actorEmail: context.actor?.email ?? null,
-        action: input.action,
-        entityType: input.entityType,
-        entityId: input.entityId ?? null,
-        entityLabel: input.entityLabel ?? null,
-        before: toJsonColumn(input.before),
-        after: toJsonColumn(input.after),
-        ipAddress: context.ipAddress ?? null,
-        userAgent: context.userAgent?.slice(0, 512) ?? null
-      }
-    });
+    await prisma.auditLog.create({ data: auditRowData(context, input) });
   } catch (error) {
     console.error("[audit] could not record event", input.action, input.entityType, error);
   }

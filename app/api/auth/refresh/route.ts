@@ -13,6 +13,7 @@ import {
 import { REFRESH_COOKIE } from "@/lib/auth/cookies";
 import { rotateSession, type RotateResult } from "@/lib/auth/session";
 import { accessTokenExpiresAt, applySession, clearSession } from "@/lib/auth/respond";
+import { isSafeSitePath } from "@/lib/safe-href";
 
 /**
  * Rotate the session. One route, two callers, two answer shapes.
@@ -72,6 +73,10 @@ function safeNextPath(raw: string | null): string {
   if (raw.length > 512) return DEFAULT_NEXT;
   if (!raw.startsWith("/")) return DEFAULT_NEXT;
   if (raw.startsWith("//") || raw.startsWith("/\\")) return DEFAULT_NEXT;
+  // …and the shared rule (lib/safe-href.ts), which also decodes EVERY segment: `/%2F%2Fevil.example` and
+  // `/a/..%2F..%2F/evil.example` become `//evil.example` in anything downstream that decodes before it
+  // redirects.
+  if (!isSafeSitePath(raw)) return DEFAULT_NEXT;
   if (hasUnsafeCharacter(raw)) return DEFAULT_NEXT;
   if (raw === "/api" || raw.startsWith("/api/")) return DEFAULT_NEXT;
   return raw;

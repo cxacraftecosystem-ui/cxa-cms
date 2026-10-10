@@ -4,6 +4,7 @@ import type { AnnouncementTone } from "@prisma/client";
 
 import { activeAnnouncementWhere } from "@/lib/announcements";
 import { prisma } from "@/lib/db";
+import { isInternalHref, safeHref } from "@/lib/safe-href";
 import { prerenderSafe } from "@/lib/prerender";
 import { cn } from "@/lib/utils";
 
@@ -184,11 +185,6 @@ const DISMISS_SCRIPT = `(function () {
   } catch (unexpected) {}
 })();`;
 
-/** `/path`, `#anchor` and `?query` are ours; anything else is another site, a mailto or a tel. */
-function isInternalHref(href: string): boolean {
-  return href.startsWith("/") || href.startsWith("#") || href.startsWith("?");
-}
-
 /**
  * ⚠ THE READ IS GUARDED, AND THE REASON IS NOT THIS COMPONENT — IT IS THE WHOLE BUILD.
  *
@@ -255,7 +251,10 @@ export async function AnnouncementBar() {
   /** The dismissal key: this announcement, in this wording. See the header. */
   const stamp = `${announcement.id}:${announcement.updatedAt.toISOString()}`;
 
-  const href = announcement.href?.trim() ?? "";
+  // lib/safe-href.ts, on READ as well as on save: a row written before the save-time rule (or straight
+  // into the table) may hold `//evil.example`, which `next/link` would render as an internal link that
+  // leaves the site. Such a link is dropped and the message still shows.
+  const href = safeHref(announcement.href) ?? "";
   /**
    * A link with no words of its own gets "Read more" rather than being dropped.
    *

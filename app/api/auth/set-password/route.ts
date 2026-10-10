@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
 import { ApiError, assertSameOrigin, clientIp, ok, parseJson, route, userAgent } from "@/lib/api";
 import { mutateWithHistory, recordEvent, type AuditContext } from "@/lib/audit";
+import { attemptedAddress } from "@/lib/audit-subject";
 import {
   ACCESS_REFUSED_MESSAGE,
   describeRefusal,
@@ -203,7 +204,7 @@ export const POST = route(async (request: NextRequest) => {
     {
       action: "PERMISSION_CHANGE",
       entityType: "User",
-      entityLabel: user.email,
+      // No `entityLabel`: the account is the actor, and its address is joined at read time.
       // No revision: a user row is not versioned content. The audit entry holds what changed.
       revise: false,
       /**
@@ -264,9 +265,8 @@ export const POST = route(async (request: NextRequest) => {
       action: "LOGIN_FAILED",
       entityType: "User",
       entityId: user.id,
-      entityLabel: user.email,
       after: {
-        email: user.email,
+        ...attemptedAddress(user.email),
         reason: "access-refused",
         detail: describeRefusal(access.reason),
         provider: "PASSWORD",
@@ -346,7 +346,6 @@ export const POST = route(async (request: NextRequest) => {
     action: "LOGIN",
     entityType: "User",
     entityId: user.id,
-    entityLabel: user.email,
     // Named so an account's history distinguishes this from an ordinary sign-in: it is the one entry
     // that explains a first-ever session on an invited account. `admittedWithoutGrant` is recorded
     // under the same name the login route and the OAuth callback use, so one query answers "who is

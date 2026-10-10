@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
+import { isExternalHref, richTextLinksAreSafe, UNSAFE_RICH_TEXT_LINK_MESSAGE } from "@/lib/safe-href";
 import { Prisma, type ContentStatus, type PersonKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -75,16 +76,22 @@ const slugField = z
     "A web address can only use lower-case letters, numbers and single hyphens — “anita-sharma”, not “Anita Sharma”."
   );
 
-const richTextField = z.union([
-  z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).loose(),
-  z.null()
-]);
+// Every link mark is checked against lib/safe-href.ts on SAVE, not only when rendering: a stored
+// `javascript:` or `//evil.example` href is refused here, in front of whoever sent it.
+const richTextField = z
+  .union([
+    z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).loose(),
+    z.null()
+  ])
+  .refine(richTextLinksAreSafe, { message: UNSAFE_RICH_TEXT_LINK_MESSAGE });
 
 const urlField = z
   .string()
   .trim()
   .max(1000)
   .regex(/^https?:\/\/\S+$/i, "A web address has to begin with https:// so the link works from the profile page.")
+  // …and must parse as one (lib/safe-href.ts): `https:///x` or a backslash would not link where it says.
+  .refine(isExternalHref, "A web address has to begin with https:// so the link works from the profile page.")
   .nullable();
 
 const PatchBody = z.object({

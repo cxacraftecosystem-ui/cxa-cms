@@ -526,7 +526,7 @@ function InstallationTab() {
           */}
           <SearchInput
             label="Search refused sign-ins by the network address they came from"
-            placeholder="Search by address"
+            placeholder="An IP address, or a net· fingerprint"
             value={addressQuery}
             onValueChange={setAddressQuery}
             clearLabel="Clear the address search"
@@ -535,9 +535,11 @@ function InstallationTab() {
         </div>
 
         <HelpText>
-          The search looks only at the network address an attempt came from. The addresses people typed
-          are deliberately not searchable: they are shown with the name part hidden, and a search that
-          could confirm one would undo that a guess at a time.
+          The search looks only at the network an attempt came from: type a whole IP address, or paste a
+          net· fingerprint from the list. The log keeps a keyed fingerprint of each address rather than
+          the address itself, so part of an address matches nothing. The addresses people typed are
+          deliberately not searchable: they are shown with the name part hidden, and a search that could
+          confirm one would undo that a guess at a time.
         </HelpText>
       </FormSection>
 
@@ -1597,7 +1599,7 @@ function PersonDetail({ userId }: { userId: string }) {
 
       <FormSection
         title="Addresses they worked from"
-        description="Every network address recorded against them in this period, most-used first. An address nobody recognises is worth asking about."
+        description="Every network recorded against them in this period, most-used first, as a fingerprint: the log keeps a keyed hash of each address, never the address. A fingerprint nobody recognises is worth asking about."
       >
         {activity.addresses.items.length === 0 ? (
           <p className="text-sm text-ink-500">

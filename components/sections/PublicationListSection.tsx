@@ -42,6 +42,7 @@ import {
   type ResolvedSectionData
 } from "@/lib/sections/resolve";
 import type { PublicationListSectionData } from "@/lib/sections/schema";
+import { safeExternalHref, safeHref } from "@/lib/safe-href";
 import { cn, truncateWords } from "@/lib/utils";
 
 export interface PublicationListSectionProps {
@@ -129,7 +130,8 @@ export function PublicationListSection({
   const eyebrow = data.eyebrow.trim();
   const body = data.body.trim();
   const label = data.ctaLabel.trim();
-  const href = data.ctaHref.trim();
+  // lib/safe-href.ts: an href it refuses (`//evil.example`, `javascript:`) means no "see all" link.
+  const href = safeHref(data.ctaHref) ?? "";
   const link = label && href ? { href, label } : undefined;
   const showsHeader = Boolean(heading || eyebrow || body || link);
   const hidden = Math.max(0, matched - rows.length);
@@ -239,7 +241,8 @@ function PublicationRowItem({
 }) {
   const venue = publicationDisplayVenue(row);
   const doi = doiHref(row.doi);
-  const external = doi ?? row.url?.trim() ?? null;
+  // Publisher links are free text; only an absolute http(s) URL is drawn (lib/safe-href.ts).
+  const external = doi ?? safeExternalHref(row.url);
   const titleClass =
     "display-title text-balance text-base leading-snug transition-colors hover:text-purple-700";
 

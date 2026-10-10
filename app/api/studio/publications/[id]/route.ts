@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
+import { publisherUrlSchema } from "@/lib/studio/link-fields";
 import { Prisma, type ContentStatus, type PublicationKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -113,7 +114,9 @@ const PatchBody = z.object({
   issn: z.string().trim().max(40).nullable().optional(),
   patentNumber: z.string().trim().max(80).nullable().optional(),
   arxivId: z.string().trim().max(60).nullable().optional(),
-  url: z.string().trim().max(1000).nullable().optional(),
+  // Rendered as the "View at the publisher" link, so it is checked on SAVE by lib/safe-href.ts: an
+  // absolute http(s) address only, never `javascript:` or a protocol-relative `//host`.
+  url: publisherUrlSchema(),
   bibtex: z.string().trim().max(20000).nullable().optional(),
   keywords: z.array(z.string().trim().min(1).max(80)).max(MAX_KEYWORDS).optional(),
   pdfFileId: idField.nullable().optional(),

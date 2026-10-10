@@ -1,4 +1,6 @@
 import "server-only";
+import { auditIpKeySource, MIN_AUDIT_IP_SECRET_LENGTH } from "./audit-ip";
+import { clientIpConfigurationWarning } from "./request-ip";
 
 /**
  * Validated server environment.
@@ -488,5 +490,24 @@ export function configurationWarnings(): string[] {
         "the drain once 80% of deliveries fail; set S3_BUCKET, S3_REGION and the access keys."
     );
   }
+  // The audit log's network fingerprint (lib/audit-ip.ts). Derived from JWT_SECRET when unset, which
+  // works but ties the two rotations together; a value that is set but too short is ignored outright.
+  const auditIpSecret = read("AUDIT_IP_HASH_SECRET");
+  if (auditIpSecret && auditIpSecret.length < MIN_AUDIT_IP_SECRET_LENGTH) {
+    warnings.push(
+      `AUDIT_IP_HASH_SECRET is shorter than ${MIN_AUDIT_IP_SECRET_LENGTH} characters, so it is being ` +
+        "ignored and the audit log's network fingerprints are derived from JWT_SECRET instead."
+    );
+  } else if (auditIpKeySource() === "derived") {
+    warnings.push(
+      "AUDIT_IP_HASH_SECRET is not set, so the audit log fingerprints network addresses with a key " +
+        "derived from JWT_SECRET. Rotating JWT_SECRET will then also change every fingerprint. Set a " +
+        "dedicated secret (openssl rand -base64 48)."
+    );
+  }
+  // Off Vercel with no trusted proxy hop, nobody has an address and everybody shares one rate-limit
+  // bucket — see `clientIpConfigurationWarning` in lib/request-ip.ts.
+  const clientIpWarning = clientIpConfigurationWarning();
+  if (clientIpWarning) warnings.push(clientIpWarning);
   return warnings;
 }

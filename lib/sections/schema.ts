@@ -5,6 +5,7 @@ import { EMBED_ASPECT_RATIOS, EMBED_PROVIDERS, videoSettingsSchema } from "@/lib
 import type { SectionType } from "@prisma/client";
 
 import { blockTypesetSchema } from "@/lib/typography/typeset";
+import { isStorableHref, richTextLinksAreSafe, UNSAFE_RICH_TEXT_LINK_MESSAGE } from "@/lib/safe-href";
 
 /**
  * The typed contract for every renderable page block.
@@ -95,18 +96,20 @@ function text(max: number, help: string) {
  * Anything that ends up in an `href`.
  *
  * `z.string().url()` is wrong here: it rejects `/about`, which is the value an administrator types
- * nine times out of ten. So the check is a shape test that accepts a site path, an in-page anchor, an
- * absolute http(s) URL, `mailto:` and `tel:` — and accepts empty, because "no link yet" is a normal
- * state, not a mistake.
+ * nine times out of ten. So the check is `isStorableHref()` from lib/safe-href.ts — the one rule every
+ * link surface shares — which accepts a site path, an in-page anchor or query, an absolute http(s) URL,
+ * `mailto:` and `tel:`, and accepts empty here, because "no link yet" is a normal state, not a mistake.
+ *
+ * ⚠ A SHAPE REGEX IS NOT ENOUGH, and one stood here: `/\S*` accepted `//evil.example` and
+ * `/\evil.example`, both of which a browser resolves to another host while `next/link` renders them as
+ * internal links.
  */
-const LINK_SHAPE = /^(?:\/\S*|#\S*|https?:\/\/\S+|mailto:\S+|tel:\S+)$/;
-
 function link(help: string) {
   return z
     .string()
     .trim()
     .max(500, "That link is too long to be right. Check it and paste it again.")
-    .refine((value) => value === "" || LINK_SHAPE.test(value), {
+    .refine((value) => value === "" || isStorableHref(value), {
       message:
         "Enter a link that starts with / for a page on this site, or with https:// for another site."
     })
@@ -515,7 +518,10 @@ const richTextDocumentSchema = z
     type: z.literal("doc"),
     content: z.array(z.unknown()).default([])
   })
-  .loose();
+  .loose()
+  // The one exception to "tightening adds no protection": a link mark's href is refused on save by the
+  // same rule the renderer applies, so a `javascript:` or `//evil.example` link never reaches the row.
+  .refine(richTextLinksAreSafe, { message: UNSAFE_RICH_TEXT_LINK_MESSAGE });
 
 export const richTextSectionSchema = z.object({
   eyebrow: text(60, "The small line above the heading. Optional."),
@@ -1705,7 +1711,7 @@ export const formEmbedSectionSchema = z
       .string()
       .trim()
       .max(500, "That link is too long to be right. Check it and paste it again.")
-      .refine((value) => value === "" || /^https:\/\/\S+$/.test(value), {
+      .refine((value) => value === "" || (/^https:\/\//i.test(value) && isStorableHref(value)), {
         message:
           "Paste the whole address of the form, starting with https:// — not a page on this site, and not a plain http address."
       })

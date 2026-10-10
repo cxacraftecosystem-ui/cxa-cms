@@ -10,9 +10,11 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { storageConfigured, storageEnv } from "@/lib/env";
-import { ApiError } from "@/lib/api";
-import { chunk } from "@/lib/utils";
+import { ApiError, badRequest } from "@/lib/api";
+import { chunk, formatBytes } from "@/lib/utils";
 import { isSafeObjectKey } from "./keys";
+import { isSha256Base64, SHA256_REQUIRED_MESSAGE } from "./upload-limits";
+import type { UploadIntent } from "./upload-ticket";
 
 /**
  * The object-storage adapter.
@@ -121,22 +123,52 @@ function assertKey(key: string): void {
 /**
  * A presigned PUT for a browser upload.
  *
- * Direct-to-storage rather than proxying through the app, because a 400 MB video through a
- * serverless function is a timeout at best and a memory limit at worst. Two consequences the caller
- * must honour:
+ * Direct-to-storage rather than proxying through the app, because a 200 MB video through a
+ * serverless function is a timeout at best and a memory limit at worst. That makes THIS SIGNATURE the
+ * only control over what lands, so it pins down three things, and storage — not the browser, not a
+ * later `HEAD` — refuses a PUT that differs in any of them:
  *
- *   • **`ContentType` is SIGNED.** The browser MUST send exactly the type named here, or the PUT is
+ *   • **`Content-Type` is SIGNED.** The browser MUST send exactly the type named here, or the PUT is
  *     rejected with a signature mismatch that reads like a credentials problem.
- *   • **The bucket's CORS must expose `ETag`.** Without it a multipart upload cannot read the part
- *     identifiers back and the whole transfer has to fall back to single PUTs (skill §14.4).
+ *   • **`Content-Length` is SIGNED and REQUIRED.** Without it the URL would accept a body of any size
+ *     for its whole lifetime, and the cap would be enforced only by the browser that was asked to obey
+ *     it. The browser sets this header itself from the `File`; nothing has to replay it.
+ *   • **`x-amz-checksum-sha256` is SIGNED and REQUIRED.** Storage computes the SHA-256 of the body it
+ *     receives and refuses the PUT (`BadDigest`) when it differs, so the bytes stored are provably the
+ *     bytes the browser fingerprinted — and `headObject` can read the verified digest back.
+ *
+ * ══ WHY `signableHeaders` AND `unhoistableHeaders` ARE SPELLED OUT ══
+ *
+ * Measured against @aws-sdk/s3-request-presigner 3.1098: with neither option the URL's
+ * `X-Amz-SignedHeaders` is `content-length;host` — `Content-Type` was NOT signed, whatever the comment
+ * that used to stand here said — and every `x-amz-*` header is HOISTED into the query string instead of
+ * being sent as a request header. `signableHeaders` forces `content-type` into the signature;
+ * `unhoistableHeaders` keeps the checksum (and the encryption choice) as real, signed request headers,
+ * which is why they are returned in `headers` for the browser to replay. tests/storage/presign.test.ts
+ * reads `X-Amz-SignedHeaders`, so a dependency bump that changes this is caught rather than discovered.
+ *
+ * Single PUT only: there is no multipart path in this codebase (lib/client/upload.ts), so the checksum
+ * is a FULL_OBJECT SHA-256 and never a composite `…-N` one.
+ *
+ * The bucket's CORS must allow these request headers (`AllowedHeaders: ["*"]` in docs/OPERATIONS.md §1
+ * already does) and expose `ETag`.
  */
 export async function presignUpload(input: {
   key: string;
   contentType: string;
+  /** Exact size of the body, in bytes. Required and signed. */
+  contentLength: number;
+  /** Standard base64 of the SHA-256 of the body. Required and signed. */
+  checksumSha256: string;
   expiresInSeconds?: number;
-  contentLength?: number;
 }): Promise<{ url: string; headers: Record<string, string>; expiresInSeconds: number }> {
   assertKey(input.key);
+  if (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0) {
+    throw badRequest("An upload must state its exact size in bytes.");
+  }
+  if (!isSha256Base64(input.checksumSha256)) {
+    throw badRequest(SHA256_REQUIRED_MESSAGE);
+  }
   const expiresIn = input.expiresInSeconds ?? 15 * 60;
   const sse = serverSideEncryption();
 
@@ -144,16 +176,26 @@ export async function presignUpload(input: {
     Bucket: bucket(),
     Key: input.key,
     ContentType: input.contentType,
-    ...(input.contentLength !== undefined ? { ContentLength: input.contentLength } : {}),
+    ContentLength: input.contentLength,
+    ChecksumAlgorithm: "SHA256",
+    ChecksumSHA256: input.checksumSha256,
     ...sse
   });
 
   // `signer()`, not `s3()` — the browser follows this URL. See the note on `signer`.
-  const url = await getSignedUrl(signer(), command, { expiresIn });
+  const url = await getSignedUrl(signer(), command, {
+    expiresIn,
+    signableHeaders: new Set(["content-type", "content-length"]),
+    unhoistableHeaders: new Set(["x-amz-checksum-sha256", "x-amz-server-side-encryption"])
+  });
 
   // Every signed header must be replayed by the browser verbatim. Returning them alongside the URL
-  // is what stops a caller from having to know which ones were signed.
-  const headers: Record<string, string> = { "Content-Type": input.contentType };
+  // is what stops a caller from having to know which ones were signed. (`Content-Length` is absent:
+  // a browser refuses to let script set it and sends the true length of the body itself.)
+  const headers: Record<string, string> = {
+    "Content-Type": input.contentType,
+    "x-amz-checksum-sha256": input.checksumSha256
+  };
   if (sse.ServerSideEncryption) headers["x-amz-server-side-encryption"] = sse.ServerSideEncryption;
 
   return { url, headers, expiresInSeconds: expiresIn };
@@ -224,6 +266,12 @@ export interface ObjectHead {
   byteSize: number;
   contentType: string | null;
   etag: string | null;
+  /**
+   * The SHA-256 storage computed and verified at PUT time, base64 — or null when the object was stored
+   * without one (an old upload, a server-side write, or a gateway that ignores checksums). For a
+   * multipart object this is a composite `…-N` value, which is not a digest of the whole body.
+   */
+  checksumSha256: string | null;
 }
 
 /**
@@ -233,14 +281,28 @@ export interface ObjectHead {
  * database row. Trusting the browser's "done" is how a MediaAsset row ends up pointing at a key that
  * was never written — a broken image with a perfectly healthy-looking database.
  */
-export async function headObject(key: string): Promise<ObjectHead | null> {
+export async function headObject(
+  key: string,
+  options: { withChecksum?: boolean } = {}
+): Promise<ObjectHead | null> {
   assertKey(key);
   try {
-    const response = await s3().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }));
+    // `ChecksumMode: ENABLED` is what makes storage return the stored checksum at all; without it the
+    // field is simply absent and every finalize would look like a gateway that ignores checksums. It is
+    // opt-in because only the upload finalize needs it, and on an SSE-KMS bucket it additionally needs
+    // `kms:Decrypt` — the public download routes HEAD too and should not grow that requirement.
+    const response = await s3().send(
+      new HeadObjectCommand({
+        Bucket: bucket(),
+        Key: key,
+        ...(options.withChecksum ? { ChecksumMode: "ENABLED" as const } : {})
+      })
+    );
     return {
       byteSize: response.ContentLength ?? 0,
       contentType: response.ContentType ?? null,
-      etag: response.ETag?.replace(/"/g, "") ?? null
+      etag: response.ETag?.replace(/"/g, "") ?? null,
+      checksumSha256: response.ChecksumSHA256 ?? null
     };
   } catch (error) {
     const name = (error as { name?: string }).name;
@@ -248,6 +310,68 @@ export async function headObject(key: string): Promise<ObjectHead | null> {
     if (name === "NotFound" || name === "NoSuchKey" || status === 404) return null;
     throw error;
   }
+}
+
+/**
+ * Why a landed object is not the one that was presigned, or null when it is.
+ *
+ * Pure, so the rule can be tested without a bucket. Size, checksum and content type are all compared:
+ * storage already refused a PUT that differed in any of them (see `presignUpload`), so a mismatch here
+ * means the gateway did not enforce what was signed — which is exactly the case this exists to catch.
+ * A MISSING checksum is a mismatch, not a pass: it is what a gateway that silently ignores
+ * `x-amz-checksum-sha256` looks like.
+ */
+export function landedObjectProblem(intent: UploadIntent, head: ObjectHead): string | null {
+  if (head.byteSize !== intent.byteSize) {
+    return (
+      `What reached storage is ${formatBytes(head.byteSize)} but the upload was signed for ` +
+      `${formatBytes(intent.byteSize)}.`
+    );
+  }
+  if (!head.checksumSha256) {
+    return "Storage did not record a SHA-256 fingerprint for the upload, so its contents cannot be confirmed.";
+  }
+  if (head.checksumSha256 !== intent.sha256) {
+    return "The file in storage does not match the fingerprint the upload was signed for.";
+  }
+  if ((head.contentType ?? "").toLowerCase() !== intent.contentType.toLowerCase()) {
+    return `What reached storage is typed ${head.contentType ?? "unknown"} but the upload was signed for ${intent.contentType}.`;
+  }
+  return null;
+}
+
+/**
+ * Confirm a browser upload landed AS PRESIGNED before any row points at it.
+ *
+ * `HEAD` the object; refuse (400) when it is absent; when it differs from the ticket in size, checksum
+ * or type, DELETE it and refuse. The delete is safe because the key is a fresh random one the presign
+ * route issued and no row references it yet — and it is the only way a refusal does not leave an
+ * object nothing will ever collect.
+ *
+ * `nothingChanged` is the route's own ending ("Nothing was added to the library."), so the sentence
+ * the reader sees still says what did NOT happen.
+ */
+export async function confirmUploadedObject(
+  intent: UploadIntent,
+  options: { logTag: string; nothingChanged: string }
+): Promise<ObjectHead> {
+  const head = await headObject(intent.objectKey, { withChecksum: true });
+  if (!head) {
+    throw badRequest(
+      `The upload did not reach storage. ${options.nothingChanged} Nothing is stored under that address. ` +
+        "Try uploading the file again."
+    );
+  }
+
+  const problem = landedObjectProblem(intent, head);
+  if (problem) {
+    await deleteObject(intent.objectKey).catch((error: unknown) => {
+      console.error(`${options.logTag} could not remove a rejected upload`, intent.objectKey, error);
+    });
+    throw badRequest(`${problem} ${options.nothingChanged} Try uploading the file again.`);
+  }
+
+  return head;
 }
 
 export async function deleteObject(key: string): Promise<void> {

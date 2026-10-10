@@ -1,4 +1,5 @@
 import { z } from "@/lib/zod";
+import { isExternalHref, richTextLinksAreSafe, UNSAFE_RICH_TEXT_LINK_MESSAGE } from "@/lib/safe-href";
 import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, ok, route } from "@/lib/api";
@@ -99,7 +100,7 @@ const eventBodySchema = z.object({
   slug: z.union([z.literal(""), slugSchema()]).optional(),
   subtitle: optionalText(240),
   summary: optionalText(600),
-  body: z.unknown().optional(),
+  body: z.unknown().refine(richTextLinksAreSafe, { message: UNSAFE_RICH_TEXT_LINK_MESSAGE }).optional(),
   mode: z.enum(["IN_PERSON", "ONLINE", "HYBRID"]).default("IN_PERSON"),
   venue: optionalText(240),
   address: optionalText(400),
@@ -125,13 +126,13 @@ const eventBodySchema = z.object({
     ])
     .default(null),
   onlineUrl: optionalText(500).refine(
-    (value) => value === null || /^https?:\/\//i.test(value),
+    (value) => value === null || isExternalHref(value),
     "A joining link must be a full address beginning with https://."
   ),
   startsAt: requiredDateTime("The start", "An event needs a date and time to start."),
   endsAt: optionalDateTime("The end"),
   registrationUrl: optionalText(500).refine(
-    (value) => value === null || /^https?:\/\//i.test(value),
+    (value) => value === null || isExternalHref(value),
     "A registration link must be a full address beginning with https://."
   ),
   registrationOpensAt: optionalDateTime("The date registration opens"),

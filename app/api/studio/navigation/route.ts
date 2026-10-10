@@ -5,6 +5,7 @@ import { requireCapability } from "@/lib/auth/current-user";
 import { mutateWithHistory, type TxClient } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { canManageStructure } from "@/lib/permissions";
+import { NAV_HREF_MAX, navigationHrefSchema } from "@/lib/studio/link-fields";
 import { buildAuditContext, parseStudioJson } from "@/lib/studio/crud";
 
 /**
@@ -69,9 +70,7 @@ const MAX_ITEMS: Record<NavLocation, number> = { header: 8, footer: 12, utility:
 const MAX_CHILDREN = 12;
 
 const LABEL_MAX = 60;
-const HREF_MAX = 500;
-
-const HTTP_SCHEMES = /^https?:\/\//i;
+const HREF_MAX = NAV_HREF_MAX;
 
 /**
  * Where a menu item may point.
@@ -80,29 +79,14 @@ const HTTP_SCHEMES = /^https?:\/\//i;
  * straight into an `href`, and `new URL()` parses `javascript:` and `data:` perfectly happily. Anything
  * that is not one of the five shapes below is refused.
  *
- * ⚠ `//evil.example` IS REFUSED EXPLICITLY. It starts with a slash, so a naive "must start with /" test
- * accepts it — and a browser reads it as a protocol-relative link to another host. A menu item on the
+ * ⚠ `//evil.example` (and `/\evil.example`) IS REFUSED EXPLICITLY. It starts with a slash, so a naive
+ * "must start with /" test accepts it — and a browser reads it as a protocol-relative link to another host. A menu item on the
  * institution's own header that navigates to somebody else's site is an open redirect with the Centre's
  * name on it.
+ *
+ * The rule lives in lib/studio/link-fields.ts, where it is tested; lib/safe-href.ts is underneath it.
  */
-const navHref = z
-  .string()
-  .trim()
-  .min(1, "A menu item needs a destination, or pressing it would do nothing.")
-  .max(HREF_MAX, `Keep a destination to ${HREF_MAX} characters or fewer.`)
-  .refine((value) => !value.startsWith("//"), {
-    message:
-      "A destination beginning with // points at another website without saying so. Write the full address with https:// if that is what you meant."
-  })
-  .refine(
-    (value) =>
-      value.startsWith("/") ||
-      value.startsWith("#") ||
-      value.startsWith("mailto:") ||
-      value.startsWith("tel:") ||
-      HTTP_SCHEMES.test(value),
-    { message: "A destination must start with /, #, https://, mailto: or tel:." }
-  );
+const navHref = navigationHrefSchema();
 
 const NavChildBody = z.object({
   label: z

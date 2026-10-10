@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { ZodError, type ZodType } from "zod";
 import { recordAccess } from "@/lib/requestLog";
+import { clientIpFromHeaders } from "@/lib/request-ip";
 
 /**
  * Route-handler plumbing: one error shape, one success shape, one place that turns a thrown thing
@@ -393,20 +394,15 @@ export function assertSameOrigin(request: Request): void {
 }
 
 /**
- * The client's IP, best effort.
+ * The client's IP, from a platform-trusted header only — see lib/request-ip.ts for which one and why.
  *
- * Reads the LEFTMOST entry of `x-forwarded-for`, which is the original client when the header is set
- * by a trusted proxy and spoofable when it is not. Used only for rate-limit buckets and audit
- * context — never for an authorisation decision, because a value a client can set is not an
- * identity.
+ * ⚠ IT USED TO READ THE LEFTMOST `x-forwarded-for` ENTRY, which is whatever the client typed, so a
+ * spoofed header gave every request its own rate-limit bucket. Null now means "no trusted hop told
+ * us", and callers bucket that together. Still never an authorisation input: it is a bucket key and a
+ * value to fingerprint (lib/audit.ts), not an identity.
  */
 export function clientIp(request: Request): string | null {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return request.headers.get("x-real-ip") ?? null;
+  return clientIpFromHeaders(request.headers);
 }
 
 export function userAgent(request: Request): string | null {

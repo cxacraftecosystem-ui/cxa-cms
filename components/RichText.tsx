@@ -70,6 +70,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { classifyHref, safeBlurDataUrl } from "@/lib/safe-href";
 import { mediaAlt, mediaSrc, publicObjectUrl } from "@/lib/media/url";
 import { isCaptionsObjectKey, readVideoSettings } from "@/lib/media/video";
 import { HostedVideoFrame } from "@/components/site/HostedVideoFrame";
@@ -420,33 +421,31 @@ const SITE_HOST = (() => {
 type LinkKind = "internal" | "external" | "plain" | "unsafe";
 
 /**
- * Decide what kind of link an href is.
+ * Decide what kind of link an href is — through `classifyHref()` in lib/safe-href.ts, the one rule the
+ * editor's LinkDialog and the save-time validators read too.
  *
  * `unsafe` is the load-bearing case: a stored `javascript:` or `data:` href is script execution
- * dressed as prose, and it survives a JSON-only pipeline untouched because it is just a string in an
- * attribute. Those render as plain text with no anchor at all.
+ * dressed as prose, and `//evil.example`, `/\evil.example` or `/%2F%2Fevil.example` is another site
+ * dressed as a path — which `next/link` would render as an internal-looking link that leaves the site.
+ * They all survive a JSON-only pipeline untouched because they are just strings in an attribute, so
+ * they render as plain text with no anchor at all.
+ *
+ * A bare relative href (`example.org`) is still drawn as a plain anchor, exactly as before: it cannot
+ * leave this origin, and rewriting an editor's link is a worse surprise than an occasional 404.
  */
-function classifyHref(href: string): { kind: LinkKind; href: string } {
-  if (href.startsWith("#")) return { kind: "plain", href };
-  if (href.startsWith("/")) return { kind: "internal", href };
-
-  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href)?.[1]?.toLowerCase();
-  if (!scheme) {
-    // A relative href with no leading slash. Left to the browser to resolve, exactly as it would in
-    // the editor — rewriting an editor's link is a worse surprise than an occasional 404.
-    return { kind: "plain", href };
-  }
-  if (scheme === "mailto" || scheme === "tel") return { kind: "plain", href };
-  if (scheme !== "http" && scheme !== "https") return { kind: "unsafe", href };
-
-  try {
-    const url = new URL(href);
-    if (SITE_HOST && url.host.toLowerCase() === SITE_HOST) {
-      return { kind: "internal", href: `${url.pathname}${url.search}${url.hash}` };
-    }
-    return { kind: "external", href };
-  } catch {
-    return { kind: "unsafe", href };
+function classifyRichTextHref(raw: string): { kind: LinkKind; href: string } {
+  const link = classifyHref(raw, { siteHost: SITE_HOST });
+  switch (link.kind) {
+    case "internal":
+      return { kind: "internal", href: link.href };
+    case "external":
+      return { kind: "external", href: link.href };
+    case "same-page":
+    case "contact":
+    case "relative":
+      return { kind: "plain", href: link.href };
+    default:
+      return { kind: "unsafe", href: "" };
   }
 }
 
@@ -567,7 +566,7 @@ function renderLink(mark: RichTextMark, children: ReactNode): ReactNode {
   const { href, title } = linkAttrsOf(mark);
   if (!href) return children;
 
-  const link = classifyHref(href);
+  const link = classifyRichTextHref(href);
   if (link.kind === "unsafe") return children;
 
   if (link.kind === "internal") {
@@ -981,7 +980,10 @@ function renderPicture(node: RichTextNode, ctx: RenderContext): ReactNode {
   // it loads, so a wrong ratio costs a small layout shift rather than a distorted picture.
   const width = image.width ?? 1600;
   const height = image.height ?? 1067;
-  const blur = image.blurDataUrl?.startsWith("data:") ? image.blurDataUrl : null;
+  // ⚠ NOT `startsWith("data:")`. next/image puts this value UNESCAPED inside a CSS `url("…")` in the
+  // `<img>` style attribute, and the attribute is author-controlled: `data:x");position:fixed;…` closed
+  // the string and drew a full-viewport overlay with a third-party `url()`. See `safeBlurDataUrl`.
+  const blur = safeBlurDataUrl(image.blurDataUrl);
 
   return (
     <Image

@@ -1,4 +1,5 @@
 import { z } from "@/lib/zod";
+import { isExternalHref, isStorableHref } from "@/lib/safe-href";
 
 import {
   FACE_CHOICES,
@@ -119,7 +120,7 @@ const externalUrl = z
   .trim()
   .max(500)
   .url("Enter a full web address, including https://")
-  .refine((value) => HTTP_SCHEMES.test(value), {
+  .refine((value) => HTTP_SCHEMES.test(value) && isExternalHref(value), {
     message: "A link must start with http:// or https://"
   });
 
@@ -128,22 +129,19 @@ const externalUrl = z
  *
  * Footer links point at site paths far more often than at other sites, so a plain URL check would
  * reject "/about". The allow-list is positive — anything not matching one of these five shapes is
- * refused, which is what keeps `javascript:` and `data:` out of the footer.
+ * refused, which is what keeps `javascript:` and `data:` (and `//evil.example`) out of the footer.
  */
 const linkHref = z
   .string()
   .trim()
   .min(1, "A link needs a destination.")
   .max(500)
-  .refine(
-    (value) =>
-      value.startsWith("/") ||
-      value.startsWith("#") ||
-      value.startsWith("mailto:") ||
-      value.startsWith("tel:") ||
-      HTTP_SCHEMES.test(value),
-    { message: "A destination must start with /, #, https://, mailto: or tel:." }
-  );
+  // `isStorableHref` (lib/safe-href.ts), not a prefix test: "starts with /" also admits `//evil.example`
+  // and `/\evil.example`, which a browser resolves to another host.
+  .refine((value) => isStorableHref(value), {
+    message:
+      "A destination must be a page on this site starting with a single /, or start with #, https://, mailto: or tel:."
+  });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Caps

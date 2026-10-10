@@ -38,6 +38,7 @@ import { pictureFromMap, type Picture, type ScreenFraming } from "@/lib/media/sc
 import { pickShowcase, type EventRow, type ResolvedSectionData } from "@/lib/sections/resolve";
 import type { EventShowcaseSectionData } from "@/lib/sections/schema";
 import { cn, truncateWords } from "@/lib/utils";
+import { safeHref } from "@/lib/safe-href";
 
 export interface EventShowcaseSectionProps {
   data: EventShowcaseSectionData;
@@ -221,7 +222,8 @@ export function EventShowcaseSection({
   const eyebrow = data.eyebrow.trim();
   const body = data.body.trim();
   const label = data.ctaLabel.trim();
-  const href = data.ctaHref.trim();
+  // lib/safe-href.ts: an href it refuses (`//evil.example`, `javascript:`) means no "see all" link.
+  const href = safeHref(data.ctaHref) ?? "";
   const link = label && href ? { href, label } : undefined;
   const showsHeader = Boolean(heading || eyebrow || body || link);
   const hidden = Math.max(0, matched - rows.length);

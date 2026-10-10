@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
+import { safeExternalHref } from "@/lib/safe-href";
 import type { PublicationKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { assertSameOrigin, clientIp, ok, parseJson, route, userAgent } from "@/lib/api";
@@ -410,7 +411,7 @@ function candidateFromBibtex(
     isbn: cleanValue(fields.isbn ?? "") || null,
     issn: cleanValue(fields.issn ?? "") || null,
     arxivId: isArxiv && arxiv.length > 0 ? arxiv.replace(/^arxiv:?/i, "") : null,
-    url: cleanValue(fields.url ?? "") || null,
+    url: safeExternalHref(cleanValue(fields.url ?? "")),
     abstract: cleanValue(fields.abstract ?? "") || null,
     keywords: unique(
       cleanValue(fields.keywords ?? "")
@@ -641,7 +642,8 @@ async function resolveDoi(doi: string): Promise<Candidate | { reason: string }> 
     isbn: firstString(record.ISBN),
     issn: firstString(record.ISSN),
     arxivId: null,
-    url: firstString(record.URL),
+    // Only an absolute http(s) URL survives the import (lib/safe-href.ts); anything else is dropped.
+    url: safeExternalHref(firstString(record.URL)),
     // Publishers commonly ship the abstract as a JATS fragment. The tags are stripped; the prose is kept.
     abstract: firstString(record.abstract)?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() ?? null,
     keywords: [],

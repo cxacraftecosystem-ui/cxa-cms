@@ -1,6 +1,6 @@
 import "server-only";
 import { timingSafeEqual } from "node:crypto";
-import { forbidden } from "@/lib/api";
+import { forbidden, unauthorized } from "@/lib/api";
 
 /**
  * Authorising a scheduled job.
@@ -13,13 +13,55 @@ import { forbidden } from "@/lib/api";
  *   2. **Absent secret means REFUSE, not allow.** A deployment that forgot `CRON_SECRET` must have
  *      inert cron endpoints, not open ones. The failure mode of the opposite choice is that anybody
  *      can trigger a purge.
- *   3. **Vercel's own scheduler is recognised.** Vercel Cron sends
- *      `Authorization: Bearer <CRON_SECRET>`; a `?secret=` query parameter is also accepted for
- *      other schedulers, with the caveat noted below.
+ *   3. **Header only.** Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`, and so does every
+ *      scheduler this deployment uses (.github/workflows/*.yml). Nothing else is a credential.
  *
- * ⚠ A secret in a query string is logged by every proxy between the scheduler and the app. Prefer
- * the header. The query form exists because some managed schedulers cannot set one.
+ * ⚠ THE `?secret=` QUERY FORM IS GONE, AND A REQUEST THAT STILL USES IT IS REFUSED WITH A 401 EVEN
+ * WHEN ITS BEARER IS RIGHT. It was accepted "for schedulers that cannot set a header", and a secret in
+ * a URL is written down by every proxy, platform log, browser history and drain between the scheduler
+ * and the app — the credential that can trigger a purge, sitting in a 90-day archive. Refusing the
+ * request outright, rather than ignoring the parameter, is what makes a misconfigured scheduler turn
+ * red the same night instead of leaking the secret quietly for a year. The value is never compared
+ * and never logged; the server log says only that the form was used. A scheduler that cannot send a
+ * header must call through something that can (a GitHub Actions step, as both workflows do).
  */
+
+/** The name of the retired query parameter. Exported for the tests, which pin its refusal. */
+export const RETIRED_SECRET_PARAM = "secret";
+
+/**
+ * True when the URL carries a `?secret=` at all — empty or not, right or wrong. Read from the parsed
+ * URL rather than a substring test so `?secretary=` is not caught and `?Secret=` is not either (the
+ * parameter was always lower case; anything else was never a credential here).
+ */
+function carriesQuerySecret(request: Request): boolean {
+  try {
+    return new URL(request.url).searchParams.has(RETIRED_SECRET_PARAM);
+  } catch {
+    return false;
+  }
+}
+
+/** Refuse the retired form, saying so to the operator WITHOUT repeating the value. */
+function refuseQuerySecret(request: Request, job: string): never {
+  let path = "(unreadable URL)";
+  try {
+    path = new URL(request.url).pathname;
+  } catch {
+    // The path is for the log line only; the refusal stands either way.
+  }
+  console.error(
+    `[cron] ${job}: refused a request to ${path} that carried the secret in its query string. Only ` +
+      "`Authorization: Bearer <secret>` is accepted. Move the scheduler to the header and ROTATE the " +
+      "secret, since every hop that saw the URL has a copy."
+  );
+  throw unauthorized("Send the scheduler's secret as an Authorization: Bearer header, not in the URL.");
+}
+
+function bearerFrom(request: Request): string {
+  const header = request.headers.get("authorization") ?? "";
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+}
 
 function secretsMatch(a: string, b: string): boolean {
   const left = Buffer.from(a);
@@ -32,11 +74,14 @@ function secretsMatch(a: string, b: string): boolean {
 }
 
 /**
- * Throws a 403 unless the request carries the cron secret.
+ * Throws unless the request carries the cron secret as a bearer.
  *
- * The message deliberately does not distinguish "no secret configured" from "wrong secret" to a
- * caller — but it DOES log the difference to the server, because those two need entirely different
- * fixes and an operator staring at a 403 has no other way to tell them apart.
+ *   • 403 — the deployment has no `CRON_SECRET`, so nothing could be authorised.
+ *   • 401 — the secret is configured and this request did not present it in the header: missing,
+ *     wrong, or sent in the query string (see the header of this file).
+ *
+ * The message to a caller does not name the secret or echo anything it sent; the server log says
+ * which case it was, because those need entirely different fixes.
  */
 export function assertCronAuthorised(request: Request): void {
   const expected = process.env.CRON_SECRET?.trim();
@@ -49,23 +94,22 @@ export function assertCronAuthorised(request: Request): void {
     throw forbidden("Scheduled jobs are not configured on this deployment.");
   }
 
-  const header = request.headers.get("authorization") ?? "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (carriesQuerySecret(request)) refuseQuerySecret(request, "cron");
+
+  const bearer = bearerFrom(request);
   if (bearer && secretsMatch(bearer, expected)) return;
 
-  const query = new URL(request.url).searchParams.get("secret")?.trim() ?? "";
-  if (query && secretsMatch(query, expected)) return;
-
-  throw forbidden("This endpoint is only callable by the scheduler.");
+  throw unauthorized("This endpoint is only callable by the scheduler.");
 }
 
 /**
- * Throws a 403 unless the request carries the newsletter drain's bearer — `NEWSLETTER_DRAIN_SECRET`
- * (the GitHub Actions schedule) or `CRON_SECRET` (Vercel's own cron, which can only present that one).
+ * Throws (403 when unconfigured, 401 otherwise) unless the request carries the newsletter drain's
+ * bearer — `NEWSLETTER_DRAIN_SECRET` (the GitHub Actions schedule) or `CRON_SECRET` (Vercel's own cron,
+ * which can only present that one).
  *
- * ⚠ HEADER ONLY, unlike `assertCronAuthorised`: no scheduler that drives this endpoint needs the query
- * form, and a secret in a URL is logged by every proxy on the way. Both secrets are compared in constant
- * time, both are checked whatever the first answer was, and an unset secret matches nothing.
+ * Header only, like `assertCronAuthorised`, with the same 403-unconfigured / 401-not-presented split and
+ * the same outright refusal of a `?secret=` query. Both secrets are compared in constant time, both are
+ * checked whatever the first answer was, and an unset secret matches nothing.
  */
 export function assertNewsletterDrainAuthorised(request: Request): void {
   const drain = process.env.NEWSLETTER_DRAIN_SECRET?.trim() ?? "";
@@ -79,14 +123,15 @@ export function assertNewsletterDrainAuthorised(request: Request): void {
     throw forbidden("Scheduled jobs are not configured on this deployment.");
   }
 
-  const header = request.headers.get("authorization") ?? "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (carriesQuerySecret(request)) refuseQuerySecret(request, "newsletter-drain");
+
+  const bearer = bearerFrom(request);
   // Evaluated separately and OR-ed afterwards, so the time taken does not say which one matched.
   const matchesDrain = bearer.length > 0 && drain.length > 0 && secretsMatch(bearer, drain);
   const matchesCron = bearer.length > 0 && cron.length > 0 && secretsMatch(bearer, cron);
   if (matchesDrain || matchesCron) return;
 
-  throw forbidden("This endpoint is only callable by the scheduler.");
+  throw unauthorized("This endpoint is only callable by the scheduler.");
 }
 
 /**

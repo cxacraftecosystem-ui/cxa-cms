@@ -54,6 +54,7 @@ import { CRAFT_CATEGORY_SHEETS, craftSheet, type CraftSheet } from "@/lib/media/
 import { pictureFromMap } from "@/lib/media/screens";
 import { mediaAlt, mediaSrc } from "@/lib/media/url";
 import { sectionLabel } from "@/lib/sections/registry";
+import { isInternalHref, safeHref } from "@/lib/safe-href";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { HorizontalRailItem, HorizontalRailSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
@@ -105,17 +106,6 @@ function isFilledIn(item: HorizontalRailItem): boolean {
     item.craftImage.length > 0 ||
     item.href.length > 0
   );
-}
-
-/**
- * `/path`, `#anchor` and `?query` are ours; anything else is another origin, a `mailto:` or a `tel:`.
- *
- * The same test `LinkGridSection` makes, and kept local rather than shared for now: it is one line of
- * string matching, and the moment a third block needs it the honest move is to lift it into
- * `lib/utils.ts` rather than to have two blocks importing each other.
- */
-function isInternalHref(href: string): boolean {
-  return href.startsWith("/") || href.startsWith("#") || href.startsWith("?");
 }
 
 /**
@@ -502,16 +492,21 @@ function CardLink({ href, children }: { href: string; children: ReactNode }) {
   const className =
     "transition-colors after:absolute after:inset-0 after:content-[''] group-hover:text-purple-700";
 
-  if (isInternalHref(href)) {
+  // lib/safe-href.ts decides, not a "starts with /" test: `//evil.example` and `/\evil.example` start
+  // with a slash and lead to another host. An unusable href draws the card with no link at all.
+  const safe = safeHref(href);
+  if (safe === null) return <span className={className}>{children}</span>;
+
+  if (isInternalHref(safe)) {
     return (
-      <Link href={href} className={className}>
+      <Link href={safe} className={className}>
         {children}
       </Link>
     );
   }
 
   return (
-    <a href={href} className={className}>
+    <a href={safe} className={className}>
       {children}
     </a>
   );

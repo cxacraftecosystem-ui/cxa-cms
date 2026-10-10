@@ -1,0 +1,131 @@
+-- OPTIONAL, MANUAL, IRREVERSIBLE. NOT A MIGRATION — `prisma migrate` never reads this directory.
+--
+-- Clears the raw email and IP addresses from audit rows written before
+-- 20261010120000_audit_log_ip_hash, after which the application stopped writing them.
+-- docs/AUDIT-PRIVACY.md §4 says when to run it and what it costs. In short:
+--
+--   • It cannot hash the old addresses instead: that needs AUDIT_IP_HASH_SECRET, which the database
+--     must never hold. Old rows simply lose their network correlation, and old refused sign-ins lose
+--     the ability to group by the address that was typed (they keep its domain).
+--   • Rows whose actor or subject has since been HARD-deleted lose the only thing that still named
+--     them; they will read "Deleted user". Soft-deleted accounts are unaffected (the join finds them).
+--   • Take a backup first if anything is under legal hold or an open investigation. The CIC log
+--     retention (docs/OPERATIONS.md) is carried by access_logs, which this does not touch.
+--
+-- It covers every place an older row carried an address, not only the two legacy columns:
+--
+--   1. "ipAddress" — the legacy column. ("actorEmail", the other one, is cleared LAST, in step 6,
+--      because step 5 reads it.)
+--   2. "entityLabel" on ACCOUNT rows (entityType 'User', and every LOGIN / LOGIN_FAILED / LOGOUT):
+--      every sign-in and sign-out used to repeat the actor's own address there, and user-management
+--      rows used "Name <address>". The address is cut out; a label that was only an address becomes
+--      NULL. The same pattern lib/audit-subject.ts applies to new rows.
+--   3. "after"->'email' on sign-in rows (the address typed at a refused sign-in): replaced by
+--      'emailDomain', the part the provenance screen shows for an unrecognised address anyway.
+--   4. 'email' and 'linkedAddress' at the top level of "before" / "after" on User rows (account
+--      snapshots, an address change, an OAuth link): removed. Deeper occurrences are not chased; the
+--      SELECT below counts what is left so you can see whether that matters for your data.
+--   5. 'editingHeldBy' at the top level of "before" / "after" on CONTENT rows (a page, a post — any
+--      entityType): an editor taking over another's editing lock used to record BOTH holders' addresses
+--      there. Each is replaced by 'editingHeldById', which is what lib/studio/crud.ts writes now — the id
+--      of the account that address belonged to WHEN THE ROW WAS WRITTEN. That is read from the legacy
+--      "actorEmail" column beside each older row's "actorId" (the address every row's actor had at the
+--      time), and used only when it names ONE surviving account. An address can change hands — an
+--      account changes its address and another account is given the old one, or a hard-deleted
+--      colleague's address is invited again — and matching on today's `users` table alone would then
+--      rewrite the row to name somebody who never held the lock. Only an address that no older row
+--      ever recorded as an actor falls back to the account that has it now. Anything ambiguous, or
+--      matching nobody, is dropped: an unnamed holder is better than a wrong one.
+--   6. "actorEmail", the other legacy column, after step 5 has read it.
+--
+-- Rows that are NOT about an account — a contact enquiry ("Name <address>"), an event registration,
+-- a studio-access grant (whose label is the address on the allow-list) — are left alone: those
+-- addresses are the content of the record, governed by its own erasure path (docs/AUDIT-PRIVACY.md §5).
+--
+-- Everything is commented out so that pasting the file into a console does nothing. To run it,
+-- uncomment the block, read it once more, and execute it against the intended database ONLY.
+
+-- BEGIN;
+--
+-- -- How much is about to change. Compare with the UPDATE counts below.
+-- SELECT count(*) FILTER (WHERE "ipAddress" IS NOT NULL)  AS rows_with_ip,
+--        count(*) FILTER (WHERE "actorEmail" IS NOT NULL) AS rows_with_email,
+--        count(*) FILTER (WHERE ("entityType" = 'User' OR "action" IN ('LOGIN', 'LOGIN_FAILED', 'LOGOUT'))
+--                           AND "entityLabel" LIKE '%@%')  AS account_labels_with_address,
+--        count(*) FILTER (WHERE ("entityType" = 'User' OR "action" IN ('LOGIN', 'LOGIN_FAILED', 'LOGOUT'))
+--                           AND ("after"::text LIKE '%@%' OR "before"::text LIKE '%@%')) AS account_payloads_with_address,
+--        count(*) FILTER (WHERE (jsonb_typeof("before"::jsonb) = 'object' AND "before"::jsonb ? 'editingHeldBy')
+--                            OR (jsonb_typeof("after"::jsonb) = 'object' AND "after"::jsonb ? 'editingHeldBy'))
+--                                                         AS lock_takeovers_with_address
+-- FROM "audit_logs";
+--
+-- -- 1. The legacy network column. ("actorEmail" waits for step 6: step 5 reads it.)
+-- UPDATE "audit_logs" SET "ipAddress" = NULL WHERE "ipAddress" IS NOT NULL;
+--
+-- -- 2. Addresses in account-row labels.
+-- UPDATE "audit_logs"
+-- SET "entityLabel" = NULLIF(btrim(regexp_replace("entityLabel", '\s*<?[^\s<>@]+@[^\s<>@]+>?', '', 'g')), '')
+-- WHERE ("entityType" = 'User' OR "action" IN ('LOGIN', 'LOGIN_FAILED', 'LOGOUT'))
+--   AND "entityLabel" LIKE '%@%';
+--
+-- -- 3. The typed address on sign-in rows: keep the domain, drop the address.
+-- UPDATE "audit_logs"
+-- SET "after" = ("after"::jsonb - 'email')
+--               || jsonb_build_object('emailDomain', lower(split_part("after"::jsonb ->> 'email', '@', 2)))
+-- WHERE "action" IN ('LOGIN', 'LOGIN_FAILED', 'LOGOUT')
+--   AND jsonb_typeof("after"::jsonb) = 'object'
+--   AND "after"::jsonb ? 'email';
+--
+-- -- 4. Top-level addresses in User snapshots.
+-- UPDATE "audit_logs"
+-- SET "before" = CASE WHEN jsonb_typeof("before"::jsonb) = 'object'
+--                     THEN "before"::jsonb - 'email' - 'linkedAddress' ELSE "before" END,
+--     "after"  = CASE WHEN jsonb_typeof("after"::jsonb) = 'object'
+--                     THEN "after"::jsonb - 'email' - 'linkedAddress' ELSE "after" END
+-- WHERE "entityType" = 'User'
+--   AND ("before"::text LIKE '%@%' OR "after"::text LIKE '%@%');
+--
+-- -- 5. Lock-holder addresses on content rows: the id of the account that had the address THEN, or nothing.
+-- -- `evidence` is address -> account from the legacy actor columns; its id is NULL when the address was
+-- -- recorded for more than one account, or for an account since hard-deleted (actorId set to NULL).
+-- WITH evidence AS (
+--   SELECT lower("actorEmail") AS email,
+--          CASE WHEN count("actorId") = count(*) AND count(DISTINCT "actorId") = 1 THEN min("actorId") END AS id
+--   FROM "audit_logs" WHERE "actorEmail" IS NOT NULL GROUP BY 1
+-- )
+-- UPDATE "audit_logs" AS a
+-- SET "before" = (a."before"::jsonb - 'editingHeldBy')
+--                || COALESCE(
+--                     (SELECT jsonb_build_object('editingHeldById', e.id) FROM evidence e
+--                      WHERE e.email = lower(a."before"::jsonb ->> 'editingHeldBy') AND e.id IS NOT NULL),
+--                     (SELECT jsonb_build_object('editingHeldById', min(u."id")) FROM "users" u
+--                      WHERE lower(u."email") = lower(a."before"::jsonb ->> 'editingHeldBy')
+--                        AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.email = lower(a."before"::jsonb ->> 'editingHeldBy'))
+--                      HAVING count(*) = 1),
+--                     '{}'::jsonb)
+-- WHERE jsonb_typeof(a."before"::jsonb) = 'object' AND a."before"::jsonb ? 'editingHeldBy';
+-- WITH evidence AS (
+--   SELECT lower("actorEmail") AS email,
+--          CASE WHEN count("actorId") = count(*) AND count(DISTINCT "actorId") = 1 THEN min("actorId") END AS id
+--   FROM "audit_logs" WHERE "actorEmail" IS NOT NULL GROUP BY 1
+-- )
+-- UPDATE "audit_logs" AS a
+-- SET "after" = (a."after"::jsonb - 'editingHeldBy')
+--               || COALESCE(
+--                    (SELECT jsonb_build_object('editingHeldById', e.id) FROM evidence e
+--                     WHERE e.email = lower(a."after"::jsonb ->> 'editingHeldBy') AND e.id IS NOT NULL),
+--                    (SELECT jsonb_build_object('editingHeldById', min(u."id")) FROM "users" u
+--                     WHERE lower(u."email") = lower(a."after"::jsonb ->> 'editingHeldBy')
+--                       AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.email = lower(a."after"::jsonb ->> 'editingHeldBy'))
+--                     HAVING count(*) = 1),
+--                    '{}'::jsonb)
+-- WHERE jsonb_typeof(a."after"::jsonb) = 'object' AND a."after"::jsonb ? 'editingHeldBy';
+--
+-- -- 6. The other legacy column, now that step 5 has read it.
+-- UPDATE "audit_logs" SET "actorEmail" = NULL WHERE "actorEmail" IS NOT NULL;
+--
+-- -- Run the SELECT above again: the first three counts and lock_takeovers_with_address should be 0.
+-- -- account_payloads_with_address may not be, if a payload held an address deeper than its top level;
+-- -- inspect those rows by hand.
+--
+-- COMMIT;

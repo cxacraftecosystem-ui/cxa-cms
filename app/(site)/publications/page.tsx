@@ -20,6 +20,7 @@ import { prisma } from "@/lib/db";
 import { pageMetadata } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { cn, truncateWords } from "@/lib/utils";
+import { safeExternalHref } from "@/lib/safe-href";
 
 import {
   BIBTEX_EXPORT_CAP,
@@ -607,7 +608,8 @@ function PublicationRow({
 }) {
   const venue = publicationDisplayVenue(row);
   const doi = doiUrl(row.doi);
-  const external = doi ?? row.url?.trim() ?? null;
+  // Publisher links are free text; only an absolute http(s) URL is drawn (lib/safe-href.ts).
+  const external = doi ?? safeExternalHref(row.url);
   const abstract = row.abstract?.trim() ?? "";
 
   return (

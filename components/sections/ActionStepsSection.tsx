@@ -55,6 +55,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { sectionLabel } from "@/lib/sections/registry";
 import type { ActionStep, ActionStepsSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
+import { isExternalHref, safeHref } from "@/lib/safe-href";
 
 /** See the header — the Centre's zone, and the one place it is decided for this block. */
 const CENTRE_TIME_ZONE = "Asia/Kolkata";
@@ -158,9 +159,12 @@ function isFilledIn(step: ActionStep): boolean {
   );
 }
 
-/** `/path` and `#anchor` are ours; anything else leaves the site and should open beside it. */
+/**
+ * An absolute http(s) address leaves the site and should open beside it. Read through lib/safe-href.ts;
+ * an href that rule refuses is dropped by `LinkButton`, which applies the same rule.
+ */
 function leavesTheSite(href: string): boolean {
-  return /^https?:\/\//i.test(href);
+  return isExternalHref(href);
 }
 
 /** The entrance delay stops growing here; sixteen steps at a full stagger arrive half a second apart. */
@@ -190,7 +194,8 @@ export function ActionStepsSection({ data, section }: ActionStepsSectionProps) {
     const isLast = index === steps.length - 1;
     const title = step.title.trim();
     const detail = step.detail.trim();
-    const href = step.href.trim();
+    // An href lib/safe-href.ts refuses is treated as no link, so the step shows no button at all.
+    const href = safeHref(step.href) ?? "";
     const ctaLabel = step.ctaLabel.trim();
     const deadline = describeDeadline(step.deadline, now);
     const status = step.status === "" ? null : STATUS[step.status];

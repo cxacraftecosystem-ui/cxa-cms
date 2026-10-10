@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
+import { richTextLinksAreSafe, UNSAFE_RICH_TEXT_LINK_MESSAGE } from "@/lib/safe-href";
 import { Prisma, type ContentStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -60,10 +61,14 @@ const slugField = z
   );
 
 /** Envelope only — see the note in the sibling collection route. */
-const richTextField = z.union([
-  z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).loose(),
-  z.null()
-]);
+// Every link mark is checked against lib/safe-href.ts on SAVE, not only when rendering: a stored
+// `javascript:` or `//evil.example` href is refused here, in front of whoever sent it.
+const richTextField = z
+  .union([
+    z.object({ type: z.literal("doc"), content: z.array(z.unknown()).optional() }).loose(),
+    z.null()
+  ])
+  .refine(richTextLinksAreSafe, { message: UNSAFE_RICH_TEXT_LINK_MESSAGE });
 
 const PatchBody = z.object({
   title: z.string().trim().min(1, "The research area needs a title.").max(200).optional(),

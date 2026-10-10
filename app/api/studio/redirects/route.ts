@@ -5,6 +5,7 @@ import { requireCapability } from "@/lib/auth/current-user";
 import { mutateWithHistory } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { originFromHeaders } from "@/lib/request-origin";
+import { REDIRECT_DESTINATION_MAX, isUsableRedirectDestination } from "@/lib/studio/link-fields";
 import { canManageStructure } from "@/lib/permissions";
 import { buildAuditContext, found, parseStudioJson, parseStudioQuery } from "@/lib/studio/crud";
 
@@ -42,7 +43,7 @@ import { buildAuditContext, found, parseStudioJson, parseStudioQuery } from "@/l
 export const dynamic = "force-dynamic";
 
 const SOURCE_MAX = 500;
-const DESTINATION_MAX = 500;
+const DESTINATION_MAX = REDIRECT_DESTINATION_MAX;
 
 /** How far a chain is followed before it is called a loop. Ten hops is far beyond anything useful. */
 const MAX_HOPS = 10;
@@ -85,19 +86,8 @@ function isUsableSource(source: string): boolean {
   return source.length <= SOURCE_MAX;
 }
 
-/**
- * A destination that will not send a reader somewhere dangerous.
- *
- * A path, an anchor, a query, or a full http(s) address. `javascript:` and `data:` are refused by the
- * positive allow-list rather than by a blacklist — a destination is put into a `Location` header, and a
- * scheme nobody thought about is exactly what a blacklist misses.
- */
-function isUsableDestination(destination: string): boolean {
-  if (destination.length === 0 || destination.length > DESTINATION_MAX) return false;
-  if (/^https?:\/\//i.test(destination)) return true;
-  if (destination.startsWith("//")) return false;
-  return destination.startsWith("/") || destination.startsWith("#") || destination.startsWith("?");
-}
+/** A destination that will not send a reader somewhere dangerous — lib/studio/link-fields.ts, where it is tested. */
+const isUsableDestination = isUsableRedirectDestination;
 
 /**
  * Follow the chain from `destination` using every OTHER redirect, and say whether it comes back to

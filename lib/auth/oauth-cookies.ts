@@ -4,6 +4,7 @@ import type { CookieOptions } from "./cookies";
 import { ACCESS_REFUSED_MESSAGE } from "./access";
 import { isOAuthProvider, type OAuthProviderName } from "./oauth";
 import { originFromHeaders } from "@/lib/request-origin";
+import { isSafeSitePath } from "@/lib/safe-href";
 
 /**
  * Everything the TWO HALVES of a provider sign-in must agree about, in one module.
@@ -69,6 +70,10 @@ export function safeStudioPath(raw: string | null | undefined): string {
   if (raw.length > 512) return DEFAULT_NEXT;
   if (!raw.startsWith("/")) return DEFAULT_NEXT;
   if (raw.startsWith("//") || raw.startsWith("/\\")) return DEFAULT_NEXT;
+  // …and the shared rule (lib/safe-href.ts), which also decodes EVERY segment: `/%2F%2Fevil.example` and
+  // `/a/..%2F..%2F/evil.example` become `//evil.example` in anything downstream that decodes before it
+  // redirects.
+  if (!isSafeSitePath(raw)) return DEFAULT_NEXT;
   if (hasUnsafeCharacter(raw)) return DEFAULT_NEXT;
   if (raw === "/api" || raw.startsWith("/api/")) return DEFAULT_NEXT;
   return raw;

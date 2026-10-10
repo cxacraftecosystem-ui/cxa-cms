@@ -1,4 +1,6 @@
 import { patchOf, z } from "@/lib/zod";
+import { richTextLinksAreSafe, UNSAFE_RICH_TEXT_LINK_MESSAGE } from "@/lib/safe-href";
+import { mdxLinkProblems, unsafeMdxMessage } from "@/lib/mdx-links";
 import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, forbidden, noContent, ok, route } from "@/lib/api";
@@ -70,7 +72,7 @@ const articleBodySchema = z.object({
   slug: z.union([z.literal(""), slugSchema()]),
   subtitle: optionalText(240),
   excerpt: optionalText(600),
-  body: z.unknown().optional(),
+  body: z.unknown().refine(richTextLinksAreSafe, { message: UNSAFE_RICH_TEXT_LINK_MESSAGE }).optional(),
   mdx: optionalText(200_000),
   coverId: optionalId(),
   /**
@@ -238,6 +240,13 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
       "This article would have text in the formatted editor and MDX source as well, and it can only have one. Choose a writing mode in the editor — it will tell you which text is about to be cleared."
     );
   }
+
+  // lib/mdx-links.ts on SAVE: the MDX is compiled with the renderer's own plugin in report mode, and
+  // anything it would rewrite — a link to `//evil.example` in markdown OR as a JSX `<a>`, a `<base>`,
+  // a `<script>` — refuses the save. Only the MDX this request sends is checked; a stored body is
+  // still sanitised when it is rendered.
+  const mdxProblems = await mdxLinkProblems(body.mdx);
+  if (mdxProblems.length > 0) throw fieldProblem("mdx", unsafeMdxMessage(mdxProblems));
 
   const publishAt = body.publishAt !== undefined ? body.publishAt : existing.publishAt;
   const unpublishAt = body.unpublishAt !== undefined ? body.unpublishAt : existing.unpublishAt;

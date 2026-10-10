@@ -22,14 +22,20 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
+import { sha256Base64 } from "@/lib/client/checksum";
 import { post } from "@/lib/client/fetcher";
-import { FINALISE_TIMEOUT_MS, MAX_UPLOAD_BYTES, STALL_TIMEOUT_MS } from "@/lib/client/upload";
+import { FINALISE_TIMEOUT_MS, STALL_TIMEOUT_MS } from "@/lib/client/upload";
+import { FILE_STORE_MAX_BYTES } from "@/lib/storage/upload-limits";
 import { clamp, formatBytes } from "@/lib/utils";
+
+/** The file store's cap — the same constant its presign route enforces and signs into the PUT. */
+const MAX_UPLOAD_BYTES = FILE_STORE_MAX_BYTES;
 
 /**
  * Where a file-store upload is signed.
  *
- * It answers the SAME shape as `/api/studio/media/presign` — `{ uploadUrl, headers, objectKey }` — and is
+ * It answers the SAME shape as `/api/studio/media/presign` — `{ uploadUrl, headers, objectKey,
+ * uploadTicket }`, given `{ fileName, contentType, byteSize, sha256 }` — and is
  * a separate address because the object key belongs in the file store's own prefix rather than under the
  * media library's, and because a file has no `MediaKind`.
  */
@@ -42,13 +48,20 @@ export interface PresignResponse {
   uploadUrl: string;
   headers: Record<string, string>;
   objectKey: string;
+  uploadTicket: string;
 }
 
+/**
+ * What the register step needs. `uploadTicket` is REQUIRED by both register routes
+ * (`POST /api/studio/files` and `/api/studio/files/[id]/versions`): it is the signed record of what was
+ * presigned, and the landed object is checked against it. Pass the whole object through.
+ */
 export interface UploadedObject {
   objectKey: string;
   fileName: string;
   mimeType: string;
   byteSize: number;
+  uploadTicket: string;
 }
 
 /**
@@ -179,10 +192,14 @@ export async function uploadToFileStore(file: File, onFraction: (fraction: numbe
 
   const contentType = file.type.trim().length > 0 ? file.type.trim() : "application/octet-stream";
 
+  // Signed into the PUT, so storage refuses any other bytes. See lib/client/checksum.ts.
+  const sha256 = await sha256Base64(file);
+
   const presigned = await post<PresignResponse>(FILE_PRESIGN_PATH, {
     fileName: file.name,
     contentType,
-    byteSize: file.size
+    byteSize: file.size,
+    sha256
   });
 
   await putToStorage({
@@ -196,6 +213,7 @@ export async function uploadToFileStore(file: File, onFraction: (fraction: numbe
     objectKey: presigned.objectKey,
     fileName: file.name,
     mimeType: contentType,
-    byteSize: file.size
+    byteSize: file.size,
+    uploadTicket: presigned.uploadTicket
   };
 }

@@ -44,6 +44,7 @@ import { pictureFromMap } from "@/lib/media/screens";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { StoryScrollSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
+import { safeHref } from "@/lib/safe-href";
 
 export interface StoryScrollSectionProps {
   data: StoryScrollSectionData;
@@ -139,7 +140,9 @@ export function StoryScrollSection({ data, section, resolved }: StoryScrollSecti
 
               {chapters.map((chapter, index) => {
                 const paragraphs = paragraphsOf(chapter.body);
-                const hasLink = Boolean(chapter.href && chapter.ctaLabel);
+                // lib/safe-href.ts: an href it refuses (`javascript:`, `//evil.example`) means no link.
+                const chapterHref = safeHref(chapter.href);
+                const hasLink = Boolean(chapterHref && chapter.ctaLabel);
                 /*
                  * This chapter's per-width framing, if an editor has set one. Null for a chapter drawing
                  * a bundled craft photograph — that branch of `StoryPicture` has no media row to frame —
@@ -245,7 +248,7 @@ export function StoryScrollSection({ data, section, resolved }: StoryScrollSecti
 
                         {hasLink ? (
                           <a
-                            href={chapter.href}
+                            href={chapterHref ?? undefined}
                             className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-purple-700 underline decoration-purple-300 underline-offset-4 transition hover:decoration-purple-700"
                           >
                             {chapter.ctaLabel}

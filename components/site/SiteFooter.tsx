@@ -32,6 +32,7 @@ import { Mail, MapPin, Phone } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { NavNode } from "@/lib/navigation";
+import { isExternalHref, isInternalHref, safeHref } from "@/lib/safe-href";
 import { KolamMark } from "@/components/craft/KolamMark";
 import { Reveal } from "@/components/motion/Reveal";
 /*
@@ -73,13 +74,34 @@ const FOOTER_LINK =
 /** Gold-300 — ChartMate's own column-heading rung, and the middle of the ramp the band runs. */
 const COLUMN_HEADING = "text-xs font-semibold uppercase tracking-[0.14em] text-gold-300";
 
-/** `/path` and `#anchor` are ours; everything else is another origin, a mailto or a tel. */
-function isInternalHref(href: string): boolean {
-  return href.startsWith("/") || href.startsWith("#");
-}
+/**
+ * One link in an editor-written footer column.
+ *
+ * lib/safe-href.ts decides what is ours, not a "starts with /" test: `//evil.example` and
+ * `/\evil.example` both start with a slash and lead to another host, and `next/link` would render them
+ * as internal links. A destination it refuses is drawn as plain words rather than as a link.
+ */
+function FooterColumnLink({ href: raw, label }: { href: string; label: string }) {
+  const href = safeHref(raw);
+  if (href === null) return <span className={FOOTER_LINK}>{label}</span>;
 
-function isWebExternal(href: string): boolean {
-  return /^https?:\/\//i.test(href);
+  if (isInternalHref(href)) {
+    return (
+      <Link href={href} className={FOOTER_LINK}>
+        {label}
+      </Link>
+    );
+  }
+
+  // Only a web address leaves for another tab. A `mailto:` or `tel:` hands over to another application
+  // and would leave an empty tab behind.
+  const web = isExternalHref(href);
+  return (
+    <a href={href} {...(web ? { target: "_blank", rel: "noopener noreferrer" } : {})} className={FOOTER_LINK}>
+      {label}
+      {web ? <span className="sr-only"> (opens in a new tab)</span> : null}
+    </a>
+  );
 }
 
 /** The postal address as the lines a person would actually write on an envelope. */
@@ -299,26 +321,7 @@ export function SiteFooter({ branding, contact, social, footer, items }: SiteFoo
                 <ul className="mt-4 flex flex-col gap-1">
                   {column.links.map((link, linkIndex) => (
                     <li key={`${linkIndex}-${link.href}`}>
-                      {isInternalHref(link.href) ? (
-                        <Link href={link.href} className={FOOTER_LINK}>
-                          {link.label}
-                        </Link>
-                      ) : (
-                        <a
-                          href={link.href}
-                          // Only a web address leaves for another tab. A `mailto:` or `tel:` hands
-                          // over to another application and would leave an empty tab behind.
-                          {...(isWebExternal(link.href)
-                            ? { target: "_blank", rel: "noopener noreferrer" }
-                            : {})}
-                          className={FOOTER_LINK}
-                        >
-                          {link.label}
-                          {isWebExternal(link.href) ? (
-                            <span className="sr-only"> (opens in a new tab)</span>
-                          ) : null}
-                        </a>
-                      )}
+                      <FooterColumnLink href={link.href} label={link.label} />
                     </li>
                   ))}
                 </ul>
@@ -450,10 +453,15 @@ const REFERENCE_LINKS: readonly { href: string; label: string }[] = [
 
 /** One navigation destination in the footer. Mirrors the header's external-link handling. */
 function FooterNavLink({ node }: { node: NavNode }) {
+  // `assembleNavigation()` (lib/navigation-server.ts) already leaves out a row lib/safe-href.ts refuses;
+  // this is the same rule again at the anchor, so a node built anywhere else cannot reach `next/link` raw.
+  const href = safeHref(node.href);
+  if (href === null) return <span className={FOOTER_LINK}>{node.label}</span>;
+
   if (node.isExternal) {
     return (
       <a
-        href={node.href}
+        href={href}
         target="_blank"
         rel="noopener noreferrer"
         className={FOOTER_LINK}
@@ -465,7 +473,7 @@ function FooterNavLink({ node }: { node: NavNode }) {
   }
 
   return (
-    <Link href={node.href} className={FOOTER_LINK}>
+    <Link href={href} className={FOOTER_LINK}>
       {node.label}
     </Link>
   );

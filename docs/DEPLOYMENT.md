@@ -204,11 +204,14 @@ gone before anybody could ask for it.
 This is why the application **presigns direct-to-storage** and never accepts the bytes itself
 (`lib/storage/client.ts`, `lib/client/upload.ts`):
 
-1. the browser asks `/api/studio/media/presign` for a signed URL;
+1. the browser computes the file's SHA-256 and asks `/api/studio/media/presign` for a signed URL. The
+   signature covers the **exact size** (capped per kind, `lib/storage/upload-limits.ts`), the **content
+   type** and the **SHA-256** (`x-amz-checksum-sha256`), and the answer carries a signed `uploadTicket`;
 2. the browser PUTs the file **straight to the bucket** — the application never sees it, which is what
-   makes a 400 MB video possible at all;
-3. the browser calls `/api/studio/media/complete`, which `HEAD`s the object, refuses if it is not there,
-   cross-checks the size, and only then writes the row.
+   makes a 200 MB video possible at all. Storage refuses a body of any other size, type or content;
+3. the browser calls `/api/studio/media/complete` with the ticket, which `HEAD`s the object (asking for
+   its stored checksum), refuses if it is not there, deletes and refuses it if its size, checksum or type
+   differ from the ticket, and only then writes the row.
 
 Two consequences worth knowing before the first upload:
 
@@ -282,9 +285,13 @@ column and the search index hours late. `ARCHITECTURE.md` §3.2 is the long vers
 - **`CRON_SECRET` must be set as an environment variable.** Vercel Cron then sends
   `Authorization: Bearer <CRON_SECRET>`, which is exactly what `assertCronAuthorised` expects. Without
   it the endpoints refuse every request and log why — the safe direction.
-- **Never use the `?secret=` query form on a scheduler that can set a header.** It exists for schedulers
-  that cannot, and every proxy in between logs it. Our own log drain receiver is one of those proxies
-  and now redacts it (`OPERATIONS.md` §9), which is a backstop and not a reason to use the query form.
+- **The `?secret=` query form no longer exists.** `lib/cron.ts` accepts only
+  `Authorization: Bearer <secret>`, and a request that carries `?secret=` at all is answered **401** even
+  when the value is right — a secret in a URL is logged by every proxy in between, so a scheduler still
+  using it must fail loudly rather than leak quietly. The value is never compared or logged; the server
+  log names the path and says to move to the header and rotate. A scheduler that cannot set a header calls
+  through something that can (both GitHub workflows do). The log drain receiver still redacts `secret`
+  from archived URLs (`OPERATIONS.md` §9) as a backstop for old callers.
 - ⚠ **`logs-archive` has two preconditions that are not environment variables you can guess at.**
   `LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true` — which is an assertion that the bucket policy excludes
   `files/logs/*` from anonymous `GetObject` — and a lifecycle rule of **at least 90 days** on that
@@ -422,7 +429,7 @@ load-bearing** — a proxy that omits them produces failures that look nothing l
 
 | Header | What breaks without it |
 |---|---|
-| `X-Forwarded-For` | Every visitor falls into one shared rate-limit bucket named `no-ip` (`lib/ratelimit.ts` says so in its own comment), so ordinary traffic throttles each other. Audit entries also record no address. |
+| `X-Forwarded-For` | **Read only together with `TRUSTED_PROXY_HOPS`.** Set it to the number of proxies you run in front of the container (1 for the nginx below). The client is then the entry that many places from the RIGHT — the one your proxy appended; the left end is whatever the client sent and is never read (`lib/request-ip.ts`). Without it, or without the header, every visitor falls into one shared rate-limit bucket named `no-ip` — one person can exhaust the sign-in, two-factor and contact limits for everybody — and audit entries record no network fingerprint. A production process that is not on Vercel and trusts no hop says so at start-up (`[client-ip]` in the container log) and in Settings → Diagnostics. |
 | `X-Forwarded-Host` | `assertSameOrigin()` compares the `Origin` header against the request host or this one. A proxy that rewrites `Host` to the container name makes **every mutation in the studio a 403** — saving a page, uploading a file, changing a setting. |
 | `X-Forwarded-Proto` | Redirects and generated URLs can come back as `http://`, which on an HSTS domain the browser then refuses. |
 
@@ -442,6 +449,11 @@ location / {
 ```
 
 Caddy sets all three itself; `reverse_proxy 127.0.0.1:3000` is the whole configuration.
+
+⚠ **`TRUSTED_PROXY_HOPS` must equal the real number of proxies, no more.** One too many and the app reads
+an entry the client wrote, which is the spoof this setting exists to prevent; one too few and every
+visitor is bucketed under your own proxy's address. On Vercel leave it unset: there the address comes from
+`x-vercel-forwarded-for` / `x-real-ip`, which the platform's edge overwrites.
 
 No large-body limit is needed. Uploads go browser → storage directly (§1.5), so the biggest thing the
 application ever receives is a JSON body of a few hundred kilobytes.

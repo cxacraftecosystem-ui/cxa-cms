@@ -94,6 +94,7 @@ import {
   type TextColourName,
   type TrackingAmount
 } from "@/lib/richtext";
+import { classifyHref, cleanHref, safeBlurDataUrl } from "@/lib/safe-href";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Heading levels
@@ -139,36 +140,32 @@ export interface EditorHref {
 /**
  * Classify a typed address.
  *
- * ⚠ THIS MIRRORS `classifyHref()` IN components/RichText.tsx ON PURPOSE, and the two must stay in
- * step. The renderer refuses to emit an anchor for anything it considers unsafe — a stored
- * `javascript:` href is script execution dressed as prose — so a link the editor happily accepts and
- * the renderer silently downgrades to plain text is a link the author believes they made. Better to
- * refuse it here, in front of the person who typed it, with a sentence saying why.
+ * A thin mapping onto `classifyHref()` in lib/safe-href.ts, which is the ONE rule the renderer
+ * (components/RichText.tsx), the API validators and every other link surface read. The renderer refuses
+ * to emit an anchor for anything that rule calls unsafe — a stored `javascript:` href is script
+ * execution dressed as prose, and `//evil.example` or `/\evil.example` is another site dressed as a path
+ * — so a link the editor happily accepted and the renderer silently downgraded to plain text would be a
+ * link the author believes they made. Better to refuse it here, in front of the person who typed it,
+ * with a sentence saying why.
  */
 export function classifyEditorHref(raw: string): EditorHref {
-  const href = raw.trim();
-  if (href.length === 0) return { kind: "empty", href, suggestion: null };
-
-  if (href.startsWith("/") || href.startsWith("#") || href.startsWith("?")) {
-    return { kind: "internal", href, suggestion: null };
-  }
-
-  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href)?.[1]?.toLowerCase();
-
-  if (!scheme) {
-    // No scheme and no leading slash. A browser resolves this against the current page, which is
-    // almost never what somebody typing "example.org" meant.
-    return { kind: "no-protocol", href, suggestion: `https://${href}` };
-  }
-  if (scheme === "mailto" || scheme === "tel") return { kind: "plain", href, suggestion: null };
-  if (scheme !== "http" && scheme !== "https") return { kind: "unsafe", href, suggestion: null };
-
-  try {
-    // Parsed rather than pattern-matched: "https://" on its own passes a regex and is not a URL.
-    new URL(href);
-    return { kind: "external", href, suggestion: null };
-  } catch {
-    return { kind: "unsafe", href, suggestion: null };
+  const classified = classifyHref(raw);
+  switch (classified.kind) {
+    case "empty":
+      return { kind: "empty", href: "", suggestion: null };
+    case "internal":
+    case "same-page":
+      return { kind: "internal", href: classified.href, suggestion: null };
+    case "external":
+      return { kind: "external", href: classified.href, suggestion: null };
+    case "contact":
+      return { kind: "plain", href: classified.href, suggestion: null };
+    case "relative":
+      // No scheme and no leading slash. A browser resolves this against the current page, which is
+      // almost never what somebody typing "example.org" meant.
+      return { kind: "no-protocol", href: classified.href, suggestion: `https://${classified.href}` };
+    default:
+      return { kind: "unsafe", href: cleanHref(raw), suggestion: null };
   }
 }
 
@@ -1750,7 +1747,8 @@ export const RichTextImage = Image.extend({
 
       blurDataUrl: {
         default: null,
-        parseHTML: (element: HTMLElement) => element.getAttribute("data-blur"),
+        // Pasted HTML is author-controlled: keep only a base64 raster (see `safeBlurDataUrl`).
+        parseHTML: (element: HTMLElement) => safeBlurDataUrl(element.getAttribute("data-blur")),
         renderHTML: (attributes: Record<string, unknown>) =>
           typeof attributes.blurDataUrl === "string" ? { "data-blur": attributes.blurDataUrl } : {}
       },

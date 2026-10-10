@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/auth/current-user";
 import { configuredProviders, providerSlug, type OAuthProviderName } from "@/lib/auth/oauth";
 import { signInNoticeMessage } from "@/lib/auth/oauth-cookies";
 import { getSettingCached } from "@/lib/settings/service";
+import { isSafeSitePath } from "@/lib/safe-href";
 import { LoginForm, type LoginProvider, type ProviderMark } from "./LoginForm";
 
 /**
@@ -75,6 +76,10 @@ function safeNextPath(raw: string | null | undefined): string {
   if (raw.length > 512) return DEFAULT_NEXT;
   if (!raw.startsWith("/")) return DEFAULT_NEXT;
   if (raw.startsWith("//") || raw.startsWith("/\\")) return DEFAULT_NEXT;
+  // …and the shared rule (lib/safe-href.ts), which also decodes EVERY segment: `/%2F%2Fevil.example` and
+  // `/a/..%2F..%2F/evil.example` become `//evil.example` in anything downstream that decodes before it
+  // redirects.
+  if (!isSafeSitePath(raw)) return DEFAULT_NEXT;
   if (hasUnsafeCharacter(raw)) return DEFAULT_NEXT;
   if (raw === "/api" || raw.startsWith("/api/")) return DEFAULT_NEXT;
   return raw;

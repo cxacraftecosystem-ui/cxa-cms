@@ -35,6 +35,7 @@ import { LoaderCircle, type LucideIcon } from "lucide-react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { isInternalHref, safeHref } from "@/lib/safe-href";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md";
@@ -153,11 +154,6 @@ export interface LinkButtonProps
   children?: ReactNode;
 }
 
-/** `/path`, `#anchor` and `?query` are ours; anything else is another origin, a mailto or a tel. */
-function isInternalHref(href: string): boolean {
-  return href.startsWith("/") || href.startsWith("#") || href.startsWith("?");
-}
-
 export function LinkButton({
   href,
   variant = "primary",
@@ -184,18 +180,30 @@ export function LinkButton({
 
   const targetProps = newTab ? ({ target: "_blank", rel: "noopener noreferrer" } as const) : {};
 
+  // lib/safe-href.ts decides — the one rule shared with the editor, the renderer and the validators.
+  // An href it refuses (`javascript:`, `//evil.example`, `/\evil.example`) gets no `href` at all: an
+  // `<a>` without one is not a link, cannot be followed and is skipped by the tab order.
+  const safe = safeHref(href);
+  if (safe === null) {
+    return (
+      <a className={classes} {...rest}>
+        {body}
+      </a>
+    );
+  }
+
   // `next/link` only for internal destinations. On an absolute URL it adds nothing but its prefetch
   // machinery, and routing a `mailto:` through the client router is a surprise nobody wants.
-  if (isInternalHref(href)) {
+  if (isInternalHref(safe)) {
     return (
-      <Link href={href} className={classes} {...targetProps} {...rest}>
+      <Link href={safe} className={classes} {...targetProps} {...rest}>
         {body}
       </Link>
     );
   }
 
   return (
-    <a href={href} className={classes} {...targetProps} {...rest}>
+    <a href={safe} className={classes} {...targetProps} {...rest}>
       {body}
     </a>
   );

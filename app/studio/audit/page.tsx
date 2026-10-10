@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { clientIpFromHeaders } from "@/lib/request-ip";
 import { redirect as navigate } from "next/navigation";
 import Link from "next/link";
 import { FilterX, RotateCcw, ScrollText, Search, TriangleAlert } from "lucide-react";
@@ -9,6 +10,10 @@ import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canRestoreDeleted, canViewAuditLog } from "@/lib/permissions";
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
+import { auditActorEmailSearch, auditActorName } from "@/lib/audit-actor";
+import { accountsForAuditRows, auditAccountSearch, lockHoldersForAuditRows } from "@/lib/audit-accounts";
+import { accountLabel, withLockHolderNames } from "@/lib/audit-subject";
+import { displayIpFingerprint } from "@/lib/audit-ip";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -415,14 +420,15 @@ function first(value: string | string[] | undefined): string {
  * Who is doing this, for the audit entry the rollback itself writes.
  *
  * `clientIp()`/`userAgent()` in lib/api.ts take a `Request`, which a Server Action does not have, so the same
- * two headers are read here. `x-forwarded-for` carries a list; the first entry is the client.
+ * two headers are read here. The address comes from
+ * `clientIpFromHeaders` (lib/request-ip.ts), the trusted-header reader `clientIp()` uses — never the
+ * leftmost `x-forwarded-for` entry, which the client writes.
  */
 async function auditContext(actor: { id: string; email: string }): Promise<AuditContext> {
   const incoming = await headers();
-  const forwarded = incoming.get("x-forwarded-for");
   return {
     actor,
-    ipAddress: forwarded?.split(",")[0]?.trim() ?? incoming.get("x-real-ip") ?? null,
+    ipAddress: clientIpFromHeaders(incoming),
     userAgent: incoming.get("user-agent")
   };
 }
@@ -583,6 +589,10 @@ export default async function StudioAuditPage({
   if (fromDate) createdAt.gte = fromDate;
   if (toDate) createdAt.lte = toDate;
 
+  // Account rows carry no address any more, so an address search resolves through the account (or,
+  // for a refused sign-in, the typed address's fingerprint) — lib/audit-accounts.ts.
+  const accountClauses = q.length > 0 ? await auditAccountSearch(q) : [];
+
   const where: Prisma.AuditLogWhereInput = {
     ...(actorId.length > 0 ? { actorId } : {}),
     ...(isAction(actionParam) ? { action: actionParam } : {}),
@@ -593,7 +603,8 @@ export default async function StudioAuditPage({
           OR: [
             { entityLabel: { contains: q, mode: "insensitive" } },
             { entityId: { contains: q, mode: "insensitive" } },
-            { actorEmail: { contains: q, mode: "insensitive" } }
+            ...auditActorEmailSearch(q),
+            ...accountClauses
           ]
         }
       : {})
@@ -623,6 +634,11 @@ export default async function StudioAuditPage({
       take: FILTER_OPTION_LIMIT
     })
   ]);
+
+  // The account each account row is about, joined by `entityId` — see `accountLabel`.
+  const accounts = await accountsForAuditRows(entries);
+  // A lock take-over names both holders by account id; the name is joined here, never stored.
+  const lockHolders = await lockHoldersForAuditRows(entries);
 
   const mayRollback = canRestoreDeleted(user);
   const filtered =
@@ -793,9 +809,12 @@ export default async function StudioAuditPage({
             {entries.map((entry) => {
               const before = asRecord(entry.before);
               const after = asRecord(entry.after);
-              const diff = buildDiff(before, after);
-              const label = entry.entityLabel?.trim();
-              const who = entry.actor?.name.trim() || entry.actorEmail || "Somebody whose account has gone";
+              const diff = buildDiff(withLockHolderNames(before, lockHolders), withLockHolderNames(after, lockHolders));
+              // An account row names its account through the join, never a stored address.
+              const label = accountLabel(entry, entry.entityId ? accounts.get(entry.entityId) : null)?.trim();
+              // Joined from the account: the row stores only `actorId` (lib/audit-actor.ts).
+              const who = auditActorName(entry);
+              const network = displayIpFingerprint(entry.ipHash) ?? entry.ipAddress;
               const rollbackable =
                 mayRollback &&
                 before !== null &&
@@ -823,7 +842,7 @@ export default async function StudioAuditPage({
                         <time dateTime={entry.createdAt.toISOString()}>
                           {formatWhen(entry.createdAt)}
                         </time>
-                        {entry.ipAddress ? ` · from ${entry.ipAddress}` : ""}
+                        {network ? ` · from ${network}` : ""}
                       </p>
                     </div>
                   </div>

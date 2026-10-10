@@ -95,7 +95,9 @@
  *
  * ⚠ THERE IS NO RAW-HTML PASSTHROUGH in either branch, and there must never be one. Both sources are
  * editor input from a `Json`/`String` column that anybody with AUTHOR rank can write; MDX cannot
- * `import`, so the only components it can reach are the ones handed to it below.
+ * `import`, so the only components it can reach are the ones handed to it below. A JSX tag written in
+ * MDX (`<a>`, `<base>`, `<script>`) is NOT one of those — MDX compiles it to a literal element — which
+ * is why the source goes through `remarkSafeMdx` (lib/mdx-links.ts) before it is compiled.
  *
  * THE MEASURE COMES FROM ONE PLACE. An article and an MDX page must agree on it, which is why it is
  * `--measure` in globals.css and not a `max-width` chosen per page (contract §7). What changed is only
@@ -121,12 +123,13 @@
  */
 
 import type { ReactNode } from "react";
-import Link from "next/link";
 
 import { RichText, leadParagraphClassName } from "@/components/RichText";
 import { ReadAloud } from "@/components/site/ReadAloud";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { isEmptyRichText, parseRichText } from "@/lib/richtext";
+import { MdxLink } from "@/components/site/MdxLink";
+import { MDX_SAFE_LINK, articleRemarkPlugins } from "@/lib/mdx-links";
 import { getSettingCached } from "@/lib/settings/service";
 import {
   BLOCK_TYPESET_DEFAULT,
@@ -382,38 +385,6 @@ function standfirstParagraph(deck: string): ReactNode {
 }
 
 /**
- * Links inside MDX.
- *
- * Anything that is not a path, an anchor or a query is another origin: it opens in a new tab with
- * the `rel` pair, and says so, because a reader whose focus lands in a new tab with no warning has
- * lost their place and their Back button with it.
- */
-const LINK_CLASSES =
-  "text-purple-700 underline decoration-purple-300 underline-offset-2 transition-colors hover:decoration-purple-700 dark:text-purple-300 dark:decoration-purple-300/50 dark:hover:decoration-purple-300";
-
-function MdxLink({ href, children }: { href?: string; children?: ReactNode }) {
-  const target = href ?? "";
-  if (target.startsWith("/") || target.startsWith("#") || target.startsWith("?")) {
-    return (
-      <Link href={target} className={LINK_CLASSES}>
-        {children}
-      </Link>
-    );
-  }
-  const external = /^https?:/i.test(target);
-  return (
-    <a
-      href={target}
-      className={LINK_CLASSES}
-      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-    >
-      {children}
-      {external ? <span className="sr-only"> (opens in a new tab)</span> : null}
-    </a>
-  );
-}
-
-/**
  * A markdown `# heading` — rendered as an `<h2>`, exactly as the Tiptap branch renders a document's
  * level 1.
  *
@@ -506,18 +477,26 @@ export async function ProseArticle({
 
   if (source.length > 0) {
     // Loaded here, not at module scope. See the header.
-    const [{ compileMDX }, { default: remarkGfm }] = await Promise.all([
+    const [{ compileMDX }, remarkPlugins] = await Promise.all([
       import("next-mdx-remote/rsc"),
-      import("remark-gfm")
+      articleRemarkPlugins()
     ]);
 
     const { content } = await compileMDX({
       source,
-      options: { mdxOptions: { remarkPlugins: [remarkGfm] } },
+      // lib/mdx-links.ts — the SAME plugin list the news routes check on save. Its last plugin applies
+      // lib/safe-href.ts to the syntax tree: a JSX `<a href="//evil.example">` never meets `a: MdxLink`
+      // below (MDX maps only markdown-made elements), so it is renamed to `MDX_SAFE_LINK` and reaches
+      // `MdxLink` that way; tags that navigate or load (`<base>`, `<iframe>`, `<script>`) are removed.
+      options: { mdxOptions: { remarkPlugins } },
       // ⚠ `h1` IS A CLAMP THIS MAP MUST CARRY, not a style override — see `MdxTitle`. Without it a
       // markdown `# heading` becomes a second `<h1>` on the page (contract §11) with no size and no
       // margin at all, because preflight strips both and nothing here styles an `h1`.
-      components: { a: MdxLink, img: MdxImageNotice, h1: MdxTitle, MediaFigure }
+      // ⚠ `MDX_SAFE_LINK` IS NOT OPTIONAL EITHER: without it every raw `<a>` in a document fails to render.
+      // ⚠ The non-markdown keys here (`MDX_SAFE_LINK`, `MediaFigure`) MUST equal `MDX_COMPONENT_NAMES` in
+      // lib/mdx-links.ts: every other component name is unwrapped before compile, which is what stops a
+      // stored `<Foo_Bar>` from throwing "Expected component … to be defined" on the public page.
+      components: { a: MdxLink, [MDX_SAFE_LINK]: MdxLink, img: MdxImageNotice, h1: MdxTitle, MediaFigure }
     });
 
     return (

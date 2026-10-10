@@ -1,4 +1,5 @@
 import { patchOf, z } from "@/lib/zod";
+import { isExternalHref } from "@/lib/safe-href";
 import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, conflict, noContent, ok, route } from "@/lib/api";
@@ -103,7 +104,7 @@ const pageBodySchema = z.object({
   seoImageId: optionalId(),
   seoNoIndex: z.boolean(),
   canonicalUrl: optionalText(500).refine(
-    (value) => value === null || /^https?:\/\//i.test(value),
+    (value) => value === null || isExternalHref(value),
     "A canonical address must be a full address beginning with https://. Leave it empty to use this page's own address."
   ),
   sortOrder: boundedInt({ min: -9999, max: 9999, fallback: 0 }),

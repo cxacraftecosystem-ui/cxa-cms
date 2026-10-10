@@ -7,6 +7,11 @@ import { assertSameOrigin, badRequest, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import {
+  ANNOUNCEMENT_HREF_MAX,
+  ANNOUNCEMENT_HREF_MESSAGE,
+  isStorableAnnouncementHref
+} from "@/lib/studio/link-fields";
 import { canManageContent, canRestoreDeleted } from "@/lib/permissions";
 import {
   buildAuditContext,
@@ -64,7 +69,7 @@ export const dynamic = "force-dynamic";
 /** ⚠ The same three caps as the collection route and the studio screen. See that file's note. */
 const MESSAGE_MAX = 240;
 const LINK_LABEL_MAX = 48;
-const HREF_MAX = 500;
+// The third cap, the link's (500), is `ANNOUNCEMENT_HREF_MAX` in lib/studio/link-fields.ts.
 
 const LIST_SELECT = {
   id: true,
@@ -91,7 +96,10 @@ const PatchBody = patchOf(
       MESSAGE_MAX,
       "An announcement needs something to say. One sentence is usually right."
     ).optional(),
-    href: optionalText(HREF_MAX).optional(),
+    // lib/studio/link-fields.ts on SAVE (lib/safe-href.ts underneath): never `//evil.example` or `javascript:`.
+    href: optionalText(ANNOUNCEMENT_HREF_MAX)
+      .refine(isStorableAnnouncementHref, { message: ANNOUNCEMENT_HREF_MESSAGE })
+      .optional(),
     linkLabel: optionalText(LINK_LABEL_MAX).optional(),
     tone: z
       .enum(AnnouncementTone, {

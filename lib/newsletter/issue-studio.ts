@@ -9,6 +9,7 @@ import { canEditRecord, canPublish } from "@/lib/permissions";
 import { isEmptyRichText, parseRichText } from "@/lib/richtext";
 import { fieldProblem, optionalText, requiredText } from "@/lib/studio/crud";
 import { z } from "@/lib/zod";
+import { richTextLinksAreSafe, UNSAFE_RICH_TEXT_LINK_MESSAGE } from "@/lib/safe-href";
 import {
   EDITABLE_ISSUE_STATUSES,
   ISSUE_PREHEADER_MAX,
@@ -59,7 +60,7 @@ export const IssueCreateBody = z.object({
   title: requiredText(ISSUE_TITLE_MAX, "Give the issue a title. It is the heading readers see at the top."),
   subject: optionalText(ISSUE_SUBJECT_MAX),
   preheader: optionalText(ISSUE_PREHEADER_MAX),
-  body: z.unknown().optional()
+  body: z.unknown().refine(richTextLinksAreSafe, { message: UNSAFE_RICH_TEXT_LINK_MESSAGE }).optional()
 });
 
 export const IssuePatchBody = z.object({
@@ -69,7 +70,7 @@ export const IssuePatchBody = z.object({
   preheader: z
     .union([z.string().trim().max(ISSUE_PREHEADER_MAX, `Keep this to ${ISSUE_PREHEADER_MAX} characters or fewer.`), z.null()])
     .optional(),
-  body: z.unknown().optional(),
+  body: z.unknown().refine(richTextLinksAreSafe, { message: UNSAFE_RICH_TEXT_LINK_MESSAGE }).optional(),
   /** The `updatedAt` the editor loaded, so two people saving the same draft cannot silently overwrite. */
   expectedUpdatedAt: z.string().trim().optional()
 });

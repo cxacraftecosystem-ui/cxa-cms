@@ -275,8 +275,9 @@ const PROXY_TARGET_FIELDS = ["path", "referer"] as const;
  * bytes the signature was computed over, which is a real property for an evidence store.
  *
  * WHAT IT ALSO MEANT: `proxy.path` is "Request path with query parameters", so
- * `GET /api/cron/purge?secret=<CRON_SECRET>` — a form `assertCronAuthorised` (lib/cron.ts:56)
- * deliberately supports, for managed schedulers that cannot set a header — was filed verbatim into
+ * `GET /api/cron/purge?secret=<CRON_SECRET>` — a form `assertCronAuthorised` (lib/cron.ts) once
+ * supported for managed schedulers that cannot set a header, and now refuses with a 401, which does
+ * not stop the platform logging the request line of a stale scheduler — was filed verbatim into
  * `files/logs/vercel/<date>/`, under a ≥90-day retention policy, readable by every operator and by
  * the CIC recipient of any range export. The same applies to every invitation and password link:
  * `/studio/set-password?token=<live credential>` in cleartext is account takeover for the life of the

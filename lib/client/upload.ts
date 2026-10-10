@@ -6,14 +6,17 @@
  * Bytes never pass through the application server. Three steps, and the shapes of all three are
  * written out below so the two halves of this feature cannot drift apart in separate files:
  *
+ *   0. SHA-256 of the file, base64, in the browser (`sha256Base64`, lib/client/checksum.ts).
  *   1. POST /api/studio/media/presign
- *        → { fileName: string; contentType: string; byteSize: number; kind: MediaKindName }
+ *        → { fileName: string; contentType: string; byteSize: number; kind: MediaKindName;
+ *            sha256: string }
  *        ← { uploadUrl: string; headers: Record<string, string>; objectKey: string;
- *            expiresInSeconds: number }
- *   2. PUT <uploadUrl>  — the raw File as the body, with `headers` replayed VERBATIM.
+ *            expiresInSeconds: number; uploadTicket: string }
+ *   2. PUT <uploadUrl>  — the raw File as the body, with `headers` replayed VERBATIM. Storage refuses
+ *      the PUT unless the body's length, type and SHA-256 are the ones signed in step 1.
  *   3. POST /api/studio/media/complete
  *        → { objectKey: string; fileName: string; contentType: string; byteSize: number;
- *            folderId?: string }
+ *            uploadTicket: string; folderId?: string }
  *        ← the created MediaAsset (JSON: dates are ISO strings, not Date objects)
  *
  * ⚠ THE ONE THING EVERY CALLER MUST DO. `uploadFiles` RESOLVES with a populated `failed` list when
@@ -38,12 +41,20 @@
  *     progress at all while it finalises a large object, and a silent connection there is normal.
  */
 
+import { sha256Base64 } from "@/lib/client/checksum";
 import { asApiClientError, post } from "@/lib/client/fetcher";
 import type { MediaLike } from "@/lib/media/url";
+import { ABSOLUTE_MAX_UPLOAD_BYTES, mediaMaxBytes } from "@/lib/storage/upload-limits";
 import { clamp, formatBytes } from "@/lib/utils";
 
-/** Nothing over this is accepted, and the message always states both numbers. */
-export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+/**
+ * Nothing over this is accepted anywhere, and the message always states both numbers.
+ *
+ * The media library is stricter PER KIND (`mediaMaxBytes`, lib/storage/upload-limits.ts — the same
+ * module the presign routes read, so the two halves cannot drift); this is the headline a dropzone
+ * states before it knows what the file is.
+ */
+export const MAX_UPLOAD_BYTES = ABSOLUTE_MAX_UPLOAD_BYTES;
 
 /** No movement for this long means the connection is dead, whatever the socket still believes. */
 export const STALL_TIMEOUT_MS = 60_000;
@@ -232,6 +243,17 @@ interface PresignResponse {
   headers: Record<string, string>;
   objectKey: string;
   expiresInSeconds: number;
+  /** Opaque. Handed back to `complete` unchanged; it is what the landed object is checked against. */
+  uploadTicket: string;
+}
+
+/**
+ * The kind a file will be STORED as, which is what the per-kind cap is judged by. Mirrors `resolveKind`
+ * in app/api/studio/media/presign/route.ts for the one case that matters here: an SVG is a document.
+ */
+function storedKindFor(contentType: string, declared: MediaKindName | null): MediaKindName | null {
+  if (contentType.toLowerCase() === "image/svg+xml") return "DOCUMENT";
+  return declared;
 }
 
 /**
@@ -275,6 +297,10 @@ function precheck(file: File, forcedKind: MediaKindName | undefined): string | n
   }
   if (!forcedKind && !kindForContentType(contentType)) {
     return `Files of type ${contentType} are not accepted. ${ACCEPTED_TYPES_SUMMARY} can be uploaded.`;
+  }
+  const stored = storedKindFor(contentType, forcedKind ?? kindForContentType(contentType));
+  if (stored && file.size > mediaMaxBytes(stored)) {
+    return `This file is ${formatBytes(file.size)}; the limit for ${stored.toLowerCase().replace(/_/g, " ")} files is ${formatBytes(mediaMaxBytes(stored))}. Compress it or upload it as a linked file instead.`;
   }
   return null;
 }
@@ -546,6 +572,24 @@ export async function uploadFiles(
     job.state.status = "uploading";
     emit();
 
+    // Step 0: the fingerprint storage will verify the body against. See lib/client/checksum.ts.
+    let sha256: string;
+    try {
+      sha256 = await sha256Base64(job.file);
+    } catch (thrown) {
+      fail(
+        job,
+        thrown instanceof Error && thrown.message
+          ? thrown.message
+          : "The file could not be read to fingerprint it, so it was not uploaded."
+      );
+      return;
+    }
+    if (signal?.aborted) {
+      fail(job, "This file was cancelled before it was sent.");
+      return;
+    }
+
     let presigned: PresignResponse;
     try {
       presigned = await post<PresignResponse>(
@@ -554,7 +598,8 @@ export async function uploadFiles(
           fileName: job.file.name,
           contentType,
           byteSize: job.file.size,
-          kind
+          kind,
+          sha256
         },
         { signal }
       );
@@ -601,6 +646,7 @@ export async function uploadFiles(
           fileName: job.file.name,
           contentType,
           byteSize: job.file.size,
+          uploadTicket: presigned.uploadTicket,
           ...(folderId ? { folderId } : {})
         },
         { signal }

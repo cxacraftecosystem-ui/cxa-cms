@@ -51,6 +51,7 @@ import {
 } from "@/lib/sections/resolve";
 import type { PartnerLogosSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
+import { isInternalHref, safeHref } from "@/lib/safe-href";
 import type { CSSProperties } from "react";
 
 export interface PartnerLogosSectionProps {
@@ -101,7 +102,8 @@ export function PartnerLogosSection({
   const eyebrow = data.eyebrow.trim();
   const body = data.body.trim();
   const label = data.ctaLabel.trim();
-  const href = data.ctaHref.trim();
+  // lib/safe-href.ts: an href it refuses (`//evil.example`, `javascript:`) means no "see all" link.
+  const href = safeHref(data.ctaHref) ?? "";
   const link = label && href ? { href, label } : undefined;
   const showsHeader = Boolean(heading || eyebrow || body || link);
   const hidden = Math.max(0, matched - rows.length);
@@ -242,7 +244,9 @@ function PartnerLogo({
   /** False for the marquee's duplicate copy, which must hold nothing focusable. */
   interactive: boolean;
 }) {
-  const external = partner.url?.trim() ?? "";
+  // lib/safe-href.ts: an address it refuses (`javascript:`, `//evil.example`, `/\evil.example`) is
+  // treated as no website at all, so the mark is drawn as a statement rather than as a link.
+  const external = safeHref(partner.url) ?? "";
 
   const mark = partner.logo ? (
     <MediaImage
@@ -293,7 +297,7 @@ function PartnerLogo({
     return <span className={frame}>{mark}</span>;
   }
 
-  const internal = external.startsWith("/");
+  const internal = isInternalHref(external);
   const className = cn(frame, "transition-colors hover:bg-surface-50");
 
   if (internal) {

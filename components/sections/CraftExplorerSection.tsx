@@ -44,6 +44,7 @@ import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import type { CraftRow, MediaRow, ResolvedSectionData } from "@/lib/sections/resolve";
 import type { CraftExplorerSectionData } from "@/lib/sections/schema";
 import { cn, truncateWords } from "@/lib/utils";
+import { safeHref } from "@/lib/safe-href";
 
 /** Where the full explorer lives. One constant, so the cards and the links cannot drift apart. */
 const EXPLORER_PATH = "/craft-explorer";
@@ -100,7 +101,7 @@ function formatOriginYear(year: number): string {
 /**
  * The explorer link with `region` set to one slug — or removed, for the chip that means "every region".
  *
- * ⚠ NEVER `${href}?region=…`. The href here is `ctaHref`, an editor's free text, and `LINK_SHAPE` in
+ * ⚠ NEVER `${href}?region=…`. The href here is `ctaHref`, an editor's free text, and `link()` in
  * lib/sections/schema.ts admits a link that already carries its own query or fragment. Concatenation
  * then writes a SECOND `?`: "/craft-explorer?material=indigo" becomes
  * "/craft-explorer?material=indigo?region=rajasthan", which parses as one parameter called `material`
@@ -156,7 +157,9 @@ export function CraftExplorerSection({
   const eyebrow = data.eyebrow.trim();
   const body = data.body.trim();
   const label = data.ctaLabel.trim();
-  const ctaHref = data.ctaHref.trim();
+  // lib/safe-href.ts: an href it refuses falls back to the explorer itself rather than becoming a link
+  // (and a set of region chips) that `next/link` would render as internal while it leaves the site.
+  const ctaHref = safeHref(data.ctaHref) ?? "";
   const explorerHref = ctaHref || EXPLORER_PATH;
   // Always defined, both halves included: `CraftNote` must have somewhere to send a reader whenever it
   // says the list is short, and an explorer this block previews always exists at a known path.

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { clientIpFromHeaders } from "@/lib/request-ip";
 import { redirect as navigate } from "next/navigation";
 import { CircleCheck, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 
@@ -215,14 +216,15 @@ function first(value: string | string[] | undefined): string {
  * Who is doing this, for the audit entry.
  *
  * `clientIp()`/`userAgent()` in lib/api.ts take a `Request`, which a Server Action does not have, so the
- * same two headers are read here. `x-forwarded-for` carries a list; the first entry is the client.
+ * same two headers are read here. The address comes
+ * from `clientIpFromHeaders` (lib/request-ip.ts), the same trusted-header reader `clientIp()` uses —
+ * never the leftmost `x-forwarded-for` entry, which the client writes.
  */
 async function auditContext(actor: { id: string; email: string }): Promise<AuditContext> {
   const incoming = await headers();
-  const forwarded = incoming.get("x-forwarded-for");
   return {
     actor,
-    ipAddress: forwarded?.split(",")[0]?.trim() ?? incoming.get("x-real-ip") ?? null,
+    ipAddress: clientIpFromHeaders(incoming),
     userAgent: incoming.get("user-agent")
   };
 }

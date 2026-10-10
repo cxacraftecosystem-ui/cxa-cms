@@ -1,5 +1,6 @@
 import "server-only";
 import { ApiError, clientIp, toErrorResponse } from "@/lib/api";
+import { rateLimitSubject } from "@/lib/request-ip";
 import type { NextResponse } from "next/server";
 
 /**
@@ -15,8 +16,8 @@ import type { NextResponse } from "next/server";
  * limiting, where all instances count against one number. That needs a service this deployment does not
  * require, so the in-memory bucket is the honest stand-in until one is added. Nothing here pretends
  * otherwise, and no security decision anywhere in this codebase may be built on it — `clientIp()` reads
- * a header the client can set when no trusted proxy is in front of the app (see its own note), so a
- * bucket key is not an identity either.
+ * only platform-trusted headers (see `bucketKey`), but an address is still not an identity, so a bucket
+ * key is not one either.
  *
  * ══ WHAT CHANGED, AND WHAT DELIBERATELY DID NOT ══
  *
@@ -491,14 +492,22 @@ export async function consumeRateLimitAsync(
  * still search — one shared bucket per address would make any single abused endpoint disable the whole
  * public API for that caller.
  *
- * ⚠ A request with no forwarded address falls into ONE SHARED bucket named `no-ip`. That is the
+ * The address is `clientIp()`, which reads only a header a trusted hop wrote (lib/request-ip.ts) —
+ * Vercel's edge headers, or the right-hand `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` points at. It
+ * once read the LEFTMOST entry, so a client could mint a fresh bucket per request by sending its own
+ * header; tests/security/client-ip.test.ts pins that shut.
+ *
+ * An IPv6 address is keyed on its /64 (`rateLimitSubject`), not the whole address: one ordinary
+ * connection owns a /64 and could otherwise rotate through it for a fresh bucket per request.
+ *
+ * ⚠ A request with no trusted address falls into ONE SHARED bucket named `no-ip`. That is the
  * conservative direction (skipping the limit entirely would make the header's absence a bypass), and
- * it has a real cost: behind a proxy that does not set `X-Forwarded-For`, every visitor shares one
- * allowance and legitimate traffic is throttled. Setting that header at the proxy is part of deploying
- * this application.
+ * it has a real cost: off Vercel with `TRUSTED_PROXY_HOPS` unset, every visitor shares one allowance
+ * and legitimate traffic is throttled. Setting it to the number of proxies in front of the app is part
+ * of deploying this application anywhere but Vercel.
  */
 function bucketKey(request: Request, route: string): string {
-  return `${route}:${clientIp(request) ?? "no-ip"}`;
+  return `${route}:${rateLimitSubject(clientIp(request)) ?? "no-ip"}`;
 }
 
 export function checkRateLimit(

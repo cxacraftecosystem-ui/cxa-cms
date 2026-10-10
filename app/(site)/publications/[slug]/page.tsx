@@ -24,6 +24,7 @@ import { pageMetadata, scholarlyArticleJsonLd, serializeJsonLd } from "@/lib/seo
 import { getSettingCached } from "@/lib/settings/service";
 import { typesetClassName, typesetFaceClassName } from "@/lib/typography/typeset";
 import { cn, formatBytes, truncateWords } from "@/lib/utils";
+import { safeExternalHref } from "@/lib/safe-href";
 
 import {
   bareDoi,
@@ -343,8 +344,9 @@ export default async function PublicationPage({
     {
       term: "Publisher link",
       // Only when it is not already the DOI: two links to the same place is one link too many.
-      value: !doi && publication.url?.trim() ? publication.url.trim() : null,
-      href: !doi && publication.url?.trim() ? publication.url.trim() : undefined
+      // Free text: only an absolute http(s) URL is shown as a link (lib/safe-href.ts).
+      value: !doi ? safeExternalHref(publication.url) : null,
+      href: !doi ? (safeExternalHref(publication.url) ?? undefined) : undefined
     }
   ];
 
@@ -408,8 +410,8 @@ export default async function PublicationPage({
               <LinkButton href={doi} icon={ExternalLink} newTab>
                 View at the publisher
               </LinkButton>
-            ) : publication.url?.trim() ? (
-              <LinkButton href={publication.url.trim()} icon={ExternalLink} newTab>
+            ) : safeExternalHref(publication.url) ? (
+              <LinkButton href={safeExternalHref(publication.url) ?? ""} icon={ExternalLink} newTab>
                 View at the publisher
               </LinkButton>
             ) : null}

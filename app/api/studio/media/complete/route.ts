@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
 import type { MediaKind, Prisma } from "@prisma/client";
@@ -16,9 +15,11 @@ import {
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageMedia } from "@/lib/permissions";
-import { deleteObject, deleteObjects, getObjectBytes, headObject, requireStorage } from "@/lib/storage/client";
+import { confirmUploadedObject, deleteObjects, getObjectBytes, requireStorage } from "@/lib/storage/client";
 import { isSafeObjectKey } from "@/lib/storage/keys";
 import { DERIVABLE_MIME_TYPES, generateDerivatives, isSvg, probeImage } from "@/lib/storage/derivatives";
+import { UploadTicketField, verifyUploadTicket } from "@/lib/storage/upload-ticket";
+import { sha256Hex } from "@/lib/storage/upload-limits";
 import { formatBytes } from "@/lib/utils";
 
 /**
@@ -26,9 +27,9 @@ import { formatBytes } from "@/lib/utils";
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * ⚠ THE SHAPE IS FIXED BY `lib/client/upload.ts`. It sends
- * `{ objectKey, fileName, contentType, byteSize, folderId? }` and expects the created `MediaAsset`
- * back — the whole row, because a freshly uploaded file goes straight into the grid with no re-fetch
- * (`StudioMediaAsset` in components/studio/media/MediaGrid.tsx is the same shape).
+ * `{ objectKey, fileName, contentType, byteSize, uploadTicket, folderId? }` and expects the created
+ * `MediaAsset` back — the whole row, because a freshly uploaded file goes straight into the grid with no
+ * re-fetch (`StudioMediaAsset` in components/studio/media/MediaGrid.tsx is the same shape).
  *
  * THIS IS THE ROUTE THAT MUST NOT BE GOT WRONG. Six rules, in order, each of which is a defect if it
  * is skipped:
@@ -36,10 +37,12 @@ import { formatBytes } from "@/lib/utils";
  *  1. **`headObject` FIRST, AND REFUSE WHEN THE OBJECT IS ABSENT.** Trusting the browser's "done" is
  *     how a `MediaAsset` row ends up pointing at a key that was never written — a broken image with a
  *     perfectly healthy-looking database, discovered weeks later by a visitor.
- *  2. **THE REPORTED SIZE IS CROSS-CHECKED AGAINST THE HEAD RESULT.** A mismatch means the bytes in
- *     the bucket are not the bytes that were described, so the row would be a lie about its own
- *     contents. It is a 400 — and the object is deleted, because it is a key this endpoint issued,
- *     nothing references it, and leaving it behind is an orphan nothing will ever collect.
+ *  2. **THE OBJECT IS CHECKED AGAINST WHAT WAS PRESIGNED, NOT AGAINST WHAT THE BROWSER NOW SAYS.**
+ *     `uploadTicket` (lib/storage/upload-ticket.ts) is the HMAC-sealed record of the size, content type
+ *     and SHA-256 that presign signed into the PUT; `confirmUploadedObject` compares the `HEAD` — size,
+ *     storage-verified checksum and type — against it. Any mismatch, or a missing checksum, is a 400 and
+ *     the object is deleted, because it is a key this endpoint issued, nothing references it, and
+ *     leaving it behind is an orphan nothing will ever collect.
  *  3. **THE KEY MUST BE ONE THIS ENDPOINT COULD HAVE ISSUED.** `isSafeObjectKey` plus the `media/`
  *     namespace plus the exact shape `buildObjectKey` produces. Without that, a caller could register
  *     any object in the bucket — including another asset's derivative, or a private file store
@@ -73,13 +76,13 @@ export const dynamic = "force-dynamic";
 const DERIVE_MAX_BYTES = 80 * 1024 * 1024;
 
 /**
- * Above this, the checksum is not computed.
+ * Above this, an image the pipeline cannot resize is not downloaded just to read its dimensions.
  *
- * The checksum needs the whole object in memory, and its only job is duplicate detection. A 150 MB
- * film that is registered without one is a small loss; refusing the upload, or pulling 200 MB through
- * a function for a hash nobody asked for, are both worse. The skip is reported.
+ * It used to be the checksum limit, and the probe rode along on that download. The checksum now comes
+ * from storage's own verified `HEAD` (see rule 2), so this is the only reason left to pull the bytes of
+ * a non-derivable picture, and it keeps the same memory bound it always had.
  */
-const CHECKSUM_MAX_BYTES = 128 * 1024 * 1024;
+const PROBE_MAX_BYTES = 128 * 1024 * 1024;
 
 /** How many byte-identical assets are named back. Beyond this the panel's list is noise. */
 const DUPLICATE_LIMIT = 5;
@@ -139,6 +142,8 @@ const CompleteBody = z.object({
   fileName: z.string().trim().min(1, "The file has no name.").max(255),
   contentType: z.string().trim().min(1).max(160),
   byteSize: z.number().int().positive(),
+  /** The signed record of what presign agreed to. Required — see rule 2. */
+  uploadTicket: UploadTicketField,
   /** `null` and an omitted key both mean "not in a folder"; an id is checked to exist. */
   folderId: z.string().trim().min(1).max(64).nullable().optional(),
   /**
@@ -191,6 +196,14 @@ export const POST = route(async (request: NextRequest) => {
     );
   }
 
+  // ── Rule 2, first half: what did presign actually sign for this key? ─────────────────────────
+  const intent = verifyUploadTicket(body.uploadTicket, { objectKey, userId: user.id });
+  if (intent.contentType !== contentType || intent.byteSize !== body.byteSize) {
+    throw badRequest(
+      "This upload is being described differently from how it was started, so nothing was added. Start the upload again."
+    );
+  }
+
   const kind = storedKind(contentType, body.kind);
   if (!kind) {
     throw badRequest(
@@ -228,48 +241,36 @@ export const POST = route(async (request: NextRequest) => {
     }
   }
 
-  // ── Rule 1: did the bytes actually land? ─────────────────────────────────────────────────────
-  const head = await headObject(objectKey);
-  if (!head) {
-    throw badRequest(
-      "The upload did not reach storage, so nothing was added to the library. Nothing is stored under that " +
-        "address. Try uploading the file again."
-    );
-  }
+  // ── Rules 1 and 2: did the bytes land, and are they exactly what was presigned? ──────────────
+  // Absent → 400. Different size, checksum or type → the object is deleted, then 400.
+  const head = await confirmUploadedObject(intent, {
+    logTag: "[media/complete]",
+    nothingChanged: "Nothing was added to the library."
+  });
 
-  // ── Rule 2: are they the bytes that were described? ──────────────────────────────────────────
-  if (head.byteSize !== body.byteSize) {
-    // The key is one this endpoint issued and no row references it, so removing it is safe and is the
-    // only way this refusal does not leave an orphan behind.
-    await deleteObject(objectKey).catch((error: unknown) => {
-      console.error("[media/complete] could not remove a rejected upload", objectKey, error);
-    });
-    throw badRequest(
-      `What reached storage is ${formatBytes(head.byteSize)} but the upload was described as ` +
-        `${formatBytes(body.byteSize)}. Nothing was added to the library. Try uploading the file again.`
-    );
-  }
+  // ── The checksum: storage's own, verified at PUT time ────────────────────────────────────────
+  // Hex, as the column has always held, so duplicate detection keeps matching older rows. Taking it
+  // from the verified `HEAD` instead of hashing a download means every file gets one, whatever its
+  // size, and the bytes are only fetched when the derivative pipeline actually needs them.
+  const checksum = sha256Hex(intent.sha256);
 
-  // ── The bytes, once, for the checksum and the derivatives ────────────────────────────────────
   const derivable = DERIVABLE_MIME_TYPES.has(contentType) && head.byteSize <= DERIVE_MAX_BYTES;
-  const wantsChecksum = head.byteSize <= CHECKSUM_MAX_BYTES;
+  const wantsBytes =
+    derivable ||
+    (CONTENT_TYPE_KINDS[contentType] === "IMAGE" && !isSvg(contentType) && head.byteSize <= PROBE_MAX_BYTES);
 
   let bytes: Buffer | null = null;
-  if (derivable || wantsChecksum) {
+  if (wantsBytes) {
     bytes = await getObjectBytes(objectKey);
   }
 
-  const checksum = bytes && wantsChecksum ? createHash("sha256").update(bytes).digest("hex") : null;
-
   // ── Rule 4: is this file already here, byte for byte? ────────────────────────────────────────
-  const duplicates = checksum
-    ? await prisma.mediaAsset.findMany({
-        where: { checksum, deletedAt: null },
-        select: { id: true, fileName: true, createdAt: true },
-        orderBy: { createdAt: "asc" },
-        take: DUPLICATE_LIMIT
-      })
-    : [];
+  const duplicates = await prisma.mediaAsset.findMany({
+    where: { checksum, deletedAt: null },
+    select: { id: true, fileName: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+    take: DUPLICATE_LIMIT
+  });
 
   // ── Rule 5: derivatives, with the failures kept ──────────────────────────────────────────────
   let width: number | null = null;
@@ -309,12 +310,6 @@ export const POST = route(async (request: NextRequest) => {
       `This picture is ${formatBytes(head.byteSize)}, which is above the ${formatBytes(DERIVE_MAX_BYTES)} ` +
         "limit for making smaller versions, so visitors will get the full-size file. Upload a smaller copy if " +
         "you have one."
-    );
-  }
-  if (!wantsChecksum) {
-    notes.push(
-      `This file is ${formatBytes(head.byteSize)}, which is above the ${formatBytes(CHECKSUM_MAX_BYTES)} ` +
-        "limit for the duplicate check, so it was not checked against what is already in the library."
     );
   }
 

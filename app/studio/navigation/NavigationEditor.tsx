@@ -100,6 +100,7 @@ import { SaveBar } from "@/components/studio/SaveBar";
 import { useAutosave } from "@/components/studio/useAutosave";
 import { useLeaveGuard } from "@/components/studio/useUnsavedChanges";
 import { LinkDestinationField } from "@/components/studio/fields/LinkField";
+import { classifyHref, isExternalHref } from "@/lib/safe-href";
 
 /** One address, one transaction, all three menus. See the header. */
 const NAVIGATION_ENDPOINT = "/api/studio/navigation";
@@ -209,10 +210,13 @@ type LinkVerdict = "internal-ok" | "internal-missing" | "internal-unchecked" | "
 
 /** What can be said about one address, given the published pages this screen was handed. */
 function verdictFor(href: string, knownPaths: ReadonlySet<string>): LinkVerdict {
-  const trimmed = href.trim();
-  if (trimmed.length === 0) return "empty";
-  if (/^https?:\/\//i.test(trimmed)) return "external";
-  if (!trimmed.startsWith("/")) return "other";
+  // lib/safe-href.ts first: `//evil.example` and `/\evil.example` start with a slash but are not
+  // pages on this site, and the save refuses them — so they are "other", never "internal-…".
+  const classified = classifyHref(href);
+  if (classified.kind === "empty") return "empty";
+  if (classified.kind === "external") return "external";
+  if (classified.kind !== "internal") return "other";
+  const trimmed = classified.href;
 
   const base = trimmed.split("?")[0]?.split("#")[0] ?? "";
   if (base.length === 0) return "other";
@@ -1039,7 +1043,7 @@ function NavRow({
                   // The flag follows the address unless the reader has deliberately set it the other way:
                   // typing an https:// address and forgetting the tick is by far the commonest mistake
                   // here, and it is the one with a visible consequence.
-                  isExternal: /^https?:\/\//i.test(href.trim())
+                  isExternal: isExternalHref(href)
                 })
               }
               onPageChosen={(page) =>

@@ -2,6 +2,7 @@ import "server-only";
 import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { accessLogEnabled } from "@/lib/env";
+import { rateLimitSubject } from "@/lib/request-ip";
 import { ACCESS_COOKIE } from "@/lib/auth/cookies";
 import { verifyAccessToken } from "@/lib/auth/tokens";
 
@@ -75,8 +76,9 @@ import { verifyAccessToken } from "@/lib/auth/tokens";
  *   • `/api/studio` — most of the protected surface, but NOT all of it. See `/studio` below.
  *   • `/api/auth`   — sign-in, sign-out, refresh, set-password, two-factor, OAuth. The surface an
  *                     attacker reaches first, and the one clause 4 exists for.
- *   • `/api/cron`   — two requests a day when it is the scheduler, and a 403 from
- *                     `assertCronAuthorised` whenever it is not. The latter is somebody probing for an
+ *   • `/api/cron`   — two requests a day when it is the scheduler, and a 401 from
+ *                     `assertCronAuthorised` whenever it is not (a 403 only on a deployment with no
+ *                     `CRON_SECRET` at all — lib/cron.ts). The refusal is somebody probing for an
  *                     unauthenticated job runner, which is exactly the "suspected security anomaly"
  *                     the undertaking asks to be reported, and nothing else in the application
  *                     records it.
@@ -121,9 +123,9 @@ const ALWAYS_LOGGED_PREFIXES = ["/api/studio", "/api/auth", "/api/cron", "/studi
  * worth keeping: a secret named there tomorrow is scrubbed from both tables at once.
  *
  * The entries that are not guesses:
- *   • `secret` — lib/cron.ts accepts the CRON_SECRET in a query string, and warns in its own header
- *     that "a secret in a query string is logged by every proxy between the scheduler and the app".
- *     This table would be one of those proxies.
+ *   • `secret` — lib/cron.ts used to accept the CRON_SECRET in a query string. It now refuses one with a
+ *     401, but a stale scheduler still SENDS it, and the refused request is logged here like any
+ *     other. This table would otherwise be one of the proxies that keeps a copy.
  *   • `token` — `credentialLinkUrl()` in lib/auth/credential-token.ts builds `?token=<signed token>`
  *     for every invitation and every password link, and `NEWSLETTER_TOKEN_QUERY_KEY` is the same word.
  *     A live password link sitting in a table administrators can read is an account takeover.
@@ -466,7 +468,8 @@ function shouldRecord(pathname: string, status: number): boolean {
  * Three facts compose into it, and each of them is individually correct:
  *
  *   1. `/api/cron` is always-logged, and both cron routes go straight to `assertCronAuthorised`,
- *      which answers a missing or wrong secret with a 403 that touches no database at all.
+ *      which answers a missing or wrong secret with a 401 (a 403 when `CRON_SECRET` is not set) that
+ *      touches no database at all.
  *   2. `/api/auth` is always-logged, and `enforceRateLimit` RETURNS its 429 rather than throwing, so
  *      `route()` sees it like any other response and logs it. That is the slice's headline win —
  *      `audit_logs` cannot see a throttled sign-in attempt and this table can — and it means the
@@ -504,7 +507,7 @@ function shouldRecord(pathname: string, status: number): boolean {
  * was a full transcript that fills the database and takes the audit trail down with it.
  *
  * REJECTED: rate-limiting `/api/cron/*` itself, which the finding that prompted this also suggested.
- * The 403 is already free, so it would bound function invocations rather than rows — and a
+ * The 401 is already free, so it would bound function invocations rather than rows — and a
  * per-instance limiter in front of a compliance job that runs once a night can only ever cost that
  * job a run it needed. The amplification belongs to the rule in this module, so the bound belongs
  * here too, which is what app/api/drains/logs/route.ts's header already said it would.
@@ -528,7 +531,7 @@ async function refusalIsOverSampled(input: {
 
   // The SCRUBBED path, so the key is bounded and so two requests that differ only in a redacted
   // credential share one bucket rather than each getting their own allowance.
-  const key = `access-log:${input.ipAddress ?? "no-ip"}:${input.status}:${input.path}`;
+  const key = `access-log:${rateLimitSubject(input.ipAddress) ?? "no-ip"}:${input.status}:${input.path}`;
   const verdict = consumeRateLimit(key, RATE_LIMITS.accessLogRefusal);
   if (verdict.ok) {
     suppressed.delete(key);

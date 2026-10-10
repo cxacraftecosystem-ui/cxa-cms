@@ -363,7 +363,9 @@ export function PickerUpload({
           objectKey: object.objectKey,
           fileName: object.fileName,
           mimeType: object.mimeType,
-          byteSize: object.byteSize
+          byteSize: object.byteSize,
+          // Required: the register route checks the landed object against what was presigned.
+          uploadTicket: object.uploadTicket
         });
         const id = created.file?.id;
         if (!id) {

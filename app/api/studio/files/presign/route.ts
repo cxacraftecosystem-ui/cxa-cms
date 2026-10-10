@@ -5,6 +5,8 @@ import { requireCapability } from "@/lib/auth/current-user";
 import { canManageMedia } from "@/lib/permissions";
 import { presignUpload, requireStorage } from "@/lib/storage/client";
 import { buildObjectKey, extensionOf } from "@/lib/storage/keys";
+import { FILE_STORE_MAX_BYTES } from "@/lib/storage/upload-limits";
+import { Sha256Field, signUploadTicket } from "@/lib/storage/upload-ticket";
 import { formatBytes } from "@/lib/utils";
 
 /**
@@ -17,14 +19,16 @@ import { formatBytes } from "@/lib/utils";
  * or dataset could be added to this installation at all. A STATIC segment always beats a dynamic one in
  * Next, so the existence of this file is the whole fix (contract §13b).
  *
- * ⚠ THE SHAPE IS FIXED BY `uploadToStore()` in app/studio/files/FileManager.tsx. It sends
- * `{ fileName, contentType, byteSize }` and reads `{ uploadUrl, headers, objectKey }`. Step 2 is either
- * `POST /api/studio/files` (a new catalogue entry plus version 1) or
- * `POST /api/studio/files/[id]/versions` (a new version of an existing entry).
+ * ⚠ THE SHAPE IS FIXED BY `uploadToFileStore()` in lib/client/fileUpload.ts. It sends
+ * `{ fileName, contentType, byteSize, sha256 }` and reads `{ uploadUrl, headers, objectKey, uploadTicket }`.
+ * Step 2 is either `POST /api/studio/files` (a new catalogue entry plus version 1) or
+ * `POST /api/studio/files/[id]/versions` (a new version of an existing entry); both require the
+ * `uploadTicket` and check the landed object against it (lib/storage/upload-ticket.ts).
  *
- * ⚠ THE SIGNED HEADERS ARE RETURNED VERBATIM AND MUST BE REPLAYED VERBATIM. `Content-Type` is part of the
- * signature, so a browser that sends a different one is refused with a signature mismatch — which reads
- * like a credentials problem and sends whoever is debugging it through IAM for an hour.
+ * ⚠ THE SIGNED HEADERS ARE RETURNED VERBATIM AND MUST BE REPLAYED VERBATIM. `Content-Type`,
+ * `Content-Length` and `x-amz-checksum-sha256` are all part of the signature (lib/storage/client.ts), so
+ * storage refuses a PUT of a different type, size or content. A wrong type comes back as a signature
+ * mismatch — which reads like a credentials problem and sends whoever is debugging it through IAM.
  *
  * ⚠ THE KEY IS BUILT HERE AND IN THE `files` NAMESPACE, NEVER TAKEN FROM THE CALLER. Both registration
  * routes accept `buildObjectKey({ namespace: "files", … })` and nothing else — the header of
@@ -51,14 +55,10 @@ import { formatBytes } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 /**
- * The per-file cap, server-side and authoritative.
- *
- * ⚠ MIRRORS `MAX_UPLOAD_BYTES` in lib/client/upload.ts (which `FileManager` reads) and the copy in
- * app/api/studio/files/route.ts. All three must move together. It is restated rather than imported
- * because that module is `"use client"`: importing it into a route handler replaces its exports with
- * client references and reading a plain constant from it fails at runtime.
+ * The per-file cap, server-side and authoritative — and, because the size is SIGNED into the PUT,
+ * enforced by storage itself. Shared with the browser through lib/storage/upload-limits.ts.
  */
-const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = FILE_STORE_MAX_BYTES;
 
 /** How long the signed PUT is good for. Long enough for a large dataset on a domestic uplink. */
 const PRESIGN_EXPIRY_SECONDS = 15 * 60;
@@ -182,7 +182,9 @@ const PresignBody = z.object({
     .int("A file size has to be a whole number of bytes.")
     .positive(
       "This file is empty (0 bytes). If you dragged a folder in, open it and choose the files inside."
-    )
+    ),
+  /** Base64 SHA-256 of the file, computed by the browser. Signed into the PUT; storage verifies it. */
+  sha256: Sha256Field
 });
 
 export const POST = route(async (request: NextRequest) => {
@@ -190,7 +192,7 @@ export const POST = route(async (request: NextRequest) => {
 
   // The capability check is the boundary, not the file screen's own guard. A client guard that only
   // hides a control is not a guard (contract §1.7).
-  await requireCapability(
+  const user = await requireCapability(
     canManageMedia,
     "Adding to the file store needs media manager access or higher. An administrator can raise yours."
   );
@@ -236,6 +238,8 @@ export const POST = route(async (request: NextRequest) => {
     // The type we SIGN is the type the browser must send, and it is also the only type step 2 will store
     // for this key — which is what stops a signed PUT for a dataset being used to store a web page.
     contentType,
+    contentLength: body.byteSize,
+    checksumSha256: body.sha256,
     expiresInSeconds: PRESIGN_EXPIRY_SECONDS
   });
 
@@ -244,6 +248,13 @@ export const POST = route(async (request: NextRequest) => {
     // Returned verbatim so no caller has to know which headers were signed.
     headers: signed.headers,
     objectKey,
-    expiresInSeconds: signed.expiresInSeconds
+    expiresInSeconds: signed.expiresInSeconds,
+    uploadTicket: signUploadTicket({
+      objectKey,
+      byteSize: body.byteSize,
+      contentType,
+      sha256: body.sha256,
+      userId: user.id
+    })
   });
 });

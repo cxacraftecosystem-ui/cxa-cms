@@ -3,6 +3,10 @@ import { z } from "@/lib/zod";
 import type { AuditAction, Prisma } from "@prisma/client";
 import { badRequest, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
+import { auditActorEmail, auditActorEmailSearch } from "@/lib/audit-actor";
+import { accountsForAuditRows, auditAccountSearch, lockHoldersForAuditRows } from "@/lib/audit-accounts";
+import { accountLabel, displayFieldNames, withLockHolderNames } from "@/lib/audit-subject";
+import { displayIpFingerprint } from "@/lib/audit-ip";
 import { prisma } from "@/lib/db";
 import { canViewAuditLog } from "@/lib/permissions";
 import { parseStudioQuery } from "@/lib/studio/crud";
@@ -21,7 +25,8 @@ import { parseStudioQuery } from "@/lib/studio/crud";
  *
  * `requireCapability(canViewAuditLog)` — administrator only, and the reason is the CONTENT rather than the
  * metadata. `before` and `after` hold the full serialised entity, so the log holds the text of unpublished
- * work and the email address of everybody who has ever signed in. Passwords, TOTP secrets and recovery codes
+ * work. (It no longer holds the address of everybody who has signed in: account rows are written without
+ * one and named here through a join — lib/audit-subject.ts, docs/AUDIT-PRIVACY.md.) Passwords, TOTP secrets and recovery codes
  * are stripped by NAME before they get there (`redact()`); everything else is in it in full.
  *
  * ⚠ THE PAYLOADS ARE SUMMARISED, NOT SENT WHOLE, and the cut is reported per entry. Forty entries each
@@ -187,9 +192,12 @@ export const GET = route(async (request: NextRequest) => {
       return ok({ entry: null, message: "That audit entry no longer exists." });
     }
 
-    const before = asRecord(entry.before);
-    const after = asRecord(entry.after);
+    // A lock take-over names both holders by account id; the name is joined here, never stored.
+    const lockHolders = await lockHoldersForAuditRows([entry]);
+    const before = withLockHolderNames(asRecord(entry.before), lockHolders);
+    const after = withLockHolderNames(asRecord(entry.after), lockHolders);
     const fields = changedFields(before, after);
+    const account = (await accountsForAuditRows([entry])).get(entry.entityId ?? "");
 
     /** Per-field, so a screen can show a diff without carrying two whole entities. */
     const diff = fields.map((field) => {
@@ -210,9 +218,17 @@ export const GET = route(async (request: NextRequest) => {
         action: entry.action,
         entityType: entry.entityType,
         entityId: entry.entityId,
-        entityLabel: entry.entityLabel,
+        /**
+         * For a row about an account, the account as it is NOW (joined by `entityId`), "Deleted user" once
+         * it is gone, or a refused address masked to its domain — the row itself stores no address.
+         */
+        entityLabel: accountLabel(entry, account),
         actor: entry.actor,
-        actorEmail: entry.actorEmail,
+        // Joined from the account (null once it is hard-deleted); the legacy column only for older rows.
+        actorEmail: auditActorEmail(entry),
+        /** A keyed fingerprint of the network address, never the address. See docs/AUDIT-PRIVACY.md. */
+        networkFingerprint: displayIpFingerprint(entry.ipHash),
+        /** Legacy rows only (written before the fingerprint). Always null on a row written since. */
         ipAddress: entry.ipAddress,
         userAgent: entry.userAgent,
         createdAt: entry.createdAt,
@@ -266,6 +282,8 @@ export const GET = route(async (request: NextRequest) => {
   if (to) createdAt.lte = to;
 
   const q = query.q ?? "";
+  // Account rows hold no address, so an address search resolves through the account — lib/audit-accounts.ts.
+  const accountClauses = q.length > 0 ? await auditAccountSearch(q) : [];
   const where: Prisma.AuditLogWhereInput = {
     ...(query.actor && query.actor.length > 0 ? { actorId: query.actor } : {}),
     ...(action.length > 0 ? { action: action as AuditAction } : {}),
@@ -277,7 +295,8 @@ export const GET = route(async (request: NextRequest) => {
           OR: [
             { entityLabel: { contains: q, mode: "insensitive" } },
             { entityId: { contains: q, mode: "insensitive" } },
-            { actorEmail: { contains: q, mode: "insensitive" } }
+            ...auditActorEmailSearch(q),
+            ...accountClauses
           ]
         }
       : {})
@@ -308,20 +327,28 @@ export const GET = route(async (request: NextRequest) => {
     })
   ]);
 
+  const accounts = await accountsForAuditRows(entries);
+
   return ok({
     items: entries.map((entry) => {
       const before = asRecord(entry.before);
       const after = asRecord(entry.after);
-      const fields = changedFields(before, after);
+      // The ids are compared as stored; the take-over field is then named as the single-entry view names it.
+      const fields = displayFieldNames(changedFields(before, after));
       return {
         id: entry.id,
         action: entry.action,
         entityType: entry.entityType,
         entityId: entry.entityId,
-        entityLabel: entry.entityLabel,
+        entityLabel: accountLabel(entry, entry.entityId ? accounts.get(entry.entityId) : null),
         actor: entry.actor,
-        /** Denormalised on the row, so a deleted account does not erase who did it. */
-        actorEmail: entry.actorEmail,
+        /**
+         * Joined from the account — the row itself stores only `actorId`. Null when the account has been
+         * hard-deleted (and the row predates nothing that recorded it): a client shows "Deleted user".
+         */
+        actorEmail: auditActorEmail(entry),
+        networkFingerprint: displayIpFingerprint(entry.ipHash),
+        /** Legacy rows only. Always null on a row written since the fingerprint replaced it. */
         ipAddress: entry.ipAddress,
         createdAt: entry.createdAt,
         changedFields: fields,

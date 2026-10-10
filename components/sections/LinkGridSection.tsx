@@ -41,6 +41,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { FeatureIcon } from "@/components/sections/FeatureGridSection";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { sectionLabel } from "@/lib/sections/registry";
+import { isInternalHref, safeHref } from "@/lib/safe-href";
 import type { LinkGridItem, LinkGridSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
 
@@ -53,11 +54,6 @@ const COLUMN_CLASS: Record<LinkGridSectionData["columns"], string> = {
 
 /** The entrance delay stops growing here; twenty-four cards at a full stagger arrive a second apart. */
 const MAX_STAGGER_STEPS = 8;
-
-/** `/path`, `#anchor` and `?query` are ours; anything else is another origin, a mailto or a tel. */
-function isInternalHref(href: string): boolean {
-  return href.startsWith("/") || href.startsWith("#") || href.startsWith("?");
-}
 
 /** Is there anything in this card, or is it a row an editor added and has not filled in? */
 function isFilledIn(item: LinkGridItem): boolean {
@@ -132,7 +128,9 @@ export function LinkGridSection({ data, section }: LinkGridSectionProps) {
 function LinkCard({ item }: { item: LinkGridItem }) {
   const label = item.label.trim();
   const description = item.description.trim();
-  const href = item.href.trim();
+  // An href lib/safe-href.ts refuses (`javascript:`, `//evil.example`, `/\evil.example`) is treated as no
+  // address at all: `next/link` would otherwise render it as an internal link that leaves the site.
+  const href = safeHref(item.href) ?? "";
   const Arrow = item.external ? ArrowUpRight : ArrowRight;
 
   // `pr-12` only where the arrow is drawn: on a card with no address the extra right padding would be an

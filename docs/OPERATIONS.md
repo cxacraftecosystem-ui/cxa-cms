@@ -26,6 +26,14 @@ Set this on the bucket before anybody tries to upload:
 ]
 ```
 
+**If `AllowedHeaders` is narrowed from `"*"`, it must still list `content-type` and
+`x-amz-checksum-sha256`** (and `x-amz-server-side-encryption` when `S3_SSE_ALGORITHM` is set). Every
+upload signs its SHA-256 into the PUT and the browser sends it as that header (`presignUpload` in
+`lib/storage/client.ts`); a preflight that refuses it fails every upload at the PUT, with nothing in the
+application's logs. The storage must also support `x-amz-checksum-sha256` and return it from
+`HEAD … x-amz-checksum-mode: ENABLED` — AWS S3 (including ap-south-1) and the silo/MinIO image in
+`docker-compose.yml` both do; a gateway that ignores it is refused at finalize rather than trusted.
+
 **`ExposeHeaders: ["ETag"]` is the load-bearing line.** A browser cannot read a response header that is
 not exposed, and a multipart upload identifies each part by its `ETag` — so without it multipart is
 impossible from a browser and every large transfer silently falls back to single PUTs. The symptom is
@@ -334,8 +342,8 @@ serves these objects to anyone who can name one, `no-store` or not.
 
 ⚠ **Drain records carry credentials in URLs, and the receiver redacts them before the PUT.** A drain
 record's `proxy.path` is documented by Vercel as "Request path with query parameters" — so a
-deployment using the `?secret=` cron form that `assertCronAuthorised` supports for schedulers that
-cannot set a header would otherwise file `GET /api/cron/purge?secret=<CRON_SECRET>` verbatim into a
+deployment still pointing an old scheduler at the retired `?secret=` cron form (now refused with a 401
+by `assertCronAuthorised`, but the request line is logged before the refusal) would otherwise file `GET /api/cron/purge?secret=<CRON_SECRET>` verbatim into a
 90-day archive, readable by every operator and by the CIC recipient of any range export. The same
 applies to every invitation and password-reset link: `/studio/set-password?token=<live credential>`
 in cleartext is account takeover for the life of the token.

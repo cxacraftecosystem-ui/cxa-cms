@@ -4,6 +4,7 @@ import "server-only";
 // ever concatenates a query string — see the note above SEARCH_VECTOR.
 import { Prisma } from "@prisma/client";
 import { clientIp } from "@/lib/api";
+import { rateLimitSubject } from "@/lib/request-ip";
 import { prisma } from "@/lib/db";
 import { consumeRateLimit, RATE_LIMITS } from "@/lib/ratelimit";
 import { clamp } from "@/lib/utils";
@@ -438,7 +439,7 @@ export async function logSearch(query: string, hits: number, request?: Request):
     // to build from the query because lib/ratelimit.ts sweeps and hard-caps its map — it is
     // designed for attacker-controlled keys (see MAX_BUCKETS there).
     const verdict = consumeRateLimit(
-      `search-log:${(request && clientIp(request)) ?? "no-ip"}:${normalised}`,
+      `search-log:${(request && rateLimitSubject(clientIp(request))) ?? "no-ip"}:${normalised}`,
       RATE_LIMITS.searchLog
     );
     if (!verdict.ok) return;

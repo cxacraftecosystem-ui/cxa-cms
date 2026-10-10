@@ -46,6 +46,7 @@ import { Field, FieldBlock, useFieldContext } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
 import { HelpText } from "@/components/studio/HelpText";
 import type { LookupResponse } from "@/components/studio/fields/EntityPicker";
+import { classifyHref } from "@/lib/safe-href";
 
 /**
  * The schema's own link rule, reached through the CTA schema rather than restated.
@@ -106,16 +107,30 @@ export interface LinkValue {
   href: string;
 }
 
-type LinkShape = "empty" | "internal" | "anchor" | "external" | "email" | "telephone";
+type LinkShape = "empty" | "internal" | "anchor" | "external" | "email" | "telephone" | "unusable";
 
+/**
+ * What kind of address this is — read through `classifyHref()` (lib/safe-href.ts), the rule the
+ * server applies on save and the site applies when rendering. A "starts with /" test here called
+ * `//evil.example` and `/\evil.example` "a page on this site" while the save refused them; now the
+ * field says so before the save is attempted.
+ */
 function shapeOf(href: string): LinkShape {
-  const value = href.trim();
-  if (value.length === 0) return "empty";
-  if (value.startsWith("#")) return "anchor";
-  if (value.startsWith("/")) return "internal";
-  if (value.startsWith("mailto:")) return "email";
-  if (value.startsWith("tel:")) return "telephone";
-  return "external";
+  const classified = classifyHref(href);
+  switch (classified.kind) {
+    case "empty":
+      return "empty";
+    case "internal":
+      return "internal";
+    case "same-page":
+      return "anchor";
+    case "external":
+      return "external";
+    case "contact":
+      return /^mailto:/i.test(classified.href) ? "email" : "telephone";
+    default:
+      return "unusable";
+  }
 }
 
 /** The path without its query or fragment — what a page lookup can actually be asked about. */
@@ -326,6 +341,16 @@ function LinkExplanation({
   }
 
   if (shape === "empty") return null;
+
+  if (shape === "unusable") {
+    return (
+      <HelpText tone="warn" className="mt-2">
+        This address cannot be used as a link and will not be saved. Use one starting with a single /
+        for a page on this site, https:// for another website, mailto: for an email address or tel: for
+        a phone number.
+      </HelpText>
+    );
+  }
 
   if (shape === "internal") {
     if (matchedTitle !== null) {

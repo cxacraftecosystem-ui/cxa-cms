@@ -107,6 +107,7 @@ import { STAGGER } from "@/components/motion/constants";
 import { Reveal } from "@/components/motion/Reveal";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { sectionLabel } from "@/lib/sections/registry";
+import { safeHref } from "@/lib/safe-href";
 import type { FeatureGridSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
 
@@ -348,6 +349,9 @@ export function FeatureGridSection({ data, section }: FeatureGridSectionProps) {
         <div className={cn("grid gap-6", COLUMN_CLASS[data.columns])}>
           {data.items.map((item, index) => {
             const Icon = featureIcon(item.icon);
+            // lib/safe-href.ts: an href it refuses (`javascript:`, `//evil.example`) is treated as no
+            // link, so `next/link` never renders another site as an internal-looking card.
+            const href = safeHref(item.href);
 
             const card = (
               <>
@@ -366,7 +370,7 @@ export function FeatureGridSection({ data, section }: FeatureGridSectionProps) {
                   <p className="mt-2.5 text-sm leading-relaxed text-ink-500">{item.body}</p>
                 ) : null}
 
-                {item.href ? (
+                {href ? (
                   // The affordance is a static one — a word and an arrow that are always there. The
                   // hover treatment on the card is decoration on top of it (contract §1.4).
                   <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-purple-700">
@@ -386,9 +390,9 @@ export function FeatureGridSection({ data, section }: FeatureGridSectionProps) {
                 delay={Math.min(index, MAX_STAGGER_STEPS) * STAGGER.cards}
                 className="h-full"
               >
-                {item.href ? (
+                {href ? (
                   <Link
-                    href={item.href}
+                    href={href}
                     // Without this the link's accessible name is the whole card read aloud — icon
                     // label, title, body and "Read more" in one run-on sentence.
                     aria-label={item.title || undefined}

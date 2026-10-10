@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { clientIpFromHeaders } from "@/lib/request-ip";
 import { redirect as navigate } from "next/navigation";
 import { ArrowRight, ArrowRightLeft, Link2Off, Plus, Search, Trash2, TriangleAlert } from "lucide-react";
 
@@ -8,6 +9,7 @@ import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageStructure } from "@/lib/permissions";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requestSiteUrl } from "@/lib/request-origin";
+import { isStorableHref, safeRedirectDestination } from "@/lib/safe-href";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -145,6 +147,7 @@ const PROBLEMS: Record<string, string> = {
   source_not_path: "The old address has to be a path on this site, beginning with a slash — “/old-page”, not a whole web address. Nothing was saved.",
   source_missing: "The old address was empty. Nothing was saved.",
   destination_missing: "The new address was empty. A redirect with nowhere to go would send readers to a blank page, so nothing was saved.",
+  destination_unsafe: "The new address cannot be used. Use a page on this site beginning with a single slash — “/new-page” — or a full address beginning with https://. Nothing was saved.",
   same: "The old and the new address are the same. That is an endless loop, which a browser reports as “too many redirects” — the page looks completely broken. Nothing was saved.",
   loop: "Saving that would make a chain that comes back to where it started, which a browser reports as “too many redirects”. Follow the chain from the new address and point it somewhere that settles. Nothing was saved.",
   source_exists: "There is already a redirect for that old address. Change the existing one rather than adding a second — two rows for one address is a coin toss over which one wins.",
@@ -172,15 +175,15 @@ function first(value: string | string[] | undefined): string {
  * Who is doing this, for the audit entry.
  *
  * `clientIp()`/`userAgent()` in lib/api.ts take a `Request`, which a Server Action does not have — so the
- * same two headers are read from `headers()` here. `x-forwarded-for` carries a list; the FIRST entry is
- * the client, everything after it is a proxy.
+ * same two headers are read from `headers()` here. The address comes from
+ * `clientIpFromHeaders` (lib/request-ip.ts), the trusted-header reader `clientIp()` uses — never the
+ * leftmost `x-forwarded-for` entry, which the client writes.
  */
 async function auditContext(actor: { id: string; email: string }): Promise<AuditContext> {
   const incoming = await headers();
-  const forwarded = incoming.get("x-forwarded-for");
   return {
     actor,
-    ipAddress: forwarded?.split(",")[0]?.trim() ?? incoming.get("x-real-ip") ?? null,
+    ipAddress: clientIpFromHeaders(incoming),
     userAgent: incoming.get("user-agent")
   };
 }
@@ -209,6 +212,15 @@ async function saveRedirect(formData: FormData): Promise<void> {
   if (!isUsableSource(source)) backWith({ problem: "source_not_path" });
   if (destination.length === 0) backWith({ problem: "destination_missing" });
   if (destination.length > DESTINATION_MAX) backWith({ problem: "too_long" });
+  // The same rule as `isUsableDestination` in the API route and `findPageRedirect()` on read
+  // (lib/safe-href.ts). This form had no destination check at all, so `/\evil.example` — which the URL
+  // parser reads as `//evil.example` — was saved and then sent in `Location`.
+  if (
+    !isStorableHref(destination, { contact: false }) ||
+    safeRedirectDestination(destination) !== destination
+  ) {
+    backWith({ problem: "destination_unsafe" });
+  }
   if (destination === source) backWith({ problem: "same" });
 
   const existing = await prisma.redirect.findMany({

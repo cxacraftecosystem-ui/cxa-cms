@@ -13,4 +13,10 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const { registerNewsletterMailerFromEnv } = await import("./lib/newsletter/delivery");
   registerNewsletterMailerFromEnv();
+
+  // Said once per process at start-up, where an operator tailing the container log will see it; the
+  // same sentence stays in Settings → Diagnostics. See `clientIpConfigurationWarning`.
+  const { clientIpConfigurationWarning } = await import("./lib/request-ip");
+  const clientIpWarning = clientIpConfigurationWarning();
+  if (clientIpWarning) console.warn(`[client-ip] ${clientIpWarning}`);
 }

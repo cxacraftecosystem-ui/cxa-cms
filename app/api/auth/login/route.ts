@@ -24,6 +24,7 @@ import { verifyPassword } from "@/lib/auth/password";
 import { canonicalRecoveryCode, decryptSecret, verifyTotp } from "@/lib/auth/totp";
 import { applySession } from "@/lib/auth/respond";
 import { recordEvent, type AuditContext } from "@/lib/audit";
+import { attemptedAddress } from "@/lib/audit-subject";
 import { RATE_LIMITS, enforceRateLimit } from "@/lib/ratelimit";
 
 /**
@@ -172,9 +173,9 @@ export const POST = route(async (request: NextRequest) => {
     await recordEvent(context, {
       action: "LOGIN_FAILED",
       entityType: "User",
-      entityLabel: email,
-      // The attempted address and the reason. Never the password, and never a hint of it.
-      after: { email, reason: result.reason }
+      // The attempted address as a keyed fingerprint and its domain — never the address itself, which
+      // may belong to nobody (lib/audit-subject.ts) — and the reason. Never the password, nor a hint of it.
+      after: { ...attemptedAddress(email), reason: result.reason }
     });
 
     if (result.reason === "locked") {
@@ -263,8 +264,8 @@ export const POST = route(async (request: NextRequest) => {
         action: "LOGIN_FAILED",
         entityType: "User",
         entityId: user.id,
-        entityLabel: email,
-        after: { email, reason: "second-factor" }
+        // The account is `entityId`; screens join it for a name. No address on the row.
+        after: { ...attemptedAddress(email), reason: "second-factor" }
       });
       throw unauthorized(SECOND_FACTOR_MESSAGE);
     }
@@ -303,9 +304,8 @@ export const POST = route(async (request: NextRequest) => {
       action: "LOGIN_FAILED",
       entityType: "User",
       entityId: user.id,
-      entityLabel: user.email,
       after: {
-        email: user.email,
+        ...attemptedAddress(user.email),
         reason: "access-refused",
         detail: describeRefusal(access.reason),
         provider: "PASSWORD"
@@ -343,7 +343,7 @@ export const POST = route(async (request: NextRequest) => {
       action: "LOGIN",
       entityType: "User",
       entityId: user.id,
-      entityLabel: user.email,
+      // No `entityLabel`: it used to repeat the actor's own address. Screens join `entityId` instead.
       // `admittedWithoutGrant` is recorded rather than inferred, under the same name the OAuth callback
       // uses, so one query answers "who has been getting in on the grace path?" across both doors. It
       // is a sign-in an administrator should follow up by writing the grant, and a server-console

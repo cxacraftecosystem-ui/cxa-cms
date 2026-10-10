@@ -83,9 +83,11 @@ import {
   X
 } from "lucide-react";
 
+import { sha256Base64 } from "@/lib/client/checksum";
 import { asApiClientError, del, patch, post } from "@/lib/client/fetcher";
 import { useResource } from "@/lib/client/useResource";
 import { kindForContentType, MAX_UPLOAD_BYTES } from "@/lib/client/upload";
+import { mediaMaxBytes } from "@/lib/storage/upload-limits";
 import { mediaSrc } from "@/lib/media/url";
 import { cn, formatBytes } from "@/lib/utils";
 import {
@@ -498,18 +500,30 @@ export function MediaDetailPanel({
       );
       return;
     }
+    // The per-kind cap the presign route enforces, by the kind the file is STORED as (an SVG is a
+    // document). Checked here so a too-large file is refused before it is read and fingerprinted.
+    const storedLimit = mediaMaxBytes(contentType === "image/svg+xml" ? "DOCUMENT" : kind);
+    if (file.size > storedLimit) {
+      setReplaceError(`That file is ${formatBytes(file.size)}; the limit for this kind of file is ${formatBytes(storedLimit)}.`);
+      return;
+    }
 
     setReplacing(true);
     try {
+      // Signed into the PUT, so storage refuses any other bytes (lib/client/checksum.ts).
+      const sha256 = await sha256Base64(file);
+
       const presigned = await post<{
         uploadUrl: string;
         headers: Record<string, string>;
         objectKey: string;
+        uploadTicket: string;
       }>(MEDIA_ENDPOINTS.presign, {
         fileName: file.name,
         contentType,
         byteSize: file.size,
-        kind
+        kind,
+        sha256
       });
 
       const headers = new Headers(presigned.headers);
@@ -528,7 +542,9 @@ export function MediaDetailPanel({
         objectKey: presigned.objectKey,
         fileName: file.name,
         contentType,
-        byteSize: file.size
+        byteSize: file.size,
+        // Required: `replace` checks the landed object against what was presigned.
+        uploadTicket: presigned.uploadTicket
       });
 
       onSaved(updated);

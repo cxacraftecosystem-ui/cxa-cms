@@ -6,6 +6,8 @@ import { canManageMedia } from "@/lib/permissions";
 import { presignUpload, requireStorage } from "@/lib/storage/client";
 import { buildObjectKey } from "@/lib/storage/keys";
 import { isSvg } from "@/lib/storage/derivatives";
+import { mediaMaxBytes } from "@/lib/storage/upload-limits";
+import { Sha256Field, signUploadTicket } from "@/lib/storage/upload-ticket";
 import { formatBytes } from "@/lib/utils";
 
 /**
@@ -14,13 +16,19 @@ import { formatBytes } from "@/lib/utils";
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * ⚠ THE SHAPE OF THIS ANSWER IS FIXED BY `lib/client/upload.ts`, which documents all three steps in
  * its header and hard-codes this address. It takes
- * `{ fileName, contentType, byteSize, kind }` and returns
- * `{ uploadUrl, headers, objectKey, expiresInSeconds }`. `MediaDetailPanel`'s file replacement calls
- * the same address for the same shape. Changing a key name here breaks both, silently, at runtime.
+ * `{ fileName, contentType, byteSize, kind, sha256 }` and returns
+ * `{ uploadUrl, headers, objectKey, expiresInSeconds, uploadTicket }`. `MediaDetailPanel`'s file
+ * replacement calls the same address for the same shape. Changing a key name here breaks both,
+ * silently, at runtime.
  *
- * THE SIGNED HEADERS ARE RETURNED VERBATIM AND MUST BE REPLAYED VERBATIM. `Content-Type` is part of
- * the signature, so a browser that sends a different one is refused with a signature mismatch — which
- * reads like a credentials problem and sends whoever is debugging it through IAM for an hour.
+ * THE SIGNED HEADERS ARE RETURNED VERBATIM AND MUST BE REPLAYED VERBATIM. `Content-Type`,
+ * `Content-Length` and `x-amz-checksum-sha256` are all part of the signature (lib/storage/client.ts),
+ * so storage refuses a PUT of a different type, a different size or different bytes. `byteSize` is
+ * capped PER KIND (lib/storage/upload-limits.ts) and `sha256` is required.
+ *
+ * `uploadTicket` is the signed record of what was presigned (lib/storage/upload-ticket.ts). `complete`
+ * and `replace` require it and compare the object's `HEAD` against it, not against what the browser
+ * says afterwards.
  *
  * IT IS AN ALLOW-LIST, NEVER A DENY-LIST. The derivative pipeline, the thumbnailer and the 3D viewer
  * all assume they were handed something they understand, and a `.exe` renamed to `.png` is not the
@@ -40,17 +48,6 @@ import { formatBytes } from "@/lib/utils";
  */
 
 export const dynamic = "force-dynamic";
-
-/**
- * The per-file cap, server-side and authoritative.
- *
- * ⚠ It MIRRORS `MAX_UPLOAD_BYTES` in lib/client/upload.ts and the two must move together. It is
- * restated rather than imported because that module is `"use client"`: importing it from a route
- * handler replaces the module with client references and reading a plain constant from it fails at
- * runtime. The browser's copy exists to refuse a 500 MB file before a byte leaves the machine; this
- * one is the one that actually matters.
- */
-const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 /** How long the signed PUT is good for. Long enough for a large file on a domestic uplink. */
 const PRESIGN_EXPIRY_SECONDS = 15 * 60;
@@ -122,7 +119,9 @@ const PresignBody = z.object({
     .number()
     .int("A file size has to be a whole number of bytes.")
     .positive("This file is empty (0 bytes). If you dragged a folder in, open it and choose the files inside."),
-  kind: z.enum(MEDIA_KINDS)
+  kind: z.enum(MEDIA_KINDS),
+  /** Base64 SHA-256 of the file, computed by the browser. Signed into the PUT; storage verifies it. */
+  sha256: Sha256Field
 });
 
 /**
@@ -183,7 +182,7 @@ export const POST = route(async (request: NextRequest) => {
 
   // The capability check is the boundary, not the media screen's own guard. A client guard that only
   // hides a control is not a guard (contract §1.7).
-  await requireCapability(
+  const user = await requireCapability(
     canManageMedia,
     "Uploading to the media library needs media manager access or higher. An administrator can raise yours."
   );
@@ -195,19 +194,24 @@ export const POST = route(async (request: NextRequest) => {
   const body = await parseJson(request, PresignBody);
   const contentType = body.contentType.toLowerCase();
 
-  if (body.byteSize > MAX_UPLOAD_BYTES) {
+  const resolved = resolveKind(contentType, body.kind);
+  if ("problem" in resolved) throw badRequest(resolved.problem);
+
+  // The cap is by the kind the file will be STORED as (an SVG is held to the document cap), and it is
+  // authoritative because the size is then SIGNED into the PUT: storage refuses any other length.
+  const limit = mediaMaxBytes(resolved.kind);
+  if (body.byteSize > limit) {
     // BOTH numbers, always. "Too large" leaves the reader guessing whether trimming a little would
     // help; here the answer is no.
     throw new ApiError(
       413,
-      `This file is ${formatBytes(body.byteSize)} and the limit is ${formatBytes(MAX_UPLOAD_BYTES)}. ` +
+      `This file is ${formatBytes(body.byteSize)} and the limit for ${resolved.kind
+        .toLowerCase()
+        .replace(/_/g, " ")} files is ${formatBytes(limit)}. ` +
         "Compress it, or add it to the file store as a download instead of to the media library.",
       { code: "too_large" }
     );
   }
-
-  const resolved = resolveKind(contentType, body.kind);
-  if ("problem" in resolved) throw badRequest(resolved.problem);
 
   // The key is built HERE and never taken from the caller. It is random (so the bucket cannot be
   // enumerated), date-partitioned, and keeps the original filename on the end so a signed download
@@ -219,6 +223,8 @@ export const POST = route(async (request: NextRequest) => {
     // The type we SIGN is the type the browser must send. It is also the only type `complete` will
     // accept for this key, which is what stops a signed PUT for a PNG being used to store a script.
     contentType,
+    contentLength: body.byteSize,
+    checksumSha256: body.sha256,
     expiresInSeconds: PRESIGN_EXPIRY_SECONDS
   });
 
@@ -227,6 +233,13 @@ export const POST = route(async (request: NextRequest) => {
     // Returned verbatim so no caller has to know which headers were signed.
     headers: signed.headers,
     objectKey,
-    expiresInSeconds: signed.expiresInSeconds
+    expiresInSeconds: signed.expiresInSeconds,
+    uploadTicket: signUploadTicket({
+      objectKey,
+      byteSize: body.byteSize,
+      contentType,
+      sha256: body.sha256,
+      userId: user.id
+    })
   });
 });

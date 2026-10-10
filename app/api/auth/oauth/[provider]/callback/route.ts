@@ -3,6 +3,7 @@ import type { Role, StudioAccess } from "@prisma/client";
 import { z } from "@/lib/zod";
 import { clientIp, notFound, route, userAgent } from "@/lib/api";
 import { mutateWithHistory, recordEvent, type AuditContext } from "@/lib/audit";
+import { attemptedAddress } from "@/lib/audit-subject";
 import { prisma } from "@/lib/db";
 import {
   describeRefusal,
@@ -267,9 +268,8 @@ export const GET = route(
       await recordEvent(auditContext, {
         action: "LOGIN_FAILED",
         entityType: "User",
-        entityLabel: email,
         after: {
-          email,
+          ...attemptedAddress(email),
           provider,
           reason: "the provider did not confirm that this email address belongs to the account"
         }
@@ -323,9 +323,8 @@ export const GET = route(
         action: "LOGIN_FAILED",
         entityType: "User",
         entityId: existingUser?.id ?? null,
-        entityLabel: email,
         // The SPECIFIC reason, here and only here. The reader is told nothing that distinguishes it.
-        after: { email, provider, reason: describeRefusal(decision.reason) }
+        after: { ...attemptedAddress(email), provider, reason: describeRefusal(decision.reason) }
       });
       return refuse("access_denied");
     }
@@ -339,9 +338,8 @@ export const GET = route(
         action: "LOGIN_FAILED",
         entityType: "User",
         entityId: existingUser.id,
-        entityLabel: email,
         after: {
-          email,
+          ...attemptedAddress(email),
           provider,
           reason: existingUser.deletedAt
             ? "the account has been deleted"
@@ -383,7 +381,8 @@ export const GET = route(
         {
           action: "UPDATE",
           entityType: "User",
-          entityLabel: `${existingUser.name} <${existingUser.email}>`,
+          // The name only; an address on an account row is stripped anyway (lib/audit-subject.ts).
+          entityLabel: existingUser.name,
           // No revision: a user row is not versioned content, and one here would only be a second copy
           // of the audit entry. Same reasoning as the invitation route.
           revise: false
@@ -426,7 +425,7 @@ export const GET = route(
         {
           action: "CREATE",
           entityType: "User",
-          entityLabel: `${name} <${email}>`,
+          entityLabel: name,
           revise: false
         },
         async (tx) => {
@@ -471,7 +470,7 @@ export const GET = route(
         action: "LOGIN",
         entityType: "User",
         entityId: signedIn.id,
-        entityLabel: signedIn.email,
+        // No `entityLabel`: it used to repeat the actor's own address. Screens join `entityId`.
         after: {
           method: config.label,
           provider,

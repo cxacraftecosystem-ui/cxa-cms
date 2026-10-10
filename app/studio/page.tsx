@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 
 import { prisma } from "@/lib/db";
+import { auditActorName } from "@/lib/audit-actor";
+import { accountLabel } from "@/lib/audit-subject";
 import { requireUser } from "@/lib/auth/current-user";
 import { livePublishableWhere } from "@/lib/content";
 import { pagePath } from "@/lib/pages";
@@ -209,18 +211,20 @@ interface ActivityEntry {
   id: string;
   action: AuditAction;
   entityType: string;
+  entityId: string | null;
   entityLabel: string | null;
+  after: unknown;
   actorEmail: string | null;
   createdAt: Date;
-  actor: { name: string } | null;
+  actor: { name: string; email: string } | null;
 }
 
 /** One sentence per audit entry: who, what, and what it was called. No enum names, ever. */
 function describeActivity(entry: ActivityEntry): string {
   const phrases: Partial<Record<AuditAction, string>> = ACTION_PHRASES;
-  // The actor's row may have been deleted since; `actorEmail` is denormalised onto the log for exactly
-  // that reason, so the trail survives the account.
-  const who = entry.actor?.name.trim() || entry.actorEmail || "Somebody";
+  // Joined from the account: the row stores only `actorId`. `actorEmail` is the legacy column, read
+  // only for rows written before it stopped being filled (lib/audit-actor.ts).
+  const who = auditActorName(entry, "Somebody");
   const label = entry.entityLabel?.trim();
 
   switch (entry.action) {
@@ -228,9 +232,13 @@ function describeActivity(entry: ActivityEntry): string {
       return `${who} signed in`;
     case "LOGOUT":
       return `${who} signed out`;
-    case "LOGIN_FAILED":
-      // Never "who": a failed attempt names the address that was TRIED, which may not be a real person.
-      return `A sign-in for ${label ?? "an account"} did not succeed`;
+    case "LOGIN_FAILED": {
+      // Never "who": a failed attempt is about the address that was TRIED, which may not be a real
+      // person. The row stores no address (lib/audit-subject.ts); without a join here it reads as the
+      // typed address masked to its domain, or the legacy label on an older row.
+      const tried = entry.entityId ? null : accountLabel(entry, null);
+      return `A sign-in for ${tried ?? "an account"} did not succeed`;
+    }
     default:
       return `${who} ${phrases[entry.action] ?? "changed"} ${label ?? nounFor(entry.entityType)}`;
   }
@@ -372,10 +380,12 @@ export default async function StudioDashboardPage() {
         id: true,
         action: true,
         entityType: true,
+        entityId: true,
         entityLabel: true,
+        after: true,
         actorEmail: true,
         createdAt: true,
-        actor: { select: { name: true } }
+        actor: { select: { name: true, email: true } }
       }
     }),
 

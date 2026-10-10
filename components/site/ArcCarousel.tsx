@@ -55,6 +55,7 @@ import { SPRING_SCROLL } from "@/components/motion/constants";
 import { useReducedMotionPreference } from "@/components/motion/useReducedMotionPreference";
 import { Button } from "@/components/ui/Button";
 import { clamp } from "@/lib/utils";
+import { isInternalHref, safeHref } from "@/lib/safe-href";
 
 export interface ArcCarouselItem {
   /** Where the card goes. `""` renders the card as a picture with a caption rather than a link. */
@@ -417,18 +418,23 @@ function CardLink({
     if (event.currentTarget.matches(":focus-visible")) onCentre();
   };
 
-  if (href.startsWith("/") || href.startsWith("#") || href.startsWith("?")) {
+  // lib/safe-href.ts, not a "starts with /" test: `//evil.example` and `/\evil.example` start with
+  // a slash and lead to another host. An href it refuses draws the card with no link at all.
+  const safe = safeHref(href);
+  if (safe === null) return <div className={className}>{children}</div>;
+
+  if (isInternalHref(safe)) {
     return (
       // `draggable={false}` on both branches: an anchor is natively draggable, and a native link
       // drag starting mid-gesture steals the pointer from the fan's own drag.
-      <Link href={href} className={className} onFocus={onFocus} draggable={false}>
+      <Link href={safe} className={className} onFocus={onFocus} draggable={false}>
         {children}
       </Link>
     );
   }
 
   return (
-    <a href={href} className={className} onFocus={onFocus} draggable={false}>
+    <a href={safe} className={className} onFocus={onFocus} draggable={false}>
       {children}
     </a>
   );

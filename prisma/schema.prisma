@@ -301,17 +301,30 @@ enum AuditAction {
 /// Who, when, what, old value, new value. `before`/`after` hold the FULL serialised entity rather
 /// than a diff: a diff computed at write time is only as good as the differ that produced it, and a
 /// rollback needs the whole prior state anyway.
+/// Who did what, when, from which (fingerprinted) network. Written only by lib/audit.ts.
+///
+/// ⚠ NO RAW EMAIL, NO RAW IP ON NEW ROWS (docs/AUDIT-PRIVACY.md). The actor is `actorId`, and every
+/// screen joins `actor` for the address — so it is shown while the account exists and reads "deleted
+/// user" after a hard delete. The network is `ipHash`, a keyed HMAC that correlates repeat sources
+/// without being reversible by anyone who reads the table or an export of it.
 model AuditLog {
   id          String      @id @default(cuid())
   actorId     String?
-  actorEmail  String? // denormalised so a deleted user does not erase the trail
+  /// LEGACY, read-only. Written before 2026-10; nothing writes it now. Kept so the history of rows
+  /// written before the change still names an account that has since been hard-deleted, until the
+  /// optional scrub in docs/AUDIT-PRIVACY.md is run.
+  actorEmail  String?
   action      AuditAction
   entityType  String
   entityId    String?
   entityLabel String?
   before      Json?
   after       Json?
+  /// LEGACY, read-only — see `actorEmail`. New rows carry `ipHash` instead.
   ipAddress   String?
+  /// `<keyId>:<hex>` — HMAC-SHA256(AUDIT_IP_HASH_SECRET, normalised address), truncated to 128 bits.
+  /// The key id names which secret produced it, so a rotation is visible rather than silent.
+  ipHash      String?
   userAgent   String?
   createdAt   DateTime    @default(now())
 
@@ -320,6 +333,7 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorId])
   @@index([createdAt])
+  @@index([ipHash, createdAt])
   @@map("audit_logs")
 }
 

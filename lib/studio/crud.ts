@@ -1041,6 +1041,11 @@ export async function releaseLock(
  * over by X" beside the saves it explains.
  *
  * No revision is written: nothing about the content changed.
+ *
+ * Both holders are recorded by ACCOUNT ID (`editingHeldById`), never by address: this row is about a
+ * page or a post, so `scrubAccountIdentity` does not rewrite it, and an address here would be exactly
+ * the metadata about who acted that docs/AUDIT-PRIVACY.md says the log no longer keeps. The screens
+ * join the id to a name at read time (`lockHoldersForAuditRows`, `withLockHolderNames`).
  */
 export async function takeOverLock(
   context: AuditContext,
@@ -1072,11 +1077,11 @@ export async function takeOverLock(
         entityId,
         entityLabel: entityLabel ?? null,
         before: {
-          editingHeldBy: previous.user.email,
+          editingHeldById: previous.userId,
           editingHeldSince: previous.acquiredAt,
           lockHadExpired: previous.expiresAt.getTime() <= now.getTime()
         },
-        after: { editingHeldBy: user.email, takenOver: true }
+        after: { editingHeldById: user.id, takenOver: true }
       });
     }
 

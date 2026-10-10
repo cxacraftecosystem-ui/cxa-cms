@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
 import type { MediaKind, Prisma } from "@prisma/client";
@@ -19,13 +18,14 @@ import { requireCapability } from "@/lib/auth/current-user";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
 import { canManageMedia } from "@/lib/permissions";
 import {
-  deleteObject,
+  confirmUploadedObject,
   deleteObjects,
   getObjectBytes,
-  headObject,
   requireStorage
 } from "@/lib/storage/client";
 import { isSafeObjectKey } from "@/lib/storage/keys";
+import { sha256Hex } from "@/lib/storage/upload-limits";
+import { UploadTicketField, verifyUploadTicket } from "@/lib/storage/upload-ticket";
 import {
   DERIVABLE_MIME_TYPES,
   generateDerivatives,
@@ -39,8 +39,10 @@ import { formatBytes } from "@/lib/utils";
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * ⚠ THE SHAPE IS FIXED BY `MediaDetailPanel`'s replacement flow. It sends
- * `{ objectKey, fileName, contentType, byteSize }` and expects a `StudioMediaAsset` back, which it puts
- * straight into the grid with no re-fetch.
+ * `{ objectKey, fileName, contentType, byteSize, uploadTicket }` and expects a `StudioMediaAsset` back,
+ * which it puts straight into the grid with no re-fetch. `uploadTicket` is presign's signed record of
+ * the size, type and SHA-256 it signed into the PUT, and the landed object is checked against IT
+ * (lib/storage/upload-ticket.ts, `confirmUploadedObject` in lib/storage/client.ts).
  *
  * ⚠ THE SIGNED PUT HAS ALREADY HAPPENED BY THE TIME THIS RUNS. The panel presigns through
  * `/api/studio/media/presign`, PUTs the file to storage from the browser, and only then calls this
@@ -88,8 +90,8 @@ export const dynamic = "force-dynamic";
 /** ⚠ Mirrors `DERIVE_MAX_BYTES` in media/complete. Above this, no smaller versions are made. */
 const DERIVE_MAX_BYTES = 80 * 1024 * 1024;
 
-/** ⚠ Mirrors `CHECKSUM_MAX_BYTES` in media/complete. Above this, no fingerprint is taken. */
-const CHECKSUM_MAX_BYTES = 128 * 1024 * 1024;
+/** ⚠ Mirrors `PROBE_MAX_BYTES` in media/complete. Above this, a non-derivable image is not probed. */
+const PROBE_MAX_BYTES = 128 * 1024 * 1024;
 
 /**
  * The exact shape `buildObjectKey({ namespace: "media", … })` produces.
@@ -175,7 +177,8 @@ const ReplaceBody = z.object({
   byteSize: z
     .number()
     .int("A file size has to be a whole number of bytes.")
-    .positive("That file is empty (0 bytes). Choose the file itself rather than a folder.")
+    .positive("That file is empty (0 bytes). Choose the file itself rather than a folder."),
+  uploadTicket: UploadTicketField
 });
 
 /**
@@ -242,6 +245,15 @@ export const POST = route(async (request: NextRequest, context: { params: Promis
     );
   }
 
+  // ── What did presign actually sign for this key? ────────────────────────────────────────────────
+  // The reference for every check on the bytes below — never the body's own description of them.
+  const intent = verifyUploadTicket(body.uploadTicket, { objectKey, userId: user.id });
+  if (intent.contentType !== contentType || intent.byteSize !== body.byteSize) {
+    throw badRequest(
+      "This upload is being described differently from how it was started, so nothing was changed. Start the upload again."
+    );
+  }
+
   const asset = await prisma.mediaAsset.findFirst({
     // The recycle bin is out of scope: replacing the file behind a deleted row would put new bytes
     // somewhere nothing on the site can see, and the restore would then bring back a different picture.
@@ -292,40 +304,28 @@ export const POST = route(async (request: NextRequest, context: { params: Promis
     );
   }
 
-  // ── Did the bytes actually land? ────────────────────────────────────────────────────────────────
-  // Trusting the browser's "done" is how a row ends up pointing at a key that was never written — a
-  // broken image with a perfectly healthy-looking database, found weeks later by a visitor.
-  const head = await headObject(objectKey);
-  if (!head) {
-    throw badRequest(
-      "The upload did not reach storage, so nothing was changed. Nothing is stored under that address. " +
-        "Try uploading the file again."
-    );
-  }
+  // ── Did the bytes land, and are they exactly what was presigned? ────────────────────────────────
+  // Trusting the browser's "done" is how a row ends up pointing at a key that was never written. Absent
+  // → 400; a different size, storage-verified checksum or type → the object (issued a moment ago, and
+  // referenced by nothing) is deleted, then 400.
+  const head = await confirmUploadedObject(intent, {
+    logTag: "[media/replace]",
+    nothingChanged: "Nothing was changed."
+  });
 
-  // ── Are they the bytes that were described? ─────────────────────────────────────────────────────
-  if (head.byteSize !== body.byteSize) {
-    // This key was issued by the media library a moment ago and no row references it, so removing it is
-    // safe — and it is the only way this refusal does not leave an object nothing will ever collect.
-    await deleteObject(objectKey).catch((error: unknown) => {
-      console.error("[media/replace] could not remove a rejected upload", objectKey, error);
-    });
-    throw badRequest(
-      `What reached storage is ${formatBytes(head.byteSize)} but the upload was described as ` +
-        `${formatBytes(body.byteSize)}. Nothing was changed. Try uploading the file again.`
-    );
-  }
+  // The fingerprint is storage's own, verified at PUT time — hex, as the column has always held it —
+  // so every replacement gets one whatever its size, and the bytes are fetched only when needed.
+  const checksum = sha256Hex(intent.sha256);
 
-  // ── The bytes, once, for the fingerprint and the derivatives ────────────────────────────────────
   const derivable = DERIVABLE_MIME_TYPES.has(contentType) && head.byteSize <= DERIVE_MAX_BYTES;
-  const wantsChecksum = head.byteSize <= CHECKSUM_MAX_BYTES;
+  const wantsBytes =
+    derivable ||
+    (CONTENT_TYPE_KINDS[contentType] === "IMAGE" && !isSvg(contentType) && head.byteSize <= PROBE_MAX_BYTES);
 
   let bytes: Buffer | null = null;
-  if (derivable || wantsChecksum) {
+  if (wantsBytes) {
     bytes = await getObjectBytes(objectKey);
   }
-
-  const checksum = bytes && wantsChecksum ? createHash("sha256").update(bytes).digest("hex") : null;
 
   /**
    * Everything the row records about the FILE ITSELF is recomputed, never carried over.
@@ -377,12 +377,6 @@ export const POST = route(async (request: NextRequest, context: { params: Promis
       `The new file is ${formatBytes(head.byteSize)}, which is above the ${formatBytes(DERIVE_MAX_BYTES)} ` +
         "limit for making smaller versions, so visitors will get the full-size file. Upload a smaller copy if " +
         "you have one."
-    );
-  }
-  if (!wantsChecksum) {
-    notes.push(
-      `The new file is ${formatBytes(head.byteSize)}, which is above the ${formatBytes(CHECKSUM_MAX_BYTES)} ` +
-        "limit for fingerprinting, so it was stored without one. That only affects duplicate detection."
     );
   }
 

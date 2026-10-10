@@ -9,6 +9,11 @@ import { assertSameOrigin, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import {
+  ANNOUNCEMENT_HREF_MAX,
+  ANNOUNCEMENT_HREF_MESSAGE,
+  isStorableAnnouncementHref
+} from "@/lib/studio/link-fields";
 import { canManageContent } from "@/lib/permissions";
 import {
   buildAuditContext,
@@ -77,7 +82,7 @@ const MAX_ROWS = 100;
  */
 const MESSAGE_MAX = 240;
 const LINK_LABEL_MAX = 48;
-const HREF_MAX = 500;
+// The third cap, the link's (500), is `ANNOUNCEMENT_HREF_MAX` in lib/studio/link-fields.ts.
 
 /**
  * The tone, taken straight from the Prisma enum.
@@ -116,7 +121,10 @@ const CreateBody = z.object({
     MESSAGE_MAX,
     "An announcement needs something to say. One sentence is usually right."
   ),
-  href: optionalText(HREF_MAX),
+  // lib/safe-href.ts on SAVE: the band renders this through `next/link`, where `//evil.example` or
+  // `/\evil.example` would look internal and leave the site, and `javascript:` would run.
+  // The rule is lib/studio/link-fields.ts (tested there).
+  href: optionalText(ANNOUNCEMENT_HREF_MAX).refine(isStorableAnnouncementHref, { message: ANNOUNCEMENT_HREF_MESSAGE }),
   linkLabel: optionalText(LINK_LABEL_MAX),
   tone: toneSchema.default(AnnouncementTone.INFO),
   startsAt: optionalDateTime("The date it starts showing"),

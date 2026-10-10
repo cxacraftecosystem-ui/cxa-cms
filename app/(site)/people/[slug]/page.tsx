@@ -40,6 +40,7 @@ import { parseRichText, richTextExcerpt } from "@/lib/richtext";
 import { absoluteUrl, pageMetadata, serializeJsonLd } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
 import { truncateWords } from "@/lib/utils";
+import { safeExternalHref } from "@/lib/safe-href";
 
 import { PUBLICATION_KIND_LABELS, doiUrl } from "../../publications/filters";
 
@@ -176,17 +177,18 @@ interface ProfileLink {
 function profileUrl(raw: string | null, build: (handle: string) => string): string | null {
   const value = raw?.trim() ?? "";
   if (!value) return null;
-  if (/^https?:\/\//i.test(value)) return value;
+  if (/^https?:\/\//i.test(value)) return safeExternalHref(value);
   // A leading slash is what a half-pasted path looks like; stripping it keeps the built URL clean.
   const handle = value.replace(/^\/+/, "");
-  return handle.length > 0 ? build(handle) : null;
+  // Only a URL that parses as http(s) is ever drawn as a link (lib/safe-href.ts).
+  return handle.length > 0 ? safeExternalHref(build(handle)) : null;
 }
 
 /** A website field that may or may not carry its scheme. Bare hosts are assumed to be https. */
 function websiteUrl(raw: string | null): string | null {
   const value = raw?.trim() ?? "";
   if (!value) return null;
-  return /^https?:\/\//i.test(value) ? value : `https://${value.replace(/^\/+/, "")}`;
+  return safeExternalHref(/^https?:\/\//i.test(value) ? value : `https://${value.replace(/^\/+/, "")}`);
 }
 
 /** The visible text for a URL: the host and path, without the scheme nobody reads. */
@@ -697,7 +699,7 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
               {publications.map((publication) => {
                 const venue = publicationDisplayVenue(publication);
                 const doi = doiUrl(publication.doi);
-                const external = doi ?? publication.url?.trim() ?? null;
+                const external = doi ?? safeExternalHref(publication.url);
 
                 return (
                   <li key={publication.id} className="py-5">

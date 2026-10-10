@@ -45,6 +45,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { pickShowcase, type FileRow, type ResolvedSectionData } from "@/lib/sections/resolve";
 import type { DownloadsSectionData } from "@/lib/sections/schema";
 import { formatBytes, truncateWords } from "@/lib/utils";
+import { safeHref } from "@/lib/safe-href";
 
 export interface DownloadsSectionProps {
   data: DownloadsSectionData;
@@ -159,7 +160,8 @@ export function DownloadsSection({
   const eyebrow = data.eyebrow.trim();
   const body = data.body.trim();
   const label = data.ctaLabel.trim();
-  const href = data.ctaHref.trim();
+  // lib/safe-href.ts: an href it refuses (`//evil.example`, `javascript:`) means no "see all" link.
+  const href = safeHref(data.ctaHref) ?? "";
   const link = label && href ? { href, label } : undefined;
   const showsHeader = Boolean(heading || eyebrow || body || link);
   const hidden = Math.max(0, matched - rows.length);

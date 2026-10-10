@@ -22,6 +22,8 @@
  */
 import type { LucideIcon } from "lucide-react";
 
+import { safeHref } from "@/lib/safe-href";
+
 export interface NavNode {
   id: string;
   label: string;
@@ -178,4 +180,66 @@ export function collectHrefs(nodes: NavNode[]): string[] {
     out.push(...collectHrefs(node.children));
   }
   return out;
+}
+
+/** The columns `assembleNavigation` reads from a `NavigationItem` row. */
+export interface NavigationRow {
+  id: string;
+  label: string;
+  href: string;
+  isExternal: boolean;
+  parentId: string | null;
+  location: string;
+}
+
+/**
+ * The visible rows, in menu order, as the tree the header and footer draw. It lives here, not beside
+ * the query in lib/navigation-server.ts, so the read-time href filter below can be tested without a
+ * database.
+ */
+export function assembleNavigation(rows: readonly NavigationRow[]): SiteNavigation {
+  const byLocation: Record<string, NavNode[]> = { header: [], footer: [], utility: [] };
+  const nodes = new Map<string, NavNode>();
+
+  // Two passes. The first materialises every node so a child can find its parent regardless of the
+  // order rows came back in — ordering by position does NOT guarantee a parent precedes its child.
+  for (const row of rows) {
+    // Re-checked on READ, with the same rule the studio route applies on save (lib/safe-href.ts): a row
+    // written before that rule existed — or straight into the table — may hold `//evil.example` or
+    // `/\evil.example`, which the header would render through `next/link` as an internal link that
+    // leaves the site. Such a row is left out, and its children are promoted as for a hidden parent.
+    const href = safeHref(row.href);
+    if (href === null) {
+      console.error(`[navigation] the menu item "${row.label}" has an unusable destination, so it was left out.`);
+      continue;
+    }
+    nodes.set(row.id, {
+      id: row.id,
+      label: row.label,
+      href,
+      isExternal: row.isExternal,
+      children: []
+    });
+  }
+
+  for (const row of rows) {
+    const node = nodes.get(row.id);
+    if (!node) continue;
+    if (row.parentId) {
+      const parent = nodes.get(row.parentId);
+      // A child whose parent is hidden or missing is promoted to the top level rather than dropped.
+      // Silently losing a destination is worse than showing it one level higher than intended.
+      if (parent) {
+        parent.children.push(node);
+        continue;
+      }
+    }
+    (byLocation[row.location] ??= []).push(node);
+  }
+
+  return {
+    header: byLocation.header?.length ? byLocation.header : withSyntheticIds(DEFAULT_HEADER, "d-h"),
+    footer: byLocation.footer?.length ? byLocation.footer : withSyntheticIds(DEFAULT_FOOTER, "d-f"),
+    utility: byLocation.utility ?? []
+  };
 }

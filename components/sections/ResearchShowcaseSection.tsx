@@ -45,6 +45,7 @@ import {
   type ResolvedSectionData
 } from "@/lib/sections/resolve";
 import type { ResearchShowcaseSectionData } from "@/lib/sections/schema";
+import { safeHref } from "@/lib/safe-href";
 import { cn, stableHash, truncateWords } from "@/lib/utils";
 
 export interface ResearchShowcaseSectionProps {
@@ -96,7 +97,8 @@ export function ResearchShowcaseSection({
   const eyebrow = data.eyebrow.trim();
   const body = data.body.trim();
   const label = data.ctaLabel.trim();
-  const href = data.ctaHref.trim();
+  // lib/safe-href.ts: an href it refuses (`//evil.example`, `javascript:`) means no "see all" link.
+  const href = safeHref(data.ctaHref) ?? "";
   const link = label && href ? { href, label } : undefined;
   const showsHeader = Boolean(heading || eyebrow || body || link);
   const hidden = Math.max(0, matched - rows.length);

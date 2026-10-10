@@ -27,6 +27,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
+import { isExternalHref, safeHref } from "@/lib/safe-href";
 
 export interface DefinitionItem {
   /** The label — "Funding body", "Published", "DOI". */
@@ -96,13 +97,15 @@ export function DefinitionList({
       )}
     >
       {rows.map((item, index) => {
-        const external = typeof item.href === "string" && /^https?:/i.test(item.href);
+        // lib/safe-href.ts: an href it refuses (`javascript:`, `//evil.example`) is drawn as plain words.
+        const href = item.href === undefined ? null : safeHref(item.href);
+        const external = href !== null && isExternalHref(href);
         const value =
-          item.href === undefined ? (
+          href === null ? (
             item.value
           ) : external ? (
             <a
-              href={item.href}
+              href={href}
               target="_blank"
               rel="noopener noreferrer"
               className={VALUE_LINK}
@@ -111,7 +114,7 @@ export function DefinitionList({
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           ) : (
-            <Link href={item.href} className={VALUE_LINK}>
+            <Link href={href} className={VALUE_LINK}>
               {item.value}
             </Link>
           );

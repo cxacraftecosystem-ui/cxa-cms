@@ -1,13 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
-import {
-  DEFAULT_FOOTER,
-  DEFAULT_HEADER,
-  withSyntheticIds,
-  type NavNode,
-  type SiteNavigation
-} from "@/lib/navigation";
+import { assembleNavigation, type SiteNavigation } from "@/lib/navigation";
 
 /**
  * Reading the navigation tree out of the database.
@@ -53,40 +47,5 @@ export const getNavigation = cache(async (): Promise<SiteNavigation> => {
       return [] as Awaited<ReturnType<typeof prisma.navigationItem.findMany>>;
     });
 
-  const byLocation: Record<string, NavNode[]> = { header: [], footer: [], utility: [] };
-  const nodes = new Map<string, NavNode>();
-
-  // Two passes. The first materialises every node so a child can find its parent regardless of the
-  // order rows came back in — ordering by position does NOT guarantee a parent precedes its child.
-  for (const row of rows) {
-    nodes.set(row.id, {
-      id: row.id,
-      label: row.label,
-      href: row.href,
-      isExternal: row.isExternal,
-      children: []
-    });
-  }
-
-  for (const row of rows) {
-    const node = nodes.get(row.id);
-    if (!node) continue;
-    if (row.parentId) {
-      const parent = nodes.get(row.parentId);
-      // A child whose parent is hidden or missing is promoted to the top level rather than dropped.
-      // Silently losing a destination is worse than showing it one level higher than intended.
-      if (parent) {
-        parent.children.push(node);
-        continue;
-      }
-    }
-    (byLocation[row.location] ??= []).push(node);
-  }
-
-  return {
-    header: byLocation.header?.length ? byLocation.header : withSyntheticIds(DEFAULT_HEADER, "d-h"),
-    footer: byLocation.footer?.length ? byLocation.footer : withSyntheticIds(DEFAULT_FOOTER, "d-f"),
-    utility: byLocation.utility ?? []
-  };
+  return assembleNavigation(rows);
 });
-

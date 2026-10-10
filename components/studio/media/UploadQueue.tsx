@@ -76,6 +76,7 @@ import {
   type UploadProgress
 } from "@/lib/client/upload";
 import { mediaSrc } from "@/lib/media/url";
+import { mediaMaxBytes } from "@/lib/storage/upload-limits";
 import { cn, formatBytes } from "@/lib/utils";
 import { ImageCropper, storedCrop, type CropChoice } from "@/components/studio/ImageCropper";
 import { Button } from "@/components/ui/Button";
@@ -954,9 +955,10 @@ export function UploadQueue({
 
       {!compact && !running && failures.length === 0 ? (
         <p className="mt-2 text-xs leading-relaxed text-ink-500">
-          Large files are fine — the only limit is the {formatBytes(MAX_UPLOAD_BYTES)} per file stated
-          above. If you close this page while an upload is running, the browser will ask before letting
-          you go.
+          Large files are fine — up to {formatBytes(MAX_UPLOAD_BYTES)} per file for video and 3D models,{" "}
+          {formatBytes(mediaMaxBytes("IMAGE"))} for pictures and {formatBytes(mediaMaxBytes("DOCUMENT"))} for
+          audio and documents. If you close this page while an upload is running, the browser will ask
+          before letting you go.
         </p>
       ) : null}
     </div>

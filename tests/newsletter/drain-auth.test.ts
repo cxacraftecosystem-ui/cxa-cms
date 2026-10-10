@@ -15,8 +15,9 @@ function request(bearer?: string) {
   });
 }
 
-function refused(fn: () => void) {
-  assert.throws(fn, (error: unknown) => error instanceof ApiError && error.status === 403);
+/** 401 when a secret is configured but not presented in the header; 403 when none is configured. */
+function refused(fn: () => void, status: 401 | 403 = 401) {
+  assert.throws(fn, (error: unknown) => error instanceof ApiError && error.status === status);
 }
 
 describe("the drain's bearer", () => {
@@ -50,7 +51,7 @@ describe("the drain's bearer", () => {
   it("refuses everything when neither secret is configured", () => {
     delete process.env.NEWSLETTER_DRAIN_SECRET;
     delete process.env.CRON_SECRET;
-    refused(() => assertNewsletterDrainAuthorised(request("")));
-    refused(() => assertNewsletterDrainAuthorised(request("anything")));
+    refused(() => assertNewsletterDrainAuthorised(request("")), 403);
+    refused(() => assertNewsletterDrainAuthorised(request("anything")), 403);
   });
 });

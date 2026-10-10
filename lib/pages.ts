@@ -9,6 +9,7 @@ import { livePublishableWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { authEnv } from "@/lib/env";
 import { MEDIA_IMAGE_SELECT } from "@/lib/media/select";
+import { safeRedirectDestination } from "@/lib/safe-href";
 import { sectionLabel } from "@/lib/sections/registry";
 import { placeholderPromptsIn } from "@/lib/sections/schema";
 import { pageMetadata } from "@/lib/seo";
@@ -544,7 +545,7 @@ export interface PageRedirect {
 /**
  * Tidy an editor-typed destination, or reject it.
  *
- * Three cases, and each rejection is a loop or a surprise avoided rather than a preference:
+ * Four cases, and each rejection is a loop or a surprise avoided rather than a preference:
  *
  *   • A bare word (`about`) becomes `/about`. Handed to `redirect()` as typed it would be resolved
  *     relative to the current URL, so `/research/old` → `about` would land on `/research/about`.
@@ -553,15 +554,13 @@ export interface PageRedirect {
  *     a path.
  *   • Empty is null. A redirect row with no destination is a row that must be ignored, not one that
  *     sends every reader to the homepage.
+ *   • Anything `isSafeSitePath()` refuses once it is a path is null too — see below.
  */
 function normaliseRedirectDestination(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  if (trimmed.startsWith("#") || trimmed.startsWith("?")) return trimmed;
-  if (trimmed.startsWith("/")) return `/${trimmed.replace(/^\/+/, "")}`;
-  return `/${trimmed}`;
+  // lib/safe-href.ts owns the rule. Beyond the cases above it refuses `/\evil.example` (the URL parser
+  // reads `\` as `/`, so `Location: /\evil.example` leaves the site), `/%2F%2Fevil.example`, and a tab
+  // or newline smuggled after the slash — a row holding one is ignored, as an empty one is.
+  return safeRedirectDestination(raw);
 }
 
 /**

@@ -91,6 +91,7 @@ import { attachedFilmSettings } from "@/lib/media/video";
 import { parseRichText, richTextExcerpt } from "@/lib/richtext";
 import { pageMetadata } from "@/lib/seo";
 import { formatBytes, truncateWords } from "@/lib/utils";
+import { safeExternalHref } from "@/lib/safe-href";
 
 /** Five minutes. Long enough to be worth caching, short enough that a correction is not a mystery. */
 export const revalidate = 300;
@@ -1084,7 +1085,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {project.partners.map((row) => {
               const partner = row.partner;
-              const external = partner.url?.trim() || "";
+              // Only an absolute http(s) URL is drawn as a link (lib/safe-href.ts).
+              const external = safeExternalHref(partner.url) ?? "";
 
               const body = (
                 <>

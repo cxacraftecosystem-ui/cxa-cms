@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
@@ -18,8 +17,10 @@ import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { canManageMedia } from "@/lib/permissions";
 import { indexDocument, searchDocFromFile } from "@/lib/search/index";
-import { deleteObject, getObjectBytes, headObject, requireStorage } from "@/lib/storage/client";
+import { confirmUploadedObject, requireStorage } from "@/lib/storage/client";
 import { isSafeObjectKey } from "@/lib/storage/keys";
+import { FILE_STORE_MAX_BYTES, sha256Hex } from "@/lib/storage/upload-limits";
+import { UploadTicketField, verifyUploadTicket } from "@/lib/storage/upload-ticket";
 import { formatBytes, slugify } from "@/lib/utils";
 
 /**
@@ -34,10 +35,11 @@ import { formatBytes, slugify } from "@/lib/utils";
  * does not silently start resolving to version 3 (schema, `FileAsset`). That is why this route writes a
  * `FileVersion` rather than storing a key on the entry itself.
  *
- * THE BYTES ARE CONFIRMED BEFORE THE ROW EXISTS. `headObject` first, and the reported size is
- * cross-checked against what actually landed — trusting the browser's "done" produces a catalogue entry
- * pointing at a key that was never written, which is a download button that answers "not found" with a
- * perfectly healthy-looking database.
+ * THE BYTES ARE CONFIRMED BEFORE THE ROW EXISTS. The body's `uploadTicket` is presign's signed record of
+ * the size, type and SHA-256 it signed into the PUT (lib/storage/upload-ticket.ts); `confirmUploadedObject`
+ * `HEAD`s the object and compares size, storage-verified checksum and type against it, deleting the object
+ * on any mismatch — trusting the browser's "done" produces a catalogue entry pointing at a key that was
+ * never written, which is a download button that answers "not found" with a healthy-looking database.
  *
  * ⚠ AN ASSUMPTION `POST /api/studio/files/presign` MUST HONOUR (it is a different file): the key it
  * signs has to come from `buildObjectKey({ namespace: "files", fileName })`. This route accepts nothing
@@ -54,11 +56,8 @@ export const dynamic = "force-dynamic";
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 
-/** Mirrors MAX_UPLOAD_BYTES in lib/client/upload.ts; restated because that module is `"use client"`. */
-const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
-
-/** Above this the checksum is skipped — it needs the whole object in memory and only feeds a duplicate check. */
-const CHECKSUM_MAX_BYTES = 128 * 1024 * 1024;
+/** The file store's cap, shared with presign and the browser through lib/storage/upload-limits.ts. */
+const MAX_UPLOAD_BYTES = FILE_STORE_MAX_BYTES;
 
 /**
  * How many entries the "largest first" ordering may consider.
@@ -338,6 +337,8 @@ const CreateBody = z.object({
   fileName: z.string().trim().min(1, "The file has no name.").max(255),
   mimeType: z.string().trim().min(1).max(160),
   byteSize: z.number().int().positive(),
+  /** Presign's signed record of what it agreed to. Required — see the header. */
+  uploadTicket: UploadTicketField,
   description: z.string().trim().max(2000).nullable().optional(),
   category: z.string().trim().max(80).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional()
@@ -390,6 +391,14 @@ export const POST = route(async (request: NextRequest) => {
     );
   }
 
+  // What presign signed for this key — the reference for every check on the bytes below.
+  const intent = verifyUploadTicket(body.uploadTicket, { objectKey, userId: user.id });
+  if (intent.contentType !== body.mimeType.toLowerCase() || intent.byteSize !== body.byteSize) {
+    throw badRequest(
+      "This upload is being described differently from how it was started, so nothing was added. Start the upload again."
+    );
+  }
+
   const alreadyUsed = await prisma.fileVersion.findUnique({
     where: { objectKey },
     select: { fileId: true }
@@ -398,32 +407,15 @@ export const POST = route(async (request: NextRequest) => {
     throw badRequest("That upload has already been registered as a file. Reload the file store to see it.");
   }
 
-  // The bytes, before the row. See the header.
-  const head = await headObject(objectKey);
-  if (!head) {
-    throw badRequest(
-      "The upload did not reach the file store, so nothing was added. Nothing is stored under that address. " +
-        "Try uploading the file again."
-    );
-  }
-  if (head.byteSize !== body.byteSize) {
-    // This key was issued by the file store and no row references it, so removing it is safe — and it is
-    // the only way this refusal does not leave an object nothing will ever collect.
-    await deleteObject(objectKey).catch((error: unknown) => {
-      console.error("[studio/files] could not remove a rejected upload", objectKey, error);
-    });
-    throw badRequest(
-      `What reached the file store is ${formatBytes(head.byteSize)} but the upload was described as ` +
-        `${formatBytes(body.byteSize)}. Nothing was added. Try uploading the file again.`
-    );
-  }
+  // The bytes, before the row. See the header. Absent → 400; any mismatch with the ticket → the object
+  // (issued by the file store, referenced by nothing) is deleted, then 400.
+  const head = await confirmUploadedObject(intent, {
+    logTag: "[studio/files]",
+    nothingChanged: "Nothing was added."
+  });
 
-  const checksum =
-    head.byteSize <= CHECKSUM_MAX_BYTES
-      ? createHash("sha256")
-          .update(await getObjectBytes(objectKey))
-          .digest("hex")
-      : null;
+  // Storage's own SHA-256, verified at PUT time, as hex — the form the column has always held.
+  const checksum = sha256Hex(intent.sha256);
 
   const slug = await uniqueSlug(body.title);
 
@@ -475,15 +467,7 @@ export const POST = route(async (request: NextRequest) => {
     {
       ...toRow(created),
       /** Newest first — the panel lists them in that order and calls the first one "the one people get now". */
-      versions: created.versions,
-      ...(checksum === null
-        ? {
-            note:
-              `This file is ${formatBytes(head.byteSize)}, which is above the ` +
-              `${formatBytes(CHECKSUM_MAX_BYTES)} limit for fingerprinting, so it was stored without one. ` +
-              "That only affects duplicate detection; the file itself is unaffected."
-          }
-        : {})
+      versions: created.versions
     },
     { status: 201 }
   );

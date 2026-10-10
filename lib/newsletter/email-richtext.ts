@@ -1,4 +1,5 @@
 import { publicObjectUrl } from "@/lib/media/url";
+import { classifyHref } from "@/lib/safe-href";
 import {
   calloutToneOf,
   cellSpansOf,
@@ -67,17 +68,29 @@ export const escapeAttr = escapeHtml;
  * An href a mail client may follow, made absolute against the site, or null.
  *
  * Relative links ("/news/x") are resolved against the site's origin — an email has no base URL, so a
- * relative link is a dead one. Anything that is not http(s) or mailto (javascript:, data:, a bare word)
- * is refused.
+ * relative link is a dead one. The kind of link is decided by `classifyHref()` (lib/safe-href.ts), the
+ * rule the site's renderer and the save-time validators share: `javascript:`, `data:`, a bare word, and
+ * a path that only LOOKS like one of ours (`//evil.example`, `/\evil.example`, `/%2F%2Fevil.example`) are
+ * refused, so an email never presents another host as a link to the Centre's own site.
  */
 export function safeEmailHref(raw: string | null, siteOrigin: string): string | null {
-  if (!raw) return null;
-  const href = raw.trim();
-  if (href.length === 0) return null;
-  if (href.startsWith("#")) return null;
-  if (/^mailto:/i.test(href)) return href;
+  const link = classifyHref(raw);
+  switch (link.kind) {
+    case "external":
+      return new URL(link.href).toString();
+    case "contact":
+      return /^mailto:/i.test(link.href) ? link.href : null;
+    case "internal":
+      break;
+    case "same-page":
+      // An anchor means nothing outside the page it was written on; a bare query is relative to the site.
+      if (link.href.startsWith("#")) return null;
+      break;
+    default:
+      return null;
+  }
   try {
-    const url = new URL(href, `${siteOrigin}/`);
+    const url = new URL(link.href, `${siteOrigin}/`);
     if (url.protocol !== "https:" && url.protocol !== "http:") return null;
     return url.toString();
   } catch {
