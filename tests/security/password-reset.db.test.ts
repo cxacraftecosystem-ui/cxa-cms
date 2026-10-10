@@ -37,6 +37,16 @@ const LOCAL = /@(127\.0\.0\.1|localhost|\[::1\]|postgres)(:\d+)?\//.test(process
 const skip = !hasDatabase ? "no DATABASE_URL" : !LOCAL ? "DATABASE_URL is not a local database" : false;
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL!;
+/**
+ * The origin a browser on SITE would send, as NextRequest sees the request URL.
+ *
+ * ⚠ NextRequest rewrites a loopback host to `localhost` (`http://127.0.0.1:3000` → `http://localhost:3000`)
+ * in `request.url`, and `assertSameOrigin` compares the Origin header against that URL's host. CI sets
+ * NEXT_PUBLIC_SITE_URL to http://127.0.0.1:3000, so sending SITE verbatim as the Origin made every POST
+ * here a 403 — the route was right and the test was not. Emails still carry SITE itself (the canonical
+ * origin), which is what `linkFrom` matches.
+ */
+const REQUEST_ORIGIN = new URL(new NextRequest(SITE).url).origin;
 const RUN = `pwr-${Date.now()}`;
 const PASSWORD = "Old-Passphrase-4821!";
 const NEW_PASSWORD = "Brand-New-Phrase-7351#";
@@ -85,6 +95,14 @@ async function makeUser(
     },
     select: { id: true, email: true, name: true }
   });
+  /*
+   * ⚠ A GRANT, BECAUSE A SEEDED DATABASE MAKES THE ALLOW-LIST AUTHORITATIVE. `resolveAccess` admits an
+   * existing account without one only while `studio_access` is empty (the grace path in
+   * lib/auth/access.ts). CI seeds before it tests, so a grant exists and an unlisted test account is
+   * refused — set-password then answers access-refused before it ever reaches the second-factor rule
+   * this file is checking. Real accounts are on the list; these must be too.
+   */
+  await prisma.studioAccess.create({ data: { email, kind: "EMAIL", grantedRole: options.role ?? "EDITOR" } });
   ids.push(user.id);
   emails.push(email);
   return user;
@@ -94,7 +112,7 @@ let ipCounter = 10;
 /** A fresh client address per call unless one is given. `TRUSTED_PROXY_HOPS=1` makes it count. */
 function forgot(email: string, init: { ip?: string; host?: string } = {}) {
   const ip = init.ip ?? `198.51.100.${ipCounter++}`;
-  const origin = init.host ? `https://${init.host}` : SITE;
+  const origin = init.host ? `https://${init.host}` : REQUEST_ORIGIN;
   return new NextRequest(`${origin}/api/auth/forgot-password`, {
     method: "POST",
     headers: {
@@ -110,7 +128,7 @@ function forgot(email: string, init: { ip?: string; host?: string } = {}) {
 function setPassword(token: string, password = NEW_PASSWORD) {
   return new NextRequest(`${SITE}/api/auth/set-password`, {
     method: "POST",
-    headers: { "content-type": "application/json", origin: SITE, "x-forwarded-for": `203.0.113.${ipCounter++}` },
+    headers: { "content-type": "application/json", origin: REQUEST_ORIGIN, "x-forwarded-for": `203.0.113.${ipCounter++}` },
     body: JSON.stringify({ token, password })
   });
 }
@@ -154,6 +172,7 @@ describe("password reset by email", { skip }, () => {
     });
     await prisma.session.deleteMany({ where: { userId: { in: ids } } });
     await prisma.user.deleteMany({ where: { id: { in: ids } } });
+    await prisma.studioAccess.deleteMany({ where: { email: { in: emails } } });
   });
 
   it("answers a known and an unknown address with the same status and the same body", async () => {
@@ -366,7 +385,7 @@ describe("password reset by email", { skip }, () => {
     const login = await loginPost(
       new NextRequest(`${SITE}/api/auth/login`, {
         method: "POST",
-        headers: { "content-type": "application/json", origin: SITE, "x-forwarded-for": "203.0.113.200" },
+        headers: { "content-type": "application/json", origin: REQUEST_ORIGIN, "x-forwarded-for": "203.0.113.200" },
         body: JSON.stringify({ email: user.email, password: NEW_PASSWORD })
       })
     );
