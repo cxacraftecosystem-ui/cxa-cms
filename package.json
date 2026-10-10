@@ -73,7 +73,7 @@
     "next": "^16.4.0",
     "next-mdx-remote": "^6.0.0",
     "ogl": "^1.0.11",
-    "prisma": "^6.19.3",
+    "prisma": "^7.10.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "remark-gfm": "^4.0.1",
