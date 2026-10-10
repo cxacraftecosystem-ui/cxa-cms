@@ -261,7 +261,15 @@ export const POST = route(async (request: NextRequest) => {
        * from a message in their archive.
        */
       confirmationToken: null,
-      confirmationExpiresAt: null
+      confirmationExpiresAt: null,
+      /**
+       * A confirmed click proves the mailbox receives mail and that its owner wants this newsletter, so an
+       * earlier permanent bounce or spam complaint (app/api/public/newsletter/ses-feedback) no longer
+       * stands. Without this, somebody who complained once and later signed up again of their own accord
+       * would be confirmed and still never sent anything.
+       */
+      bouncedAt: null,
+      complainedAt: null
     }
   });
 

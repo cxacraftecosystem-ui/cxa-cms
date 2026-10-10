@@ -589,6 +589,7 @@ erDiagram
     CoeEvent ||--o{ EventRegistration : ""
     Announcement }o--o| User : "createdBy"
     NewsletterSubscriber ||--o{ NewsletterDelivery : ""
+    NewsletterIssue ||--o{ NewsletterDelivery : "one copy per subscriber"
 
     ContactSubmission {
         enum   state "NEW IN_PROGRESS REPLIED ARCHIVED SPAM"
@@ -612,11 +613,27 @@ erDiagram
         string consentText "the sentence they actually read, COPIED not referenced"
         string consentVersion
         date   deletedAt "erasure. NOT the same act as unsubscribing"
+        date   bouncedAt "permanent SES bounce; cleared by a fresh confirmation"
+        date   complainedAt "spam complaint; also unsubscribes"
     }
     NewsletterDelivery {
-        enum   kind
-        enum   state "RECORDED means: decided, not necessarily sent"
+        enum   kind "4 transactional kinds, ISSUE, ISSUE_TEST"
+        enum   state "RECORDED SENDING SENT FAILED SUPPRESSED CANCELLED"
         string emailKey "kept even when the subscriber row is gone"
+        string issueId "UNIQUE with subscriberId: one copy per reader"
+        int    attempts "capped at 5"
+        string claimToken "which drain run holds the row"
+        date   nextAttemptAt "backoff after throttling or a 5xx"
+        string providerMessageId "SES message id"
+    }
+    NewsletterIssue {
+        string title
+        string subject
+        string preheader
+        json   body "Tiptap JSON, as every other body"
+        enum   status "DRAFT SCHEDULED SENDING SENT CANCELLED"
+        date   scheduledAt
+        int    recipientCount "plus sent, failed and suppressed counts"
     }
 ```
 
@@ -637,11 +654,23 @@ erDiagram
    it. Editing the wording next year must not silently rewrite what everybody who signed up this year
    is recorded as having agreed to. `consentVersion` is kept alongside so a whole cohort can be
    found.
-4. **Delivery is a seam, not a feature of this schema.** No provider is configured, so
-   `NewsletterDelivery` is an **outbox**: one row per message this application *decided* to send,
-   whether or not anything sent it. A `PENDING` subscriber with a `RECORDED` confirmation row is a
-   person waiting for an email nobody has sent — which is a fact the studio can show and act on, and
-   exactly what would otherwise be invisible.
+4. **Every message goes through an outbox.** `NewsletterDelivery` holds one row per message this
+   application decided to send, written *before* the send. Transactional mail is created already
+   claimed and sent inline by the request; issue copies are queued `RECORDED` and sent by the drain,
+   which claims rows with `FOR UPDATE SKIP LOCKED`, settles them under its `claimToken`, releases claims
+   older than ten minutes and fails a row after five attempts (`lib/newsletter/outbox-store.ts`). With no
+   sender configured every row simply waits as `RECORDED`. The row holds no link and no body; the drain
+   recomposes both when it sends.
+
+### Newsletter issues
+
+`NewsletterIssue` is composed in Studio → Newsletter issues and sent to `mailableSubscriberWhere()` —
+`CONFIRMED`, not erased, not bounced, not complained. Queueing is idempotent twice over: the issue's
+status moves `DRAFT`/`SCHEDULED` → `SENDING` in a guarded update, and `(issueId, subscriberId)` is
+unique in the outbox. Its counts are a snapshot the drain refreshes; the issue screen groups the outbox
+live. The model has no foreign key to `users` (`createdById`/`sentById` are plain ids) so its migration
+touches no existing table but the outbox. Test copies are `ISSUE_TEST` rows with no subscriber and are
+never counted.
 
 ### `ContactSubmission.spamScore` scores rather than drops
 
@@ -670,4 +699,5 @@ existed.
 | `AnnouncementTone` | `INFO` `SUCCESS` `WARNING` `URGENT` | Colour never carries the meaning alone (contract §1.4) |
 | `SubmissionStatus` | `NEW` `IN_PROGRESS` `REPLIED` `ARCHIVED` `SPAM` | |
 | `SubscriberStatus` | `PENDING` `CONFIRMED` `UNSUBSCRIBED` | Three values, not a boolean pair — see §6 |
-| `NewsletterMailKind` / `NewsletterMailState` | the outbox's two axes | |
+| `NewsletterMailKind` / `NewsletterMailState` | the outbox's two axes | `lib/newsletter/outbox-store.ts` owns every state transition |
+| `NewsletterIssueStatus` | `DRAFT` `SCHEDULED` `SENDING` `SENT` `CANCELLED` | `lib/newsletter/issues.ts` |

@@ -241,12 +241,15 @@ const PUBLIC_OK = [
  * useful half of this note. Counted out of the source, the assertions are: 32 for `PUBLIC_OK`, 9 for
  * `PUBLIC_404`, 3 for the preview block, 5 for the shut studio (three redirects and the two on the
  * anonymous API body), 5 for sign-in and the credential oracle, 1 for the cross-origin POST, 28 studio
- * screens, 1 parameterised screen, 33 studio endpoints, 8 for the author tier, 2 for the unreachable
+ * screens (30 since the newsletter screens were added), 1 parameterised screen, 33 studio endpoints (34), 8 for the author tier, 2 for the unreachable
  * slug, 9 for the content lifecycle and 2 for sign-out — 138. That is 136 + the two this path just
  * added, so 136 was the honest total for the file AS IT WAS WHEN §7b DID NOT YET EXIST. §7b, the people
  * re-order, then landed with SEVEN checks of its own and nobody moved the number.
  *
  * ⚠ SO THE TOTAL IS NOW A PAIR RATHER THAN A NUMBER, and it depends on the DATA:
+ *
+ *   (Both figures below gained 3 when the two newsletter screens and the issues endpoint were added:
+ *   148 and 142.)
  *
  *   • **145 checks** wherever the faculty has two or more names — every real installation, and
  *     certainly this Centre's, where thirteen of the thirty profiles are faculty;
@@ -335,7 +338,11 @@ const STUDIO_SCREENS = [
   "/studio/provenance",
   "/studio/announcements",
   "/studio/health",
-  "/studio/templates"
+  "/studio/templates",
+  // The newsletter: the issue list (added with issue sending) and the subscriber list, which had been
+  // reachable only through the sidebar and was never fetched here.
+  "/studio/newsletter",
+  "/studio/subscribers"
 ];
 
 /** Screens an AUTHOR must be refused. The assertion is 403 — emphatically not 500. */
@@ -402,7 +409,10 @@ const STUDIO_GET_ENDPOINTS = [
    *
    * Its own header asks for exactly this: "a new one should be added to its list."
    */
-  "/api/studio/templates"
+  "/api/studio/templates",
+  // Added with newsletter issues. `issues/[id]` would swallow a missing collection route, so only a
+  // request proves this one exists.
+  "/api/studio/newsletter/issues"
 ];
 
 /**
@@ -450,8 +460,8 @@ async function main(): Promise<void> {
        * same number. An error body carries no prompts, so the extra assertion costs a passing check
        * and never a spurious failure.
        *
-       * ⚠ THE TOTAL THIS PROTECTS IS NO LONGER THE "136" THIS NOTE USED TO QUOTE. It is 145 checks
-       * where §7b can re-order the faculty and 139 where it skips — the arithmetic, and why the figure
+       * ⚠ THE TOTAL THIS PROTECTS IS NO LONGER THE "136" THIS NOTE USED TO QUOTE. It is 148 checks
+       * where §7b can re-order the faculty and 142 where it skips — the arithmetic, and why the figure
        * was stale rather than mistyped, is written out under `PLACEHOLDER_PROMPTS` above. This loop
        * contributes 32 of them: two for each of the 16 paths in `PUBLIC_OK`. So the promise made here
        * still holds — the count does not move with SUCCESS — and it is now the weaker half of one the

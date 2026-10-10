@@ -5,6 +5,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { authEnv, siteUrl } from "@/lib/env";
 import {
   NEWSLETTER_CONFIRM_PATH,
+  NEWSLETTER_ONE_CLICK_ENDPOINT,
   NEWSLETTER_UNSUBSCRIBE_PATH
 } from "@/lib/newsletter/paths";
 
@@ -329,4 +330,17 @@ function newsletterUnsubscribeUrl(token: string): string {
  */
 export function unsubscribeUrlFor(emailKey: string): string {
   return newsletterUnsubscribeUrl(signNewsletterToken({ purpose: "unsubscribe", emailKey }));
+}
+
+/**
+ * The RFC 8058 one-click URL for an address — what the `List-Unsubscribe` header carries.
+ *
+ * ⚠ THE SAME `unsubscribe` TOKEN AS THE VISIBLE LINK, signed the same way, never expiring. RFC 8058 needs
+ * the header URL to keep working for as long as the message exists, which is exactly the property the
+ * unsubscribe token was designed with (see the header of this file). A separate purpose would be a second
+ * thing to rotate for no gain: the one-click endpoint does exactly what the unsubscribe form does.
+ */
+export function oneClickUnsubscribeUrlFor(emailKey: string): string {
+  const token = signNewsletterToken({ purpose: "unsubscribe", emailKey });
+  return `${siteUrl()}${NEWSLETTER_ONE_CLICK_ENDPOINT}?${NEWSLETTER_TOKEN_QUERY_KEY}=${encodeURIComponent(token)}`;
 }

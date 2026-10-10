@@ -151,7 +151,11 @@ const EXPORT_SELECT = {
    * legal claim in the last row of the file being made by the shared definition rather than by a literal
    * written out here.
    */
-  deletedAt: true
+  deletedAt: true,
+  // The same reason: a bounce or a complaint is half of "may this row be mailed" now, and the last row of
+  // the file asks the shared test rather than restating it.
+  bouncedAt: true,
+  complainedAt: true
   // ⚠ `confirmationToken` and `confirmationExpiresAt` are absent on purpose. See the header.
 } as const satisfies Prisma.NewsletterSubscriberSelect;
 

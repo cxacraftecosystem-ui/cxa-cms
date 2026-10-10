@@ -63,6 +63,13 @@ Set these for **Production**, **Preview** and **Development** unless a row says 
 | `S3_PUBLIC_BASE_URL` | **build** only | `next.config.ts` derives the image optimiser's host allowlist from it at build time, and that is its only reader — `lib/env.ts` deliberately leaves it out of the runtime shape. A host missing from that list renders as a broken image, not an error. ⚠ It does **not** stand in for `NEXT_PUBLIC_CDN_URL`: setting this and leaving that blank serves an "Image unavailable" placeholder for every photograph on the site. |
 | `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_FORCE_PATH_STYLE`, `S3_SSE_ALGORITHM` | runtime | Only for non-AWS storage (R2, Backblaze, MinIO). |
 | `CRON_SECRET` | runtime | Vercel Cron sends it for you. §1.7. |
+| `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY` | runtime | **Secrets.** The IAM user that sends newsletter mail through Amazon SES; it needs `ses:SendEmail` and `ses:GetAccount` and nothing else. Without them (or without `NEWSLETTER_FROM_ADDRESS`) nothing is sent and every message queues. §1.9. |
+| `SES_REGION` | runtime | The region the SES identity is verified in. Defaults to `ap-south-1`. |
+| `NEWSLETTER_FROM_ADDRESS` | runtime | The From address — an identity verified in SES. ⚠ See §1.9 on why it should be on a domain the Centre controls. |
+| `NEWSLETTER_FROM_NAME` | runtime | Optional. The From display name; defaults to `NEXT_PUBLIC_SITE_NAME`. |
+| `SES_CONFIGURATION_SET` | runtime | Optional. An SES configuration set to send through. |
+| `NEWSLETTER_DRAIN_SECRET` | runtime | **Secret.** The bearer the GitHub Actions drain schedule presents to `/api/cron/newsletter-drain` (Vercel's daily fallback cron presents `CRON_SECRET`). The same value goes in the repository secret of the same name. §1.7. |
+| `SES_FEEDBACK_TOPIC_ARNS` | runtime | Optional, comma-separated. The SNS topics whose bounce/complaint notifications are accepted; defaults to `arn:aws:sns:ap-south-1:626159998512:ses-feedback`. §1.9. |
 | `MEDIA_PURGE_AFTER_DAYS` | runtime | Defaults to 30. |
 | `LOG_ARCHIVE_DESTINATION_IS_PRIVATE` | runtime | ⚠ **A precondition, not a preference, and it defaults to refusing.** Unset, `/api/cron/logs-archive` archives **nothing** every night and a log drain would be refused too — so the 90-day retention clause 4 obliges is being met by Postgres alone, with no object-storage evidence. Set it only once the bucket policy excludes `files/logs/*` from anonymous `GetObject`, because that is what it asserts. `OPERATIONS.md` §3. |
 | `ACCESS_LOG_ENABLED`, `ACCESS_LOG_RETENTION_DAYS` | runtime | Default `true` and `180`. Off, no `access_logs` row is written for anything; below 90 the retention variable **throws**, because 90 is the term in the undertaking and not a preference. |
@@ -225,6 +232,8 @@ The file is strict JSON and cannot carry comments, so the reasons live here. Eve
 | `functions["app/api/studio/media/[id]/replace/route.ts"]` | The same two values, because it does the same work — replacing the bytes behind an asset re-runs the whole derivative pipeline. It previously had **no entry**, and the route's own header says so; without it a large replacement is killed and the asset keeps pointing at the old file with nothing on screen to explain why. |
 | `functions["app/api/studio/files/route.ts"]` | `maxDuration: 60`, memory left at the default. Registering a document reads the whole object back to fingerprint it, up to a stated 128 MB cap. That is a large download plus a SHA-256, and it does not reliably finish inside the default ten-to-fifteen seconds. A 128 MB buffer fits the default memory comfortably, so only the clock needed raising. |
 | `functions["app/api/studio/files/[id]/versions/route.ts"]` | The same, for the same reason — it is the new-version half of the same flow and carries the same 128 MB cap. |
+| `functions["app/api/cron/newsletter-drain/route.ts"]` | `maxDuration: 60`. The drain spaces its sends at Amazon SES's per-second rate and stops starting new ones after 40 seconds, so it needs more than the default clock and never more than this. |
+| `functions["app/api/studio/newsletter/issues/[id]/send/route.ts"]` | `maxDuration: 60`. Pressing Send queues the issue and then runs a first drain batch after the response (`after()`), inside the same invocation. |
 
 Notes on that block:
 
@@ -247,11 +256,12 @@ Notes on that block:
 ### 1.7 Cron
 
 ```json
-{ "path": "/api/cron/purge",        "schedule": "17 3 * * *" }
-{ "path": "/api/cron/logs-archive", "schedule": "41 3 * * *" }
+{ "path": "/api/cron/purge",            "schedule": "17 3 * * *" }
+{ "path": "/api/cron/logs-archive",     "schedule": "41 3 * * *" }
+{ "path": "/api/cron/newsletter-drain", "schedule": "53 3 * * *" }
 ```
 
-**That is the whole `crons` array, and there is a third cron route that is not in it.**
+**That is the whole `crons` array, and there is a fourth cron route that is not in it.**
 `/api/cron/publish` is scheduled every five minutes from **`.github/workflows/keep-warm.yml`**, not
 from here — the Hobby plan rejects the deploy outright with `Hobby accounts are limited to daily cron
 jobs` for any schedule that fires more than once a day, so the ten-minute job had to move somewhere
@@ -261,6 +271,14 @@ median of 263 minutes between them (longest 529), so a scheduled page reaches th
 column and the search index hours late. `ARCHITECTURE.md` §3.2 is the long version. Confirmed against
 `vercel.json`, that workflow, and the routes that exist. What each job does is in `OPERATIONS.md` §3.
 
+- **The newsletter drain runs from two schedules.** `.github/workflows/newsletter-drain.yml` POSTs to
+  `/api/cron/newsletter-drain` every five minutes (best-effort, like every GitHub schedule) with
+  `Authorization: Bearer $NEWSLETTER_DRAIN_SECRET`, reading the origin from the repository **variable**
+  `NEWSLETTER_SITE_URL` and the bearer from the repository **secret** `NEWSLETTER_DRAIN_SECRET`; the
+  daily entry above is the fallback and presents `CRON_SECRET`. Neither is the main trigger:
+  transactional mail is sent inline by the request that causes it, and pressing Send on an issue starts
+  the first batch straight away. The endpoint accepts either bearer, compared in constant time, and is
+  safe to call concurrently and as often as anybody likes. Running the workflow by hand drains at once.
 - **`CRON_SECRET` must be set as an environment variable.** Vercel Cron then sends
   `Authorization: Bearer <CRON_SECRET>`, which is exactly what `assertCronAuthorised` expects. Without
   it the endpoints refuse every request and log why — the safe direction.
@@ -303,6 +321,43 @@ non-destructive, and it creates **no account at all** without `SEED_ADMIN_EMAIL`
 
 Then: set the bucket's CORS policy (`OPERATIONS.md` §1), sign in at `/studio`, and read Settings →
 Diagnostics. Anything the deployment is missing is a sentence on that screen.
+
+### 1.9 Newsletter email (Amazon SES)
+
+**What sends.** `lib/newsletter/mailer-ses.ts` sends through the SESv2 `SendEmail` API, `Content.Simple`
+with an HTML part, a plain-text part and the RFC 8058 headers (`List-Unsubscribe` naming
+`/api/public/newsletter/one-click?token=…` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`). It is
+registered at start-up by `instrumentation.ts` when `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY` and
+`NEWSLETTER_FROM_ADDRESS` are set. Throttling and 5xx answers are retried with backoff (1, 2, 4 … minutes,
+five attempts); a rejected message fails at once; a credentials or sender problem pauses the queue
+without using up attempts. Settings → Diagnostics and the studio's newsletter screens say plainly when
+the sender is not configured.
+
+**The IAM user** needs exactly `ses:SendEmail` (on the sending identity, and the configuration set if one
+is used) and `ses:GetAccount` (to read the sending rate; without it the drain assumes one per second).
+
+⚠ **The From address must be on a domain whose DNS the Centre controls.** SES can send as a single
+verified address, but a `@gmail.com` (or any other mailbox provider's) From address cannot pass DMARC
+alignment when sent through SES — the DKIM signature is SES's or the Centre's domain, not Google's — and
+Gmail and Yahoo now reject or spam-folder unaligned bulk mail. Verify a domain identity in SES
+(`ap-south-1`), publish its three DKIM CNAMEs, set a custom MAIL FROM subdomain and a DMARC record, and
+use an address on it.
+
+**Bounces and complaints.** Account-level suppression is on in SES. The site also listens for them, so a
+bounced or complaining address stops getting mail from this application and the studio shows why:
+`POST /api/public/newsletter/ses-feedback` verifies each SNS message's signature against Amazon's
+certificate, accepts only the topics in `SES_FEEDBACK_TOPIC_ARNS`, confirms the subscription itself, and
+marks permanent bounces (`bouncedAt`) and complaints (`complainedAt`, which also unsubscribes). To connect
+it to the existing topic — once, by somebody with SNS access, after the site is deployed:
+
+```bash
+aws sns subscribe --region ap-south-1   --topic-arn arn:aws:sns:ap-south-1:626159998512:ses-feedback   --protocol https   --notification-endpoint https://<production origin>/api/public/newsletter/ses-feedback
+```
+
+The endpoint fetches the confirmation URL itself; `aws sns list-subscriptions-by-topic` should then show
+the subscription with a real ARN rather than `PendingConfirmation`. The SES identity's bounce and
+complaint notifications (or a configuration set's event destination for Bounce and Complaint) must
+publish to that topic. Delivery notifications are not needed and are ignored.
 
 ---
 
@@ -408,7 +463,7 @@ any log.
 - `preload` is deliberately absent. Submitting a domain to the browsers' preload list is close to
   irreversible and belongs to whoever owns the domain.
 
-### 2.5 Scheduling the three jobs yourself
+### 2.5 Scheduling the four jobs yourself
 
 **Nothing in the container runs them.** `vercel.json`'s schedule applies to Vercel only, and there is no
 in-process timer anywhere in this codebase (deliberately — see `lib/runtime.ts`). A host crontab — and
@@ -418,6 +473,7 @@ here there is no plan limit, so `publish` goes back on its ten-minute schedule:
 */10 * * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/publish      >/dev/null
 17   3 * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/purge        >/dev/null
 41   3 * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/logs-archive >/dev/null
+*/5  * * * *  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://your-site.example/api/cron/newsletter-drain >/dev/null
 ```
 
 `-f` matters: without it `curl` exits 0 on a 403 and a refused job looks like a successful one. Read
@@ -453,7 +509,7 @@ rewrite; until one is registered, prefer one larger container to two smaller one
 |---|---|---|
 | **Rate limits** — sign-in, second factor, password links, contact form, event registration, search, suggestions, view beacon, counted downloads | **Per copy of the app.** The real limit is the configured number × however many copies are running, and a newly started copy allows a full fresh allowance. A speed bump, not a ceiling. | **Exact, with one process.** Multiplied by the replica count if you run more (§2.6). |
 | **Cold starts** | Real. After a quiet period the next request rebuilds the storage client, the JWT signing key and each sign-in provider's key set — commonly a second or two on the first sign-in of the morning. No data is affected. | None. The process stays warm; those caches are built once at start-up. |
-| **Cron** | **Split across two schedulers.** The two daily jobs are declared in `vercel.json` and run by the platform, which supplies the `Authorization` header from `CRON_SECRET`; `/api/cron/publish` runs from `.github/workflows/keep-warm.yml`, because Hobby rejects any schedule finer than daily — and GitHub runs it hours apart, not every five minutes (§1.7). | **Nothing runs any of them.** One host crontab covers all three, with the header set by hand (§2.5). |
+| **Cron** | **Split across two schedulers.** The two daily jobs are declared in `vercel.json` and run by the platform, which supplies the `Authorization` header from `CRON_SECRET`; `/api/cron/publish` runs from `.github/workflows/keep-warm.yml`, because Hobby rejects any schedule finer than daily — and GitHub runs it hours apart, not every five minutes (§1.7). | **Nothing runs any of them.** One host crontab covers all four, with the header set by hand (§2.5). |
 | **Logs** | Per invocation, in the platform dashboard, retained for a period the plan decides. `console.warn` from the rate limiter's bucket-ceiling message and `[cron]` lines land here. Not files; not greppable across a month unless you forward them somewhere. | `docker compose logs -f app`, or whatever the daemon's logging driver is pointed at. One continuous stream, and yours to rotate. |
 | **Sticky in-memory state** | Nothing survives. Rate-limit buckets, the rebuild-in-progress guard (`__cxaReindexState`) and every `let cached…` are rebuilt per copy and lost on each cold start. Two administrators can start two index rebuilds at once. | Survives for the life of the process. The rebuild guard works; the limiter counts correctly; a restart resets both. |
 | **Database connections** | One pool **per copy**, with the number of copies changing under load. `DATABASE_URL` must be a pooler (§1.4). | One pool, one process. A direct connection is fine. |

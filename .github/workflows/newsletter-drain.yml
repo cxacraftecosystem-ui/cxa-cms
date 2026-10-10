@@ -1,0 +1,80 @@
+# The newsletter drain: sends the next batch of queued newsletter mail.
+#
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# WHY THIS EXISTS. Vercel's Hobby plan runs a cron at most once a day, and a newsletter issue (or a
+# confirmation that was throttled and is waiting for its retry) should not wait a day. So this
+# workflow calls `/api/cron/newsletter-drain` every five minutes, and that endpoint sends one bounded
+# batch at the pace Amazon SES allows. `vercel.json` also runs it daily, as a fallback.
+#
+# ⚠ BEST-EFFORT, LIKE EVERY GITHUB SCHEDULE. keep-warm.yml's header measured the real gap between
+# scheduled runs at a median of four hours, not five minutes. That is acceptable here because the
+# schedule is not the main trigger: confirmations, welcomes and receipts are sent INLINE by the request
+# that causes them, and pressing Send on an issue starts the first batch straight away. This workflow
+# finishes whatever those could not — a large list, a throttled retry, a scheduled issue — and running
+# it by hand ("Run workflow") drains immediately.
+#
+# Needs, in the repository settings:
+#   • variable NEWSLETTER_SITE_URL   — the production origin, e.g. https://cxa.example.org
+#   • secret   NEWSLETTER_DRAIN_SECRET — the same value as NEWSLETTER_DRAIN_SECRET on Vercel
+# A missing one turns the run red rather than skipping quietly.
+#
+# ⚠ GitHub disables scheduled workflows after 60 days with no repository activity; "Run workflow"
+# restarts it.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+name: Newsletter drain
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+# Overlapping runs are safe (rows are claimed atomically), but a queued run behind a running one adds
+# nothing, so the newer one waits rather than stacking.
+concurrency:
+  group: newsletter-drain
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  drain:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 3
+
+    steps:
+      - name: Send the next batch
+        env:
+          SITE_URL: ${{ vars.NEWSLETTER_SITE_URL }}
+          DRAIN_SECRET: ${{ secrets.NEWSLETTER_DRAIN_SECRET }}
+        run: |
+          set -uo pipefail
+
+          missing=""
+          [ -n "${SITE_URL}" ] || missing="${missing} variable:NEWSLETTER_SITE_URL"
+          [ -n "${DRAIN_SECRET}" ] || missing="${missing} secret:NEWSLETTER_DRAIN_SECRET"
+          if [ -n "${missing}" ]; then
+            echo "::error::The newsletter drain did not run. Not set in the repository:${missing}"
+            exit 1
+          fi
+
+          # The bearer goes in a header read from a file, never on the command line, so it cannot appear
+          # in a process listing. GitHub masks the secret in the log either way.
+          printf 'Authorization: Bearer %s\n' "${DRAIN_SECRET}" > "${RUNNER_TEMP}/drain-auth"
+
+          code=$(curl -sS -o "${RUNNER_TEMP}/drain.out" -w '%{http_code}' --max-time 90 \
+                   --retry 2 --retry-delay 5 --retry-all-errors \
+                   -X POST -H @"${RUNNER_TEMP}/drain-auth" \
+                   "${SITE_URL%/}/api/cron/newsletter-drain")
+          rm -f "${RUNNER_TEMP}/drain-auth"
+
+          echo "HTTP ${code}"
+          head -c 2000 "${RUNNER_TEMP}/drain.out" || true
+          echo
+
+          case "${code}" in
+            2*) exit 0 ;;
+            401|403) echo "::error::The drain rejected the bearer. NEWSLETTER_DRAIN_SECRET here and on Vercel disagree."; exit 1 ;;
+            *)  echo "::error::The newsletter drain answered ${code}."; exit 1 ;;
+          esac

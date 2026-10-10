@@ -1,7 +1,6 @@
 # Outstanding work
 
-**Two things are outstanding, both recorded on 2026-10-09 and both listed under *Open* directly
-below.** Every other item previously listed here has been built, fixed and verified against a running
+**Everything listed under *Open* directly below is outstanding**, each entry dated. Every other item previously listed here has been built, fixed and verified against a running
 application with a real PostgreSQL database — most recently against one carrying the full
 demonstration corpus, which is the first time these checks have run over a site with content on it.
 *(This paragraph opened "Nothing is outstanding." until 2026-10-09, when both entries below were
@@ -39,11 +38,11 @@ The customer-facing copy sweep (2026-10-10) took every sentence off the public s
 admitted a missing feature or a known defect. The facts did not go away; they are kept here, with the
 fix each one needs.
 
-- **No email is sent.** `setNewsletterMailer()` in `lib/newsletter/delivery.ts` is the adapter hook and
-  nothing calls it, so newsletter confirmations, welcomes and receipts queue (Studio → Subscribers
-  counts them) and password and invitation links are shown to the administrator to pass on. Fix: write
-  the provider adapter and register it at start-up; `canSendEmail` / `mailerConfigured()` then switch
-  every screen to its sending wording by themselves.
+- **Password and invitation links are still handed to the administrator to pass on.** Newsletter mail
+  is sent (see *Newsletter delivery* below, built 2026-10-10), but `app/studio/users/page.tsx` still sets
+  `canSendEmail = false` and no code composes a password or invitation email. Fix: compose those two
+  messages and send them through the same SES mailer (`activeNewsletterMailer()`), then flip that flag.
+  Event registrations are in the same position (`app/(site)/events/[slug]/page.tsx`).
 - **The redirects screen's "Followed" count under-counts.** `findPageRedirect()` in `lib/pages.ts` runs
   inside a render (prerender included) and deliberately does not write, so a working redirect can read
   0. Fix: count on the way through, in the proxy or a route handler, never in a render.
@@ -67,6 +66,23 @@ Prisma 7 keeps `prisma-client-js` working but deprecated in favour of `prisma-cl
 the client into the source tree. Moving means an `output` in the schema's generator block and changing
 the ~150 `from "@prisma/client"` imports to that path (and the Dockerfile's two explicit client copies).
 It was left out of the Prisma 7 upgrade to keep that change reviewable on its own; nothing else blocks it.
+
+### Newsletter delivery — built 2026-10-10; three things finish it
+
+Newsletter mail now goes out through Amazon SES (`lib/newsletter/mailer-ses.ts`): the four
+transactional messages inline, and issues composed in Studio → Newsletter issues through the outbox
+drain (`DEPLOYMENT.md` §1.7, §1.9). What is not done in code, and closes this entry when done:
+
+1. **Subscribe the feedback webhook to the SNS topic** `arn:aws:sns:ap-south-1:626159998512:ses-feedback`
+   — the command is in `DEPLOYMENT.md` §1.9. Until then SES's own account suppression still stops repeat
+   sends to a bounced address, but the studio does not show bounces or complaints.
+2. **Send from a domain the Centre controls.** The configured From address is a `@gmail.com` mailbox,
+   which cannot pass DMARC alignment through SES; expect a large share of issues in spam or rejected by
+   Gmail and Yahoo until a domain identity with DKIM and DMARC is used (`DEPLOYMENT.md` §1.9).
+3. **The five-minute drain schedule is GitHub's, so it is best-effort** (see the scheduling entry above).
+   Sends are not left to it — confirmations go inline, Send starts the first batch, and the issue screen
+   keeps nudging while it is open — but a scheduled issue goes out at the first drain after its time,
+   which on GitHub's record can be hours. The scheduler decision above fixes this too.
 
 ### Prisma's `sslmode=require` does not verify the database's certificate — opened 2026-10-09
 

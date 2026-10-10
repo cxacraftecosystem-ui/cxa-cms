@@ -6,7 +6,6 @@ import { Reveal } from "@/components/motion/Reveal";
 import { NewsletterSignup } from "@/components/site/NewsletterSignup";
 import { PageHero } from "@/components/site/PageHero";
 import { CONFIRMATION_TTL_HOURS } from "@/lib/newsletter/tokens";
-import { mailerConfigured } from "@/lib/newsletter/delivery";
 import { newsletterNotice } from "@/lib/newsletter/states";
 import { NEWSLETTER_PATH } from "@/lib/newsletter/paths";
 import { pageMetadata } from "@/lib/seo";
@@ -60,31 +59,25 @@ const BREADCRUMBS = [
 /**
  * The three promises, each one a fact about the implementation rather than a sentiment.
  *
- * A function of `canSendEmail` rather than a constant, because the first promise describes a message
- * being SENT — and on a deployment with no mail transport (nothing registers one until
- * `instrumentation.ts` exists; see lib/newsletter/delivery.ts) that would be a promise about mail
- * nobody will ever receive. The degraded wording says what actually happens: the sign-up is recorded,
- * and the confirmation goes out when the Centre begins sending. The two-step guarantee itself — no
- * newsletter without a confirming click — is true either way, so the title does not change.
+ * ⚠ THE FIRST ONE IS NO LONGER CONDITIONAL. It used to have a second wording for a deployment that could
+ * not send mail, and that wording told readers their confirmation "follows" at some unstated time. The
+ * confirmation now goes out inline the moment somebody signs up (lib/newsletter/delivery.ts), and on a
+ * deployment without a sender it is queued and sent by the drain once there is one — so the promise below
+ * is true in both cases, and a public page has no business describing the operator's configuration.
  */
-function promisesFor(canSendEmail: boolean): ReadonlyArray<{
+const PROMISES: ReadonlyArray<{
   icon: typeof ShieldCheck;
   title: string;
   body: string;
-}> {
-  return [
+}> = [
     {
       icon: Timer,
       title: "It takes two steps, on purpose",
-      body: canSendEmail
-        ? "Signing up records nothing but a pending entry and sends one message to the address you gave. " +
-          `That message carries a link, valid for ${CONFIRMATION_TTL_HOURS} hours, and until somebody opens ` +
-          "it no newsletter is ever sent. It means nobody can subscribe you by typing your address into this " +
-          "form, and it means the Centre never writes to an address that has not asked for it."
-        : "Signing up records nothing but a pending entry. A message with a link to confirm goes to the " +
-          "address you gave, and until somebody opens that link no newsletter is ever sent. It means nobody " +
-          "can subscribe you by typing your address into this form, and it means the Centre never writes to " +
-          "an address that has not asked for it."
+      body:
+        "Signing up records nothing but a pending entry and sends one message to the address you gave. " +
+        `That message carries a link, valid for ${CONFIRMATION_TTL_HOURS} hours, and until somebody opens ` +
+        "it no newsletter is ever sent. It means nobody can subscribe you by typing your address into this " +
+        "form, and it means the Centre never writes to an address that has not asked for it."
     },
     {
       icon: MailX,
@@ -105,7 +98,6 @@ function promisesFor(canSendEmail: boolean): ReadonlyArray<{
         "whatever the wording has become."
     }
   ];
-}
 
 export default async function NewsletterPage({
   searchParams
@@ -115,16 +107,7 @@ export default async function NewsletterPage({
   const params = await searchParams;
   const notice = newsletterNotice("signup", params.state);
 
-  /**
-   * Whether the copy on this page may promise that a message is sent — read per request (the page is
-   * `force-dynamic`) from the mail seam, lib/newsletter/delivery.ts, the same way
-   * app/studio/users/page.tsx hands `canSendEmail` to its screen. Only the boolean is used; no
-   * provider name or other environment detail reaches the markup. Until an adapter is registered
-   * from `instrumentation.ts` this is false everywhere, and the page says a sign-up is RECORDED and
-   * messages start when the Centre begins sending — never that one is already on its way.
-   */
-  const canSendEmail = mailerConfigured();
-  const promises = promisesFor(canSendEmail);
+  const promises = PROMISES;
 
   return (
     <>
@@ -157,11 +140,7 @@ export default async function NewsletterPage({
               source="newsletter-page"
               headingLevel={2}
               heading="Sign up"
-              blurb={
-                canSendEmail
-                  ? "Enter the address it should go to. You will be sent one message with a link to confirm, and nothing else until you open it."
-                  : "Enter the address it should go to. A message with a link to confirm follows, and no newsletter arrives until you open it."
-              }
+              blurb="Enter the address it should go to. You will be sent one message with a link to confirm, and nothing else until you open it."
             />
           </Reveal>
 
@@ -197,13 +176,10 @@ export default async function NewsletterPage({
           <Reveal className="mt-12">
             <div className="panel p-6 sm:p-8">
               <h2 className="display-title text-lg">If something is not working</h2>
-              {/* The same gate as the promises above: "check your bulk-mail folder" is advice about a
-                  message that, with no transport, never left — the honest sentence is that none is
-                  expected yet. */}
               <p className="prose-measure mt-3 text-sm leading-relaxed text-ink-700">
-                {canSendEmail
-                  ? "If the confirmation message does not arrive, look in whichever folder your mail programme files bulk mail in, and check the address for a typo. Signing up a second time is safe: it never creates a second subscription, and it sends a fresh link."
-                  : "If the confirmation message has not arrived, there is nothing you need to do: your sign-up is recorded. Signing up a second time is safe: it never creates a second subscription."}
+                If the confirmation message does not arrive, look in whichever folder your mail programme
+                files bulk mail in, and check the address for a typo. Signing up a second time is safe: it
+                never creates a second subscription, and it sends a fresh link.
               </p>
               <p className="prose-measure mt-3 text-sm leading-relaxed text-ink-700">
                 If you are trying to STOP the newsletter and the link in your copy will not work, the link

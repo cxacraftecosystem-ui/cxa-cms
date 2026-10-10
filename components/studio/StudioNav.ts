@@ -59,6 +59,7 @@ import {
   Newspaper,
   Paperclip,
   ScrollText,
+  Send,
   Settings,
   ShieldCheck,
   Signpost,
@@ -189,6 +190,18 @@ export const STUDIO_NAV: readonly StudioNavEntry[] = [
     description: "Announcements and articles for the newsroom, with their categories and tags.",
     icon: Newspaper,
     // The floor for any write at all: an author drafts their own news and cannot publish it.
+    can: canAuthor,
+    group: "Content"
+  },
+  {
+    href: "/studio/newsletter",
+    // The screen's own `StudioPageHeader` title, as every label in this file is.
+    label: "Newsletter issues",
+    description:
+      "Write an issue of the newsletter, send yourself a test, and send it to everybody who has confirmed — now or at a time you choose.",
+    icon: Send,
+    // Drafting is an author's job, as for news; the screen hides Send from anybody without publishing
+    // access, and the send routes refuse them (lib/newsletter/issue-studio.ts).
     can: canAuthor,
     group: "Content"
   },

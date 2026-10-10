@@ -3,12 +3,23 @@ import "server-only";
 import type { NewsletterMailKind } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { siteName, siteUrl } from "@/lib/env";
+import { sesConfigured, sesEnv, siteName, siteUrl } from "@/lib/env";
+import type { MailHeader } from "@/lib/newsletter/list-unsubscribe";
+import { listUnsubscribeHeaders } from "@/lib/newsletter/list-unsubscribe";
+import { describeSendError, dispositionOf } from "@/lib/newsletter/mail-errors";
+import { createSesMailer } from "@/lib/newsletter/mailer-ses";
+import {
+  createClaimedRow,
+  markAttemptFailed,
+  markSent,
+  newClaimToken
+} from "@/lib/newsletter/outbox-store";
 import { NEWSLETTER_PATH } from "@/lib/newsletter/paths";
 import {
   confirmationExpiryFrom,
   newConfirmationNonce,
   newsletterConfirmUrl,
+  oneClickUnsubscribeUrlFor,
   signNewsletterToken,
   unsubscribeUrlFor,
   CONFIRMATION_TTL_HOURS
@@ -16,92 +27,46 @@ import {
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════════════════════
- * ██  THE DELIVERY SEAM.  THIS IS THE ONE FILE THAT SENDS NEWSLETTER EMAIL.  ██
+ * ██  THE DELIVERY SEAM.  EVERY NEWSLETTER MESSAGE IS COMPOSED HERE AND HANDED TO THE MAILER HERE.  ██
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
- * ══ WHAT IS TRUE OF THIS DEPLOYMENT RIGHT NOW ══
+ * ══ HOW A MESSAGE LEAVES ══
  *
- * **No email provider is configured, and nothing here sends anything.** That is not a bug and it is
- * not an unfinished edge; it is the honest state of a product whose owner has not yet chosen a
- * provider. Everything else about the newsletter is built and working: an address can be captured,
- * consent is recorded, a signed confirmation link is issued, the confirm and unsubscribe routes
- * accept it, the studio lists and exports subscribers. The single missing piece is the SMTP or API
- * call, and it is behind this seam.
+ * The mailer is Amazon SES (lib/newsletter/mailer-ses.ts), registered from the environment — at start-up
+ * by `instrumentation.ts`, and lazily by `activeNewsletterMailer()` for any process that serves a
+ * request before that hook has run. With the SES variables absent (a laptop, CI, a preview) there is no
+ * mailer, and every message is queued as a RECORDED row for the drain to send once there is one.
  *
- * The default implementation is `recordingMailer`, and what it does matters:
+ * There are two paths out, and they share every write:
  *
- *     it WRITES DOWN EVERY MESSAGE THAT SHOULD HAVE BEEN SENT, as a `NewsletterDelivery` row in
- *     state RECORDED, and it sends nothing.
+ *   • **Transactional mail** (confirmation, welcome, already-subscribed, unsubscribe receipt) is sent
+ *     INLINE by the request that caused it, because a confirmation link is useless an hour late. The row
+ *     is created already CLAIMED (`createClaimedRow`), so the drain cannot send it a second time. A
+ *     throttled or 5xx attempt goes back to the queue with a backoff, and the drain finishes the job.
+ *   • **Issues** are queued by lib/newsletter/issues.ts and sent by the drain (lib/newsletter/drain.ts),
+ *     a bounded batch per invocation.
  *
- * ⚠ THE REASON THAT IS NOT A NO-OP. Without it, a person who signs up gets a PENDING row, no email,
- * and no way to ever become CONFIRMED — a subscriber silently stranded, invisible to everybody,
- * indistinguishable from a person who never signed up. With it, the outbox is a queue: the studio's
- * subscribers screen counts the unsent messages and says so at the top of the page, and the moment a
- * provider is registered those rows are the exact backlog to replay. Nothing is lost, and nobody has
- * to remember that anything was.
+ * ══ THE MAILER'S CONTRACT ══
  *
- * ══ WHAT A REAL PROVIDER MUST IMPLEMENT — THE WHOLE CONTRACT ══
+ *   1. **Throw on failure, as a `MailSendError` with a disposition** (lib/newsletter/mail-errors.ts).
+ *      A resolved promise is recorded as SENT and is the only evidence anybody will have.
+ *   2. **Send to `message.to`, not `message.emailKey`.** The key is folded for identity.
+ *   3. **Include `message.actionUrl` verbatim.** No click tracking: a rewritten URL breaks the signature.
+ *   4. **Send the headers it is given.** `List-Unsubscribe`/`List-Unsubscribe-Post` are on every message to
+ *      a subscriber (welcome, already-subscribed, every issue) and NEVER on a confirmation, whose
+ *      recipient is not subscribed to anything yet.
+ *   5. **Never log a body or an address beyond `emailKey`.**
  *
- * One object satisfying `NewsletterMailer`, registered ONCE at start-up from `instrumentation.ts`:
+ * ══ WHY THE ROW IS WRITTEN BEFORE THE SEND, ALWAYS ══
  *
- *     // lib/newsletter/mailer-<provider>.ts
- *     export const providerMailer: NewsletterMailer = {
- *       name: "Postmark",                              // shown in the studio; say what it IS
- *       async send(message) { ... }                    // throws on failure, returns on success
- *     };
- *
- *     // instrumentation.ts, once, before any request is served:
- *     setNewsletterMailer(providerMailer);
- *
- * `send` receives a fully composed `NewsletterMessage` — recipient, subject, plain-text body, and the
- * one link the message exists to carry. Its obligations, in full:
- *
- *   1. **Throw on failure. Return on success.** A resolved promise is recorded as SENT and is the
- *      only evidence anybody will have. An implementation that swallows a provider error and resolves
- *      turns "the provider is rejecting our domain" into "everything looks fine and nobody is
- *      receiving anything" — the single worst failure mode this feature has.
- *   2. **Send to `message.to`, not to `message.emailKey`.** The key is folded to lower case for
- *      identity; `to` is the address the person typed. See lib/newsletter/address.ts.
- *   3. **Include `message.actionUrl` verbatim** where the body says it will be. Do not shorten it, do
- *      not wrap it in a click tracker: a rewritten URL breaks the signature and the reader lands on
- *      "this link is not valid". If the provider rewrites links by default, that feature must be
- *      turned OFF for these messages.
- *   4. **Never batch, never delay, never deduplicate.** A confirmation is transactional mail: it is
- *      useless five minutes later and actively harmful a day later, since the link expires after
- *      `CONFIRMATION_TTL_HOURS` and the reader has long since given up on it.
- *   5. **Set a `List-Unsubscribe` header** on `WELCOME` and on any actual mailing: the header value is
- *      the URL from `unsubscribeUrlFor(message.emailKey)` in angle brackets, alongside
- *      `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. That URL never expires, which is exactly
- *      what RFC 8058 requires of it. ⚠ The header must NOT be set on `CONFIRMATION`, whose recipient
- *      is not subscribed to anything yet.
- *   6. **Keep the credentials in the environment.** Nothing in this repository may hold an API key —
- *      read it with `process.env` inside the adapter, and fail loudly at start-up if it is absent, the
- *      way lib/env.ts does for everything else.
- *   7. **Be idempotent about nothing.** This layer already writes exactly one outbox row per intent
- *      and calls `send` exactly once per row. A provider-side retry is the provider's business.
- *
- * ⚠ **DO NOT ADD A DEPENDENCY TO MAKE THIS FILE WORK.** No SDK is imported here, no transport is
- * chosen and no vendor is assumed, precisely so that choosing one later is one new file and one line
- * in `instrumentation.ts` rather than a change to the newsletter. A provider's own SDK belongs in the
- * adapter, never here.
- *
- * ══ WHY THE OUTBOX ROW IS WRITTEN BEFORE THE SEND, ALWAYS ══
- *
- * `deliverNewsletterMail` writes the `NewsletterDelivery` row FIRST, in state RECORDED, and only then
- * calls the registered mailer, updating the row to SENT or FAILED. So:
- *
- *   • With no mailer, every row stays RECORDED — a complete, replayable backlog.
- *   • With a mailer that throws, the row is FAILED and carries what the provider said.
- *   • With a mailer that hangs and a process that is killed mid-flight, the row is RECORDED — which
- *     reads as "we do not know whether this was sent", the only honest answer. Writing the row after
- *     a successful send would have lost that message entirely.
+ * A process killed mid-send leaves a SENDING row whose claim goes stale and is released to the queue —
+ * "we do not know whether this was sent" becomes "it will be sent again", which is the honest recovery.
+ * Writing the row after a successful send would lose that message entirely.
  *
  * ══ NOTHING HERE EVER THROWS INTO A REQUEST ══
  *
- * `deliverNewsletterMail` catches everything, exactly as `recordEvent` in lib/audit.ts does. A person
- * who successfully signed up must not be shown "something went wrong" because a mail provider had a
- * bad minute — their row exists, their consent is recorded, and the unsent message is visible in the
- * studio. The failure goes to the server log and to the outbox, never to the reader.
+ * A person who successfully signed up must not be shown "something went wrong" because the provider had a
+ * bad minute — their row exists, their consent is recorded, and the message is in the queue.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
@@ -109,241 +74,241 @@ import {
 export interface NewsletterMessage {
   /** The envelope address — the capitals the person typed. ⚠ Not `emailKey`. */
   to: string;
-  /** The normalised identity, for logging and for `unsubscribeUrlFor()`. */
+  /** The normalised identity, for logging and for the unsubscribe links. */
   emailKey: string;
-  /** Null when the subscriber row has since been erased. The message still happened. */
+  /** Null for a studio test copy, or when the subscriber row has since been erased. */
   subscriberId: string | null;
   kind: NewsletterMailKind;
   subject: string;
-  /**
-   * The complete message as PLAIN TEXT.
-   *
-   * Plain text rather than HTML on purpose: it is the format every client can render, it cannot carry
-   * a tracking pixel, and it is the one an adapter can wrap in a template if it wants HTML as well.
-   * An adapter that sends HTML must send this as the `text/plain` alternative rather than dropping it.
-   */
+  /** The complete message as plain text. Always present: it is the `text/plain` part of every message. */
   bodyText: string;
+  /** The HTML part, for issues. Transactional messages are plain text only. */
+  bodyHtml: string | null;
+  /** Extra headers — the RFC 8058 pair, where the message carries it. */
+  headers: MailHeader[];
   /** The single link the message exists to carry, or null for a message that carries none. */
   actionUrl: string | null;
 }
 
-/**
- * What a provider adapter must be.
- *
- * Modelled on `RateLimitStore` in lib/ratelimit.ts — an interface, a default implementation that is
- * honest about its limits, and a `set…` registration — so there is one recognisable shape in this
- * codebase for "a thing this deployment has not chosen yet".
- */
+/** What a provider says about a message it accepted. */
+export interface SendResult {
+  providerMessageId: string | null;
+}
+
+/** The provider's own limits, so the drain can pace itself. */
+export interface SendQuota {
+  maxPerSecond: number;
+  /** Null when the account has no daily cap. */
+  remainingToday: number | null;
+  sendingEnabled: boolean;
+}
+
+/** What a provider adapter must be. */
 export interface NewsletterMailer {
-  /** A short name an administrator reads in the studio: "Postmark", "Amazon SES", "SMTP relay". */
+  /** A short name an administrator reads in the studio: "Amazon SES". */
   readonly name: string;
-  /** ⚠ THROWS on failure. See obligation 1 in the header. */
-  send(message: NewsletterMessage): Promise<void>;
+  /** ⚠ THROWS on failure. See the contract in the header. */
+  send(message: NewsletterMessage): Promise<SendResult>;
+  /** The current sending limits, or null when they cannot be read. */
+  quota?(): Promise<SendQuota | null>;
 }
 
 interface MailerState {
   mailer: NewsletterMailer | null;
-  /** So the "nothing is being sent" warning is one line per process rather than one per sign-up. */
-  warned: boolean;
+  /** True once the environment has been read, so a process without SES does not re-read it per message. */
+  fromEnvChecked: boolean;
 }
 
 /**
- * The state lives on `globalThis`, for the reason lib/db.ts and lib/ratelimit.ts give: the dev server
- * re-evaluates modules on every hot reload, and a module-scoped `let` would silently drop a mailer
- * registered at start-up — so the site would stop sending mail after the first file save, with
- * nothing in the log to say why.
+ * On `globalThis`, for the reason lib/db.ts gives: the dev server re-evaluates modules on every hot reload,
+ * and a module-scoped `let` would silently drop the mailer registered at start-up.
  */
 const globalForMailer = globalThis as unknown as { __cxaNewsletterMailer?: MailerState };
 
-const state: MailerState = globalForMailer.__cxaNewsletterMailer ?? { mailer: null, warned: false };
+const state: MailerState = globalForMailer.__cxaNewsletterMailer ?? { mailer: null, fromEnvChecked: false };
 globalForMailer.__cxaNewsletterMailer = state;
 
-/**
- * Install a provider. Call it ONCE, at start-up, before any request is served.
- *
- * Registering a second replaces the first and warns — two mailers in one process means messages going
- * out through whichever one happened to be registered last, which is not a configuration anybody chose.
- *
- * ══ ⚠ NOTHING IN THIS REPOSITORY CALLS THIS FUNCTION, AND THAT IS DELIBERATE — READ THIS BEFORE
- *    "FIXING" IT ══
- *
- * This codebase has a standing rule that an exported symbol nothing imports is a defect, because it is
- * usually a feature that was built and never reached. This is the one place where the rule points the
- * wrong way, so the reasoning is written down rather than left to be re-derived:
- *
- *   • **Calling it requires choosing an email provider, and no provider has been chosen.** The only
- *     argument it accepts is a `NewsletterMailer`, and the only honest `NewsletterMailer` is one that
- *     actually sends mail through somebody's service. Writing one here would mean picking a vendor and
- *     adding a dependency on the owner's behalf, which the brief for this feature forbids in as many
- *     words.
- *   • **A fake would be worse than nothing.** A "log it and resolve" mailer would mark every delivery
- *     row SENT while nothing left the building — precisely the failure obligation 1 above calls the worst
- *     one available here, and it would switch the studio's amber "nothing is being sent" banner off while
- *     the statement remained true.
- *   • **Deleting it would delete the feature's only route to sending anything.** `deliverNewsletterMail`
- *     reads `state.mailer`, and this is the one function that can ever set it. An unused setter is a seam;
- *     a missing setter is a newsletter that can never mail.
- *
- * So it is reached by INSTRUCTIONS rather than by an import: the four steps at the top of this file, the
- * amber banner on `app/studio/subscribers/page.tsx` which names this file by path, and the `humanMustDo`
- * section of the handover. ⚠ If you are adding a provider, `instrumentation.ts` DOES NOT EXIST YET in this
- * repository — creating it (with `export function register() { setNewsletterMailer(providerMailer); }`) is
- * step three, and until somebody does, `newsletterMailerInfo().configured` is false in every process and
- * the studio says so on screen.
- *
- * ⚠ ITS COUNTERPART WAS DELETED, NOT MISLAID. `clearNewsletterMailer()` used to sit directly below,
- * documented "for tests and for a controlled failover", and both halves of that were false: this
- * repository has no test framework at all (no vitest/jest/playwright config and no test directory), and a
- * failover would need a caller at runtime, which nothing anywhere could be. It had zero callers, so it was
- * three lines of dead code carrying a comment stating a rule the code did not keep. Bring it back the day
- * a test needs it — `state.mailer = null; state.warned = false;` is all it was — and give it a caller in
- * the same commit.
- */
-export function setNewsletterMailer(mailer: NewsletterMailer): void {
-  if (state.mailer && state.mailer !== mailer) {
+/** Install a provider. Called once at start-up by `registerNewsletterMailerFromEnv`, and by the tests. */
+export function setNewsletterMailer(mailer: NewsletterMailer | null): void {
+  if (state.mailer && mailer && state.mailer !== mailer) {
     console.warn(
       `[newsletter] the mail provider was already set to "${state.mailer.name}" and has been replaced ` +
-        `with "${mailer.name}". Register it once, at start-up.`
+        `with "${mailer.name}".`
     );
   }
   state.mailer = mailer;
-  state.warned = false;
-  // Announced at INFO, not warn: a deployment that has done the right thing should be able to prove it
-  // from the log rather than by reading code. The same argument as `setRateLimitStore`.
-  console.log(`[newsletter] mail provider set to "${mailer.name}" — confirmation emails will be sent.`);
+  state.fromEnvChecked = true;
+  if (mailer) console.log(`[newsletter] mail provider set to "${mailer.name}".`);
 }
 
 /**
- * What the studio's subscribers screen reads to describe delivery honestly.
+ * Register the SES mailer when its environment is set. Idempotent; called by `instrumentation.ts` at
+ * start-up and, through `activeNewsletterMailer()`, by anything that needs a mailer before that ran.
  *
- * `configured: false` is the sentence "nothing is being sent", and the screen says exactly that
- * rather than leaving an administrator to infer it from a subscriber list that never moves past
- * pending.
+ * ⚠ A MALFORMED CONFIGURATION IS LOGGED AND LEAVES NO MAILER, rather than throwing: a throw here would take
+ * down sign-up for a mistyped sender address. The messages queue, and the studio says sending is not set
+ * up — which is the truth.
+ */
+export function registerNewsletterMailerFromEnv(): NewsletterMailer | null {
+  if (state.mailer) return state.mailer;
+  if (state.fromEnvChecked) return null;
+  state.fromEnvChecked = true;
+  if (!sesConfigured()) return null;
+  try {
+    state.mailer = createSesMailer(sesEnv());
+    console.log(`[newsletter] mail provider set to "${state.mailer.name}".`);
+  } catch (error) {
+    console.error("[newsletter] the SES configuration could not be read, so nothing will be sent.", error);
+    state.mailer = null;
+  }
+  return state.mailer;
+}
+
+/** The registered mailer, registering it from the environment on first use. */
+export function activeNewsletterMailer(): NewsletterMailer | null {
+  return state.mailer ?? registerNewsletterMailerFromEnv();
+}
+
+/**
+ * What the studio reads to describe delivery. The name is for the studio only; a public page reads
+ * `mailerConfigured()` and nothing else.
  */
 export function newsletterMailerInfo(): { configured: boolean; name: string } {
-  return state.mailer
-    ? { configured: true, name: state.mailer.name }
-    : { configured: false, name: "not configured — messages are recorded, not sent" };
+  const mailer = activeNewsletterMailer();
+  return mailer ? { configured: true, name: mailer.name } : { configured: false, name: "not set up" };
 }
 
-/**
- * The one fact a PUBLIC page may learn: whether this deployment can send email at all.
- *
- * The public site threads this the way the studio threads `canSendEmail` (app/studio/users/page.tsx):
- * the server page asks once and hands the bare boolean to the client component, whose copy already
- * covers both answers. A page that gets `false` must not promise an email — "instructions go to your
- * inbox" is, on such a deployment, a sentence about mail nobody will ever receive, and the reader it
- * strands is the one refreshing that inbox.
- *
- * Deliberately NOT `newsletterMailerInfo()`, which also carries the provider's name. The name is a
- * fact about the deployment for an administrator's eyes in the studio; a public page has no business
- * shipping it — or any other environment detail — to every visitor. The boolean is the whole answer.
- */
+/** Whether this deployment can send email at all. The one fact a public page may learn. */
 export function mailerConfigured(): boolean {
-  return state.mailer !== null;
+  return activeNewsletterMailer() !== null;
 }
 
-function warnNotConfiguredOnce(): void {
-  if (state.warned) return;
-  state.warned = true;
-  console.warn(
-    "[newsletter] no mail provider is registered, so confirmation emails are being WRITTEN DOWN and " +
-      "not sent. Every one is a `newsletter_deliveries` row in state RECORDED, and the studio's " +
-      "subscribers screen shows the count. Register a provider with setNewsletterMailer() from " +
-      "instrumentation.ts — see the header of lib/newsletter/delivery.ts."
-  );
+export type DeliveryOutcome = "sent" | "queued" | "failed" | "suppressed";
+
+/**
+ * May this message still be sent to this subscriber?
+ *
+ * A confirmation is always allowed — it is the explicit answer to somebody signing up again, which is how
+ * a bounced or complaining address comes back. Everything else stops at a bounce or a complaint.
+ */
+async function suppressionReason(message: NewsletterMessage): Promise<string | null> {
+  if (message.kind === "CONFIRMATION" || !message.subscriberId) return null;
+  const row = await prisma.newsletterSubscriber.findUnique({
+    where: { id: message.subscriberId },
+    select: { bouncedAt: true, complainedAt: true, deletedAt: true }
+  });
+  if (!row || row.deletedAt) return "The subscriber record has been erased.";
+  if (row.complainedAt) return "This address reported a previous message as spam.";
+  if (row.bouncedAt) return "Mail to this address bounced permanently.";
+  return null;
 }
 
 /**
- * Record one message, then send it if anything can.
+ * Hand one composed message to the mailer, with the outbox row written first.
  *
- * NEVER THROWS. See the header. The return value says what happened, for a caller that wants to log
- * it; no caller is required to look.
- *
- * ⚠ NOT EXPORTED, AND IT WAS. Its only callers are the four `send…` functions below it in this file, and
- * that is the design rather than an accident of how far the work got: a route must never be able to invent
- * a message. The subject, the body, which link it carries and whether it carries one at all are decided in
- * this file precisely so the wording a reader receives cannot drift between the sign-up path and the
- * re-issue path — and an exported `deliverNewsletterMail` is an open invitation to compose a fifth message
- * at a call site. `NewsletterMailKind` is a closed enum, so such a message could not even name itself
- * honestly: it would have to borrow one of the four kinds, and the studio's outbox would then label it
- * with `MAIL_KIND_LABELS[kind]` — the wrong sentence about a real message, on the one screen that says
- * what has and has not been sent. Adding a message means adding a `send…` function here, beside the other
- * four, where its wording can be read next to theirs.
+ * Exported for the drain's replay and the studio's test send; routes call the `send…` functions below,
+ * which compose the wording. NEVER THROWS.
  */
-async function deliverNewsletterMail(
-  message: NewsletterMessage
-): Promise<"sent" | "recorded" | "failed"> {
-  let deliveryId: string | null = null;
-
+export async function deliverNewsletterMail(
+  message: NewsletterMessage,
+  options: { issueId?: string | null } = {}
+): Promise<DeliveryOutcome> {
   try {
-    const row = await prisma.newsletterDelivery.create({
-      data: {
-        subscriberId: message.subscriberId,
-        emailKey: message.emailKey,
-        kind: message.kind,
-        subject: message.subject,
-        // ⚠ NO LINK AND NO BODY ARE STORED. The confirmation URL is a credential, and a table holding
-        // one turns every backup and every export into a way to confirm somebody else's subscription.
-        // The token is derived, so a replay rebuilds the link — see the header of tokens.ts.
-        state: "RECORDED"
-      },
-      select: { id: true }
-    });
-    deliveryId = row.id;
-  } catch (error) {
-    // The outbox write failed. Say so loudly: from here on nothing about this message is recoverable,
-    // and that is precisely the fact an operator needs.
-    console.error(
-      `[newsletter] the outbox row for a ${message.kind} message to ${message.emailKey} could not be ` +
-        "written, so this message is not recorded anywhere. The subscriber's own row is unaffected.",
-      error
-    );
-  }
-
-  const mailer = state.mailer;
-  if (!mailer) {
-    warnNotConfiguredOnce();
-    return "recorded";
-  }
-
-  try {
-    await mailer.send(message);
-    if (deliveryId) {
-      await prisma.newsletterDelivery.update({
-        where: { id: deliveryId },
-        data: { state: "SENT", provider: mailer.name, sentAt: new Date(), error: null }
+    const suppressed = await suppressionReason(message);
+    if (suppressed) {
+      await prisma.newsletterDelivery.create({
+        data: {
+          subscriberId: message.subscriberId,
+          emailKey: message.emailKey,
+          kind: message.kind,
+          subject: message.subject,
+          issueId: options.issueId ?? null,
+          state: "SUPPRESSED",
+          error: suppressed
+        }
       });
+      return "suppressed";
     }
-    return "sent";
+
+    const mailer = activeNewsletterMailer();
+    if (!mailer) {
+      await prisma.newsletterDelivery.create({
+        data: {
+          subscriberId: message.subscriberId,
+          emailKey: message.emailKey,
+          kind: message.kind,
+          subject: message.subject,
+          issueId: options.issueId ?? null,
+          state: "RECORDED"
+        }
+      });
+      return "queued";
+    }
+
+    const token = newClaimToken();
+    const row = await createClaimedRow({
+      subscriberId: message.subscriberId,
+      emailKey: message.emailKey,
+      kind: message.kind,
+      subject: message.subject,
+      issueId: options.issueId ?? null,
+      token
+    });
+    const outcome = await sendClaimed(mailer, message, { id: row.id, token, attempts: row.attempts });
+    return outcome === "halted" ? "queued" : outcome;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
     console.error(
-      `[newsletter] "${mailer.name}" refused a ${message.kind} message to ${message.emailKey}.`,
+      `[newsletter] a ${message.kind} message to ${message.emailKey} could not be queued or sent.`,
       error
     );
-    if (deliveryId) {
-      await prisma.newsletterDelivery
-        .update({
-          where: { id: deliveryId },
-          data: { state: "FAILED", provider: mailer.name, error: reason.slice(0, 1000) }
-        })
-        // A failure to record a failure must not become a second exception on the way out.
-        .catch((nested: unknown) => {
-          console.error("[newsletter] the failed delivery could not be marked FAILED.", nested);
-        });
-    }
     return "failed";
   }
 }
 
+/**
+ * Send a message whose row this caller has claimed, and settle the row. Shared with the drain.
+ *
+ * Returns "queued" when the attempt failed but the row went back to the queue (throttling, a 5xx), and
+ * "halted" when the provider refused the account or the sender — the drain stops its batch on that.
+ */
+export async function sendClaimed(
+  mailer: NewsletterMailer,
+  message: NewsletterMessage,
+  claim: { id: string; token: string; attempts: number }
+): Promise<DeliveryOutcome | "halted"> {
+  try {
+    const result = await mailer.send(message);
+    await markSent(claim.id, claim.token, mailer.name, result.providerMessageId);
+    return "sent";
+  } catch (error) {
+    const disposition = dispositionOf(error);
+    const description = describeSendError(error);
+    console.error(
+      `[newsletter] "${mailer.name}" did not accept a ${message.kind} message to ${message.emailKey} ` +
+        `(${disposition}): ${description}`
+    );
+    const settled = await markAttemptFailed({
+      id: claim.id,
+      token: claim.token,
+      provider: mailer.name,
+      attempts: claim.attempts,
+      disposition,
+      error: description
+    }).catch((nested: unknown) => {
+      console.error("[newsletter] the failed delivery could not be settled.", nested);
+      return null;
+    });
+    if (settled === "FAILED") return "failed";
+    return disposition === "halt" ? "halted" : "queued";
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// The four messages
+// The four transactional messages
 //
-// Composed here rather than in the routes, so the wording of what a person receives is in one file
-// and cannot drift between the sign-up path and the re-issue path. Every body is plain text, written
-// in complete sentences, and every one says what will happen if the reader does nothing — because
-// "ignore this email" is the instruction most of these messages actually need to give.
+// Composed here rather than in the routes, so the wording of what a person receives is in one file and
+// cannot drift between the sign-up path, the re-issue path and the drain's replay. Every body is plain
+// text, written in complete sentences, and every one says what will happen if the reader does nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The footer every message carries. Says where it came from, so nothing arrives unattributed. */
@@ -351,10 +316,13 @@ function signature(): string {
   return `\n\n— ${siteName()}\n${siteUrl()}`;
 }
 
-export interface ConfirmationRequest {
+interface Recipient {
   to: string;
   emailKey: string;
   subscriberId: string;
+}
+
+export interface ConfirmationRequest extends Recipient {
   /** The nonce stored on the row. The link is signed over it, which is what makes it single use. */
   nonce: string;
   /** The row's `confirmationExpiresAt`, so the body and the token cannot quote different deadlines. */
@@ -364,12 +332,12 @@ export interface ConfirmationRequest {
 /**
  * The double opt-in message. The ONLY thing a PENDING subscriber is ever sent.
  *
- * ⚠ ITS BODY MUST TELL SOMEBODY WHO DID NOT SIGN UP WHAT TO DO, and the answer is "nothing". Anybody
- * can type anybody's address into a public form; a confirmation that does not say "if this was not
- * you, ignore it and nothing happens" reads as spam, gets reported as spam, and takes the Centre's
- * sending reputation with it.
+ * ⚠ ITS BODY MUST TELL SOMEBODY WHO DID NOT SIGN UP WHAT TO DO, and the answer is "nothing". A
+ * confirmation that does not say "if this was not you, ignore it" reads as spam and gets reported as spam.
+ *
+ * ⚠ NO List-Unsubscribe HEADER: the recipient is not subscribed to anything yet.
  */
-export async function sendConfirmationEmail(request: ConfirmationRequest): Promise<void> {
+export function composeConfirmation(request: ConfirmationRequest): NewsletterMessage {
   const token = signNewsletterToken({
     purpose: "confirm",
     emailKey: request.emailKey,
@@ -378,13 +346,15 @@ export async function sendConfirmationEmail(request: ConfirmationRequest): Promi
   });
   const actionUrl = newsletterConfirmUrl(token);
 
-  await deliverNewsletterMail({
+  return {
     to: request.to,
     emailKey: request.emailKey,
     subscriberId: request.subscriberId,
     kind: "CONFIRMATION",
     subject: `Confirm your newsletter subscription — ${siteName()}`,
     actionUrl,
+    bodyHtml: null,
+    headers: [],
     bodyText:
       `Somebody — we hope you — asked for the ${siteName()} newsletter to be sent to this address.\n\n` +
       "Open this link to confirm it. Nothing will be sent to you until you do:\n\n" +
@@ -394,34 +364,30 @@ export async function sendConfirmationEmail(request: ConfirmationRequest): Promi
       "If this was not you, do nothing at all. Without that click no newsletter is ever sent to this " +
       "address, and the incomplete record is removed in due course. You do not need to reply." +
       signature()
-  });
+  };
+}
+
+export async function sendConfirmationEmail(request: ConfirmationRequest): Promise<void> {
+  await deliverNewsletterMail(composeConfirmation(request));
 }
 
 /**
  * The answer to a repeat sign-up for an address that is already confirmed.
  *
- * ══ WHY THIS MESSAGE EXISTS AT ALL ══
- *
- * The sign-up route answers IDENTICALLY for every address — it never says whether one is already
- * known, because that would turn a public form into a tool for testing whether a colleague, a
- * journalist or a rival subscribes here. But the person themselves is owed an explanation for why the
- * confirmation link they were expecting has not arrived. So the fact goes to the ONE place that can
- * only be read by whoever controls the address: their inbox.
+ * The sign-up route answers IDENTICALLY for every address, so the fact that this one is already known goes
+ * to the one place only its owner can read: their inbox.
  */
-export async function sendAlreadySubscribedEmail(request: {
-  to: string;
-  emailKey: string;
-  subscriberId: string;
-}): Promise<void> {
+export function composeAlreadySubscribed(request: Recipient): NewsletterMessage {
   const unsubscribeUrl = unsubscribeUrlFor(request.emailKey);
-
-  await deliverNewsletterMail({
+  return {
     to: request.to,
     emailKey: request.emailKey,
     subscriberId: request.subscriberId,
     kind: "ALREADY_SUBSCRIBED",
     subject: `You are already subscribed — ${siteName()}`,
     actionUrl: unsubscribeUrl,
+    bodyHtml: null,
+    headers: listUnsubscribeHeaders(oneClickUnsubscribeUrlFor(request.emailKey)),
     bodyText:
       `Somebody just signed this address up for the ${siteName()} newsletter, but it is already ` +
       "subscribed — so nothing has changed and you will not receive it twice.\n\n" +
@@ -429,24 +395,25 @@ export async function sendAlreadySubscribedEmail(request: {
       `${unsubscribeUrl}\n\n` +
       "If it was not you who signed up, there is nothing to do: no new subscription was created." +
       signature()
-  });
+  };
+}
+
+export async function sendAlreadySubscribedEmail(request: Recipient): Promise<void> {
+  await deliverNewsletterMail(composeAlreadySubscribed(request));
 }
 
 /** Sent once, after a confirmation succeeds, so the first thing that arrives is not silence. */
-export async function sendWelcomeEmail(request: {
-  to: string;
-  emailKey: string;
-  subscriberId: string;
-}): Promise<void> {
+export function composeWelcome(request: Recipient): NewsletterMessage {
   const unsubscribeUrl = unsubscribeUrlFor(request.emailKey);
-
-  await deliverNewsletterMail({
+  return {
     to: request.to,
     emailKey: request.emailKey,
     subscriberId: request.subscriberId,
     kind: "WELCOME",
     subject: `Your subscription is confirmed — ${siteName()}`,
     actionUrl: unsubscribeUrl,
+    bodyHtml: null,
+    headers: listUnsubscribeHeaders(oneClickUnsubscribeUrlFor(request.emailKey)),
     bodyText:
       `Your subscription to the ${siteName()} newsletter is confirmed. This address will receive it ` +
       "from the next issue onwards, and nothing else — it is not used for anything else and it is not " +
@@ -455,51 +422,162 @@ export async function sendWelcomeEmail(request: {
       `${unsubscribeUrl}\n\n` +
       "Keep it: it works without signing in to anything, and it does not expire." +
       signature()
-  });
+  };
+}
+
+export async function sendWelcomeEmail(request: Recipient): Promise<void> {
+  await deliverNewsletterMail(composeWelcome(request));
 }
 
 /**
  * Confirms an unsubscribe took effect.
  *
- * ⚠ THE ONE MESSAGE THAT IS SENT TO SOMEBODY WHO HAS JUST ASKED TO BE LEFT ALONE, and it is defensible
- * only because it is the receipt for an action they themselves took a second ago. It says explicitly
- * that it is the last one. Nothing else may ever be sent to an UNSUBSCRIBED address.
+ * ⚠ THE ONE MESSAGE SENT TO SOMEBODY WHO HAS JUST ASKED TO BE LEFT ALONE, defensible only because it is
+ * the receipt for an action they took a second ago. It says explicitly that it is the last one, and it
+ * carries no List-Unsubscribe header: there is nothing left to stop.
  */
-export async function sendUnsubscribeReceipt(request: {
-  to: string;
-  emailKey: string;
-  subscriberId: string;
-}): Promise<void> {
-  await deliverNewsletterMail({
+export function composeUnsubscribeReceipt(request: Recipient): NewsletterMessage {
+  return {
     to: request.to,
     emailKey: request.emailKey,
     subscriberId: request.subscriberId,
     kind: "UNSUBSCRIBE_RECEIPT",
     subject: `You have been unsubscribed — ${siteName()}`,
     actionUrl: null,
+    bodyHtml: null,
+    headers: [],
     bodyText:
       `This address has been removed from the ${siteName()} newsletter. This is the last message you ` +
       "will receive from it.\n\n" +
       "We keep a record that you asked to stop, and nothing else, so that a later import or a form " +
       "filled in by somebody else cannot quietly put you back on the list. If you ever want the " +
-      // The path is the constant the sign-up page itself is mounted at, not a literal — see the header
-      // of lib/newsletter/paths.ts. A "sign up again" address that has moved is a dead end for somebody
-      // who has already been told this is the last message they will get from us.
       `newsletter again, sign up at ${siteUrl()}${NEWSLETTER_PATH}.` +
       signature()
-  });
+  };
+}
+
+export async function sendUnsubscribeReceipt(request: Recipient): Promise<void> {
+  await deliverNewsletterMail(composeUnsubscribeReceipt(request));
 }
 
 /**
- * A fresh confirmation nonce and its expiry, as one object.
- *
- * Here rather than at each call site so the row's `confirmationToken`/`confirmationExpiresAt` and the
- * link's signed payload are always produced from the same pair of values — the one place those two
- * could drift is the one place a confirmation link would be permanently rejected.
+ * A fresh confirmation nonce and its expiry, as one object, so the row's columns and the link's signed
+ * payload are always produced from the same pair of values.
  */
 export function newConfirmationChallenge(now: Date = new Date()): {
   nonce: string;
   expiresAt: Date;
 } {
   return { nonce: newConfirmationNonce(), expiresAt: confirmationExpiryFrom(now) };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Replay: the drain re-composing a queued transactional message
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * How old a queued transactional message may be and still be worth sending.
+ *
+ * A confirmation is still the answer to a real request a month later (it was queued because nothing could
+ * send it); "you are already subscribed" or "you have been unsubscribed" a week late only confuses.
+ */
+const REPLAY_MAX_AGE_MS: Record<"CONFIRMATION" | "WELCOME" | "ALREADY_SUBSCRIBED" | "UNSUBSCRIBE_RECEIPT", number> = {
+  CONFIRMATION: 30 * 24 * 60 * 60 * 1000,
+  WELCOME: 7 * 24 * 60 * 60 * 1000,
+  ALREADY_SUBSCRIBED: 3 * 24 * 60 * 60 * 1000,
+  UNSUBSCRIBE_RECEIPT: 3 * 24 * 60 * 60 * 1000
+};
+
+/**
+ * The message a queued transactional row stands for, rebuilt from the subscriber as it is NOW — or the
+ * reason it must not be sent.
+ *
+ * ⚠ THE ROW HOLDS NO LINK AND NO BODY (the schema says why), so this is the only way a queued message can
+ * be sent at all. And it is re-checked against the subscriber's current status, because a lot can change
+ * while a message waits: a confirmation for somebody who has since confirmed, or a welcome for somebody
+ * who has since left, must not go out.
+ *
+ * A confirmation whose nonce has expired or been cleared is given a FRESH challenge (guarded on the row
+ * still being PENDING), so the link the reader receives works for the full window from the moment it is
+ * actually sent.
+ */
+export async function recomposeTransactional(row: {
+  kind: NewsletterMailKind;
+  subscriberId: string | null;
+  createdAt: Date;
+}): Promise<{ message: NewsletterMessage } | { suppress: string }> {
+  if (row.kind === "ISSUE" || row.kind === "ISSUE_TEST") {
+    return { suppress: "Not a transactional message." };
+  }
+  if (Date.now() - row.createdAt.getTime() > REPLAY_MAX_AGE_MS[row.kind]) {
+    return { suppress: "Queued too long ago to still be useful, so it was not sent." };
+  }
+  if (!row.subscriberId) return { suppress: "The subscriber record has been erased." };
+
+  const subscriber = await prisma.newsletterSubscriber.findUnique({
+    where: { id: row.subscriberId },
+    select: {
+      id: true,
+      email: true,
+      emailKey: true,
+      status: true,
+      deletedAt: true,
+      bouncedAt: true,
+      complainedAt: true,
+      confirmationToken: true,
+      confirmationExpiresAt: true
+    }
+  });
+  if (!subscriber || subscriber.deletedAt) return { suppress: "The subscriber record has been erased." };
+
+  const recipient = { to: subscriber.email, emailKey: subscriber.emailKey, subscriberId: subscriber.id };
+
+  if (row.kind !== "CONFIRMATION" && (subscriber.bouncedAt || subscriber.complainedAt)) {
+    return { suppress: "This address bounced or reported a previous message as spam." };
+  }
+
+  switch (row.kind) {
+    case "CONFIRMATION": {
+      if (subscriber.status !== "PENDING") {
+        return { suppress: "The address was confirmed or unsubscribed before this was sent." };
+      }
+      // At least an hour of life left, or the reader may open a link that has just died.
+      const usable =
+        subscriber.confirmationToken &&
+        subscriber.confirmationExpiresAt &&
+        subscriber.confirmationExpiresAt.getTime() - Date.now() > 60 * 60 * 1000;
+      if (usable && subscriber.confirmationToken && subscriber.confirmationExpiresAt) {
+        return {
+          message: composeConfirmation({
+            ...recipient,
+            nonce: subscriber.confirmationToken,
+            expiresAt: subscriber.confirmationExpiresAt
+          })
+        };
+      }
+      const challenge = newConfirmationChallenge();
+      const refreshed = await prisma.newsletterSubscriber.updateMany({
+        where: { id: subscriber.id, status: "PENDING", deletedAt: null },
+        data: {
+          confirmationToken: challenge.nonce,
+          confirmationExpiresAt: challenge.expiresAt,
+          confirmationSentAt: new Date()
+        }
+      });
+      if (refreshed.count === 0) return { suppress: "The address changed state before this was sent." };
+      return { message: composeConfirmation({ ...recipient, ...challenge }) };
+    }
+    case "WELCOME":
+      return subscriber.status === "CONFIRMED"
+        ? { message: composeWelcome(recipient) }
+        : { suppress: "The address is no longer subscribed." };
+    case "ALREADY_SUBSCRIBED":
+      return subscriber.status === "CONFIRMED"
+        ? { message: composeAlreadySubscribed(recipient) }
+        : { suppress: "The address is no longer subscribed." };
+    case "UNSUBSCRIBE_RECEIPT":
+      return subscriber.status === "UNSUBSCRIBED"
+        ? { message: composeUnsubscribeReceipt(recipient) }
+        : { suppress: "The address subscribed again before this was sent." };
+  }
 }

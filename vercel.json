@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/logs-archive",
       "schedule": "41 3 * * *"
+    },
+    {
+      "path": "/api/cron/newsletter-drain",
+      "schedule": "53 3 * * *"
     }
   ],
   "functions": {
@@ -27,6 +31,12 @@
       "maxDuration": 60
     },
     "app/api/studio/files/[id]/versions/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/newsletter-drain/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/studio/newsletter/issues/[id]/send/route.ts": {
       "maxDuration": 60
     }
   }

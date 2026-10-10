@@ -70,7 +70,8 @@ const MAILABLE_STATUS = "CONFIRMED" satisfies SubscriberStatus;
  * question that a call site can get subtly wrong.
  */
 export function mailableSubscriberWhere(): Prisma.NewsletterSubscriberWhereInput {
-  return { deletedAt: null, status: MAILABLE_STATUS };
+  // A permanent bounce or a spam complaint stops mail too (app/api/public/newsletter/ses-feedback).
+  return { deletedAt: null, status: MAILABLE_STATUS, bouncedAt: null, complainedAt: null };
 }
 
 /**
@@ -95,8 +96,15 @@ export function mailableSubscriberWhere(): Prisma.NewsletterSubscriberWhereInput
 export function isMailableSubscriber(row: {
   status: SubscriberStatus;
   deletedAt: Date | null;
+  bouncedAt: Date | null;
+  complainedAt: Date | null;
 }): boolean {
-  return row.deletedAt === null && row.status === MAILABLE_STATUS;
+  return (
+    row.deletedAt === null &&
+    row.status === MAILABLE_STATUS &&
+    row.bouncedAt === null &&
+    row.complainedAt === null
+  );
 }
 
 /**
@@ -170,8 +178,8 @@ export const SUBSCRIBER_STATUS_LABELS: Record<SubscriberStatus, string> = {
  * The tone for a status chip.
  *
  * ⚠ PENDING IS `warn`, NOT `neutral`, and the choice is load-bearing on this screen. A pending row is
- * not a quiet intermediate state: with no mail provider configured it is a person who signed up and
- * was never written to. Amber says "somebody should look at this", which is true, where grey would say
+ * not a quiet intermediate state: it is a person who signed up and has not yet opened the link they
+ * were sent. Amber says "somebody should look at this", which is true, where grey would say
  * "nothing to see", which is not. UNSUBSCRIBED is neutral rather than error — it is a perfectly
  * correct outcome and colouring it red would read as a fault.
  */
@@ -196,19 +204,19 @@ export const MAIL_KIND_LABELS: Record<NewsletterMailKind, string> = {
   CONFIRMATION: "Confirmation link",
   ALREADY_SUBSCRIBED: "Already subscribed notice",
   WELCOME: "Welcome message",
-  UNSUBSCRIBE_RECEIPT: "Unsubscribe receipt"
+  UNSUBSCRIBE_RECEIPT: "Unsubscribe receipt",
+  ISSUE: "Newsletter issue",
+  ISSUE_TEST: "Test copy of an issue"
 };
 
-/**
- * Plain words for what happened to a message.
- *
- * "Written down, not sent" rather than "recorded": an administrator reading a screen needs to know
- * that nothing left the building, and "recorded" sounds like success.
- */
+/** Plain words for what happened to a message. */
 export const MAIL_STATE_LABELS: Record<NewsletterMailState, string> = {
-  RECORDED: "Written down, not sent",
+  RECORDED: "Waiting to send",
+  SENDING: "Sending",
   SENT: "Sent",
-  FAILED: "Refused by the provider"
+  FAILED: "Not delivered",
+  SUPPRESSED: "Not sent — address stopped",
+  CANCELLED: "Not sent — issue cancelled"
 };
 
 /**

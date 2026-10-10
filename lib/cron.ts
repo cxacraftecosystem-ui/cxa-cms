@@ -60,6 +60,36 @@ export function assertCronAuthorised(request: Request): void {
 }
 
 /**
+ * Throws a 403 unless the request carries the newsletter drain's bearer — `NEWSLETTER_DRAIN_SECRET`
+ * (the GitHub Actions schedule) or `CRON_SECRET` (Vercel's own cron, which can only present that one).
+ *
+ * ⚠ HEADER ONLY, unlike `assertCronAuthorised`: no scheduler that drives this endpoint needs the query
+ * form, and a secret in a URL is logged by every proxy on the way. Both secrets are compared in constant
+ * time, both are checked whatever the first answer was, and an unset secret matches nothing.
+ */
+export function assertNewsletterDrainAuthorised(request: Request): void {
+  const drain = process.env.NEWSLETTER_DRAIN_SECRET?.trim() ?? "";
+  const cron = process.env.CRON_SECRET?.trim() ?? "";
+
+  if (!drain && !cron) {
+    console.error(
+      "[cron] neither NEWSLETTER_DRAIN_SECRET nor CRON_SECRET is set, so the newsletter drain is refusing " +
+        "every request."
+    );
+    throw forbidden("Scheduled jobs are not configured on this deployment.");
+  }
+
+  const header = request.headers.get("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  // Evaluated separately and OR-ed afterwards, so the time taken does not say which one matched.
+  const matchesDrain = bearer.length > 0 && drain.length > 0 && secretsMatch(bearer, drain);
+  const matchesCron = bearer.length > 0 && cron.length > 0 && secretsMatch(bearer, cron);
+  if (matchesDrain || matchesCron) return;
+
+  throw forbidden("This endpoint is only callable by the scheduler.");
+}
+
+/**
  * The result shape every cron route returns.
  *
  * `skipped` and `failed` are REQUIRED, not optional. A job that reports only what it did leaves the

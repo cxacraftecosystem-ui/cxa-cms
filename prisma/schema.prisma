@@ -1924,11 +1924,10 @@ model Redirect {
 //      `consentVersion` is kept alongside it so a whole cohort can be found, and lib/newsletter/
 //      consent.ts is the register that maps a version back to its text.
 //
-//   4. DELIVERY IS A SEAM, NOT A FEATURE OF THIS SCHEMA. No provider is configured in this
-//      deployment, so `NewsletterDelivery` is an OUTBOX: one row per message this application
-//      decided to send, whether or not anything sent it. A PENDING subscriber with a RECORDED
-//      confirmation row is a person waiting for an email nobody has sent yet — which is a fact the
-//      studio can show and act on, and is exactly what would otherwise be invisible.
+//   4. EVERY MESSAGE GOES THROUGH AN OUTBOX. `NewsletterDelivery` is one row per message this
+//      application decided to send, written BEFORE the send. Transactional mail is sent inline by the
+//      request; issues are queued and sent by the drain (lib/newsletter/drain.ts). Without a sender
+//      configured, rows wait as RECORDED and go out once there is one.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Where a subscription stands. Deliberately three values and not a boolean pair: "asked but has not
@@ -1956,17 +1955,43 @@ enum NewsletterMailKind {
   WELCOME
   /// Confirms an unsubscribe took effect, so nobody has to wonder whether the link worked.
   UNSUBSCRIBE_RECEIPT
+  /// One copy of a `NewsletterIssue`, for one CONFIRMED subscriber. `issueId` is set.
+  ISSUE
+  /// "Send a test to me" from the studio: one copy of an issue to the member of staff who asked. `issueId`
+  /// is set and `subscriberId` is null, so it never counts towards the issue's delivery figures.
+  ISSUE_TEST
 }
 
 /// What happened to an outbox row.
 enum NewsletterMailState {
-  /// Written down, nothing sent. The DEFAULT, and the honest state of every row in a deployment with
-  /// no mail provider registered. See the header of lib/newsletter/delivery.ts.
+  /// Queued: waiting for the drain (or for its backoff to pass). The DEFAULT. See lib/newsletter/outbox-store.ts.
   RECORDED
   /// A registered provider accepted it.
   SENT
   /// A registered provider refused or threw. `error` says what it said.
   FAILED
+  /// Claimed by one drain run (`claimToken`) and being handed to the provider right now. A claim older
+  /// than the stale window is released back to RECORDED by the next run — see lib/newsletter/outbox.ts.
+  SENDING
+  /// Not sent, deliberately: the subscriber bounced, complained, unsubscribed or was erased between the
+  /// message being queued and the drain reaching it.
+  SUPPRESSED
+  /// Not sent because the issue it belonged to was cancelled while it was still waiting.
+  CANCELLED
+}
+
+/// Where a newsletter issue stands. The studio's issue screens are built on these five.
+enum NewsletterIssueStatus {
+  /// Being written. Nothing has been queued.
+  DRAFT
+  /// Will be queued by the drain at `scheduledAt`. Can be taken back to DRAFT until then.
+  SCHEDULED
+  /// One delivery row per confirmed subscriber has been queued and the drain is working through them.
+  SENDING
+  /// Every queued row has reached an end state (sent, failed or suppressed).
+  SENT
+  /// Stopped by an editor. Rows still waiting were marked CANCELLED; rows already sent stay SENT.
+  CANCELLED
 }
 
 /// One address that asked to hear from the Centre.
@@ -2002,6 +2027,13 @@ model NewsletterSubscriber {
 
   confirmedAt    DateTime?
   unsubscribedAt DateTime?
+
+  /// ── Delivery feedback from Amazon SES (app/api/public/newsletter/ses-feedback) ──────────────
+  /// A PERMANENT bounce. A bounced address is never mailed again (`mailableSubscriberWhere()`), until
+  /// the person confirms a fresh sign-up — which proves the mailbox works and clears this.
+  bouncedAt    DateTime?
+  /// The recipient marked a message as spam. Recorded as an unsubscribe as well; nothing further is sent.
+  complainedAt DateTime?
 
   /// ── Where they signed up ────────────────────────────────────────────────────────────────────
   /// A short key naming the surface that produced this row — "newsletter-page", "footer". Chosen from
@@ -2076,13 +2108,77 @@ model NewsletterDelivery {
   createdAt DateTime  @default(now())
   sentAt    DateTime?
 
-  subscriber NewsletterSubscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  /// ── Issue sends and the drain (lib/newsletter/outbox.ts) ─────────────────────────────────────
+  /// The issue this row is a copy of. Null for the four transactional kinds.
+  issueId           String?
+  /// How many times a send has been attempted. Capped; a row that reaches the cap is FAILED.
+  attempts          Int       @default(0)
+  /// When a drain run claimed this row, and which run (`claimToken`). Cleared when the row settles.
+  claimedAt         DateTime?
+  claimToken        String?
+  /// Not to be retried before this instant — the backoff after a throttled or 5xx attempt.
+  nextAttemptAt     DateTime?
+  /// The provider's own id for the message, so a bounce or complaint can be matched back to it.
+  providerMessageId String?
 
+  subscriber NewsletterSubscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  issue      NewsletterIssue?      @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  /// ⚠ THE IDEMPOTENCY KEY FOR AN ISSUE SEND: one row per (issue, subscriber), so a double click, two
+  /// editors pressing Send together, or a scheduled send racing a manual one can never queue a second
+  /// copy. Transactional rows have a null `issueId`, and Postgres treats NULLs as distinct, so they are
+  /// unaffected.
+  @@unique([issueId, subscriberId])
   /// "What is still waiting to be sent, oldest first" is the query the studio banner runs.
   @@index([state, createdAt])
   @@index([emailKey])
   @@index([subscriberId])
+  @@index([issueId, state])
+  @@index([state, nextAttemptAt])
+  @@index([providerMessageId])
   @@map("newsletter_deliveries")
+}
+
+/// One newsletter issue, composed in the studio and sent to every CONFIRMED subscriber.
+///
+/// The counts are a snapshot the drain refreshes after each batch, so the studio list can show them
+/// without grouping the outbox for every row; the issue screen itself groups live.
+///
+/// ⚠ NO FOREIGN KEY TO `users` for `createdById`/`sentById`, deliberately: this model is self-contained
+/// so its migration touches no existing table but the outbox. The names are looked up when shown.
+model NewsletterIssue {
+  id        String                @id @default(cuid())
+  title     String
+  subject   String
+  /// The grey line most mail programs show after the subject. Optional.
+  preheader String?
+  /// Tiptap JSON, the same document shape every other body in the studio uses (lib/richtext.ts).
+  body      Json?
+  status    NewsletterIssueStatus @default(DRAFT)
+
+  scheduledAt   DateTime?
+  sendStartedAt DateTime?
+  sentAt        DateTime?
+  cancelledAt   DateTime?
+
+  recipientCount  Int @default(0)
+  sentCount       Int @default(0)
+  failedCount     Int @default(0)
+  suppressedCount Int @default(0)
+
+  createdById String?
+  updatedById String?
+  sentById    String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  deliveries NewsletterDelivery[]
+
+  @@index([status, scheduledAt])
+  @@index([deletedAt])
+  @@map("newsletter_issues")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

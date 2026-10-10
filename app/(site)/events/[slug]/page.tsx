@@ -83,7 +83,6 @@ import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
 import { attachedFilmSettings, isVideoObjectKey } from "@/lib/media/video";
 import { MEDIA_FIGURE_SELECT, MEDIA_IMAGE_SELECT } from "@/lib/media/select";
 import { ogImageUrl } from "@/lib/media/url";
-import { mailerConfigured } from "@/lib/newsletter/delivery";
 import { richTextExcerpt, parseRichText } from "@/lib/richtext";
 import { absoluteUrl, eventJsonLd, pageMetadata, serializeJsonLd } from "@/lib/seo";
 import { getSettingCached } from "@/lib/settings/service";
@@ -353,20 +352,17 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
       : 0;
 
   /**
-   * Whether the copy in the registration panel may promise an email — decided HERE, like the five
-   * states below, because the client component must never guess. It is read from the mail seam
-   * (lib/newsletter/delivery.ts), the same way app/studio/users/page.tsx hands `canSendEmail` to its
-   * screen: the bare boolean crosses to the client, never a provider name or any other fact about the
-   * environment. Until an adapter is registered from `instrumentation.ts` this is false in every
-   * process, and the form's copy says a registration is RECORDED rather than promising a message
-   * nothing can send.
+   * Whether the copy in the registration panel may promise an email — decided HERE, because the client
+   * component must never guess.
    *
-   * ⚠ AS FRESH AS THE LAST REVALIDATION, and wrong only in the safe direction: a build rendered before
-   * the mailer registers under-promises for at most one revalidation window, which is honest; the
-   * reverse — promising an email on a deployment that cannot send one — is the defect this exists to
-   * prevent.
+   * ⚠ FALSE, AND NO LONGER READ FROM THE NEWSLETTER'S SENDER. It used to be `mailerConfigured()` from
+   * lib/newsletter/delivery.ts, which made the panel promise "joining instructions go to {email}" the
+   * moment the NEWSLETTER could send — but no code composes or sends an event registration message, so
+   * that promise would have been about mail nobody sends. The wording for `false` is accurate: the
+   * registration is recorded and the Centre's team confirms it. When registration mail is built, this
+   * becomes the check for THAT sender.
    */
-  const canSendEmail = mailerConfigured();
+  const canSendEmail = false;
 
   let registrationState: RegistrationState = "open";
   let waitlist = false;

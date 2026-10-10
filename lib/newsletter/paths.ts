@@ -72,6 +72,15 @@ export const NEWSLETTER_CONFIRM_ENDPOINT = "/api/public/newsletter/confirm";
 /** POST only. The form on `NEWSLETTER_UNSUBSCRIBE_PATH` submits here. */
 export const NEWSLETTER_UNSUBSCRIBE_ENDPOINT = "/api/public/newsletter/unsubscribe";
 
+/**
+ * The RFC 8058 one-click target named in every mailing's `List-Unsubscribe` header.
+ *
+ * ⚠ A POST HERE UNSUBSCRIBES IMMEDIATELY, WITH NO PAGE — that is what a mail client's "Unsubscribe" button
+ * expects. A GET does NOT: link scanners fetch every URL they find, including header URLs, so a GET is
+ * answered with a redirect to `NEWSLETTER_UNSUBSCRIBE_PATH`, where a person confirms with a button.
+ */
+export const NEWSLETTER_ONE_CLICK_ENDPOINT = "/api/public/newsletter/one-click";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Where the reader's attention has to go afterwards
 // ─────────────────────────────────────────────────────────────────────────────

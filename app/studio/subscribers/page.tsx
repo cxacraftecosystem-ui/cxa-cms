@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect as navigate } from "next/navigation";
-import type { Prisma, SubscriberStatus } from "@prisma/client";
+import type { NewsletterMailState, Prisma, SubscriberStatus } from "@prisma/client";
 import {
   Download,
   MailWarning,
@@ -79,20 +79,16 @@ import { requestTime } from "@/lib/request-time";
  *
  * ══ THE THREE THINGS THIS SCREEN EXISTS TO SAY, IN THE ORDER IT SAYS THEM ══
  *
- *   1. **NOTHING IS BEING SENT.** No mail provider is chosen in this deployment, so every message the
- *      feature composes is written to the outbox and not delivered. `newsletterMailerInfo()` is the only
- *      honest source for that fact and this is the only screen that reads it. Without the banner, a
- *      subscriber list that never moves past "waiting to confirm" looks like a quiet month rather than
- *      like a feature that is switched off — which is the failure the header of lib/newsletter/delivery.ts
- *      calls the worst one available here.
+ *   1. **WHETHER MAIL IS GOING OUT.** `newsletterMailerInfo()` says whether the SES sender is configured
+ *      in this process. When it is not, every message is queued and the amber banner says so plainly,
+ *      without naming environment variables — an administrator needs the consequence, and
+ *      docs/DEPLOYMENT.md names the variables for whoever configures them.
  *   2. **WHAT IS WAITING.** Every `newsletter_deliveries` row in state RECORDED **whose subscriber has
- *      not been erased** is a message that should have been sent and was not. The count is the backlog to
- *      replay the moment a provider exists, and the oldest one's date is how long somebody has been
- *      waiting for a confirmation link that is never coming. ⚠ The scope is `liveDeliveryWhere()` and it
- *      is load-bearing twice over: an erased person's address must not be printed on the screen that
- *      handles erasure requests, and a message composed for an erased record must never be replayed — so
- *      the number an operator is told to expect to send is the number that may lawfully be sent. What the
- *      scope hides is stated as a bare count beside the erased-record count, with no address in it.
+ *      not been erased** is a message the next drain run will send (lib/newsletter/drain.ts). The oldest
+ *      one's date is how long somebody has been waiting. ⚠ The scope is `liveDeliveryWhere()` and it is
+ *      load-bearing twice over: an erased person's address must not be printed on the screen that handles
+ *      erasure requests, and a message composed for an erased record is suppressed by the drain rather
+ *      than sent. What the scope hides is stated as a bare count beside the erased-record count.
  *   3. **WHO IS ACTUALLY ON THE LIST.** Which is not the number of rows: a mailing may go to CONFIRMED
  *      addresses only (`mailableSubscriberWhere()`), and PENDING and UNSUBSCRIBED rows are counted here
  *      precisely so nobody reads the total as an audience size.
@@ -277,18 +273,13 @@ function auditLabel(emailKey: string): string {
  *     thing that can re-subscribe somebody is a click in their own mailbox. A studio button that
  *     contradicts the double opt-in destroys the legal basis for every message sent to that address, and
  *     it does it silently.
- *   • **"Put it back to waiting to confirm" would be honest and, in this deployment, useless.** No mail
- *     provider is registered (the amber banner at the top of this screen says so), so the confirmation it
- *     would issue goes to the outbox and no further: the row would sit in PENDING for ever. That is the
- *     appearance of a reversal without the substance, which is worse than no button — it is the "silently
- *     stranded subscriber" the header of lib/newsletter/delivery.ts calls this feature's worst failure.
+ *   • **"Put it back to waiting to confirm" would mail somebody who asked to stop.** Even with a fresh
+ *     challenge, the first thing it does is send a confirmation link to an address whose owner said "no
+ *     more". The person signing up again reaches the same state with their own click.
  *
  * So the reversal is a person signing up again themselves, and every place an operator can meet this
  * action says so: the note beside the button, `NOTICES.unsubscribed`, the sentence that replaces the
- * button on an UNSUBSCRIBED row, and the `HelpText` at the foot of the list. ⚠ If a provider is ever
- * registered, "put it back to waiting to confirm" becomes worth building — and it must issue a FRESH
- * challenge through `newConfirmationChallenge()`/`sendConfirmationEmail()` rather than reviving the old
- * nonce, which this action deliberately cleared.
+ * button on an UNSUBSCRIBED row, and the `HelpText` at the foot of the list.
  */
 async function unsubscribeByHand(formData: FormData): Promise<void> {
   "use server";
@@ -689,7 +680,14 @@ export default async function StudioSubscribersPage({
 
   const liveTotal = SUBSCRIBER_STATUSES.reduce((sum, key) => sum + counts[key], 0);
 
-  const deliveryCounts = { RECORDED: 0, SENT: 0, FAILED: 0 };
+  const deliveryCounts: Record<NewsletterMailState, number> = {
+    RECORDED: 0,
+    SENDING: 0,
+    SENT: 0,
+    FAILED: 0,
+    SUPPRESSED: 0,
+    CANCELLED: 0
+  };
   for (const group of deliveryGroups) deliveryCounts[group.state] = group._count;
 
   /**
@@ -808,12 +806,11 @@ export default async function StudioSubscribersPage({
         <div className="rounded-md border border-amber-800/25 bg-amber-100 px-3.5 py-3 text-amber-800">
           <p className="flex items-start gap-2 text-sm font-semibold">
             <MailWarning aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>Messages are waiting to be sent</span>
+            <span>The email sender is not configured</span>
           </p>
           <p className="mt-1.5 text-xs leading-relaxed">
-            Confirmation links, welcomes and unsubscribe receipts are kept as queued messages, counted
-            below. They go out once an email provider is connected; until then, new sign-ups stay on
-            “{SUBSCRIBER_STATUS_LABELS.PENDING}”. Nothing is lost.
+            Confirmation links, welcomes, unsubscribe receipts and newsletter issues are queued and counted
+            below, and they go out as soon as the sender is configured. Nothing is lost.
           </p>
         </div>
       ) : (
@@ -827,8 +824,8 @@ export default async function StudioSubscribersPage({
           somebody on. The abnormal state is the amber branch above, and that is the one that shouts.
         */
         <HelpText>
-          Email is being sent through {mailer.name}. Anything that provider refuses is listed below with
-          the reason it gave.
+          Email is sent through {mailer.name}. Confirmation links go out the moment somebody signs up;
+          anything that could not be delivered is listed below with the reason the provider gave.
         </HelpText>
       )}
 
@@ -844,8 +841,8 @@ export default async function StudioSubscribersPage({
           }
           description={
             oldestWaiting
-              ? `Each one is a message this application decided to send and could not. The oldest has been waiting since ${formatter.format(oldestWaiting.createdAt)}. They are kept in order, and connecting a provider is what sends them.`
-              : "Each one is a message this application decided to send and could not."
+              ? `Each one goes out on the next delivery run. The oldest has been waiting since ${formatter.format(oldestWaiting.createdAt)}. A message the provider asked us to slow down for waits a little longer and is tried again.`
+              : "Each one goes out on the next delivery run."
           }
           /*
             ⚠ NO `tone`. `FormSectionTone` is `"default" | "danger"` and nothing else — there is no
@@ -899,8 +896,7 @@ export default async function StudioSubscribersPage({
           */}
           <HelpText>
             “{MAIL_STATE_LABELS.RECORDED}” is a state, not a failure — nothing has been thrown away and
-            no address has been lost. “{MAIL_STATE_LABELS.SENT}” and “{MAIL_STATE_LABELS.FAILED}” are the
-            other two.
+            no address has been lost.
           </HelpText>
         </FormSection>
       ) : null}
@@ -909,8 +905,8 @@ export default async function StudioSubscribersPage({
         <FormSection
           title={
             deliveryCounts.FAILED === 1
-              ? "1 message was refused by the provider"
-              : `${deliveryCounts.FAILED} messages were refused by the provider`
+              ? "1 message could not be delivered"
+              : `${deliveryCounts.FAILED} messages could not be delivered`
           }
           description="These did not arrive. The reason is whatever the provider said, verbatim — an address that does not exist, a domain refusing our mail, or a credential that has expired."
           tone="danger"
@@ -1278,8 +1274,7 @@ export default async function StudioSubscribersPage({
               ⚠ THIS SENTENCE USED TO ASSERT SOMETHING NO PART OF THE PRODUCT COULD DO. It read
               "Unsubscribing by hand is the reversible half and is available to you" — and there is no
               re-subscribe action in this file, `NewsletterSubscriber` is absent from the recycle-bin
-              registry, and the amber banner at the top of this screen states that with no provider
-              configured nobody can ever confirm, so the reader-side route back is shut as well. An
+              registry, and at the time no email could be sent, so the reader-side route back was shut as well. An
               editor could therefore be told an action was reversible, click it on the wrong row with no
               confirmation dialog, and find that nothing anywhere reverses it.
 
@@ -1291,9 +1286,9 @@ export default async function StudioSubscribersPage({
                   fourth state in the header of app/api/public/newsletter/subscribe/route.ts says the only
                   thing that may ever re-subscribe somebody is a click in their own mailbox, and a studio
                   button contradicting it would be the most expensive kind of convenience in this feature.
-                • A "put it back to waiting-to-confirm" button would be honest, but with no provider
-                  configured it strands the row in PENDING for ever (the banner above says so), so it
-                  would restore the appearance of a reversal and not the substance.
+                • A "put it back to waiting-to-confirm" button would mail a confirmation link to somebody
+                  who has asked to stop. Asking the person to sign up again reaches the same end with
+                  their own click, which is the only click that may.
 
               So the copy now says what is actually true, on the screen where the click happens, and it
               names the one real route back. The per-row note beside the button and `NOTICES.unsubscribed`
@@ -1320,8 +1315,7 @@ export default async function StudioSubscribersPage({
               There is no re-subscribe action, and that is deliberate — putting an address back on the list
               by hand would be subscribing somebody who has not asked. The only route back is the person
               signing up again themselves and opening the confirmation link. If a row was changed by
-              mistake, tell whoever maintains the site: restoring it to “
-              {SUBSCRIBER_STATUS_LABELS.PENDING}” is a change to the database, not a button.
+              mistake, ask the person to sign up again — the confirmation link reaches them straight away.
             </HelpText>
           </>
         )}

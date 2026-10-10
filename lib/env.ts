@@ -122,6 +122,73 @@ function stripTrailingSlash(value: string | undefined): string | undefined {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
+/**
+ * The newsletter's sender: Amazon SES, through the v2 API (lib/newsletter/mailer-ses.ts).
+ *
+ * Same shape as storage above: an integration that may be ABSENT (a laptop, CI, a preview), whose
+ * absence is reported rather than papered over. With it absent the outbox simply queues — nothing is
+ * lost, and the studio says plainly that sending is not set up.
+ *
+ * ⚠ ITS OWN CREDENTIALS, NOT THE S3 ONES. `SES_ACCESS_KEY_ID`/`SES_SECRET_ACCESS_KEY` belong to an IAM
+ * user that may send mail and do nothing else (`ses:SendEmail`, `ses:GetAccount`). Re-using the storage
+ * keys would let a leaked bucket credential send mail as the Centre, and the reverse.
+ *
+ * ⚠ THE REGION DEFAULTS TO ap-south-1 — the region the sending identity is verified in. That default is
+ * a statement of where this deployment's SES account lives, not a guess: a wrong region fails every send
+ * with "identity not verified", which the drain reports as a configuration halt rather than burning the
+ * queue.
+ */
+export interface SesEnv {
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  fromAddress: string;
+  /** The display name in the From header. Falls back to the site name. */
+  fromName: string;
+  /** An SES configuration set to send through — event publishing, dedicated IPs. Optional. */
+  configurationSet: string | undefined;
+}
+
+export function sesConfigured(): boolean {
+  return Boolean(
+    read("SES_ACCESS_KEY_ID") && read("SES_SECRET_ACCESS_KEY") && read("NEWSLETTER_FROM_ADDRESS")
+  );
+}
+
+export function sesEnv(): SesEnv {
+  return {
+    region: read("SES_REGION") ?? "ap-south-1",
+    accessKeyId: required("SES_ACCESS_KEY_ID"),
+    secretAccessKey: required("SES_SECRET_ACCESS_KEY"),
+    fromAddress: required("NEWSLETTER_FROM_ADDRESS"),
+    fromName: read("NEWSLETTER_FROM_NAME") ?? siteName(),
+    configurationSet: read("SES_CONFIGURATION_SET")
+  };
+}
+
+/**
+ * The bearer the newsletter drain accepts from the GitHub Actions schedule. Undefined when unset, in
+ * which case only Vercel's own cron (which presents `CRON_SECRET`) can drive the drain.
+ */
+export function newsletterDrainSecret(): string | undefined {
+  return read("NEWSLETTER_DRAIN_SECRET");
+}
+
+/**
+ * The SNS topics whose SES bounce and complaint notifications the feedback webhook accepts.
+ *
+ * Defaults to the one topic this deployment's SES identity publishes to. `SES_FEEDBACK_TOPIC_ARNS`
+ * (comma-separated) overrides it; it is an identifier, not a secret.
+ */
+export function sesFeedbackTopicArns(): string[] {
+  const raw = read("SES_FEEDBACK_TOPIC_ARNS");
+  if (!raw) return ["arn:aws:sns:ap-south-1:626159998512:ses-feedback"];
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
 export function databaseUrl(): string {
   return required("DATABASE_URL");
 }
@@ -324,6 +391,14 @@ export function configurationWarnings(): string[] {
         "the site renders as an “Image unavailable” placeholder. Set it to the public base URL of the " +
         "bucket (S3_PUBLIC_BASE_URL is read only at build time, for the image optimiser's host " +
         "allowlist, and cannot stand in for it) and rebuild — it is inlined at build time."
+    );
+  }
+  // Said without variable names on purpose: this list is read on a studio screen, and what an
+  // administrator needs is the consequence. docs/DEPLOYMENT.md names the variables.
+  if (!sesConfigured()) {
+    warnings.push(
+      "Email sending is not set up, so newsletter confirmations and issues are queued and will go out " +
+        "once it is."
     );
   }
   if (!read("DIRECT_DATABASE_URL")) {

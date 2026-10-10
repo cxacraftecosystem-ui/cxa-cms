@@ -2,8 +2,6 @@ import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
 
 import { assertSameOrigin, route } from "@/lib/api";
-import { prisma } from "@/lib/db";
-import { sendUnsubscribeReceipt } from "@/lib/newsletter/delivery";
 import {
   NEWSLETTER_RATE_LIMITS,
   enforceNewsletterRateLimit,
@@ -14,6 +12,7 @@ import {
 } from "@/lib/newsletter/http";
 import { NEWSLETTER_UNSUBSCRIBE_PATH } from "@/lib/newsletter/paths";
 import { NEWSLETTER_TOKEN_QUERY_KEY, verifyNewsletterToken } from "@/lib/newsletter/tokens";
+import { unsubscribeAddress } from "@/lib/newsletter/unsubscribe";
 
 /**
  * Stop the newsletter.
@@ -50,11 +49,10 @@ import { NEWSLETTER_TOKEN_QUERY_KEY, verifyNewsletterToken } from "@/lib/newslet
  * a data-loss bug wearing the costume of a privacy feature. So the emailed link lands on a page that
  * names the address and offers a real form, and this handler answers the form.
  *
- * ⚠ THE DOOR IS DELIBERATELY LEFT OPEN FOR RFC 8058 ONE-CLICK. `assertSameOrigin` allows a request with
- * NO `Origin` header (lib/api.ts explains why), and a mail client performing a `List-Unsubscribe-Post`
- * sends none — so this handler already answers that shape of request correctly. What is NOT built is the
- * header on the outgoing message, which belongs to whichever provider adapter is chosen; obligation 5 in
- * the header of lib/newsletter/delivery.ts spells out exactly what it must send.
+ * ⚠ RFC 8058 ONE-CLICK HAS ITS OWN ENDPOINT, app/api/public/newsletter/one-click. Every mailing's
+ * `List-Unsubscribe` header names that URL, with the token in the query string where a mail client's POST
+ * can find it; this route reads the token from a form body, which is what the page posts. Both call the
+ * same write in lib/newsletter/unsubscribe.ts.
  *
  * ══ WHAT THE WRITE DOES, AND THE ONE THING IT DELIBERATELY DOES NOT DO ══
  *
@@ -161,20 +159,20 @@ export const POST = route(async (request: NextRequest) => {
     });
   }
 
-  const row = await prisma.newsletterSubscriber.findUnique({
-    where: { emailKey: verified.emailKey },
-    select: { id: true, email: true, status: true, deletedAt: true }
-  });
+  /**
+   * The write itself is shared with the RFC 8058 one-click endpoint (lib/newsletter/unsubscribe.ts): the
+   * row is KEPT as a suppression record, the confirmation nonce is cleared, the update is guarded so only
+   * one of two simultaneous clicks owns the transition, and the receipt goes out only on a
+   * CONFIRMED → UNSUBSCRIBED change — a PENDING address was never subscribed and must not be mailed.
+   */
+  const outcome = await unsubscribeAddress(verified.emailKey, { receipt: true });
 
   /**
-   * No row, or an erased one. Answered as a SUCCESS state rather than an error.
-   *
-   * ⚠ `state: "not-found"` still redirects the browser to the unsubscribe page, which renders this as a
-   * reassuring outcome rather than as a failure — the wording is `NOT_ON_LIST_MESSAGE` and it is the same
-   * sentence on both paths. The status is 200, not 404: there is nothing wrong with this request, and a
-   * 4xx would make a monitoring dashboard report a working unsubscribe as an error.
+   * No row, or an erased one: answered as a SUCCESS state rather than an error. The reader's intent — not
+   * to be sent this — is already true, and a 4xx would make a monitoring dashboard report a working
+   * unsubscribe as an error. `state: "not-found"` renders as a reassuring outcome on the page.
    */
-  if (!row || row.deletedAt !== null) {
+  if (outcome === "not-found") {
     return succeed({
       wantsJson,
       json: { unsubscribed: true, message: NOT_ON_LIST_MESSAGE },
@@ -183,63 +181,10 @@ export const POST = route(async (request: NextRequest) => {
     });
   }
 
-  // Already done. Idempotent, and a success — see the header.
-  if (row.status === "UNSUBSCRIBED") {
-    return succeed({
-      wantsJson,
-      json: { unsubscribed: true, message: UNSUBSCRIBED_MESSAGE },
-      basePath: BASE_PATH,
-      state: "unsubscribed"
-    });
-  }
-
   /**
-   * ⚠ GUARDED, SO THE RECEIPT CANNOT BE SENT TWICE, AND SO ONLY ONE REQUEST OWNS THE TRANSITION.
-   *
-   * `status: { in: ["PENDING", "CONFIRMED"] }` repeats what was just read. Two clicks arriving together
-   * would otherwise both see a CONFIRMED row and both send a receipt — two "you have been unsubscribed"
-   * messages to somebody who has just asked for silence, which is a small insult and an entirely
-   * avoidable one.
-   */
-  const changed = await prisma.newsletterSubscriber.updateMany({
-    where: { id: row.id, status: { in: ["PENDING", "CONFIRMED"] }, deletedAt: null },
-    data: {
-      status: "UNSUBSCRIBED",
-      unsubscribedAt: new Date(),
-      /**
-       * ⚠ CLEARING THE CONFIRMATION NONCE IS A SECURITY-RELEVANT PART OF THIS WRITE, NOT TIDYING.
-       *
-       * An unspent confirmation link may still be sitting in this person's inbox. Left alone, it would
-       * remain a way to put them BACK on the list after they asked to leave — and the confirm route's
-       * nonce check is what refuses it, precisely because there is nothing left here to match. Deleting
-       * these two lines would silently reopen that hole with nothing on screen or in a type to show it.
-       */
-      confirmationToken: null,
-      confirmationExpiresAt: null
-    }
-  });
-
-  /**
-   * The receipt: CONFIRMED → UNSUBSCRIBED only, and only for the request that won the guard.
-   *
-   * `row.status` is the status read BEFORE the update, which is the one that decides this. A PENDING
-   * address was never subscribed and must not be mailed — see the header.
-   */
-  if (changed.count === 1 && row.status === "CONFIRMED") {
-    await sendUnsubscribeReceipt({
-      to: row.email,
-      emailKey: verified.emailKey,
-      subscriberId: row.id
-    });
-  }
-
-  /**
-   * ⚠ SUCCESS EVEN WHEN `count` IS 0.
-   *
-   * Zero means somebody else's request made the same change a moment earlier — the row IS UNSUBSCRIBED,
-   * which is exactly what this reader asked for. Refusing here would be reporting a failure for an
-   * outcome that was achieved. There is no branch in which this route tells a person who wanted out that
-   * they are still on the list.
+   * ⚠ "already" IS A SUCCESS TOO. It means the row was already UNSUBSCRIBED, or somebody else's request
+   * made the same change a moment earlier — either way the outcome this reader asked for is true. There
+   * is no branch in which this route tells a person who wanted out that they are still on the list.
    */
   return succeed({
     wantsJson,

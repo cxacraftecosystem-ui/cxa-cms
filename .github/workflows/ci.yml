@@ -110,6 +110,12 @@ jobs:
       - name: Seed
         run: npm run seed
 
+      # The newsletter's unit tests and its outbox tests. The outbox tests need the migrated database
+      # (claims, idempotent queueing and the one-click endpoint are SQL behaviour, not mocks), so they run
+      # here rather than with the static checks; they empty only the three newsletter tables.
+      - name: Tests
+        run: npm test
+
       - name: Build
         run: npm run build
 
