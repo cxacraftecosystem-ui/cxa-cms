@@ -15,7 +15,8 @@
 #   runtime   the standalone server and nothing else.
 #
 # ⚠ DEBIAN, NOT ALPINE, AND THAT IS A CONSIDERED CHOICE. This application carries two native
-# dependencies — `sharp` (libvips, for the image derivative pipeline) and Prisma's query engine — and
+# dependencies — `sharp` (libvips, for the image derivative pipeline) and Prisma's schema engine (the
+# binary `prisma migrate` runs; from Prisma 7 the client itself has no engine) — and
 # both need a build matching the C library. On Alpine that means musl variants: an explicit
 # `binaryTargets = ["linux-musl-openssl-3.0.x"]` in schema.prisma, and a sharp build that has historically
 # needed `--platform=linuxmusl`. Each is a separate thing to get right, each fails at RUN time rather than
@@ -41,8 +42,9 @@ FROM node:24-trixie-slim AS deps
 
 WORKDIR /app
 
-# openssl is what Prisma's query engine links against. It is absent from the slim image, and without it
-# `prisma generate` succeeds and every query at run time fails.
+# openssl is what Prisma's schema engine — the binary behind `prisma migrate` — links against. It is absent
+# from the slim image, and without it `prisma generate` succeeds and every migration fails. (The
+# application's queries need no engine from Prisma 7: they go through node-postgres, lib/prisma-adapter.ts.)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
@@ -177,7 +179,7 @@ ENV NODE_ENV=production \
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY package.json package-lock.json tsconfig.json ./
+COPY package.json package-lock.json tsconfig.json prisma.config.ts ./
 # ⚠ `vendor/` TRAVELS WITH `node_modules`, NOT WITH THE SOURCE. npm materialises a `file:` dependency as a
 # SYMLINK into its target directory on Linux, so `node_modules/server-only` copied out of the deps stage
 # may be a link pointing at `../vendor/server-only-noop`. Without this line that link dangles, and the
@@ -229,10 +231,11 @@ COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
 
-# ⚠ PRISMA'S ENGINE IS COPIED EXPLICITLY. Next's dependency tracing follows `import` statements, and the
-# query engine is a BINARY the client loads at run time by path — nothing imports it, so nothing traces
-# it. `serverExternalPackages` in next.config.ts keeps `@prisma/client` out of the bundle, which is
-# correct, and leaves getting it into the image to this copy.
+# ⚠ THE GENERATED PRISMA CLIENT IS COPIED EXPLICITLY. It was written for Prisma 6's query engine, a binary
+# the client loaded by path that no tracer could see. Prisma 7 has no such binary — queries go through
+# node-postgres (lib/prisma-adapter.ts), which Next traces like any import — but the generated client in
+# `node_modules/.prisma` is still reached through a require Next does not follow reliably, so the copy
+# stays. `serverExternalPackages` keeps `@prisma/client` out of the bundle, which is correct.
 COPY --from=builder --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=node:node /app/node_modules/@prisma/client ./node_modules/@prisma/client
 

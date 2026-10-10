@@ -125,19 +125,19 @@ feature, and accumulates forever.
 | **`runtime`** | The standalone server and nothing else. |
 
 **Debian slim, not Alpine, and that is deliberate.** Two native dependencies — `sharp` (libvips) and
-Prisma's query engine — need builds matching the C library. On Alpine that means an explicit
-`binaryTargets = ["linux-musl-openssl-3.0.x"]` and a musl sharp build; each fails at *run* time, and each
-fails with a message about an ELF header that says nothing about musl. Debian costs ~40 MB and removes
-both problems. `openssl` is installed explicitly in every stage: Prisma's engine links against it, it is
-absent from slim, and without it `prisma generate` succeeds while every query fails.
+Prisma's schema engine (the binary behind `prisma migrate`; from Prisma 7 the client has no engine) — need
+builds matching the C library. On Alpine that means a musl engine and a musl sharp build; each fails at *run*
+time, and each fails with a message about an ELF header that says nothing about musl. Debian costs ~40 MB
+and removes both problems. `openssl` is installed explicitly in every stage: the schema engine links
+against it, it is absent from slim, and without it `prisma generate` succeeds while every migration fails.
 
 **Two copies in the runtime stage look redundant and are not:**
 
 - `.next/static` and `public/` are emitted **outside** the traced bundle. Miss them and every page
   returns 200 with no CSS and no JavaScript — which reads as a broken stylesheet, not a missing step.
-- `node_modules/.prisma` and `@prisma/client` are copied **explicitly**, because Next's tracing follows
-  `import` statements and the query engine is a binary the client loads *by path*. Nothing imports it, so
-  nothing traces it.
+- `node_modules/.prisma` and `@prisma/client` are copied **explicitly**. The reason used to be Prisma 6's
+  query engine, a binary loaded by path; Prisma 7 has none (queries go through node-postgres), but the
+  generated client in `.prisma` is still reached through a require Next does not follow reliably.
 
 **`output: "standalone"` is not committed.** The Dockerfile generates a wrapper that re-exports the real
 config with that one field added, so every header, redirect and image host stays in force and is

@@ -43,13 +43,14 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { PrismaClient } from "@prisma/client";
+// First: loads .env before anything below reads the environment (see scripts/db.ts).
+import { createScriptClient } from "./db";
 import bcrypt from "bcryptjs";
 
 import { pagePreviewToken } from "../lib/pages";
 import { allPlaceholderPrompts } from "../lib/sections/schema";
 
-const prisma = new PrismaClient();
+const prisma = createScriptClient();
 
 const base = (process.argv[2] ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 

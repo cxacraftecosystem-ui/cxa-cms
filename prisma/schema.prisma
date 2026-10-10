@@ -28,14 +28,18 @@
 // where precision matters the value is stored as a string with its unit alongside.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// `prisma-client-js`, imported as `@prisma/client` everywhere. Prisma 7 deprecates it in favour of
+// `prisma-client`, which generates into the source tree and changes every one of ~150 imports; that move
+// is recorded in docs/OUTSTANDING.md. The client has no query engine of its own any more: it talks to
+// Postgres through the driver adapter in lib/prisma-adapter.ts.
 generator client {
   provider = "prisma-client-js"
 }
 
+// The connection URLs are not here from Prisma 7: the CLI reads prisma.config.ts (migrations, over
+// DIRECT_DATABASE_URL) and the application builds its own connection from DATABASE_URL.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
+  provider = "postgresql"
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -60,10 +60,18 @@ fix each one needs.
   that counted them was editor information and is gone; the block's studio form does not show the
   count. Fix: show `droppedIds` in the studio form.
 
+### Prisma's `prisma-client-js` generator is deprecated in Prisma 7 — opened 2026-10-10
+
+Prisma 7 keeps `prisma-client-js` working but deprecated in favour of `prisma-client`, which generates
+the client into the source tree. Moving means an `output` in the schema's generator block and changing
+the ~150 `from "@prisma/client"` imports to that path (and the Dockerfile's two explicit client copies).
+It was left out of the Prisma 7 upgrade to keep that change reviewable on its own; nothing else blocks it.
+
 ### Prisma's `sslmode=require` does not verify the database's certificate — opened 2026-10-09
 
 Both database URLs carry `sslmode=require` (`DEPLOYMENT.md` §1.4). That encrypts the connection, but
-Prisma does not verify the server's certificate in that mode, so a function accepts whatever
+the server's certificate is not verified in that mode (Prisma 7's adapter keeps Prisma 6's meaning on
+purpose, `lib/prisma-adapter.ts`), so a function accepts whatever
 certificate the far end presents. Somebody on the path between a function and the Supabase pooler
 could therefore stand in the middle of the connection without the function noticing. That path runs
 inside the cloud providers' networks, which is why this is a known gap rather than an emergency — but

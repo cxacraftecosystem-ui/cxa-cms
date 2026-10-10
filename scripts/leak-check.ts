@@ -65,13 +65,14 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
+// First: loads .env before anything below reads the environment (see scripts/db.ts).
+import { createScriptClient } from "./db";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { PrismaClient } from "@prisma/client";
 import { isLive, type PublishableFields } from "../lib/content";
 
-const prisma = new PrismaClient();
+const prisma = createScriptClient();
 
 /**
  * The marker.

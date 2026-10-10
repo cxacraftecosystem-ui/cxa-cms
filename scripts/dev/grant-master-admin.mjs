@@ -15,8 +15,16 @@
  * Idempotent. Re-running promotes an existing account and refreshes the grant; it never creates a
  * second row and never silently changes a password that was not supplied.
  */
+import { existsSync } from "node:fs";
+
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+
+// Node 24 strips the types itself, so this plain-Node script uses the application's own adapter.
+import { prismaAdapter } from "../../lib/prisma-adapter.ts";
+
+// Prisma 7's client no longer reads .env; a variable already set in the environment still wins.
+if (existsSync(".env")) process.loadEnvFile(".env");
 
 const [, , rawEmail, ...nameParts] = process.argv;
 if (!rawEmail) {
@@ -35,7 +43,7 @@ if (password && password.length < 12) {
   process.exit(1);
 }
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: prismaAdapter(process.env.DATABASE_URL) });
 
 try {
   const passwordHash = password ? await bcrypt.hash(password, 12) : undefined;

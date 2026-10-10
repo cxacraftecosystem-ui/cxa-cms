@@ -1,6 +1,8 @@
 import "server-only";
 import { PrismaClient } from "@prisma/client";
 
+import { prismaAdapter } from "@/lib/prisma-adapter";
+
 /**
  * The Prisma singleton.
  *
@@ -10,12 +12,16 @@ import { PrismaClient } from "@prisma/client";
  * machine nobody is load-testing. Stashing the instance on `globalThis` is the documented fix.
  *
  * In production the module is evaluated once, so the global is simply unused.
+ *
+ * The connection is Prisma 7's driver adapter (node-postgres) built from `DATABASE_URL` by
+ * lib/prisma-adapter.ts, which also says how the URL's Prisma-era parameters are honoured.
  */
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
+    adapter: prismaAdapter(process.env.DATABASE_URL),
     log:
       process.env.NODE_ENV === "development"
         ? ["warn", "error"]
@@ -35,7 +41,7 @@ export const prisma =
      *    waits inside `maxWait` while one is opened through the pooler (TCP, TLS, the pooler's own
      *    authentication);
      *  - under Fluid compute one copy serves several requests at once through one pool of
-     *    `connection_limit` connections (docs/DEPLOYMENT.md §1.4), so a burst of saves queues for a
+     *    `connection_limit` connections — the adapter's pool size (docs/DEPLOYMENT.md §1.4), so a burst of saves queues for a
      *    free one — and the pooler itself queues once every server connection it has is lent out;
      *  - a function that runs away from Mumbai pays a long round trip per statement: a deployment
      *    that loses the region pin falls back to the project's default, Washington (`iad1`), where a

@@ -1,4 +1,6 @@
-import { PrismaClient, type Prisma, type Role, type SectionType } from "@prisma/client";
+// First: loads .env before anything below reads the environment (see scripts/db.ts).
+import { createScriptClient } from "../scripts/db";
+import { type Prisma, type Role, type SectionType } from "@prisma/client";
 import { SETTINGS_DEFAULTS, SETTINGS_GROUP_KEYS } from "../lib/settings/schema";
 import {
   allPlaceholderPrompts,
@@ -177,7 +179,7 @@ import { indexDocument, reindexAll, searchDocFromPage } from "../lib/search/inde
  * search reads as an empty site — see "The search index" below for why that code is a copy and not a call.
  */
 
-const prisma = new PrismaClient();
+const prisma = createScriptClient();
 
 /*
  * ⚠ THE COST FACTOR IS NO LONGER RESTATED HERE. `hashPassword()` from lib/auth/password.ts owns it, and

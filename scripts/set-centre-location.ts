@@ -16,11 +16,12 @@
  * explicitly on the command line when writing to production.
  */
 
-import { PrismaClient } from "@prisma/client";
 
+// First: loads .env before anything below reads the environment (see scripts/db.ts).
+import { createScriptClient } from "./db";
 import { contactSettingsSchema } from "../lib/settings/schema";
 
-const prisma = new PrismaClient();
+const prisma = createScriptClient();
 
 /**
  * From the Centre's own Google Maps pin, https://maps.app.goo.gl/gTVqa7vBTGgf4tBc6, which resolves

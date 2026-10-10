@@ -87,7 +87,8 @@ prisma generate && prisma migrate deploy && next build
 Three steps, in the only order that works.
 
 - **`prisma generate`** — the build imports `@prisma/client`, and without the generated client it fails
-  with a message about a missing module rather than a missing generate step.
+  with a message about a missing module rather than a missing generate step. The CLI reads
+  `prisma.config.ts` (Prisma 7): schema, migrations, seed, and the migration URL.
 - **`prisma migrate deploy`** — applies committed migrations and nothing else. Never `migrate dev`, which
   will happily invent a migration from schema drift; in a build that means unreviewed DDL against a real
   database. Putting it *before* `next build` matters: the build reads the database through
@@ -100,8 +101,9 @@ the deploy — so a build that cannot reach the database **succeeds**, quietly, 
 repair themselves within each page's `revalidate` window. Check the build log for its warning; do not
 take a green deployment as proof the database was reachable.
 
-Prisma needs no `binaryTargets` entry in `schema.prisma`. It detects Vercel's Amazon Linux and the
-container's Debian on its own, and pinning one would break the other.
+Prisma needs no `binaryTargets` entry in `schema.prisma`. From Prisma 7 the client has no engine at all —
+it talks to Postgres through node-postgres (`lib/prisma-adapter.ts`) — and the CLI's schema engine detects
+Vercel's Amazon Linux and the container's Debian on its own.
 
 ### 1.4 Two database URLs, and why
 
@@ -110,8 +112,9 @@ DATABASE_URL         → the pooler, transaction mode                  (runtime)
 DIRECT_DATABASE_URL  → one continuous session: session mode or direct (migrations)
 ```
 
-`prisma/schema.prisma` already wires this up: `url = env("DATABASE_URL")`,
-`directUrl = env("DIRECT_DATABASE_URL")`.
+From Prisma 7 the URLs are not in `prisma/schema.prisma`. The application connects from `DATABASE_URL`
+through the driver adapter in `lib/prisma-adapter.ts`; the CLI (`prisma migrate`) reads
+`prisma.config.ts`, which uses `DIRECT_DATABASE_URL` and falls back to `DATABASE_URL`.
 
 **Why the runtime URL must be pooled.** Every copy of the application opens its own connection pool, and
 the platform starts copies as traffic needs them. Postgres has a fixed connection allowance, so a busy
@@ -125,7 +128,7 @@ assume one continuous session. Run `prisma migrate deploy` through a transaction
 part-way, or — worse — reports success on a lock it never actually held, and two concurrent builds
 migrate the same database at once.
 
-If `DIRECT_DATABASE_URL` is absent, Prisma falls back to the pooled URL and the studio's diagnostics
+If `DIRECT_DATABASE_URL` is absent, `prisma.config.ts` falls back to the pooled URL and the studio's diagnostics
 panel says so. That fallback works against a plain Postgres and fails against a pooler, which is the
 single most confusing failure in this list: the same command works locally and fails in the build.
 
@@ -142,11 +145,11 @@ Every part of the first one is load-bearing:
 
 - **Port `6543`** is transaction mode: a server connection is lent for one transaction and returned,
   so however many copies of the application are running share a handful of real connections.
-- **`pgbouncer=true`** tells Prisma a transaction pooler is in front, and Prisma stops using named
-  prepared statements. A statement prepared on one server connection does not exist on the next one
-  the pooler lends, so without it queries fail with `prepared statement "s0" already exists` (or
-  `does not exist`) under concurrency.
-- **`connection_limit=10`** is the pool *each copy* of the application keeps. Prisma's generic advice
+- **`pgbouncer=true`** says a transaction pooler is in front. Prisma 6 needed it to stop naming its
+  prepared statements, because a statement prepared on one server connection does not exist on the next
+  one the pooler lends (`prepared statement "s0" already exists`). Prisma 7's adapter names none unless
+  told to, so the parameter is now a statement of fact the adapter strips; keep it in the URL.
+- **`connection_limit=10`** is the pool *each copy* of the application keeps (the adapter's pool `max`). Prisma's generic advice
   for serverless is `1`, and **it is wrong here**: the build prerenders pages in parallel through one
   client, and the production build of 2026-09-24 12:41 UTC failed with `P2024 Timed out fetching a new
   connection from the connection pool … (connection limit: 1)`. The same commit built cleanly minutes
@@ -156,10 +159,12 @@ Every part of the first one is load-bearing:
   Supabase computes (Nano, Micro) admit 200 pooler clients, so 10 per copy leaves room for about
   twenty copies at once.
 - **`pool_timeout=30`** is how many seconds a query waits for a free connection from that pool before
-  `P2024` (Prisma's default is 10). Builds run in Washington (`iad1`) against a database in Mumbai, so
+  failing (default 10; `lib/audit.ts` still tells the editor what `P2024` used to). Builds run in Washington (`iad1`) against a database in Mumbai, so
   every connection there is slow to open and slow to give back.
-- **`sslmode=require`** encrypts the connection. Prisma does not verify the server certificate in this
-  mode; verifying it needs Supabase's CA shipped with the functions, which is not done.
+- **`sslmode=require`** encrypts the connection without verifying the server certificate — libpq's and
+  Prisma 6's meaning. node-postgres would read it as `verify-full` and refuse Supabase's certificate, so
+  `lib/prisma-adapter.ts` translates it; verifying needs Supabase's CA shipped with the functions, which
+  is not done.
 
 The second URL is the **session pooler on port 5432 of the same host**, one server connection for the
 whole session, which is what `prisma migrate deploy` needs. It is not the "direct connection" Supabase
@@ -168,7 +173,8 @@ IPv6 only, and Vercel's builds and functions cannot reach IPv6. It carries none 
 parameters, because a migration is one session doing one thing.
 
 `schema`, `pgbouncer`, `connection_limit`, `pool_timeout` (and `socket_timeout`,
-`statement_cache_size`, `sslaccept`, `sslidentity`) are **Prisma's own parameters, not Postgres's**:
+`statement_cache_size`, `sslaccept`, `sslidentity`) are **Prisma's own parameters, not Postgres's** —
+`lib/prisma-adapter.ts` reads each one and strips it before node-postgres sees the URL —
 `psql` and every other libpq client refuse a URL that carries them with `invalid URI query
 parameter`. Anything that hands one of these URLs to such a tool strips them first —
 `.github/workflows/keep-warm.yml` shows how.

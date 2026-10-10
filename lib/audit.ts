@@ -235,6 +235,15 @@ const TRANSIENT_WRITE_FAILURES: Record<string, { status: number; message: string
 };
 
 /**
+ * "No connection could be taken from the pool in time" — `P2024` in Prisma 6. Under Prisma 7 the pool is
+ * node-postgres's (lib/prisma-adapter.ts), and it rejects with a plain `Error` carrying no code, only
+ * this message — matched here so the reader still gets the P2024 sentence, not a generic 500.
+ */
+function poolTimeout(error: object): boolean {
+  return error instanceof Error && error.message.includes("timeout exceeded when trying to connect");
+}
+
+/**
  * Translate a transient database failure into something the reader can act on; leave everything else
  * untouched, including the `ApiError`s a mutation callback throws on purpose.
  */
@@ -242,7 +251,7 @@ export function asWriteFailure(error: unknown): unknown {
   if (error instanceof ApiError) return error;
   if (typeof error !== "object" || error === null) return error;
 
-  const code = (error as { code?: unknown }).code;
+  const code = poolTimeout(error) ? "P2024" : (error as { code?: unknown }).code;
   if (typeof code !== "string") return error;
 
   const known = TRANSIENT_WRITE_FAILURES[code];

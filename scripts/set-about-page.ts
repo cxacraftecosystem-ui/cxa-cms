@@ -49,14 +49,16 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { PrismaClient, type Prisma, type SectionType } from "@prisma/client";
+// First: loads .env before anything below reads the environment (see scripts/db.ts).
+import { createScriptClient } from "./db";
+import { type Prisma, type SectionType } from "@prisma/client";
 
 import { DEFAULT_FOOTER, DEFAULT_HEADER, type NavSeed } from "../lib/navigation";
 import { mergeSectionData, normaliseAnchor, sectionAnchor } from "../lib/sections/anchor";
 import { parseSectionData } from "../lib/sections/schema";
 import { stableJson } from "../lib/utils";
 
-const prisma = new PrismaClient();
+const prisma = createScriptClient();
 
 const PAGE_SLUG = "about";
 

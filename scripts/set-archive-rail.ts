@@ -26,11 +26,12 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
-import { PrismaClient } from "@prisma/client";
 
+// First: loads .env before anything below reads the environment (see scripts/db.ts).
+import { createScriptClient } from "./db";
 import { CRAFT_CATEGORY_SHEETS } from "../lib/media/craft-sheets";
 
-const prisma = new PrismaClient();
+const prisma = createScriptClient();
 
 /**
  * What each category actually is, in the site's own register.
