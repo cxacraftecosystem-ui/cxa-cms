@@ -3,7 +3,7 @@ import { z } from "@/lib/zod";
 import type { AuditAction, Prisma } from "@prisma/client";
 import { badRequest, ok, route } from "@/lib/api";
 import { requireCapability } from "@/lib/auth/current-user";
-import { auditActorEmail } from "@/lib/audit-actor";
+import { SCHEDULED_JOB_LABEL, auditActorEmail, isScheduledJobRow } from "@/lib/audit-actor";
 import { accountsForAuditRows, auditTextSearch, lockHoldersForAuditRows } from "@/lib/audit-accounts";
 import { accountLabel, displayFieldNames, withLockHolderNames } from "@/lib/audit-subject";
 import { displayIpFingerprint } from "@/lib/audit-ip";
@@ -226,6 +226,11 @@ export const GET = route(async (request: NextRequest) => {
         actor: entry.actor,
         /** The actor's address as recorded on the row; the joined one only for rows that lack it. */
         actorEmail: auditActorEmail(entry),
+        /**
+         * "Scheduled job" on a row a cron route wrote (lib/audit-actor.ts `isScheduledJobRow`), so a client
+         * does not fall back to "Deleted user" for an account that never existed. Null on every other row.
+         */
+        systemActor: isScheduledJobRow(entry) ? SCHEDULED_JOB_LABEL : null,
         /** The client IP address (lib/request-ip.ts). Null on a row that carries only `networkFingerprint`. */
         ipAddress: entry.ipAddress,
         /** A keyed fingerprint of the same address (lib/audit-ip.ts), on every row since 2026-10-10. */
@@ -335,9 +340,12 @@ export const GET = route(async (request: NextRequest) => {
         actor: entry.actor,
         /**
          * The actor's address as recorded on the row (it survives a hard-deleted account); the joined one
-         * only for rows that lack it. Null only when neither exists: a client shows "Deleted user".
+         * only for rows that lack it. Null only when neither exists: a client shows `systemActor` when it
+         * is set, and "Deleted user" otherwise.
          */
         actorEmail: auditActorEmail(entry),
+        /** "Scheduled job" on a row a cron route wrote (lib/audit-actor.ts `isScheduledJobRow`); else null. */
+        systemActor: isScheduledJobRow(entry) ? SCHEDULED_JOB_LABEL : null,
         /** The client IP address. Null on a row that carries only `networkFingerprint`. */
         ipAddress: entry.ipAddress,
         networkFingerprint: displayIpFingerprint(entry.ipHash),

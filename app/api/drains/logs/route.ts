@@ -130,19 +130,21 @@ export const POST = route(async (request: Request) => {
    * 3. ⚠ IS THE DESTINATION PRIVATE? THE SAME GATE THE ARCHIVE CRON REFUSES TO WRITE WITHOUT, AND FOR
    *    A STRICTER REASON.
    *
-   *    `archiveDestinationPrivacy()` exists because docker/minio-public-read.json grants anonymous
-   *    `s3:GetObject` on `arn:aws:s3:::<bucket>/*` — the WHOLE bucket, every prefix — and
-   *    docker-compose.yml:103 says a real S3 bucket "needs the same care". The nightly archive job
-   *    therefore refuses to write a single object until an operator states in the environment that
-   *    the destination is not anonymously readable (app/api/cron/logs-archive/route.ts), and its own
-   *    comment on writing anyway reads "a leak documented in a comment is a leak".
+   *    `archiveDestinationPrivacy()` exists because which keys are anonymously readable is decided by
+   *    a bucket policy this code cannot see. Local MinIO (docker/minio-public-read.json) grants
+   *    anonymous `s3:GetObject` on `arn:aws:s3:::<bucket>/*` — the WHOLE bucket, every prefix;
+   *    production limits it to the public prefixes `media/*`, `models/*` and `craft/*` (verified
+   *    2026-10-10), leaving `files/logs/` private. The nightly archive job therefore refuses to write a
+   *    single object until an operator attests in the environment that the destination is outside
+   *    the anonymously readable prefixes (app/api/cron/logs-archive/route.ts), and its own comment on
+   *    writing anyway reads "a leak documented in a comment is a leak".
    *
    *    THIS RECEIVER WROTE INTO THE SAME ROOT AND NEVER ASKED. `dayPrefix(DRAIN_SOURCE, …)` puts
    *    deliveries at `files/logs/vercel/<YYYY>/<MM>/<DD>/…` — the same `LOG_ARCHIVE_KEY_ROOT`, the
    *    same bucket, the same policy — so a deployment that upgraded to Pro and followed
-   *    docs/OPERATIONS.md §9 would publish every client IP, every referer and every request URL the
-   *    CDN serves, WHILE the compliance job beside it was correctly reporting that this destination
-   *    is not safe to write to. The two policies were exactly inverted relative to the sensitivity of
+   *    docs/OPERATIONS.md §9 under a policy that covered `files/logs/` (local MinIO's does) would
+   *    publish every client IP, every referer and every request URL the CDN serves, WHILE the
+   *    compliance job beside it was correctly reporting that this destination is not safe to write to. The two policies were exactly inverted relative to the sensitivity of
    *    what each writes: a drain carries the traffic the application never sees, which is the larger
    *    and richer half.
    *

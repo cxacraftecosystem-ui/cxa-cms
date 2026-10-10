@@ -409,16 +409,31 @@ export function archiveSources(): LogArchiveSource[] {
 /**
  * Is the archive destination actually private?
  *
- * ⚠ READ THIS BEFORE CHANGING THE DEFAULT. The media bucket grants anonymous `s3:GetObject` on
- * `arn:aws:s3:::<bucket>/*` — the WHOLE bucket, every prefix — because that is what makes
- * `NEXT_PUBLIC_CDN_URL` work (docker/minio-public-read.json, and docker-compose.yml:103 says a real
- * S3 bucket "needs the same care"). `s3:ListBucket` is denied, so keys cannot be enumerated, and for
- * media that is the whole defence: an upload key carries eight random bytes and is unguessable.
+ * ⚠ READ THIS BEFORE CHANGING THE DEFAULT. Whether a key is anonymously readable is decided by the
+ * bucket policy, which this code cannot see — and the two policies this project runs under differ:
+ *
+ *   • PRODUCTION (`cxa-media-prod`, verified 2026-10-10 with `aws s3api get-bucket-policy`) allows
+ *     anonymous `s3:GetObject` ONLY on the public prefixes `media/*`, `models/*` and `craft/*` —
+ *     which is what makes `NEXT_PUBLIC_CDN_URL` work — beside a `DenyInsecureTransport` statement.
+ *     BlockPublicAcls and IgnorePublicAcls are on, so no object ACL can widen that. The archive
+ *     root `files/logs/` is outside every public prefix and is NOT anonymously readable.
+ *   • LOCAL MinIO (docker/minio-public-read.json) still grants anonymous GetObject on
+ *     `arn:aws:s3:::<bucket>/*` — the WHOLE bucket, every prefix. There the flag must stay unset.
+ *
+ * `s3:ListBucket` is denied in both, so keys cannot be enumerated, and for media that is the whole
+ * defence: an upload key carries eight random bytes and is unguessable.
  *
  * ARCHIVE KEYS ARE THE OPPOSITE BY DESIGN. They are computed from a date precisely so a reader can
- * fetch a range without listing. Anonymous GetObject plus a derivable key is publication: anybody
- * who can type `/files/logs/audit/2026/09/15/manifest.json` gets the institute's record of who
- * signed in, from which address, and every before/after snapshot of every edit.
+ * fetch a range without listing. Anonymous GetObject plus a derivable key is publication: against a
+ * policy that covered the prefix, anybody who can type `/files/logs/audit/2026/09/15/manifest.json`
+ * gets the institute's record of who signed in, from which address, and every before/after
+ * snapshot of every edit. A public prefix added later, or a policy rewritten to `<bucket>/*`, would
+ * do exactly that — which is why the gate stays although production is private today.
+ *
+ * `LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true` is therefore the operator's ATTESTATION of two facts this
+ * code cannot check: that `files/logs/` stays outside the bucket's anonymously readable prefixes, and
+ * that no lifecycle rule shorter than 90 days applies to it. Production set it on 2026-10-10;
+ * docs/OPERATIONS.md §3 has the commands that re-verify both.
  *
  * So the write is gated on an operator ASSERTING that the destination is private, and the default
  * is to refuse — the same choice lib/cron.ts makes about `CRON_SECRET`, for the same reason: the
@@ -454,11 +469,12 @@ export function archiveDestinationPrivacy(): { confirmed: boolean; reason: strin
       (privacy.malformed
         ? `LOG_ARCHIVE_DESTINATION_IS_PRIVATE is "${privacy.raw}", which is not a yes, so `
         : "") +
-      "no logs were archived: the destination has not been confirmed private. The media bucket " +
-      "grants anonymous GetObject on every key, and archive keys are derived from the date by " +
-      "design, so archiving into it as it stands would publish the audit trail to anyone who can " +
-      `guess a URL. Give the archive a bucket policy that excludes "${LOG_ARCHIVE_KEY_ROOT}/*" from ` +
-      "anonymous access (or a private bucket of its own), then set " +
+      "no logs were archived: the destination has not been confirmed private. Archive keys are " +
+      "derived from the date by design, so archiving under a prefix the bucket policy lets anyone " +
+      "read would publish the audit trail to anyone who can guess a URL. Check that the policy's " +
+      "anonymous GetObject statements name only the public prefixes and that " +
+      `"${LOG_ARCHIVE_KEY_ROOT}/" is not among them (or give the archive a private bucket of its own), ` +
+      "and that no lifecycle rule under 90 days applies to it, then set " +
       "LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true. Nothing is lost meanwhile — no log row is ever " +
       `deleted, so the first runs after the change back-fill every pending day within the last ${archiveScanDays()}.`
   };

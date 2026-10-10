@@ -4,6 +4,7 @@ import "server-only";
 // same namespace. Same pattern as app/api/public/events/[slug]/register/route.ts.
 import { Prisma, type AuditAction, type AuthProvider, type Role } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { SCHEDULED_JOB_LABEL, isScheduledJobRow } from "@/lib/audit-actor";
 import { auditIpSearchClauses, displayIpFingerprint, fingerprintSearchHex } from "@/lib/audit-ip";
 import {
   attemptedFromPayload,
@@ -183,24 +184,33 @@ function cappedByProbe<T>(rows: readonly T[], cap: number): CappedList<T> {
  * recorded on the row when it was written — denormalised for exactly that reason, so a purged account
  * does not erase the trail (docs/AUDIT-PRIVACY.md). Only the few rows written on 2026-10-10 without it
  * leave a screen to say "deleted user".
+ *
+ * `systemLabel` is "Scheduled job" on a row a cron route wrote — the scheduler publishing an article at
+ * its date, the purge — which has no account at all, so a screen must not call it a removed one
+ * (lib/audit-actor.ts `isScheduledJobRow`). Null on every row a person wrote.
  */
 export interface ActorRef {
   id: string | null;
   name: string | null;
   email: string | null;
+  systemLabel: string | null;
 }
 
 interface ActorColumns {
+  action: AuditAction;
   actorId: string | null;
   actorEmail: string | null;
+  ipAddress: string | null;
+  ipHash: string | null;
   actor: { id: string; name: string; email: string } | null;
 }
 
-function actorRef(row: ActorColumns): ActorRef {
+function actorRef(row: ActorColumns, entityType: string): ActorRef {
   return {
     id: row.actor?.id ?? row.actorId,
     name: row.actor?.name ?? null,
-    email: row.actorEmail ?? row.actor?.email ?? null
+    email: row.actorEmail ?? row.actor?.email ?? null,
+    systemLabel: isScheduledJobRow({ ...row, entityType }) ? SCHEDULED_JOB_LABEL : null
   };
 }
 
@@ -617,7 +627,15 @@ export async function recordProvenance(
       prisma.auditLog.findFirst({
         where: { ...where, action: "CREATE" },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: { createdAt: true, actorId: true, actorEmail: true, actor: ACTOR_SELECT }
+        select: {
+          createdAt: true,
+          action: true,
+          actorId: true,
+          actorEmail: true,
+          ipAddress: true,
+          ipHash: true,
+          actor: ACTOR_SELECT
+        }
       }),
       prisma.auditLog.findFirst({
         where,
@@ -641,6 +659,9 @@ export async function recordProvenance(
           createdAt: true,
           actorId: true,
           actorEmail: true,
+          // Only to recognise a scheduled job's row (`actorRef`); never returned — see the header on addresses.
+          ipAddress: true,
+          ipHash: true,
           actor: ACTOR_SELECT,
           before: true,
           after: true
@@ -691,7 +712,7 @@ export async function recordProvenance(
     label: safeEntityLabel(type, label),
     labelWithheld: labelIsWithheld(type) && label !== null,
     created: creation
-      ? { at: creation.createdAt.toISOString(), actor: actorRef(creation) }
+      ? { at: creation.createdAt.toISOString(), actor: actorRef(creation, type) }
       : null,
     firstSeenAt: oldest ? oldest.createdAt.toISOString() : null,
     lastChangeAt: newest ? newest.createdAt.toISOString() : null,
@@ -707,7 +728,7 @@ export async function recordProvenance(
           id: entry.id,
           action: entry.action,
           at: entry.createdAt.toISOString(),
-          actor: actorRef(entry),
+          actor: actorRef(entry, type),
           changedFields: fields.slice(0, PROVENANCE_CAPS.fieldsPerEvent),
           changedFieldsTotal: fields.length,
           isEvent: before === null && after === null
@@ -725,7 +746,9 @@ export async function recordProvenance(
         author: {
           id: row.author?.id ?? row.authorId,
           name: row.author?.name ?? null,
-          email: row.author?.email ?? null
+          email: row.author?.email ?? null,
+          // A revision is only ever written by a signed-in person (lib/audit.ts `writeRevision`).
+          systemLabel: null
         }
       })),
       PROVENANCE_CAPS.revisions,

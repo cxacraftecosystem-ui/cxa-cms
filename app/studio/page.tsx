@@ -12,6 +12,7 @@ import {
   FileStack,
   Fingerprint,
   ImageOff,
+  TriangleAlert,
   Inbox,
   KeyRound,
   Link2Off,
@@ -24,11 +25,24 @@ import {
 } from "lucide-react";
 
 import { prisma } from "@/lib/db";
-import { auditActorName } from "@/lib/audit-actor";
+import {
+  LOG_ARCHIVE_ENTITY_TYPES,
+  SCHEDULED_JOB_LABEL,
+  auditActorName,
+  isScheduledJobRow
+} from "@/lib/audit-actor";
 import { accountLabel } from "@/lib/audit-subject";
 import { requireUser } from "@/lib/auth/current-user";
 import { livePublishableWhere } from "@/lib/content";
 import { pagePath } from "@/lib/pages";
+import {
+  collapseScheduledRows,
+  collapsedCount,
+  isScheduledProblem,
+  recentActivityWhere,
+  scheduledProblemWhere,
+  summariseRecentActivity
+} from "@/lib/studio/recent-activity";
 import {
   ROLE_DESCRIPTIONS,
   ROLE_LABELS,
@@ -99,6 +113,27 @@ const FAILED_SIGN_IN_DAYS = 7;
  * place with only that many records (contract §1.6).
  */
 const RECENT_ACTIVITY_LIMIT = 8;
+
+/**
+ * How many audit rows are READ to fill those lines. More than the limit, because identical scheduled
+ * rows collapse into one line (lib/studio/recent-activity.ts); the log archive's own rows are already
+ * excluded by the query, so this only has to absorb the scheduler's and the purge's.
+ */
+const RECENT_ACTIVITY_SCAN = 40;
+
+/**
+ * How far back the "Scheduled jobs" block looks for a log-archive problem, and how many rows it reads.
+ * A week: the archive runs nightly, so a problem older than that has either been fixed or has been
+ * repeated every night since — in which case its latest night is inside the window.
+ */
+const SCHEDULED_PROBLEM_DAYS = 7;
+const SCHEDULED_PROBLEM_SCAN = 100;
+
+/** Nouns for the per-type audit-log links under that block, when it holds more than one type. */
+const PROBLEM_TYPE_NOUNS: Record<string, string> = {
+  LogArchiveRun: "refused archive run",
+  LogArchiveGap: "archive gap",
+};
 
 /** How many broken menu links are named before the row says "and N more". */
 const NAMED_BROKEN_LINKS = 3;
@@ -214,18 +249,43 @@ interface ActivityEntry {
   entityId: string | null;
   entityLabel: string | null;
   after: unknown;
+  actorId: string | null;
   actorEmail: string | null;
+  ipAddress: string | null;
+  ipHash: string | null;
   createdAt: Date;
   actor: { name: string; email: string } | null;
 }
+
+/** The audit columns both activity queries read: enough to name the actor and recognise a cron's row. */
+const ACTIVITY_SELECT = {
+  id: true,
+  action: true,
+  entityType: true,
+  entityId: true,
+  entityLabel: true,
+  after: true,
+  actorId: true,
+  actorEmail: true,
+  ipAddress: true,
+  ipHash: true,
+  createdAt: true,
+  actor: { select: { name: true, email: true } }
+} as const;
 
 /** One sentence per audit entry: who, what, and what it was called. No enum names, ever. */
 function describeActivity(entry: ActivityEntry): string {
   const phrases: Partial<Record<AuditAction, string>> = ACTION_PHRASES;
   // The account's current name, else the address recorded on the row (`actorEmail`) — so an account that
-  // has since been deleted is still named (lib/audit-actor.ts).
+  // has since been deleted is still named — else "Scheduled job" for a cron's row (lib/audit-actor.ts).
   const who = auditActorName(entry, "Somebody");
   const label = entry.entityLabel?.trim();
+
+  // The log archive's labels are already whole sentences ("logs-archive archived nothing — …"), so the
+  // verb would be said twice: "Scheduled job archived logs-archive archived nothing".
+  if (label && isScheduledJobRow(entry) && LOG_ARCHIVE_ENTITY_TYPES.includes(entry.entityType)) {
+    return `${SCHEDULED_JOB_LABEL}: ${label}`;
+  }
 
   switch (entry.action) {
     case "LOGIN":
@@ -300,6 +360,7 @@ export default async function StudioDashboardPage() {
   const now = new Date();
   const soon = new Date(now.getTime() + SOON_DAYS * 24 * 60 * 60 * 1000);
   const signInWindowOpened = new Date(now.getTime() - FAILED_SIGN_IN_DAYS * 24 * 60 * 60 * 1000);
+  const problemWindowOpened = new Date(now.getTime() - SCHEDULED_PROBLEM_DAYS * 24 * 60 * 60 * 1000);
 
   const [
     pagesInReview,
@@ -315,7 +376,8 @@ export default async function StudioDashboardPage() {
     postsPublishingSoon,
     newEnquiries,
     imagesMissingAlt,
-    recentActivity,
+    recentActivityRows,
+    scheduledProblemRows,
     navigationLinks,
     livePageSlugs,
     accessGrants,
@@ -372,20 +434,19 @@ export default async function StudioDashboardPage() {
       where: { deletedAt: null, kind: "IMAGE", altText: null }
     }),
 
+    // The log archive's own rows are excluded in the query (lib/studio/recent-activity.ts says why);
+    // its problems are read by the next one, for the block above the panel.
     prisma.auditLog.findMany({
-      take: RECENT_ACTIVITY_LIMIT,
+      take: RECENT_ACTIVITY_SCAN,
+      where: recentActivityWhere(),
       orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        action: true,
-        entityType: true,
-        entityId: true,
-        entityLabel: true,
-        after: true,
-        actorEmail: true,
-        createdAt: true,
-        actor: { select: { name: true, email: true } }
-      }
+      select: ACTIVITY_SELECT
+    }),
+    prisma.auditLog.findMany({
+      take: SCHEDULED_PROBLEM_SCAN,
+      where: scheduledProblemWhere(problemWindowOpened),
+      orderBy: { createdAt: "desc" },
+      select: ACTIVITY_SELECT
     }),
 
     // The cheap half of a link check: the menus are one small table, and the published pages are the
@@ -594,6 +655,11 @@ export default async function StudioDashboardPage() {
   const outstanding = applicable.filter((row) => row.count > 0);
   const quickCreate = QUICK_CREATE.filter((item) => item.can(user));
   const mayReadActivity = canViewAuditLog(user);
+
+  const recentActivity = summariseRecentActivity(recentActivityRows, RECENT_ACTIVITY_LIMIT);
+  // The query already narrows to these; the predicate is the same one the panel uses to leave them out.
+  const scheduledProblems = collapseScheduledRows(scheduledProblemRows.filter(isScheduledProblem));
+  const scheduledProblemTypes = [...new Set(scheduledProblems.map((line) => line.entry.entityType))];
 
   /**
    * The master administrator's panel.
@@ -818,6 +884,62 @@ export default async function StudioDashboardPage() {
         predicate the /studio/audit screen and its route handler both use, and a "recent activity" feed
         on a dashboard is the same data with a friendlier layout. A failing check renders nothing.
       */}
+      {/*
+        SCHEDULED-JOB PROBLEMS, ABOVE THE ACTIVITY THEY USED TO BURY. A night the log archive wrote
+        nothing, or a day about to leave its scan window unarchived, is a compliance problem rather
+        than somebody's activity — so it is lifted out of the list below and shown here, one line per
+        distinct problem with how many nights it repeated (lib/studio/recent-activity.ts). The full
+        audit log keeps every row. Same `canViewAuditLog` gate as the panel: it is the same data.
+      */}
+      {mayReadActivity && scheduledProblems.length > 0 ? (
+        <section aria-labelledby="scheduled-problems-heading">
+          <h2 id="scheduled-problems-heading" className="font-display text-lg font-semibold text-ink-900">
+            Scheduled jobs need attention
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-ink-500">
+            Reported by the nightly log archive in the last {SCHEDULED_PROBLEM_DAYS} days. No log row is
+            ever deleted, so a night it archived nothing is caught up once the cause is fixed — Settings →
+            Diagnostics says what it is waiting for.
+          </p>
+          <ol className="panel mt-3 divide-y divide-line-200">
+            {scheduledProblems.map((line) => (
+              <li key={line.entry.id} className="flex items-start gap-3 px-4 py-3">
+                <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <span className="min-w-0 flex-1 text-sm leading-relaxed text-ink-700">
+                  {describeActivity(line.entry)}
+                  {collapsedCount(line.count)}
+                </span>
+                <ActivityTime line={line} />
+              </li>
+            ))}
+          </ol>
+          {/* The audit filter takes one entity type, so a block holding both refused runs and gaps
+              links each type on its own — one link to the first line's type hid the other. */}
+          <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs leading-relaxed text-ink-500">
+            {scheduledProblemTypes.map((type) => (
+              <Link
+                key={type}
+                href={`/studio/audit?entityType=${encodeURIComponent(type)}`}
+                className="font-medium text-purple-700 transition hover:text-purple-800"
+              >
+                {scheduledProblemTypes.length === 1
+                  ? "See every one of these in the audit log"
+                  : `See every ${PROBLEM_TYPE_NOUNS[type] ?? type} in the audit log`}
+              </Link>
+            ))}
+          </p>
+        </section>
+      ) : null}
+
+      {/*
+        The whole panel is administrator-only, because the audit log is: `canViewAuditLog` is the
+        predicate the /studio/audit screen and its route handler both use, and a "recent activity" feed
+        on a dashboard is the same data with a friendlier layout. A failing check renders nothing.
+
+        It lists what PEOPLE did. The log archive's own rows are left out (its problems are in the block
+        above), and identical scheduled-job rows collapse into one line with a count — see
+        lib/studio/recent-activity.ts.
+      */}
       {mayReadActivity ? (
         <section aria-labelledby="activity-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -832,7 +954,7 @@ export default async function StudioDashboardPage() {
             </Link>
           </div>
 
-          {recentActivity.length === 0 ? (
+          {recentActivity.lines.length === 0 ? (
             <p className="panel mt-3 px-4 py-3.5 text-sm leading-relaxed text-ink-500">
               Nothing has been recorded yet. Every change made in the studio appears here, with the name
               of whoever made it.
@@ -840,46 +962,58 @@ export default async function StudioDashboardPage() {
           ) : (
             <>
               <ol className="panel mt-3 divide-y divide-line-200">
-                {recentActivity.map((entry) => (
-                  <li key={entry.id} className="flex items-start gap-3 px-4 py-3">
+                {recentActivity.lines.map((line) => (
+                  <li key={line.entry.id} className="flex items-start gap-3 px-4 py-3">
                     <ScrollText
                       aria-hidden="true"
                       className="mt-0.5 h-4 w-4 shrink-0 text-ink-300"
                     />
                     <span className="min-w-0 flex-1 text-sm leading-relaxed text-ink-700">
-                      {describeActivity(entry)}
+                      {describeActivity(line.entry)}
+                      {collapsedCount(line.count)}
                     </span>
-                    {/*
-                      Relative time for reading, the exact instant in the tooltip for anybody who needs
-                      it. UTC is named rather than assumed: the Centre's display timezone is a setting,
-                      and a bare time with no zone beside an audit entry is a time somebody will
-                      mis-read during an incident.
-                    */}
-                    <time
-                      dateTime={entry.createdAt.toISOString()}
-                      title={`${entry.createdAt.toLocaleString("en-GB", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                        timeZone: "UTC"
-                      })} UTC`}
-                      className="shrink-0 text-xs text-ink-500"
-                    >
-                      {formatDistanceToNow(entry.createdAt, { addSuffix: true })}
-                    </time>
+                    <ActivityTime line={line} />
                   </li>
                 ))}
               </ol>
 
               {/* The cap, on screen. See RECENT_ACTIVITY_LIMIT. */}
               <p className="mt-2 text-xs leading-relaxed text-ink-500">
-                {recentActivity.length === RECENT_ACTIVITY_LIMIT
-                  ? `Showing the ${RECENT_ACTIVITY_LIMIT} most recent entries. There may be more — the full audit log has all of them.`
-                  : `Showing ${count(recentActivity.length, "entry", "entries")}, which is all there are.`}
+                {recentActivity.capped || recentActivityRows.length === RECENT_ACTIVITY_SCAN
+                  ? `Showing the ${count(recentActivity.lines.length, "most recent line", "most recent lines")}. There may be more — the full audit log has all of them.`
+                  : `Showing ${count(recentActivity.lines.length, "line", "lines")}, which is everything recent.`}{" "}
+                The nightly log archive&apos;s own entries are not listed here; the full audit log has every
+                one.
               </p>
             </>
           )}
         </section>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * When a line happened: relative for reading, the exact instant in the tooltip for anybody who needs
+ * it. UTC is named rather than assumed: the Centre's display timezone is a setting, and a bare time with
+ * no zone beside an audit entry is a time somebody will mis-read during an incident.
+ *
+ * A collapsed line says "latest …" and its tooltip gives both ends of the run, so "×8" is never a count
+ * with no dates attached.
+ */
+function ActivityTime({ line }: { line: { entry: { createdAt: Date }; count: number; earliestAt: Date } }) {
+  const latest = line.entry.createdAt;
+  const exact = (at: Date) =>
+    `${at.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC`;
+  const relative = formatDistanceToNow(latest, { addSuffix: true });
+
+  return (
+    <time
+      dateTime={latest.toISOString()}
+      title={line.count > 1 ? `Latest ${exact(latest)}; earliest ${exact(line.earliestAt)}` : exact(latest)}
+      className="shrink-0 text-xs text-ink-500"
+    >
+      {line.count > 1 ? `latest ${relative}` : relative}
+    </time>
   );
 }

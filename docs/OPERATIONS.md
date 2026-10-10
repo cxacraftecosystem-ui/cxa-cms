@@ -63,7 +63,7 @@ silent rather than loud:
 | `DIRECT_DATABASE_URL` | Migrations run through the pooled connection, which fails against a transaction-mode pooler. Reported by the studio's diagnostics panel. |
 | `S3_*` | Uploads are disabled and the studio **says so** on the settings screen, rather than failing at 90% of a transfer. |
 | `NEXT_PUBLIC_CDN_URL` | **Every photograph on the public site renders as an "Image unavailable" placeholder.** There is no signed-URL fallback for images — signing exists for document downloads only — so this is the one storage variable whose absence is visible to readers. `lib/env.ts` warns at boot. ⚠ It is inlined at build time, so setting it needs a **rebuild**, not a restart. |
-| `LOG_ARCHIVE_DESTINATION_IS_PRIVATE` | **The nightly log archive writes nothing, and a log drain would be refused too.** It defaults to refusing on purpose — archive keys are derived from the date, and the media bucket grants anonymous `GetObject` on every key, so writing there unstated would publish the audit trail. Clause 4 is then being met by Postgres alone, with no object-storage evidence at all. Reported on the diagnostics panel; read §9 and the entry in `.env.example` before setting it, because it is an assertion about the **bucket policy**, not a feature switch. |
+| `LOG_ARCHIVE_DESTINATION_IS_PRIVATE` | **The nightly log archive writes nothing, and a log drain would be refused too.** It defaults to refusing on purpose — archive keys are derived from the date, so writing under a prefix the bucket policy lets anyone read would publish the audit trail. Anonymous `GetObject` is limited to the policy's listed public prefixes (production: `media/*`, `models/*`, `craft/*`; local MinIO: the whole bucket), and setting the flag attests that `files/logs/` is outside them and that no lifecycle rule under 90 days applies to it. While it is unset, Clause 4 is being met by Postgres alone, with no object-storage evidence at all. Reported on the diagnostics panel; read §9 and the entry in `.env.example` before setting it, because it is an assertion about the **bucket policy**, not a feature switch. **Set in production on 2026-10-10** — see §3 for how to re-verify. |
 | `ACCESS_LOG_ENABLED` | Set to `false`, **no `access_logs` row is written for anything** — the studio, the authentication routes, the cron endpoints. It defaults on; its being off is reported on the diagnostics panel, because while it is off there is nothing to produce to CIC. |
 
 `JWT_SECRET` is validated for strength at boot: shorter than 32 characters, a known placeholder, or
@@ -93,7 +93,7 @@ edited. On another platform, call all three with `Authorization: Bearer $CRON_SE
 compliant without them.** Both are in §2 and in `.env.example`, and both are infrastructure:
 
 1. **`LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true`** — and the bucket policy that makes it a true
-   statement. Until it is set the job runs nightly, returns 200, and archives **nothing**. It says so
+   statement: anonymous `GetObject` only on public prefixes that do not include `files/logs/`. Until it is set the job runs nightly, returns 200, and archives **nothing**. It says so
    in its response and on the studio's diagnostics panel, and it writes an `audit_logs` row each
    night recording that it did nothing, so the silence is discoverable later than the hour Vercel
    keeps the console line.
@@ -101,6 +101,31 @@ compliant without them.** Both are in §2 and in `.env.example`, and both are in
    shorter than that. Code puts the objects there; only the bucket decides how long they survive, and
    a 30-day expiry inherited from a bucket-wide rule would quietly undo the whole obligation with the
    job still reporting success every night.
+
+**Production state of both, verified 2026-10-10 against `cxa-media-prod`.** The bucket policy allows
+anonymous `s3:GetObject` **only** on `media/*`, `models/*` and `craft/*`, beside a
+`DenyInsecureTransport` statement; BlockPublicAcls and IgnorePublicAcls are on, so no object ACL can
+widen it. `files/logs/` is in none of those prefixes and is **not** anonymously readable. The
+lifecycle configuration has **no expiry on current objects under `files/logs/`** — its rules are
+`tmp/` after 7 days, noncurrent versions after 30 days, expired delete markers, and incomplete
+multipart uploads after 7 days. On that evidence **`LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true` was set in
+production on 2026-10-10.** The flag is the operator's attestation of those two facts — the code
+cannot check them — so re-verify after any change to the bucket's policy or lifecycle, and before
+setting it on any other bucket:
+
+```bash
+aws s3api get-bucket-policy --bucket cxa-media-prod --query Policy --output text | jq .
+# Every Allow for s3:GetObject to Principal "*" must name only media/*, models/*, craft/* (never <bucket>/* or files/*).
+
+aws s3api get-public-access-block --bucket cxa-media-prod
+# BlockPublicAcls and IgnorePublicAcls: true.
+
+aws s3api get-bucket-lifecycle-configuration --bucket cxa-media-prod
+# No rule whose filter covers files/logs/ (or the whole bucket) may expire CURRENT objects in under 90 days.
+```
+
+If any check fails, unset the flag first — the job then refuses again and archives nothing, which loses
+nothing because no log row is ever deleted — and fix the bucket before setting it back.
 
 **On Pro, move `publish` back into `vercel.json`** as `{ "path": "/api/cron/publish", "schedule":
 "*/10 * * * *" }` and drop the publish step from the workflow — or, on the current plan, schedule the
@@ -269,9 +294,11 @@ destination was not confirmed private, while `/api/drains/logs` published every 
 request URL the CDN served into that same bucket. The two policies were exactly inverted relative to
 the sensitivity of what each writes.
 
-1. **Make `files/logs/*` non-public, then say so.** Exclude that prefix from anonymous `GetObject` in
-   the bucket policy — or give the archive a private bucket of its own — and set
-   `LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true`. Drain deliveries land under the same
+1. **Make sure `files/logs/*` is non-public, then say so.** The bucket policy must grant anonymous
+   `GetObject` only on public prefixes that do not include it — in production that is already so
+   (`media/*`, `models/*`, `craft/*`; §3 has the check and the commands) — or the archive needs a
+   private bucket of its own; then `LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true` (set in production on
+   2026-10-10). Drain deliveries land under the same
    `files/logs/` root the archive cron uses, so this gate covers both, and `/api/drains/logs` answers
    `503 archive_destination_public` while it is unset. `Cache-Control` is **not** what protects these
    objects (see *Where the lines land*); the bucket policy is. While you are in there, give the
@@ -335,8 +362,9 @@ to read as though it were. Objects are written with it, overriding `putObject`'s
 default, because these bytes record who visited the site, are never served to a browser, and a cached
 copy of them in an intermediary is a disclosure with no upside. What decides whether a stranger can
 *fetch* them is the bucket policy, which is step 1 of *Configuring the drain* and the thing
-`LOG_ARCHIVE_DESTINATION_IS_PRIVATE` asserts. A bucket that grants anonymous `GetObject` on every key
-serves these objects to anyone who can name one, `no-store` or not.
+`LOG_ARCHIVE_DESTINATION_IS_PRIVATE` asserts. A policy whose anonymous `GetObject` covered
+`files/logs/` — as local MinIO's whole-bucket grant does — would serve these objects to anyone who can
+name one, `no-store` or not.
 
 ### What is scrubbed before anything is stored
 

@@ -65,8 +65,11 @@ import {
  *      decides how long they survive, and a 30-day expiry inherited from a bucket-wide rule would
  *      quietly undo every guarantee this file makes, with the job still reporting success nightly.
  *   2. **The archive prefix must not be anonymously readable.** See `archiveDestinationPrivacy` —
- *      the media bucket grants anonymous GetObject on every key, and this job refuses to write
- *      until an operator states in the environment that the destination does not.
+ *      anonymous GetObject is limited to the bucket's listed public prefixes (in production
+ *      `media/*`, `models/*` and `craft/*`, verified 2026-10-10; local MinIO grants the whole
+ *      bucket), and this job refuses to write until an operator attests in the environment
+ *      (`LOG_ARCHIVE_DESTINATION_IS_PRIVATE=true`) that `files/logs/` stays outside them and that no
+ *      lifecycle rule under 90 days applies to it. Production set it on 2026-10-10.
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  */
 export const dynamic = "force-dynamic";

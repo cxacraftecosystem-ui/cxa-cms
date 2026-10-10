@@ -258,8 +258,9 @@ function formatDayLabel(day: string): string {
   });
 }
 
-/** Whoever did it, named as well as the record allows. */
-function whoDidIt(actor: { name: string | null; email: string | null }): string {
+/** Whoever did it, named as well as the record allows — "Scheduled job" for a cron's row. */
+function whoDidIt(actor: { name: string | null; email: string | null; systemLabel?: string | null }): string {
+  if (actor.systemLabel) return actor.systemLabel;
   const name = actor.name?.trim();
   if (name && name.length > 0) return name;
   const email = actor.email?.trim();
