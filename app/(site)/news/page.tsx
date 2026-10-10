@@ -362,7 +362,7 @@ export default async function NewsIndexPage({
             description={
               filtered
                 ? "Try a different category, or fewer topics."
-                : "Pieces appear here as soon as they are published in the studio."
+                : "There is no news to show right now."
             }
             action={
               filtered ? (

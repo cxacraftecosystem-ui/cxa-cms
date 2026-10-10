@@ -219,7 +219,7 @@ export const GET = route(async (request: NextRequest) => {
         message: null,
         notice: PROVENANCE_NOTICE,
         note:
-          "The comparison is worked out when you ask for it, from two whole stored versions. Nothing stores a difference — see lib/audit.ts for why the full state is kept instead.",
+          "Compared from the two saved versions.",
         caps: PROVENANCE_CAPS
       });
     }

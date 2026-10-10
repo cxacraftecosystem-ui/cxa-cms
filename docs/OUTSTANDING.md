@@ -33,6 +33,33 @@ Supabase Vault) or **Vercel Pro** with the publish job back in `vercel.json` —
 them is the owner's decision, open as of 2026-10-09. Either way the publish step then comes out of
 `keep-warm.yml`. Both options are in `DEPLOYMENT.md` §1.7; the long version is `ARCHITECTURE.md` §3.2.
 
+### Gaps that the screens used to narrate, now recorded here instead — opened 2026-10-10
+
+The customer-facing copy sweep (2026-10-10) took every sentence off the public site and the studio that
+admitted a missing feature or a known defect. The facts did not go away; they are kept here, with the
+fix each one needs.
+
+- **No email is sent.** `setNewsletterMailer()` in `lib/newsletter/delivery.ts` is the adapter hook and
+  nothing calls it, so newsletter confirmations, welcomes and receipts queue (Studio → Subscribers
+  counts them) and password and invitation links are shown to the administrator to pass on. Fix: write
+  the provider adapter and register it at start-up; `canSendEmail` / `mailerConfigured()` then switch
+  every screen to its sending wording by themselves.
+- **The redirects screen's "Followed" count under-counts.** `findPageRedirect()` in `lib/pages.ts` runs
+  inside a render (prerender included) and deliberately does not write, so a working redirect can read
+  0. Fix: count on the way through, in the proxy or a route handler, never in a render.
+- **Smaller image sizes are never regenerated.** A picture above `DERIVE_MAX_BYTES`, or one whose sizes
+  failed, keeps serving the full-size file; the only remedy is replacing it. Fix: a "make sizes again"
+  action on the media item.
+- **`font-mono` does not resolve to JetBrains Mono.** It points at `--font-mono`, which nothing defines;
+  `font-jetbrains-mono` is the working key. Fix: define `--font-mono`, or point the key at the face.
+- **A category or tag rename reindexes at most `REINDEX_LIMIT` articles at once.** The rest keep their
+  old label in the site search until the next *Rebuild index*. Fix: queue the remainder.
+- **Plain-markdown images in an MDX article render nothing.** The public page no longer explains this
+  to visitors, and the studio does not warn on save. Fix: flag `![…](…)` in the MDX field.
+- **Showcase blocks leave out chosen items that are no longer published, silently.** The public footnote
+  that counted them was editor information and is gone; the block's studio form does not show the
+  count. Fix: show `droppedIds` in the studio form.
+
 ### Prisma's `sslmode=require` does not verify the database's certificate — opened 2026-10-09
 
 Both database URLs carry `sslmode=require` (`DEPLOYMENT.md` §1.4). That encrypts the connection, but

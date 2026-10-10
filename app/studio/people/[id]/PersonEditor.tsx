@@ -729,9 +729,7 @@ export function PersonEditor({
         {isLiveOrGoingLive && value.isVisible ? (
           <HelpText>
             The profile&rsquo;s own page appears on the site as soon as it is published, so the link works
-            straight away. The people page is a listing that is rebuilt every few minutes, so this person can
-            take up to five minutes to appear on it. Nothing has gone wrong in the meantime, and there is
-            nothing to press — reload /people after a few minutes and they will be there.
+            straight away. They can take up to five minutes to appear on the People page.
           </HelpText>
         ) : null}
 

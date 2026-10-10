@@ -81,11 +81,10 @@ function promisesFor(canSendEmail: boolean): ReadonlyArray<{
           `That message carries a link, valid for ${CONFIRMATION_TTL_HOURS} hours, and until somebody opens ` +
           "it no newsletter is ever sent. It means nobody can subscribe you by typing your address into this " +
           "form, and it means the Centre never writes to an address that has not asked for it."
-        : "Signing up records nothing but a pending entry. The Centre is not sending messages yet, so the " +
-          "confirmation is not immediate: when sending begins, a message with a link goes to the address " +
-          "you gave, and until somebody opens that link no newsletter is ever sent. It means nobody can " +
-          "subscribe you by typing your address into this form, and it means the Centre never writes to an " +
-          "address that has not asked for it."
+        : "Signing up records nothing but a pending entry. A message with a link to confirm goes to the " +
+          "address you gave, and until somebody opens that link no newsletter is ever sent. It means nobody " +
+          "can subscribe you by typing your address into this form, and it means the Centre never writes to " +
+          "an address that has not asked for it."
     },
     {
       icon: MailX,
@@ -161,7 +160,7 @@ export default async function NewsletterPage({
               blurb={
                 canSendEmail
                   ? "Enter the address it should go to. You will be sent one message with a link to confirm, and nothing else until you open it."
-                  : "Enter the address it should go to. It joins the list straight away; a message with a link to confirm follows when the Centre begins sending, and no newsletter arrives until you open it."
+                  : "Enter the address it should go to. A message with a link to confirm follows, and no newsletter arrives until you open it."
               }
             />
           </Reveal>
@@ -204,7 +203,7 @@ export default async function NewsletterPage({
               <p className="prose-measure mt-3 text-sm leading-relaxed text-ink-700">
                 {canSendEmail
                   ? "If the confirmation message does not arrive, look in whichever folder your mail programme files bulk mail in, and check the address for a typo. Signing up a second time is safe: it never creates a second subscription, and it sends a fresh link."
-                  : "The Centre has not begun sending messages yet, so the confirmation is not expected straight away — nothing is wrong if none has arrived. Signing up a second time is safe either way: it never creates a second subscription."}
+                  : "If the confirmation message has not arrived, there is nothing you need to do: your sign-up is recorded. Signing up a second time is safe: it never creates a second subscription."}
               </p>
               <p className="prose-measure mt-3 text-sm leading-relaxed text-ink-700">
                 If you are trying to STOP the newsletter and the link in your copy will not work, the link

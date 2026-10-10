@@ -116,7 +116,7 @@ export async function ProjectShowcaseSection({
   total: givenTotal,
   droppedIds: givenDropped
 }: ProjectShowcaseSectionProps) {
-  const { rows, total: matched, droppedIds } = pickShowcase(resolved?.projects, section.id, {
+  const { rows, total: matched } = pickShowcase(resolved?.projects, section.id, {
     rows: given,
     total: givenTotal,
     droppedIds: givenDropped
@@ -161,8 +161,8 @@ export async function ProjectShowcaseSection({
     icon: FolderKanban,
     title: data.state ? "No projects at this stage yet" : "No projects to show yet",
     description: data.state
-      ? "Projects appear here once one at this stage is published in the studio."
-      : "Projects appear here once they are published in the studio.",
+      ? "There are no projects at this stage to show right now."
+      : "There are no projects to show right now.",
     headingLevel: 3 as const
   };
 
@@ -215,7 +215,7 @@ export async function ProjectShowcaseSection({
           )}
         </div>
 
-        <ShowcaseNote hidden={hidden} matched={matched} dropped={droppedIds} link={link} />
+        <ShowcaseNote hidden={hidden} matched={matched} link={link} />
 
         {/* The CTA's one copy when the heading is off screen — see the note beside `SectionHeading`. */}
         {!heading && link ? (
@@ -285,15 +285,13 @@ function ProjectCard({
 function ShowcaseNote({
   hidden,
   matched,
-  dropped,
   link
 }: {
   hidden: number;
   matched: number;
-  dropped: number;
   link?: { href: string; label: string };
 }) {
-  if (hidden === 0 && dropped === 0) return null;
+  if (hidden === 0) return null;
 
   return (
     <p className="mt-8 text-sm text-ink-500">
@@ -305,13 +303,6 @@ function ShowcaseNote({
               {link.label}
             </Link>
           ) : null}
-        </>
-      ) : null}
-      {dropped > 0 ? (
-        <>
-          {hidden > 0 ? " " : null}
-          {dropped} chosen {dropped === 1 ? "project is" : "projects are"} no longer published and{" "}
-          {dropped === 1 ? "is" : "are"} not shown.
         </>
       ) : null}
     </p>

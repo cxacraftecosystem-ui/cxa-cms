@@ -223,8 +223,8 @@ export default async function ContactPage() {
           <div className="shell">
             <Reveal>
               <SectionHeading
-                title="The enquiry form is not available"
-                description="It has been switched off for this deployment. Everything below still reaches the Centre — write to the address or the inbox that fits your question."
+                title="Write to the Centre"
+                description="Write to the address or the inbox below that fits your question."
               />
             </Reveal>
           </div>

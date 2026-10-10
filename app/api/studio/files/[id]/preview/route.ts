@@ -182,7 +182,7 @@ export const POST = route(async (request: Request, context: RouteContext) => {
       made: false,
       alreadyRenderable: false,
       message:
-        "No document converter is configured for this deployment, so no preview can be made. The document is still offered as a download. An administrator can add a converter key."
+        "A preview isn't available for this document. It is still offered as a download."
     });
   }
 

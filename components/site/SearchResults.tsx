@@ -313,8 +313,8 @@ export function SearchResults({
             empty={{
               icon: FileSearch,
               headingLevel: 3,
-              title: "Nothing published here yet",
-              description: "This is the only reason the row is empty — nothing has failed to load."
+              title: "Nothing here",
+              description: "There is nothing in this group to show right now."
             }}
           >
             {group.items.map((item) => (

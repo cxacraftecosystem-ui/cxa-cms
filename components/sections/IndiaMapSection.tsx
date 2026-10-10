@@ -225,8 +225,8 @@ export async function IndiaMapSection({ data, section }: IndiaMapSectionProps) {
         {unplacedTotal > 0 ? (
           <p className="sr-only">
             {unplacedTotal === 1
-              ? "1 craft comes from a place not yet on the map."
-              : `${unplacedTotal} crafts come from places not yet on the map.`}
+              ? "1 craft comes from a place that isn't shown on the map."
+              : `${unplacedTotal} crafts come from places that aren't shown on the map.`}
           </p>
         ) : null}
       </div>

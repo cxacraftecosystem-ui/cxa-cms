@@ -476,7 +476,7 @@ export function ArticleEditor({
         tone: "success",
         title: keep === "mdx" ? "The MDX source is now the article" : "The formatted body is now the article",
         description:
-          "The other one is cleared on screen and will be cleared in the database on the next save. The version history still holds it."
+          "The other one is cleared now and removed when you next save. The version history still holds it."
       });
     },
     [toast]
@@ -675,9 +675,8 @@ export function ArticleEditor({
                   <span>This article has two bodies stored, and only one can be published.</span>
                 </p>
                 <p className="mt-1.5">
-                  Something has written both a formatted body and MDX source. Choose which one is the
-                  article. The other is cleared on screen straight away and in the database on the next
-                  save — the version history keeps it either way. Nothing can be saved until you choose.
+                  Choose which one is the article. The other is cleared now and removed when you next
+                  save; the version history keeps it. Nothing can be saved until you choose.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button variant="secondary" size="sm" icon={Type} onClick={() => resolveConflict("formatted")}>
@@ -703,7 +702,7 @@ export function ArticleEditor({
               <Field
                 label="MDX source"
                 hideLabel
-                help="Markdown with components. It is compiled when the site is built, so a mistake here shows up as a build failure rather than as a broken paragraph."
+                help="Markdown with components. Check the preview before publishing."
               >
                 <Textarea
                   value={value.mdx}

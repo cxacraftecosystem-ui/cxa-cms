@@ -792,7 +792,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
             headingLevel: 3,
             title: "No team members are listed for this project yet",
             description:
-              "People appear here once they are added to the project in the studio and their own page is published."
+              "No team members are listed for this project."
           }}
         >
           {project.members.map((member, index) => (

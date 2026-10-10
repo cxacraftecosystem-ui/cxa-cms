@@ -203,8 +203,7 @@ export function PlaceSearchBox({
   if (!placeSearchAvailable()) {
     return (
       <p className="text-xs leading-5 text-ink-500">
-        Place search needs NEXT_PUBLIC_MAPTILER_API_KEY, which this build does not have. Pan the map, or type
-        the coordinates in.
+        Place search isn&rsquo;t available right now. Move the map or type the coordinates.
       </p>
     );
   }

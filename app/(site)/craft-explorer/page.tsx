@@ -549,8 +549,8 @@ export default async function CraftExplorerPage({ searchParams }: CraftExplorerP
                 <EmptyState
                   icon={Compass}
                   headingLevel={2}
-                  title="No crafts have been published yet"
-                  description="Craft records appear here as soon as they are published in the studio. Nothing is missing from this page — there is nothing in the archive yet."
+                  title="No crafts to show"
+                  description="There are no craft records to show right now."
                 />
               )
             }

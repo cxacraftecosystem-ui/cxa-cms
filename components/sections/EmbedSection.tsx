@@ -148,8 +148,8 @@ function UploadedFilm({
       <EmbedProblem
         message={
           data.mediaId
-            ? "This video block names a film that is no longer in the media library. Choose it again, or restore it from the recycle bin."
-            : "This video block has no film chosen yet."
+            ? "This video isn't available right now."
+            : "This video isn't available right now."
         }
       />
     );

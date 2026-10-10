@@ -452,8 +452,8 @@ export function ResearchGraph({
         <EmptyState
           icon={Network}
           headingLevel={3}
-          title="There is no research graph to draw yet"
-          description="The graph appears once at least one research area has been published in the studio. Projects, and the people working on them, are what draw the lines between areas."
+          title="No research graph to show"
+          description="There are no research areas to show right now."
         />
       </div>
     );

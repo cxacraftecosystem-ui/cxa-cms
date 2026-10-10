@@ -445,7 +445,7 @@ export default async function GalleryIndexPage({
             description={
               filtered
                 ? "Try another collection, or another year."
-                : "Albums appear here as soon as they are published in the studio."
+                : "There are no albums to show right now."
             }
             action={
               filtered ? (

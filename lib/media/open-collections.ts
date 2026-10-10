@@ -393,7 +393,7 @@ async function fetchAllowed(
     if (!location) {
       return {
         ok: false,
-        reason: `The collection answered with a redirect (HTTP ${response.status}) that named no address.`
+        reason: "The collection sent this picture somewhere it couldn't be fetched from."
       };
     }
     if (hop >= MAX_REDIRECTS) {
@@ -433,7 +433,7 @@ async function fetchJson(
     return {
       ok: false,
       status: response.status,
-      reason: `The collection answered with an error (HTTP ${response.status}).`
+      reason: "The collection couldn't send this picture. Try again later."
     };
   }
 
@@ -489,7 +489,7 @@ export async function downloadOpenCollectionImage(input: {
   if (!response.ok) {
     return {
       ok: false,
-      reason: `The collection refused to send the picture (HTTP ${response.status}).`
+      reason: "The collection didn't allow this picture to be copied."
     };
   }
 

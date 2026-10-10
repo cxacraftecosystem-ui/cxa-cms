@@ -141,9 +141,9 @@ function describeRetryAfter(raw: string | null): string | null {
 /** For a response that carried nothing usable — a proxy page, a gateway timeout, a dropped body. */
 function statusFallback(status: number): string {
   if (status >= 500) {
-    return `The server ran into a problem and did not answer properly (HTTP ${status}). Your password has not been changed — try again in a moment.`;
+    return "Something went wrong on our side. Your password has not been changed — try again in a moment.";
   }
-  return `The server refused that (HTTP ${status}).`;
+  return "That didn't work. Your password has not been changed.";
 }
 
 export function SetPasswordForm({ token, email }: SetPasswordFormProps) {

@@ -183,7 +183,7 @@ function LinkCard({ item }: { item: LinkGridItem }) {
       <div className={cn(frame, "border-dashed")}>
         {body}
         {/* Said on screen rather than logged: the person who can fix it is the one looking at the page. */}
-        <span className="mt-3 block text-xs text-ink-500">This link has no address yet.</span>
+        <span className="mt-3 block text-xs text-ink-500">This link isn&rsquo;t available right now.</span>
       </div>
     );
   }

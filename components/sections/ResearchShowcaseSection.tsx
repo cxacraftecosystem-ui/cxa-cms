@@ -86,7 +86,7 @@ export function ResearchShowcaseSection({
   total: givenTotal,
   droppedIds: givenDropped
 }: ResearchShowcaseSectionProps) {
-  const { rows, total: matched, droppedIds } = pickShowcase(resolved?.research, section.id, {
+  const { rows, total: matched } = pickShowcase(resolved?.research, section.id, {
     rows: given,
     total: givenTotal,
     droppedIds: givenDropped
@@ -130,7 +130,7 @@ export function ResearchShowcaseSection({
               icon: Microscope,
               title: "No research areas to show yet",
               description:
-                "Research areas appear here once they are published in the studio.",
+                "There are no research areas to show right now.",
               headingLevel: 3
             }}
           >
@@ -140,7 +140,7 @@ export function ResearchShowcaseSection({
           </CardGrid>
         </div>
 
-        <ShowcaseNote hidden={hidden} matched={matched} dropped={droppedIds} link={link} />
+        <ShowcaseNote hidden={hidden} matched={matched} link={link} />
 
         {/* The CTA's ONE copy when the heading is off screen: the link was deliberately not handed
             to `SectionHeading` above, so the "see everything" route needs its own row rather than
@@ -232,15 +232,13 @@ function ResearchAreaCard({ area }: { area: ResearchAreaRow }) {
 function ShowcaseNote({
   hidden,
   matched,
-  dropped,
   link
 }: {
   hidden: number;
   matched: number;
-  dropped: number;
   link?: { href: string; label: string };
 }) {
-  if (hidden === 0 && dropped === 0) return null;
+  if (hidden === 0) return null;
 
   return (
     <p className="mt-8 text-sm text-ink-500">
@@ -252,13 +250,6 @@ function ShowcaseNote({
               {link.label}
             </Link>
           ) : null}
-        </>
-      ) : null}
-      {dropped > 0 ? (
-        <>
-          {hidden > 0 ? " " : null}
-          {dropped} chosen {dropped === 1 ? "area is" : "areas are"} no longer published and{" "}
-          {dropped === 1 ? "is" : "are"} not shown.
         </>
       ) : null}
     </p>

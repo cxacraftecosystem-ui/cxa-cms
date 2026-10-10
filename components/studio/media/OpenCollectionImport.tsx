@@ -323,7 +323,7 @@ export function OpenCollectionImport({
         const failedSizes = answer.derivatives.failed.length;
         const derivativeNote =
           failedSizes > 0
-            ? ` ${failedSizes === 1 ? "One smaller version" : `${failedSizes} smaller versions`} could not be made, so the site will send a larger file than it should until an administrator regenerates them.`
+            ? ` ${failedSizes === 1 ? "One smaller version" : `${failedSizes} smaller versions`} could not be made, so visitors will get a larger file. Replacing the picture makes them again.`
             : answer.derivatives.notes.length > 0
               ? ` ${answer.derivatives.notes.join(" ")}`
               : "";

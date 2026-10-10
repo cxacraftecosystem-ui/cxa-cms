@@ -25,7 +25,7 @@ import { ImageOff } from "lucide-react";
 
 import { cropFrameStyle, cropImageStyle, storedCrop } from "@/lib/media/crop";
 import { pictureClass, pictureCss, type Picture } from "@/lib/media/screens";
-import { cdnConfigured, mediaAlt, mediaSrc, type MediaLike } from "@/lib/media/url";
+import { mediaAlt, mediaSrc, type MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 
 /**
@@ -188,18 +188,9 @@ export function MediaImage({
     // addressed, and "No image" for a placement that does have one sends the reader looking in the
     // wrong place.
     const label = shown ? "Image unavailable" : "No image";
-    // The specific cause, for whoever has to fix it. `configurationWarnings()` says the same thing in
-    // Settings → Diagnostics; this is the copy that appears where the hole actually is.
-    const title = shown
-      ? cdnConfigured()
-        ? "This asset has no stored variants yet, so there is nothing to display."
-        : "No CDN or public storage base URL is configured, so stored images cannot be addressed."
-      : undefined;
-
     return (
       <div
         style={frameStyle}
-        title={title}
         // A placeholder standing in for a MEANINGFUL image must still carry that meaning; one
         // standing in for a decorative image stays out of the accessibility tree entirely.
         {...(alt ? { role: "img", "aria-label": alt } : { "aria-hidden": true })}

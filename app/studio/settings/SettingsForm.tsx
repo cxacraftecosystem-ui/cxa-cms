@@ -631,14 +631,13 @@ export function SettingsForm({ settings, diagnostics, storageReady }: SettingsFo
       {/* ── Diagnostics ────────────────────────────────────────────────────────────────────── */}
       <FormSection
         title="Diagnostics"
-        description="What this installation is missing, read from the server as this page was rendered. These are set by whoever deploys the site, not on this screen."
+        description="Anything the site still needs setting up. These are set by whoever hosts the site, not on this screen."
       >
         {diagnostics.length === 0 ? (
           <p className="flex items-start gap-2 text-sm leading-relaxed text-success-600">
             <CircleCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              Everything the application checks for is configured. Uploads, images, migrations and the
-              site&rsquo;s own address are all set up.
+              Everything is set up: uploads, images and the site&rsquo;s own address.
             </span>
           </p>
         ) : (
@@ -647,20 +646,20 @@ export function SettingsForm({ settings, diagnostics, storageReady }: SettingsFo
               <Wrench aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 {diagnostics.length === 1
-                  ? "1 thing is not set up on this installation"
-                  : `${diagnostics.length} things are not set up on this installation`}
+                  ? "1 thing needs setting up by whoever hosts the site"
+                  : `${diagnostics.length} things need setting up by whoever hosts the site`}
               </span>
             </p>
-            <ul className="mt-1.5 list-disc space-y-1 pl-6 text-xs leading-relaxed">
-              {diagnostics.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-            <p className="mt-2 text-xs leading-relaxed">
-              This is where you find out that uploads are disabled — rather than from an upload that fails
-              at 90%. Each line names the setting that is missing; they live in the deployment&rsquo;s
-              environment and cannot be changed from this screen.
-            </p>
+            <details className="mt-1.5 text-xs leading-relaxed">
+              <summary className="cursor-pointer font-medium">
+                Technical details (for whoever hosts the site)
+              </summary>
+              <ul className="mt-1.5 list-disc space-y-1 pl-6">
+                {diagnostics.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </details>
           </div>
         )}
 
@@ -1164,9 +1163,8 @@ function SettingField({
   */
   return (
     <HelpText tone="warn" icon={TriangleAlert}>
-      <span className="font-semibold">{copy.label}</span> is a kind of setting this screen cannot draw yet
-      ({shape.typeName}). It is left exactly as it is and saving this group will not change it, but it
-      cannot be edited here.
+      <span className="font-semibold">{copy.label}</span> can&rsquo;t be edited on this screen. It is kept
+      as it is, and saving this group won&rsquo;t change it.
     </HelpText>
   );
 }

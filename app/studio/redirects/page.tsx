@@ -648,10 +648,7 @@ export default async function StudioRedirectsPage({
               read 0, and nobody should conclude from that number that nobody is following it.
             */}
             <HelpText>
-              “Followed” is only counted where something records it on the way through. The page renderer
-              deliberately does not write to the database while it renders, so a redirect that is working
-              perfectly can still show 0 — treat a high number as evidence and a zero as no evidence
-              either way.
+              “Followed” is a partial count. Don&rsquo;t remove a redirect because it shows 0.
             </HelpText>
           </>
         )}

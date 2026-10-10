@@ -457,7 +457,7 @@ export default async function PublicationsPage({
             description={
               filtering
                 ? "Try a broader search, a different year, or clear the filters to see everything."
-                : "Publications appear here as soon as they are published in the studio."
+                : "There are no publications to show right now."
             }
             action={
               filtering ? (

@@ -91,7 +91,7 @@ export function PartnerLogosSection({
   total: givenTotal,
   droppedIds: givenDropped
 }: PartnerLogosSectionProps) {
-  const { rows, total: matched, droppedIds } = pickShowcase(resolved?.partners, section.id, {
+  const { rows, total: matched } = pickShowcase(resolved?.partners, section.id, {
     rows: given,
     total: givenTotal,
     droppedIds: givenDropped
@@ -130,7 +130,7 @@ export function PartnerLogosSection({
             <EmptyState
               icon={Handshake}
               title="No partners to show yet"
-              description="Partners appear here once they are added and made visible in the studio."
+              description="There are no partners to show right now."
               headingLevel={3}
             />
           </div>
@@ -155,7 +155,7 @@ export function PartnerLogosSection({
       </div>
 
       <div className="shell">
-        <ShowcaseNote hidden={hidden} matched={matched} dropped={droppedIds} link={link} />
+        <ShowcaseNote hidden={hidden} matched={matched} link={link} />
 
         {/* The CTA's one copy when the heading is off screen — see the note beside `SectionHeading`. */}
         {!heading && link ? (
@@ -318,15 +318,13 @@ function PartnerLogo({
 function ShowcaseNote({
   hidden,
   matched,
-  dropped,
   link
 }: {
   hidden: number;
   matched: number;
-  dropped: number;
   link?: { href: string; label: string };
 }) {
-  if (hidden === 0 && dropped === 0) return null;
+  if (hidden === 0) return null;
 
   return (
     <p className="mt-8 text-sm text-ink-500">
@@ -338,13 +336,6 @@ function ShowcaseNote({
               {link.label}
             </Link>
           ) : null}
-        </>
-      ) : null}
-      {dropped > 0 ? (
-        <>
-          {hidden > 0 ? " " : null}
-          {dropped} chosen {dropped === 1 ? "partner is" : "partners are"} no longer visible and{" "}
-          {dropped === 1 ? "is" : "are"} not shown.
         </>
       ) : null}
     </p>

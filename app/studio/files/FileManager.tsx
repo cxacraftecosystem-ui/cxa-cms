@@ -1014,10 +1014,9 @@ function FileDetailPanel({
           that hiding a download button is the control.
         */}
         <HelpText>
-          Both of these are enforced by the server, on the download address itself — not by hiding a
-          button. A file that is not public answers “not found” to anybody outside the studio, and one
-          past its date answers “this link has expired” with the date on it. The address is guessable
-          from the file&rsquo;s name, which is exactly why the check is where it is.
+          Both are enforced on the download link itself, not just by hiding a button. A file that is not
+          public can&rsquo;t be downloaded from outside the studio, and one past its date shows that the
+          link has expired.
         </HelpText>
 
         {expired ? (

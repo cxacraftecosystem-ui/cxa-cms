@@ -122,7 +122,6 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ImageOff } from "lucide-react";
 
 import { RichText, leadParagraphClassName } from "@/components/RichText";
 import { ReadAloud } from "@/components/site/ReadAloud";
@@ -472,18 +471,12 @@ function MediaFigure({
   );
 }
 
-/** SAY SO RATHER THAN LEAVE A GAP (contract §1.6) — a dropped image is invisible to the one person
- *  who could fix it. */
+/**
+ * An image written as plain markdown cannot be shown. Visitors see nothing in its place — the
+ * instruction to insert it from the media library belongs in the studio, not on the public page.
+ */
 function MdxImageNotice() {
-  return (
-    <span className="mt-8 flex items-center gap-3 rounded-md border border-dashed border-line-200 bg-surface-50 px-4 py-6 text-sm text-ink-500">
-      <ImageOff className="h-5 w-5 shrink-0" aria-hidden="true" />
-      <span>
-        This image was written as plain markdown and cannot be shown. Insert it from the media
-        library instead, as <code className="font-mono">{"<MediaFigure objectKey=… alt=… />"}</code>.
-      </span>
-    </span>
-  );
+  return null;
 }
 
 export async function ProseArticle({

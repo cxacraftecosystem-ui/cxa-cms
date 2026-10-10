@@ -106,7 +106,7 @@ export function NewsShowcaseSection({
   total: givenTotal,
   droppedIds: givenDropped
 }: NewsShowcaseSectionProps) {
-  const { rows, total: matched, droppedIds } = pickShowcase(resolved?.news, section.id, {
+  const { rows, total: matched } = pickShowcase(resolved?.news, section.id, {
     rows: given,
     total: givenTotal,
     droppedIds: givenDropped
@@ -128,7 +128,7 @@ export function NewsShowcaseSection({
   const empty = {
     icon: Newspaper,
     title: "No news to show yet",
-    description: "Pieces appear here as soon as they are published in the studio.",
+    description: "There is no news to show right now.",
     headingLevel: 3 as const
   };
 
@@ -233,7 +233,7 @@ export function NewsShowcaseSection({
           )}
         </div>
 
-        <ShowcaseNote hidden={hidden} matched={matched} dropped={droppedIds} link={link} />
+        <ShowcaseNote hidden={hidden} matched={matched} link={link} />
 
         {/* The CTA's one copy when the heading is off screen — see the note beside `SectionHeading`. */}
         {!heading && link ? (
@@ -252,15 +252,13 @@ export function NewsShowcaseSection({
 function ShowcaseNote({
   hidden,
   matched,
-  dropped,
   link
 }: {
   hidden: number;
   matched: number;
-  dropped: number;
   link?: { href: string; label: string };
 }) {
-  if (hidden === 0 && dropped === 0) return null;
+  if (hidden === 0) return null;
 
   return (
     <p className="mt-8 text-sm text-ink-500">
@@ -272,13 +270,6 @@ function ShowcaseNote({
               {link.label}
             </Link>
           ) : null}
-        </>
-      ) : null}
-      {dropped > 0 ? (
-        <>
-          {hidden > 0 ? " " : null}
-          {dropped} chosen {dropped === 1 ? "item is" : "items are"} no longer published and{" "}
-          {dropped === 1 ? "is" : "are"} not shown.
         </>
       ) : null}
     </p>

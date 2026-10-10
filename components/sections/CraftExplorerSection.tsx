@@ -150,8 +150,7 @@ export function CraftExplorerSection({
   section,
   rows,
   resolved,
-  total,
-  droppedIds = 0
+  total
 }: CraftExplorerSectionProps) {
   const heading = data.heading.trim();
   const eyebrow = data.eyebrow.trim();
@@ -226,7 +225,7 @@ export function CraftExplorerSection({
             description={
               data.regionSlug.trim()
                 ? "No published crafts have been recorded for this region yet."
-                : "Crafts appear here once they have been published in the studio."
+                : "There are no crafts to show right now."
             }
           />
         ) : (
@@ -275,7 +274,7 @@ export function CraftExplorerSection({
           </>
         )}
 
-        <CraftNote hidden={hidden} matched={matched} dropped={droppedIds} link={link} />
+        <CraftNote hidden={hidden} matched={matched} link={link} />
       </div>
     </section>
   );
@@ -513,15 +512,13 @@ function CraftTimeline({
 function CraftNote({
   hidden,
   matched,
-  dropped,
   link
 }: {
   hidden: number;
   matched: number;
-  dropped: number;
   link?: { href: string; label: string };
 }) {
-  if (hidden === 0 && dropped === 0) return null;
+  if (hidden === 0) return null;
 
   return (
     <p className="mt-8 text-sm text-ink-500">
@@ -533,13 +530,6 @@ function CraftNote({
               {link.label}
             </Link>
           ) : null}
-        </>
-      ) : null}
-      {dropped > 0 ? (
-        <>
-          {hidden > 0 ? " " : null}
-          {dropped} chosen {dropped === 1 ? "craft is" : "crafts are"} no longer published and{" "}
-          {dropped === 1 ? "is" : "are"} not shown.
         </>
       ) : null}
     </p>

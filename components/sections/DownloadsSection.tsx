@@ -149,7 +149,7 @@ export function DownloadsSection({
   total: givenTotal,
   droppedIds: givenDropped
 }: DownloadsSectionProps) {
-  const { rows, total: matched, droppedIds } = pickShowcase(resolved?.files, section.id, {
+  const { rows, total: matched } = pickShowcase(resolved?.files, section.id, {
     rows: given,
     total: givenTotal,
     droppedIds: givenDropped
@@ -186,7 +186,7 @@ export function DownloadsSection({
             <EmptyState
               icon={Download}
               title={category ? `No files in ${category} yet` : "No files to download yet"}
-              description="Files appear here once they are uploaded and marked public in the studio."
+              description="There are no files to show right now."
               headingLevel={3}
             />
           ) : (
@@ -206,7 +206,7 @@ export function DownloadsSection({
           )}
         </div>
 
-        <ShowcaseNote hidden={hidden} matched={matched} dropped={droppedIds} link={link} />
+        <ShowcaseNote hidden={hidden} matched={matched} link={link} />
 
         {/* The CTA's one copy when the heading is off screen — see the note beside `SectionHeading`. */}
         {!heading && link ? (
@@ -296,15 +296,13 @@ function FileRowItem({
 function ShowcaseNote({
   hidden,
   matched,
-  dropped,
   link
 }: {
   hidden: number;
   matched: number;
-  dropped: number;
   link?: { href: string; label: string };
 }) {
-  if (hidden === 0 && dropped === 0) return null;
+  if (hidden === 0) return null;
 
   return (
     <p className="mt-8 text-sm text-ink-500">
@@ -316,13 +314,6 @@ function ShowcaseNote({
               {link.label}
             </Link>
           ) : null}
-        </>
-      ) : null}
-      {dropped > 0 ? (
-        <>
-          {hidden > 0 ? " " : null}
-          {dropped} chosen {dropped === 1 ? "file is" : "files are"} no longer public and{" "}
-          {dropped === 1 ? "is" : "are"} not shown.
         </>
       ) : null}
     </p>

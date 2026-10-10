@@ -150,20 +150,20 @@ function readFieldErrors(value: unknown): Record<string, string[]> | undefined {
  * The fallback sentence for a response that carried no usable `message` — an HTML error page from a
  * proxy, a gateway timeout, a body that never arrived.
  *
- * It NAMES THE STATUS. "Something went wrong" with no number sends an operator hunting through
- * three layers; "HTTP 502" tells them immediately that the request never reached the application.
+ * Written for the person at the screen: no status codes or server talk. The status itself stays on
+ * `ApiClientError.status` for code and logs.
  */
 function statusSentence(status: number): string {
   if (status === 401) return "Your session has ended. Sign in again to continue.";
   if (status === 403) return "You do not have access to this.";
-  if (status === 404) return "That address does not exist on the server (HTTP 404).";
-  if (status === 413) return "That upload is larger than the server accepts.";
+  if (status === 404) return "That page or item could not be found.";
+  if (status === 413) return "That upload is too large.";
   if (status === 429) return "Too many requests in a short time. Wait a moment and try again.";
   if (status >= 500) {
-    return `The server ran into a problem and did not answer properly (HTTP ${status}). Try again in a moment.`;
+    return "Something went wrong on our side. Try again in a moment.";
   }
-  if (status >= 400) return `The server refused that request (HTTP ${status}).`;
-  return `The server replied with something this page could not read (HTTP ${status}).`;
+  if (status >= 400) return "That couldn't be done. Check what you entered and try again.";
+  return "Something went wrong. Try again in a moment.";
 }
 
 function errorFromResponse(status: number, parsed: JsonParse): ApiClientError {
@@ -356,7 +356,7 @@ async function request<T>(path: string, init: ApiRequestInit, allowRetry: boolea
     // string into a component expecting a list and produce a crash far from the cause.
     throw new ApiClientError(
       response.status,
-      `The server replied with something other than JSON (HTTP ${response.status}). The request may have reached the wrong address.`,
+      "Something went wrong. Reload the page and try again.",
       { code: "malformed_response" }
     );
   }

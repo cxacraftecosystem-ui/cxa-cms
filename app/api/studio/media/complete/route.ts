@@ -307,8 +307,8 @@ export const POST = route(async (request: NextRequest) => {
   if (DERIVABLE_MIME_TYPES.has(contentType) && !derivable) {
     notes.push(
       `This picture is ${formatBytes(head.byteSize)}, which is above the ${formatBytes(DERIVE_MAX_BYTES)} ` +
-        "limit for making smaller versions, so none were made. The site will send the full-size file to every " +
-        "visitor until an administrator regenerates them."
+        "limit for making smaller versions, so visitors will get the full-size file. Upload a smaller copy if " +
+        "you have one."
     );
   }
   if (!wantsChecksum) {

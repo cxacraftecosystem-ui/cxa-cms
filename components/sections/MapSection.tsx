@@ -419,7 +419,7 @@ export function MapSection({ data, section }: MapSectionProps) {
                 </address>
               ) : (
                 <p className="text-sm leading-relaxed text-ink-500">
-                  No address has been added to this block yet.
+                  No address is listed.
                 </p>
               )}
 

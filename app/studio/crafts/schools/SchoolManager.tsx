@@ -292,8 +292,7 @@ export function SchoolManager({ schools }: SchoolManagerProps) {
 
         <HelpText>
           A craft is filed under a school on the craft&apos;s own record, under “Where it comes from”. This
-          screen keeps the list of schools; it deliberately does not file crafts, so that one column has one
-          writer.
+          screen keeps the list of schools.
         </HelpText>
       </FormSection>
 

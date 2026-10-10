@@ -877,7 +877,7 @@ const GROUP_META: Record<SettingsGroup, Omit<SettingsGroupMeta, "key">> = {
   },
   seo: {
     label: "Search & sharing",
-    description: "Default titles and descriptions, and whether search engines may index this deployment.",
+    description: "Default titles and descriptions, and whether search engines may index the site.",
     icon: "Search"
   },
   homepage: {

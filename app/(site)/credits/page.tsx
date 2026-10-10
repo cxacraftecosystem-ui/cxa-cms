@@ -155,14 +155,7 @@ export default function CreditsPage() {
         {images.length === 0 ? (
           <Reveal className="mt-10">
             <p className="panel p-6 text-sm text-ink-700">
-              No photographs are registered. The picture manifest at{" "}
-              <code className="rounded bg-surface-100 px-1.5 py-0.5 text-xs">
-                lib/media/craft-imagery.ts
-              </code>{" "}
-              is empty, which means <code className="rounded bg-surface-100 px-1.5 py-0.5 text-xs">
-                scripts/fetch-craft-imagery.ts
-              </code>{" "}
-              has not been run for this deployment.
+              No photo credits to show.
             </p>
           </Reveal>
         ) : null}

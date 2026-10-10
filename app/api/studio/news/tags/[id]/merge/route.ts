@@ -333,7 +333,7 @@ export const POST = route(async (request: Request, context: RouteContext) => {
   parts.push(`“${source.name}” has been removed, and /news/tag/${source.slug} no longer exists.`);
   if (reindexTruncated) {
     parts.push(
-      `The site's own search has been brought up to date for the first ${REINDEX_LIMIT} records; the rest catch up the next time the search index is rebuilt, and are still findable by their own words in the meantime.`
+      `The site's own search has been brought up to date for the first ${REINDEX_LIMIT} records; the rest follow shortly, and can still be found by their own words meanwhile.`
     );
   }
 

@@ -118,11 +118,8 @@
  *    returns the sentences explaining why. Without them an editor throws a switch, sees no change, and
  *    concludes the studio is broken (contract §1.6).
  *
- * 3. ⚠ **AND IF THE PAYLOAD CANNOT YET STORE THEM, THAT IS SAID TOO.** `typeset` is a field on
- *    `richTextSectionSchema` in `lib/sections/schema.ts`. `z.object()` strips unknown keys, so until
- *    that field exists every choice made here is discarded by the next save — silently, because nothing
- *    else would notice. The check below is a runtime look at the schema's own shape rather than a
- *    version flag: it is true the moment the field lands and needs nothing switching off afterwards.
+ * 3. `typeset` is a field on `richTextSectionSchema` in `lib/sections/schema.ts`; `z.object()` strips
+ *    unknown keys, so a control here without that field would be discarded on save. The field exists.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
@@ -172,14 +169,6 @@ import type { SectionFormProps } from "@/components/studio/sections";
 
 const SHAPE = richTextSectionSchema.shape;
 const TYPESET_SHAPE = blockTypesetSchema.shape;
-
-/**
- * Can a typesetting choice actually be SAVED on this deployment?
- *
- * See rule 3 in the header. Asked of the schema's own shape, once, at module load — the answer cannot
- * change while the studio is open, and asking per render would suggest it could.
- */
-const TYPESET_STORED = Object.prototype.hasOwnProperty.call(SHAPE, "typeset");
 
 /**
  * What an author can reach in the writing area, said in the field's own help.
@@ -572,27 +561,7 @@ function TypesetPanel({
           the Centre has changed it in Settings.
         </HelpText>
 
-        {!TYPESET_STORED ? (
-          /*
-            THE ONE CASE WHERE THE CONTROLS ARE WITHHELD RATHER THAN DISABLED. If the block's payload
-            cannot carry a typesetting choice, offering the choice would take an editor's decision and
-            throw it away on the next autosave — a silent loss, which is worse than an absent control
-            (contract §1.6). The sentence names the field and the file, because the person who can fix
-            it is the one reading this.
-          */
-          <HelpText tone="warn">
-            <span className="font-semibold">
-              Typesetting cannot be stored on this deployment yet.
-            </span>{" "}
-            This passage is set in the site&rsquo;s house style, which is correct and complete — but the
-            per-passage controls are not shown, because a choice made here would be discarded the next
-            time the block was saved. Whoever looks after this site needs to add{" "}
-            <code className="font-mono text-[0.75rem]">typeset</code> to the RICH_TEXT payload in{" "}
-            <code className="font-mono text-[0.75rem]">lib/sections/schema.ts</code>; the controls appear
-            by themselves once it is there.
-          </HelpText>
-        ) : (
-          <>
+        <>
             <TypesetSelect
               label="Reading face"
               value={typeset.face}
@@ -706,8 +675,7 @@ function TypesetPanel({
                 Put every box back to the house style
               </Button>
             ) : null}
-          </>
-        )}
+        </>
       </div>
     </details>
   );

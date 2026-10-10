@@ -227,9 +227,9 @@ function BrandMark({ mark }: { mark: ProviderMark }) {
 /** For a response that carried nothing usable — a proxy page, a gateway timeout, a dropped body. */
 function statusFallback(status: number): string {
   if (status >= 500) {
-    return `The server ran into a problem and did not answer properly (HTTP ${status}). Try again in a moment.`;
+    return "Something went wrong on our side. Try again in a moment.";
   }
-  return `The server refused that sign-in (HTTP ${status}).`;
+  return "That sign-in didn't work. Check your details and try again.";
 }
 
 export function LoginForm({ next, providers, signInError }: LoginFormProps) {

@@ -432,7 +432,7 @@ export default async function ProjectsIndexPage({ searchParams }: ProjectsPagePr
                 title: hasFilters ? "No projects match these filters" : "No projects have been published yet",
                 description: hasFilters
                   ? "Every filter narrows the list further. Clearing one or two of them will widen it again."
-                  : "Projects appear here as soon as one is published in the studio.",
+                  : "There are no projects to show right now.",
                 action: hasFilters ? (
                   <LinkButton href="/projects" variant="secondary">
                     Clear all filters

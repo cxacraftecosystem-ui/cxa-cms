@@ -308,7 +308,7 @@ export const PATCH = route(
 
     const { id } = await params;
     if (id === BULK_ID || id === EXPORT_ID) {
-      throw badRequest("That address does not take a change. Use POST for a bulk action.");
+      throw badRequest("That change can't be made here.");
     }
 
     const body = await parseStudioJson(request, PatchBody);
@@ -451,7 +451,7 @@ export const POST = route(
     const { id } = await params;
     if (id !== BULK_ID) {
       throw badRequest(
-        "That address does not take an action. Send a bulk archive to /api/studio/inquiries/bulk."
+        "That action can't be taken here."
       );
     }
 

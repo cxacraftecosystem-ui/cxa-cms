@@ -284,7 +284,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
     }
     if (reindexTruncated) {
       parts.push(
-        `The site's own search has been brought up to date for the first ${REINDEX_LIMIT} records; more than that carry this tag, and the rest catch up the next time the search index is rebuilt. They are still findable by their own words in the meantime.`
+        `The site's own search has been brought up to date for the first ${REINDEX_LIMIT} records; more than that carry this tag, and the rest follow shortly. They can still be found by their own words meanwhile.`
       );
     }
 

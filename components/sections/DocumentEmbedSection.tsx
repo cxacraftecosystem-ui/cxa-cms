@@ -68,7 +68,7 @@ import { SectionHeading } from "@/components/site/SectionHeading";
 import { DocumentFrame } from "@/components/site/DocumentFrame";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClasses } from "@/components/ui/Button";
-import { cdnConfigured, publicObjectUrl } from "@/lib/media/url";
+import { publicObjectUrl } from "@/lib/media/url";
 import { sectionLabel } from "@/lib/sections/registry";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import {
@@ -141,19 +141,14 @@ export function DocumentEmbedSection({ data, section, resolved }: DocumentEmbedS
               <Unavailable
                 reason={
                   data.mediaId === ""
-                    ? "No document has been chosen for this block yet."
-                    : "The document chosen for this block is no longer in the media library, so there is nothing to show. Choose it again in the studio, or take the block off the page."
+                    ? "This document isn't available right now."
+                    : "This document isn't available right now."
                 }
               />
             ) : href === null ? (
               <Unavailable
-                // The reader gets a sentence they can act on; the `title` names the cause for whoever
-                // has to fix it, exactly as `MediaImage` does for a picture that cannot be addressed.
-                title={
-                  cdnConfigured()
-                    ? "This asset has no public URL, so the document cannot be addressed."
-                    : "No CDN or public storage base URL is configured, so stored documents cannot be addressed."
-                }
+                // The cause (no public address, or no storage base URL) is for Settings → Diagnostics; the
+                // reader gets a plain sentence.
                 reason={`“${facts.fileName}” cannot be reached from this site at the moment. Nothing has been deleted — please tell the Centre if this does not right itself.`}
               />
             ) : facts.previewable ? (

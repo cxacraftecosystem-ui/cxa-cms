@@ -94,8 +94,7 @@ export function LocationMap({
   if (!mapTilerConfigured()) {
     return (
       <HelpText className={className}>
-        A map cannot be shown in this deployment, because no map key is configured. The two boxes above
-        set the same value.
+        The map isn&rsquo;t available right now. Type the coordinates in the two boxes above.
       </HelpText>
     );
   }

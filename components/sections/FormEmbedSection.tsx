@@ -95,7 +95,7 @@ export type FormTarget =
 export function resolveFormTarget(provider: FormEmbedProvider, rawUrl: string): FormTarget {
   const trimmed = rawUrl.trim();
   if (trimmed === "") {
-    return { kind: "none", reason: "This form block has no address yet." };
+    return { kind: "none", reason: "This form isn't available right now." };
   }
 
   let url: URL;
@@ -104,8 +104,7 @@ export function resolveFormTarget(provider: FormEmbedProvider, rawUrl: string): 
   } catch {
     return {
       kind: "none",
-      reason:
-        "This form block has an address that could not be read. Paste the whole address, starting with https://."
+      reason: "This form isn't available right now."
     };
   }
 

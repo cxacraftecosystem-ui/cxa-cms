@@ -808,19 +808,12 @@ export default async function StudioSubscribersPage({
         <div className="rounded-md border border-amber-800/25 bg-amber-100 px-3.5 py-3 text-amber-800">
           <p className="flex items-start gap-2 text-sm font-semibold">
             <MailWarning aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>No email provider is set up, so nothing is being sent</span>
+            <span>Messages are waiting to be sent</span>
           </p>
           <p className="mt-1.5 text-xs leading-relaxed">
-            Every message this feature composes — confirmation links, welcomes, unsubscribe receipts — is
-            being written down and not delivered. Nothing is lost: each one is a queued message counted
-            below, and they can all be sent once a provider is connected. Until then, anybody who signs
-            up will stay on “{SUBSCRIBER_STATUS_LABELS.PENDING}” for ever, because the link they need has
-            not reached them.
-          </p>
-          <p className="mt-1.5 text-xs leading-relaxed">
-            Connecting a provider is a developer task and it is written up in full in the header of{" "}
-            <code className="font-mono text-[0.6875rem]">lib/newsletter/delivery.ts</code>: one small
-            adapter file and one line at start-up. No part of the newsletter needs changing.
+            Confirmation links, welcomes and unsubscribe receipts are kept as queued messages, counted
+            below. They go out once an email provider is connected; until then, new sign-ups stay on
+            “{SUBSCRIBER_STATUS_LABELS.PENDING}”. Nothing is lost.
           </p>
         </div>
       ) : (

@@ -89,7 +89,6 @@ export function HostedVideoFrame({
   const [playing, setPlaying] = useState(false);
 
   const target = resolveEmbedTarget(provider, url, settings);
-  const hasUrl = url.trim().length > 0;
   const aspect = ASPECT_FOR[aspectRatio] ?? ASPECT_CLASS["16:9"];
 
   if (!target) {
@@ -107,9 +106,7 @@ export function HostedVideoFrame({
       >
         <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
         <p className="text-sm leading-relaxed text-ink-500">
-          {hasUrl
-            ? "This video has an address that could not be read. Check that the link is the ordinary share link for the video rather than a channel, a playlist or a Drive folder."
-            : "This video has no address yet."}
+          This video isn&rsquo;t available right now.
         </p>
       </div>
     );

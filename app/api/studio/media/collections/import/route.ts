@@ -282,8 +282,8 @@ export const POST = route(async (request: NextRequest) => {
   const notes: string[] = [];
   if (derived.variants.length === 0) {
     notes.push(
-      "None of the smaller versions could be made, so the site will send the full-size file to every " +
-        "visitor until an administrator regenerates them."
+      "None of the smaller versions could be made, so visitors will get the full-size file. Replacing the " +
+        "picture makes them again."
     );
   }
 

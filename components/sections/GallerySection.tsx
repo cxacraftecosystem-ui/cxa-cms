@@ -159,8 +159,7 @@ export function GallerySection({
   albums,
   images,
   resolved,
-  total,
-  droppedIds = 0
+  total
 }: GallerySectionProps) {
   const heading = data.heading.trim();
   const eyebrow = data.eyebrow.trim();
@@ -206,8 +205,8 @@ export function GallerySection({
             title={showingAlbums ? "No albums to show yet" : "No pictures to show yet"}
             description={
               showingAlbums
-                ? "Albums appear here once they have been published in the studio."
-                : "Pictures appear here once they have been added to this block in the studio."
+                ? "There are no albums to show right now."
+                : "There are no pictures to show right now."
             }
           />
         ) : showingAlbums ? (
@@ -231,7 +230,7 @@ export function GallerySection({
         <GalleryNote
           hidden={hidden}
           matched={matched}
-          dropped={droppedIds}
+         
           noun={showingAlbums ? "albums" : "pictures"}
           link={link}
         />
@@ -419,19 +418,15 @@ function PictureWall({
 function GalleryNote({
   hidden,
   matched,
-  dropped,
   noun,
   link
 }: {
   hidden: number;
   matched: number;
-  dropped: number;
   noun: "albums" | "pictures";
   link?: { href: string; label: string };
 }) {
-  if (hidden === 0 && dropped === 0) return null;
-
-  const singular = noun === "albums" ? "album" : "picture";
+  if (hidden === 0) return null;
 
   return (
     <p className="mt-8 text-sm text-ink-500">
@@ -443,13 +438,6 @@ function GalleryNote({
               {link.label}
             </Link>
           ) : null}
-        </>
-      ) : null}
-      {dropped > 0 ? (
-        <>
-          {hidden > 0 ? " " : null}
-          {dropped} chosen {dropped === 1 ? `${singular} is` : `${noun} are`} no longer published and{" "}
-          {dropped === 1 ? "is" : "are"} not shown.
         </>
       ) : null}
     </p>

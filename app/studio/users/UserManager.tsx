@@ -433,8 +433,7 @@ export function UserManager({
         <div className="rounded-md border border-purple-200 bg-purple-50 px-3.5 py-3">
           <p className="text-sm font-semibold text-purple-700">{handoverLink.label}</p>
           <p className="mt-1 text-xs leading-relaxed text-ink-700">
-            This installation cannot send email, so the link has to be passed on by hand. Send it to the
-            person by a means you trust — it lets whoever holds it set a password on that account. It is
+            Pass this link on to the person in a way you trust — it lets whoever holds it set a password on that account. It is
             shown here once and is not recorded anywhere you can read it again.
           </p>
           {/*
@@ -564,7 +563,7 @@ export function UserManager({
       {administrators <= 1 ? (
         <HelpText tone="warn">
           There is only one active administrator on this installation. If that account is lost — a forgotten
-          password with no way to send email, a device with the second factor on it — nobody can manage
+          password, a device with the second factor on it — nobody can manage
           users, settings, navigation or the recycle bin, and there is no way back in through the site
           itself. Make a second administrator.
         </HelpText>
@@ -950,8 +949,7 @@ function InviteForm({
 
       {!canSendEmail ? (
         <HelpText tone="warn">
-          This installation cannot send email, so no invitation will be delivered. A one-off link will be
-          shown here instead, once, for you to pass on by a means you trust.
+          A one-time link is shown here, once, for you to pass on in a way you trust.
         </HelpText>
       ) : null}
     </FormSection>
@@ -1175,7 +1173,7 @@ function UserPanel({
           <p>
             {canSendEmail
               ? `A link is emailed to ${user.email}. Their current password keeps working until they use it.`
-              : `This installation cannot send email, so a one-off link is shown to you once, here, to pass on by a means you trust. Their current password keeps working until it is used.`}
+              : `A one-time link is shown to you here, once. Pass it on in a way you trust. Their current password keeps working until it is used.`}
           </p>
           <p className="mt-2">
             Nobody in this studio can see or set somebody else&rsquo;s password. This is the only way to

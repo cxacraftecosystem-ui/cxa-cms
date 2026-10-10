@@ -243,7 +243,7 @@ export function ImageCropper({ open, asset, onClose, onCropped }: ImageCropperPr
     image.onerror = () => {
       if (cancelled) return;
       setLoadError(
-        "The browser was not allowed to read this picture. Cropping needs the file store to permit this site to read images directly — an administrator can add the site's address to the storage bucket's allowed origins. Nothing has been changed."
+        "This picture couldn't be opened for cropping. Nothing has been changed. Try again, and tell an administrator if it keeps happening."
       );
     };
     image.src = source;

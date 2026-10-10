@@ -39,8 +39,7 @@ export function requireStorage(): void {
   if (!storageConfigured()) {
     throw new ApiError(
       503,
-      "File storage is not configured on this deployment, so uploads are unavailable. " +
-        "An administrator needs to set S3_BUCKET, S3_REGION and the access keys.",
+      "Uploads aren't set up on this site.",
       { code: "storage_unconfigured" }
     );
   }

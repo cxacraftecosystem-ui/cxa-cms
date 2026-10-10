@@ -348,7 +348,7 @@ export default async function EventsIndexPage({
             description={
               filtered
                 ? "Try another year, or fewer topics."
-                : "Events appear here as soon as they are published in the studio."
+                : "There are no events to show right now."
             }
             action={
               filtered ? (

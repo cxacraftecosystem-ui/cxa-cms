@@ -479,8 +479,8 @@ export function VideoPlayer({
   // ── No address ─────────────────────────────────────────────────────────────────────────────
 
   if (!src) {
-    // SAY SO RATHER THAN LEAVE A GAP (contract §1.6): an editor finding out that the media base URL is
-    // unset is worth more than a page that silently looks fine.
+    // SAY SO RATHER THAN LEAVE A GAP (contract §1.6), in the reader's terms. The cause — no media base
+    // URL — is reported in Settings → Diagnostics.
     return (
       <p
         className={cn(
@@ -488,7 +488,7 @@ export function VideoPlayer({
           className
         )}
       >
-        This video cannot be played, because no public media address is configured for this deployment.
+        This video isn&rsquo;t available right now.
       </p>
     );
   }

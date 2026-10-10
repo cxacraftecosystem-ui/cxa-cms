@@ -201,8 +201,7 @@ export const GET = route(async () => {
     note:
       "Media files and stored files are removed for good " +
       `${windowDays} days after they were deleted, by a job that runs on its own. Everything else stays here ` +
-      "until somebody removes it — nothing clears it automatically. Deleting something for good is a " +
-      "separate request to /api/studio/recycle-bin/purge and needs master administrator access. User " +
+      "until somebody removes it. Only a master administrator can delete items for good. User " +
       "accounts are never in this list: an account is switched off rather than deleted, so everything the " +
       "person wrote keeps their name on it."
   });

@@ -34,9 +34,7 @@
  * Centre with three published research areas rendered NO NODES AT ALL — real, published rows deleted
  * from the page to avoid describing them wrongly. The areas are always drawn; the words give way. See
  * the header of components/site/ResearchGraph.tsx for the drawing half of that rule, and
- * `buildNoLinesNote()` below for the sentence that replaces the claim — it names the studio screen
- * where the missing link is entered, because "nothing is connected yet" with no remedy is half a fact
- * (contract §1.6).
+ * `buildNoLinesNote()` below for the sentence that replaces the claim.
  *
  * Nothing here invents data to fill the gap: when the Centre has no project↔area↔person links, the
  * page says exactly that.
@@ -313,7 +311,6 @@ export default async function ResearchIndexPage() {
             truncated={areasTruncated}
             cap={areasTruncated ? AREA_LIMIT : undefined}
             omitted={areasTruncated ? areaTotal - areas.length : undefined}
-            remedy={areasTruncated ? "The rest are reachable from the studio." : undefined}
             className="mb-8"
           />
         ) : null}
@@ -326,9 +323,8 @@ export default async function ResearchIndexPage() {
             // The cards are the page's top-level content, so this heading sits directly under the
             // `<h1>` at level 2. Levels never skip (contract §11).
             headingLevel: 2,
-            title: "No research areas have been published yet",
-            description:
-              "Research areas appear here as soon as one is published in the studio. Until then there is nothing on this page to browse."
+            title: "No research areas to show",
+            description: "There are no research areas to show right now."
           }}
         >
           {areas.map((area) => (
@@ -423,49 +419,28 @@ function buildGraphNote(facts: {
 }
 
 /**
- * The line under a diagram that drew no line: WHY nothing joins the areas, and WHERE the missing half
- * is entered. Rendered by `ResearchGraph` only when it laid out no edge at all.
+ * The line under a diagram that drew no line: WHY nothing joins the areas. Rendered by `ResearchGraph`
+ * only when it laid out no edge at all.
  *
- * ⚠ IT NAMES THE SCREEN, NOT "add some projects". The owner's question about the blank figure was
- * literally "where do people enter the details for it through the ui?", and a page that states an
- * absence without naming its remedy has answered half of contract §1.6. Every screen and field named
- * below was checked against the studio, not remembered:
+ * Both halves must be LIVE to draw a line: the query above filters projects with `liveStatusWhere()` and
+ * members with `{ person: { ...live, isVisible: true } }`, so a published project whose team has no
+ * published, visible profile draws nothing — the second case says so.
  *
- *   • "Research area" — the single-select picker in app/studio/projects/[id]/ProjectEditor.tsx:591,
- *     holding `researchAreaIds` and sent as `Project.researchAreaId` (:245). That column is what the
- *     `researchAreaId: { not: null }` filter above selects on.
- *   • "Team" — the section at ProjectEditor.tsx:734, whose people picker (:739) writes `ProjectMember`
- *     rows through `members` (:257). Those rows are the `members` relation queried above.
- *   • `/studio/projects/new` is the SAME route as an existing project, with the id `new`
- *     (app/studio/projects/[id]/page.tsx:20) — which is why "open or create one" is one instruction
- *     rather than two.
- *
- * Both halves must also be LIVE to draw a line, which is why the second case mentions the person's own
- * profile: the query above filters projects with `liveStatusWhere()` and members with
- * `{ person: { ...live, isVisible: true } }`, so a published project full of draft profiles draws
- * nothing. That is the single most confusing way for this figure to come up empty, and it is the one an
- * editor is least likely to guess.
- *
- * ⚠ IT IS WRITTEN TO READ SENSIBLY TO A VISITOR AS WELL, BECAUSE THIS PAGE CANNOT TELL THE TWO APART.
- * Showing an editor-only instruction only to editors would mean reading the session cookie —
- * `currentClaims()` in lib/auth/current-user.ts calls `cookies()` — and a Server Component that reads a
- * cookie is rendered per request, which would throw away the ISR cache this page is explicitly built
- * around (`export const revalidate = 300` above, and the `prerenderSafe` argument that depends on it).
- * Making a public index page dynamic to hide one sentence is the wrong trade, so the sentence is
- * phrased as a statement of how the diagram is fed: true and informative to a reader wondering why the
- * picture is bare, precise enough for an editor to act on. It links nowhere for the same reason — no
- * other page under (site) links into /studio, proxy.ts gates that tree, and a public link to a
- * gated screen is a dead end for everyone who is not signed in.
+ * ⚠ IT IS WRITTEN FOR A VISITOR, BECAUSE THIS PAGE CANNOT TELL A VISITOR FROM AN EDITOR. Telling them
+ * apart means reading the session cookie, which would make this ISR page render per request
+ * (`export const revalidate = 300` above). So it says what is missing in a visitor's terms and gives
+ * no studio instructions; the editor's route to a line (a project's Research area and Team) is in the
+ * studio's own help.
  */
 function buildNoLinesNote(facts: { projectsDrawn: number; areasDrawn: number }): string {
   const oneArea = facts.areasDrawn === 1;
 
   if (facts.projectsDrawn === 0) {
-    return `No published project names ${oneArea ? "this research area" : "one of these research areas"} yet, so there is no line to draw. A project is given both in the studio, under Projects: open or create one, choose its Research area, then add its Team.`;
+    return `No project is listed under ${oneArea ? "this research area" : "these research areas"}, so there are no links to draw.`;
   }
 
   const oneProject = facts.projectsDrawn === 1;
-  return `${countPhrase(facts.projectsDrawn, "published project")} ${oneProject ? "belongs" : "belong"} to ${oneArea ? "this area" : "these areas"}, but no published, visible person is on ${oneProject ? "its team" : "any of their teams"}, so there is no line to draw. A project's people are added in the studio, under Projects: open it and fill in Team — and somebody is drawn here only once their own profile is published and visible.`;
+  return `${countPhrase(facts.projectsDrawn, "published project")} ${oneProject ? "belongs" : "belong"} to ${oneArea ? "this area" : "these areas"}, but no published, visible person is on ${oneProject ? "its team" : "any of their teams"}, so there are no links to draw.`;
 }
 
 /**

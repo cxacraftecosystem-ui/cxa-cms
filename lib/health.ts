@@ -755,7 +755,7 @@ export async function buildHealthReport(now: Date = new Date()): Promise<HealthR
       total: blankPages.length,
       examples: blankPages,
       title: `${phrase(blankPages.length, "published page has", "published pages have")} nothing on it`,
-      why: "A visitor who follows a link to one of these reaches a page with a heading and nothing underneath it, which reads as a site that is broken rather than as one that is unfinished.",
+      why: "A visitor who follows a link to one of these sees a heading and nothing under it.",
       href: "/studio/pages?status=PUBLISHED",
       fixLabel: "Open Pages",
       can: canManageStructure

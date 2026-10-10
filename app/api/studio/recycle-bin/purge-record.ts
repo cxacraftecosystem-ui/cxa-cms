@@ -905,8 +905,7 @@ export async function purgeRecord(
       keys.length > 0
         ? `The stored files for “${label}” were removed, but the record itself could not be deleted, so ` +
             "it is still in the recycle bin and now points at files that no longer exist. Nothing else " +
-            "has been changed. Try again; if it fails a second time, this needs somebody with database " +
-            "access."
+            "has been changed. Try again; if it fails a second time, contact the site's administrator."
         : `“${label}” could not be deleted for good and nothing has been changed. This usually means ` +
             "something it refers to changed while the deletion was running. Try again."
     );

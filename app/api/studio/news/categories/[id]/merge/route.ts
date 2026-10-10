@@ -226,7 +226,7 @@ export const POST = route(async (request: Request, context: RouteContext) => {
   }
   if (reindexTruncated) {
     parts.push(
-      `The site's own search has been brought up to date for the first ${articles(reindexed)}; the rest catch up the next time the search index is rebuilt, and are still findable by their own words in the meantime.`
+      `The site's own search has been brought up to date for the first ${articles(reindexed)}; the rest follow shortly, and can still be found by their own words meanwhile.`
     );
   }
 

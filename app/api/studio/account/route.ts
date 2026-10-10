@@ -470,7 +470,6 @@ export const DELETE = route(async (request: NextRequest) => {
     sessionsEnded: before,
     message:
       `${before === 1 ? "1 device has" : `${before} devices have`} been signed out, including this one. Sign in ` +
-      `again to carry on. ${REVOCATION_NOTE} Call the sign-out endpoint next so this browser's cookies are ` +
-      "cleared as well."
+      `again to carry on. ${REVOCATION_NOTE}`
   });
 });

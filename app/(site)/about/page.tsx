@@ -594,7 +594,7 @@ async function ComposedAboutPage({ title }: { title: string | null }) {
             title: curated ? "Nobody in this section is published" : "No faculty are listed yet",
             description: curated
               ? "The people this section lists have no published profile at the moment."
-              : "Names appear here once a faculty or scientist record is published in the studio."
+              : "There are no faculty profiles to show right now."
           }}
         >
           {shownPeople.map((person, index) => (

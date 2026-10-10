@@ -593,7 +593,7 @@ async function resolveDoi(doi: string): Promise<Candidate | { reason: string }> 
     };
   }
   if (!response.ok) {
-    return { reason: `doi.org answered HTTP ${response.status} for this DOI, so nothing could be read from it.` };
+    return { reason: "doi.org couldn't be read for this DOI. Try again later, or enter the details by hand." };
   }
 
   let payload: unknown;

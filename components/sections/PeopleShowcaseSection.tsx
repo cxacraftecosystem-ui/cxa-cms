@@ -78,7 +78,7 @@ export function PeopleShowcaseSection({
   total: givenTotal,
   droppedIds: givenDropped
 }: PeopleShowcaseSectionProps) {
-  const { rows, total: matched, droppedIds } = pickShowcase(resolved?.people, section.id, {
+  const { rows, total: matched } = pickShowcase(resolved?.people, section.id, {
     rows: given,
     total: givenTotal,
     droppedIds: givenDropped
@@ -99,7 +99,7 @@ export function PeopleShowcaseSection({
   const empty = {
     icon: Users,
     title: `No ${plural} to show yet`,
-    description: "People appear here once their profiles are published in the studio.",
+    description: "There are no people to show right now.",
     headingLevel: 3 as const
   };
 
@@ -166,7 +166,7 @@ export function PeopleShowcaseSection({
         <ShowcaseNote
           hidden={hidden}
           matched={matched}
-          dropped={droppedIds}
+         
           plural={plural}
           link={link}
         />
@@ -228,17 +228,15 @@ function PersonCard({
 function ShowcaseNote({
   hidden,
   matched,
-  dropped,
   plural,
   link
 }: {
   hidden: number;
   matched: number;
-  dropped: number;
   plural: string;
   link?: { href: string; label: string };
 }) {
-  if (hidden === 0 && dropped === 0) return null;
+  if (hidden === 0) return null;
 
   return (
     <p className="mt-8 text-sm text-ink-500">
@@ -250,13 +248,6 @@ function ShowcaseNote({
               {link.label}
             </Link>
           ) : null}
-        </>
-      ) : null}
-      {dropped > 0 ? (
-        <>
-          {hidden > 0 ? " " : null}
-          {dropped} chosen {dropped === 1 ? "person is" : "people are"} no longer published and{" "}
-          {dropped === 1 ? "is" : "are"} not shown.
         </>
       ) : null}
     </p>

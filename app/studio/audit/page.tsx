@@ -398,7 +398,7 @@ const PROBLEMS: Record<string, string> = {
   name_mismatch:
     "The name you typed did not match, so nothing was changed. Type it exactly as it appears in the confirmation.",
   failed:
-    "The earlier version could not be written back. Nothing has been changed. This usually means a column in the old version no longer exists, or something it referred to has since been deleted."
+    "The earlier version could not be written back. Nothing has been changed. Something it referred to may have been deleted since."
 };
 
 const NOTICES: Record<string, string> = {

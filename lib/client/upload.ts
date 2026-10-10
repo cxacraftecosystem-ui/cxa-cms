@@ -389,7 +389,7 @@ function putWithProgress(input: PutInput): Promise<void> {
       // is by far the most common cause the first time a deployment is wired up.
       finish(
         new Error(
-          "The upload could not reach storage. Either the connection dropped or the storage bucket is not accepting uploads from this site."
+          "The upload didn't finish. Check your connection and try again."
         )
       );
     });

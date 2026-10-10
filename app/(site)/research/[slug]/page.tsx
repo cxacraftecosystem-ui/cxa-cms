@@ -486,7 +486,7 @@ export default async function ResearchAreaPage({ params }: AreaPageProps) {
             headingLevel: 3,
             title: "No projects have been published in this area yet",
             description:
-              "Projects appear here once one is published against this area in the studio. The area's publications and people may still be listed below."
+              "No projects are listed for this area. Its publications and people may be listed below."
           }}
         >
           {projects.map((project) => (

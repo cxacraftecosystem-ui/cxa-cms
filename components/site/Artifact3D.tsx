@@ -154,7 +154,7 @@ export function Artifact3D({ objectKey, title, className }: Artifact3DProps) {
         <Notice
           icon={TriangleAlert}
           title="The 3D artefact cannot be shown"
-          body="A model is recorded for this craft, but no public storage address is configured on this deployment, so there is nothing to load. The photographs above are unaffected."
+          body="The 3D model isn't available right now. The photographs above are unaffected."
         />
       </ViewerFrame>
     );

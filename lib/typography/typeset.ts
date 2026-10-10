@@ -667,7 +667,7 @@ export function readBlockTypeset(value: unknown): BlockTypeset {
  * here so it is nowhere else.
  *
  * `typeset: blockTypesetSchema.prefault({})` HAS since landed on `richTextSectionSchema`, so the key is
- * now genuinely stored and `TYPESET_STORED` in `RichTextForm` has flipped itself on. The index-signature
+ * now genuinely stored and `RichTextForm` offers its controls. The index-signature
  * read stays anyway, deliberately: this helper is called with the payload of ANY section type, and only
  * RICH_TEXT carries the field. Typing the parameter to the rich-text payload would make it unusable for
  * the next block that wants typesetting; reading through an index signature works for every one of them

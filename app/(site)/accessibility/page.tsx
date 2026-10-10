@@ -147,7 +147,7 @@ export default function AccessibilityPage() {
       <PageHero
         eyebrow="Reading this site"
         title="Accessibility"
-        description="This site can be read with less motion, in larger text, at higher contrast and in a dark or light palette, and the controls for all four are on every page. This is what has been built, where to find it, and what is still missing."
+        description="This site can be read with less motion, in larger text, at higher contrast and in a dark or light palette, and the controls for all four are on every page. This page describes each of them, where to find it, and its known limitations."
         breadcrumbs={BREADCRUMBS}
       />
 
@@ -156,15 +156,13 @@ export default function AccessibilityPage() {
           <div className="panel p-6 sm:p-8">
             <h2 className="display-title text-xl">How to read this page</h2>
             <p className="prose-measure mt-4 text-base leading-relaxed text-ink-700">
-              Everything described below is in the site as it stands today, and each paragraph names
-              the control or the behaviour precisely enough that you can go and check it. Where
-              something works only partly, the same sentence says so — a statement that promises a
-              feature a reader then cannot find is worse than no statement, because the fair conclusion
-              to draw is that the site is broken.
+              Everything described below is on the site today, and each paragraph names the control or
+              the behaviour so you can find it. Where something works only partly, the same paragraph
+              says so.
             </p>
             <p className="prose-measure mt-4 text-base leading-relaxed text-ink-700">
-              No conformance level is claimed anywhere on this page. Nobody has audited this site
-              against WCAG or any other standard, so there is nothing honest to claim yet;{" "}
+              This site has not been independently audited against WCAG, and we do not claim a
+              conformance level;{" "}
               <a href="#claims" className={ANCHOR_LINK}>
                 what this statement does not claim
               </a>{" "}
@@ -291,9 +289,8 @@ export default function AccessibilityPage() {
             <p className="prose-measure text-base leading-relaxed text-ink-700">
               Most operating systems have a &ldquo;reduce motion&rdquo; or &ldquo;minimise
               animation&rdquo; setting. This site reads it. If you have already turned it on you need do
-              nothing here: the animation is reduced on arrival, and the smooth-scrolling library is not
-              even downloaded, because inertia is precisely the motion being objected to and a gentler
-              version of an unwanted effect is still the unwanted effect.
+              nothing here: animation is reduced as soon as the page opens, and scrolling is not
+              smoothed.
             </p>
             <p className="prose-measure mt-4 text-base leading-relaxed text-ink-700">
               The <strong>Reduced motion</strong> switch in the accessibility panel is the second route
@@ -513,7 +510,7 @@ export default function AccessibilityPage() {
             level={2}
             id="claims"
             title={titleOf("claims")}
-            description="An unaudited conformance level is a statement about work nobody has done."
+            description="This site has not been independently audited against WCAG."
           />
 
           <div className="shell-narrow mt-6 px-0">
@@ -521,15 +518,11 @@ export default function AccessibilityPage() {
               <p className="prose-measure text-base leading-relaxed text-ink-700">
                 This site has <strong>not</strong> been audited against the Web Content Accessibility
                 Guidelines or any other standard, by the Centre or by anybody else. So no conformance
-                level is claimed here — not A, not AA, not partial — and no date is given by which one
-                will be. Naming a level the site has not been tested against would be a statement about
-                work that has not happened, and it is the kind of statement a reader is entitled to rely
-                on.
+                level is claimed here — not A, not AA, not partial.
               </p>
               <p className="prose-measure mt-4 text-base leading-relaxed text-ink-700">
-                What is above is a description of what has been built, written to be checked rather than
-                believed. Judge it against your own needs; if it falls short of them, the last section
-                is how to say so.
+                Judge what is described above against your own needs; if it falls short of them, the
+                last section says how to tell us.
               </p>
             </div>
           </div>
@@ -641,8 +634,7 @@ export default function AccessibilityPage() {
                 <Link href="/contact" className={ANCHOR_LINK}>
                   contact page
                 </Link>{" "}
-                lists the inboxes the Centre reads, and carries an enquiry form where one is switched on
-                for this deployment.
+                lists the inboxes the Centre reads.
               </p>
               <p className="prose-measure mt-4 text-base leading-relaxed text-ink-700">
                 Three things make a report far quicker to act on, if you have them: the address of the
@@ -652,10 +644,8 @@ export default function AccessibilityPage() {
                 much more than nothing.
               </p>
               <p className="prose-measure mt-4 text-base leading-relaxed text-ink-700">
-                No response time is published here, because none has been agreed, and this page will not
-                promise you one it cannot keep. What we will do is read what you send and correct what we
-                can — and when a fix lands, or when a limit above stops being true, this page is updated
-                with it.
+                We read what you send and correct what we can, and this page is updated when a limit
+                above changes.
               </p>
             </div>
           </div>
