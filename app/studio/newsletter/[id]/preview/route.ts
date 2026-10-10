@@ -20,14 +20,19 @@ import { canAuthor } from "@/lib/permissions";
  * working link signed for the viewer would unsubscribe a member of staff who clicked it to see where it
  * went. `?text=1` shows the plain-text part instead.
  *
- * ⚠ THE RESPONSE CARRIES A CSP WITH NO SCRIPT SOURCE AT ALL. The body is an editor's document rendered
- * through an escaping renderer (lib/newsletter/email-richtext.ts), and this header is the second wall: if
- * anything ever slipped through, it still could not run in the studio's origin.
+ * ⚠ THE DOCUMENT CARRIES ITS OWN `<meta>` CSP WITH NO SCRIPT SOURCE AT ALL. The body is an editor's
+ * document rendered through an escaping renderer (lib/newsletter/email-richtext.ts), and this is the
+ * second wall: if anything ever slipped through, it still could not run in the studio's origin. It is a
+ * meta element rather than a response header because next.config.ts sets the CSP header on every studio
+ * response and replaces one set here; a meta policy is enforced in addition to the header. The studio's
+ * preview frame is also sandboxed with no permissions.
  */
 
 export const dynamic = "force-dynamic";
 
 type Context = { params: Promise<{ id: string }> };
+
+const PREVIEW_POLICY = "default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline'; form-action 'none'";
 
 export const GET = route(async (request: NextRequest, context: Context) => {
   await requireCapability(canAuthor, "Previewing a newsletter issue needs author access or higher.");
@@ -37,13 +42,17 @@ export const GET = route(async (request: NextRequest, context: Context) => {
   const rendered = personaliseIssueEmail(renderIssue(issue), `${siteUrl()}${NEWSLETTER_UNSUBSCRIBE_PATH}`);
   const wantsText = new URL(request.url).searchParams.get("text") === "1";
 
-  return new NextResponse(wantsText ? rendered.text : rendered.html, {
+  const html = rendered.html.replace(
+    "<head>",
+    `<head>
+<meta http-equiv="Content-Security-Policy" content="${PREVIEW_POLICY}">`
+  );
+
+  return new NextResponse(wantsText ? rendered.text : html, {
     status: 200,
     headers: {
       "content-type": wantsText ? "text/plain; charset=utf-8" : "text/html; charset=utf-8",
       "cache-control": "no-store",
-      "content-security-policy":
-        "default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'",
       "x-content-type-options": "nosniff"
     }
   });
