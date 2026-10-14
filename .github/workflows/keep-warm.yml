@@ -64,8 +64,9 @@ jobs:
     # Named rather than `ubuntu-latest`, as in ci.yml. The database check below uses this image's
     # psql: the 26.04 image ships the PostgreSQL 18 client, which talks to Supabase's 17 server.
     runs-on: ubuntu-26.04
-    # A curl capped at 60 s, then at most three connection attempts of 10 s each and 30 s of pauses:
-    # well inside five minutes, so neither step can run the other out of time.
+    # A curl whose retries stop starting after 120 s (so at most ~180 s with the last 60 s attempt),
+    # then at most three connection attempts of 10 s each and 30 s of pauses: inside five minutes,
+    # so neither step can run the other out of time.
     timeout-minutes: 5
 
     steps:
@@ -93,9 +94,18 @@ jobs:
 
           # `lib/cron.ts` compares this bearer in constant time and fails closed when the secret is
           # unset on the server, so a wrong value is a 401 rather than a silent no-op.
+          #
+          # Retried, because the runner's own network is the flakiest thing here: on 2026-10-14 one run
+          # in forty died on `curl: (6) Could not resolve host` and the next was green. Without
+          # `--fail` curl treats a 401 as success, so `--retry-all-errors` repeats DNS, connect and
+          # timeout failures (plus the 5xx/429 that `--retry` covers anyway) but never a rejected
+          # bearer. Publishing is idempotent, so a retry after a 5xx cannot publish anything twice.
+          # `|| true` keeps `bash -e` from ending the step on curl's exit code before the `case`
+          # below can name the failure; curl then reports HTTP 000.
           code=$(curl -sS -o /tmp/cron.out -w '%{http_code}' --max-time 60 \
+                   --retry 3 --retry-delay 5 --retry-all-errors --retry-max-time 120 \
                    -H "Authorization: Bearer ${CRON_SECRET}" \
-                   "${SITE_URL%/}/api/cron/publish")
+                   "${SITE_URL%/}/api/cron/publish") || true
 
           echo "HTTP ${code}"
           head -c 2000 /tmp/cron.out || true
@@ -105,6 +115,7 @@ jobs:
           # answer and must not be treated as a problem.
           case "${code}" in
             2*) exit 0 ;;
+            000) echo "::error::The site never answered, even after retries (DNS, connection or timeout; curl's error is above)."; exit 1 ;;
             401|403) echo "::error::The cron endpoint rejected the bearer. CRON_SECRET here and on Vercel disagree."; exit 1 ;;
             *)  echo "::error::The publish cron answered ${code}."; exit 1 ;;
           esac
