@@ -381,14 +381,19 @@ newsletter outbox, never subject to newsletter consent, bounce state or unsubscr
   verified identity. Settings → Diagnostics shows whether password-reset email is set up and its address.
 - **IAM.** Sending account mail needs only `ses:SendEmail`. (The newsletter drain's `ses:GetAccount` is
   for reading the sending rate and is not used here.)
-- ⚠ **Sandbox.** While the SES account is in the **sandbox**, SES delivers only to **verified recipient
-  addresses** — a reset to anybody else is refused, the Users screen says "could not be emailed — make a
-  link instead", and the self-service form still answers its one neutral sentence (the audit log records
-  `email-failed`). Request production access in the SES console before relying on it.
-- ⚠ **Domain identity pending.** The `aicraft.iitkgp.ac.in` domain identity stays **PENDING** until its
-  **three DKIM CNAME records** and the **`bounce.aicraft.iitkgp.ac.in` custom MAIL FROM records** (the MX
-  and the SPF TXT) are added to DNS. Until then a From address on that domain fails with "identity not
-  verified".
+- **Sandbox.** The account has production access in `ap-south-1` (granted; 50,000 a day, 14 a second).
+  If it is ever back in the **sandbox**, SES delivers only to **verified recipient addresses** — a reset
+  to anybody else is refused, the Users screen says "could not be emailed — make a link instead", and the
+  self-service form still answers its one neutral sentence (the audit log records `email-failed`).
+- **Domain identity verified (2026-10-16).** `aicraft.iitkgp.ac.in` is verified with Easy DKIM and the
+  custom MAIL FROM `bounce.aicraft.iitkgp.ac.in`; CIC publishes the three DKIM CNAMEs and the bounce MX
+  and SPF TXT in the `iitkgp.ac.in` zone. No DMARC record of our own: the institute's
+  `_dmarc.iitkgp.ac.in` (`p=reject`) applies, and both DKIM and the MAIL FROM align with it. Its bounce
+  and complaint notifications publish to `ses-feedback`. Production sends the newsletter as
+  `newsletter@aicraft.iitkgp.ac.in` and password links as `studio@aicraft.iitkgp.ac.in`. ⚠ If SES ever
+  marks DKIM or MAIL FROM **FAILED** (records missing for 72 hours), restoring the records is not
+  enough: rerun `aws ses verify-domain-dkim --domain aicraft.iitkgp.ac.in` (returns the same three
+  tokens) and `aws sesv2 put-email-identity-mail-from-attributes` with the same values.
 - ⚠ **No click tracking on `SES_CONFIGURATION_SET`.** If the configuration set has open/click tracking
   switched on, SES rewrites links through an AWS redirect, which would carry a live password credential
   through a third party's logs. Keep tracking off on that set.
