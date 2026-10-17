@@ -48,6 +48,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  */
 
+import { decodeHtmlEntities, stripTags } from "@/lib/html-text";
 import { formatBytes } from "@/lib/utils";
 
 // ─── The sources ────────────────────────────────────────────────────────────────────────────────
@@ -585,16 +586,8 @@ function asArray(value: unknown): unknown[] {
  */
 function stripHtml(value: string | null, maxLength = 300): string | null {
   if (!value) return null;
-  const text = value
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#0*39;/g, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
+  // Tags out (repeatedly), then entities decoded in one scan — see lib/html-text.ts for why both.
+  const text = decodeHtmlEntities(stripTags(value.replace(/<br\s*\/?>/gi, " ")))
     .replace(/\s+/g, " ")
     .trim();
   if (text.length === 0) return null;

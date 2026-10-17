@@ -520,6 +520,33 @@ function escapeBibtex(value: string): string {
   return value.replace(/[\\{}$%&#_^~]/g, (character) => BIBTEX_ESCAPES[character] ?? character);
 }
 
+const BIBTEX_UNESCAPES: Record<string, string> = {
+  "\\textbackslash{}": "\\",
+  "\\textasciitilde{}": "~",
+  "\\textasciicircum{}": "^"
+};
+
+/**
+ * A BibTeX field value as plain text: {@link escapeBibtex} undone, and every protective brace that is
+ * not itself escaped turned into a space (the caller collapses whitespace).
+ *
+ * ONE pass, for the same reason as the escaping side. Undoing the escapes one `.replace` at a time
+ * re-reads what an earlier step produced: `\textbackslash{}_` is a backslash then a bare underscore,
+ * but a sequential version first makes it `\_` and then reads that new backslash as escaping the
+ * underscore, so the backslash is lost. Stripping braces BEFORE unescaping (as the import route used
+ * to) is the same mistake the other way round: `\textbackslash{}` loses its `{}` and is never
+ * recognised, and `\{` loses its brace but keeps its backslash.
+ */
+export function bibtexValueToText(value: string): string {
+  return value.replace(
+    /\\text(?:backslash|asciitilde|asciicircum)\{\}|\\([&%$#_{}])|[{}]/g,
+    (match, escaped: string | undefined) => {
+      if (escaped !== undefined) return escaped;
+      return BIBTEX_UNESCAPES[match] ?? " ";
+    }
+  );
+}
+
 const MONTH_ABBREVIATIONS = [
   "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
 ];

@@ -9,7 +9,7 @@ import { requireCapability } from "@/lib/auth/current-user";
 import { canManageResearch } from "@/lib/permissions";
 import { enforceRateLimit } from "@/lib/ratelimit";
 import { indexDocument, searchDocFromPublication } from "@/lib/search/index";
-import { parseAuthorLine } from "@/lib/citation";
+import { bibtexValueToText, parseAuthorLine } from "@/lib/citation";
 import { slugify, unique } from "@/lib/utils";
 
 /**
@@ -151,20 +151,6 @@ interface Unreadable {
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The ten characters BibTeX escapes, undone, plus the two macros lib/citation.ts emits.
- *
- * ONE pass, driven by a single regular expression, and that is load-bearing for the same reason the
- * escaping side is: sequential replaces would re-process the braces that `\textbackslash{}` introduces.
- */
-function unescapeBibtex(value: string): string {
-  return value
-    .replace(/\\textbackslash\{\}/g, "\\")
-    .replace(/\\textasciitilde\{\}/g, "~")
-    .replace(/\\textasciicircum\{\}/g, "^")
-    .replace(/\\([&%$#_{}])/g, "$1");
-}
-
-/**
  * A field value with its protective braces removed and its whitespace collapsed.
  *
  * The braces in `title = {{GANs for Bagru}}` exist to stop a `.bst` file lowercasing the title, so they
@@ -172,7 +158,7 @@ function unescapeBibtex(value: string): string {
  * collapsing the newlines is what turns three lines into one title.
  */
 function cleanValue(raw: string): string {
-  return unescapeBibtex(raw.replace(/[{}]/g, " "))
+  return bibtexValueToText(raw)
     .replace(/\s+/g, " ")
     .trim();
 }

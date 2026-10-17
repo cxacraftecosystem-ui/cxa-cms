@@ -43,6 +43,8 @@ import path from "node:path";
 
 import sharp from "sharp";
 
+import { decodeHtmlEntities, stripTags } from "@/lib/html-text";
+
 const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
 
 /**
@@ -178,16 +180,9 @@ interface Candidate {
  */
 function plainText(value: string | undefined): string {
   if (!value) return "";
-  return value
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<\/[a-z][^>]*>/gi, " ")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
+  // Tags out (repeatedly), then entities decoded in one scan — see lib/html-text.ts for why both.
+  const spaced = value.replace(/<br\s*\/?>/gi, " ").replace(/<\/[a-z][^>]*>/gi, " ");
+  return decodeHtmlEntities(stripTags(spaced))
     .replace(/\s+/g, " ")
     .trim();
 }
