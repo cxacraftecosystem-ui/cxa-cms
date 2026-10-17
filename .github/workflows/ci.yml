@@ -19,7 +19,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Read-only token: this job only checks the code out and pings the database.
+# Read-only token: CI only checks the code out and runs the checks.
 permissions:
   contents: read
 
