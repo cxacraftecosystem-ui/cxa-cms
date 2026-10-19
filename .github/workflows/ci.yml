@@ -19,6 +19,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only token: CI only checks the code out and runs the checks.
+permissions:
+  contents: read
+
 concurrency:
   # One run per branch. A push that supersedes another wastes a database container to say the same thing.
   group: ci-${{ github.ref }}
