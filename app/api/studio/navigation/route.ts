@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { canManageStructure } from "@/lib/permissions";
 import { NAV_HREF_MAX, navigationHrefSchema } from "@/lib/studio/link-fields";
 import { buildAuditContext, parseStudioJson } from "@/lib/studio/crud";
+import { writeMenus } from "@/lib/studio/ordered-links";
 
 /**
  * The menus: the site header, the footer columns and the small utility bar.
@@ -345,47 +346,12 @@ const handleReplace = route(async (request: NextRequest) => {
        */
       await tx.navigationItem.deleteMany({});
 
-      let itemCount = 0;
-      for (const location of LOCATIONS) {
-        const items = body.locations[location];
-        for (let index = 0; index < items.length; index += 1) {
-          const item = items[index];
-          if (!item) continue;
-          // The parent first, so its id exists for the children. `select` narrows the row to the one
-          // column needed — there is nothing else here worth carrying into the audit payload.
-          const parent = await tx.navigationItem.create({
-            data: {
-              location,
-              label: item.label,
-              href: item.href,
-              isExternal: item.isExternal,
-              isVisible: item.isVisible,
-              position: index,
-              parentId: null
-            },
-            select: { id: true }
-          });
-          itemCount += 1;
-
-          for (let childIndex = 0; childIndex < item.children.length; childIndex += 1) {
-            const child = item.children[childIndex];
-            if (!child) continue;
-            await tx.navigationItem.create({
-              data: {
-                location,
-                label: child.label,
-                href: child.href,
-                isExternal: child.isExternal,
-                isVisible: child.isVisible,
-                position: childIndex,
-                parentId: parent.id
-              },
-              select: { id: true }
-            });
-            itemCount += 1;
-          }
-        }
-      }
+      // Every location in its fixed order, as the per-item loop wrote them. Two INSERTs for the lot — see
+      // `writeMenus` in lib/studio/ordered-links.ts.
+      const itemCount = await writeMenus(
+        tx,
+        Object.fromEntries(LOCATIONS.map((location) => [location, body.locations[location]]))
+      );
 
       return { id: NAVIGATION_ENTITY_ID, itemCount, locations: body.locations };
     }

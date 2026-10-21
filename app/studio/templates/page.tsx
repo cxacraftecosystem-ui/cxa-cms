@@ -346,23 +346,22 @@ async function createFromTemplate(formData: FormData): Promise<void> {
         });
 
         // `position` is dense and 0-based from `templateSections`, and this page has no other blocks, so
-        // there is nothing for `@@unique([pageId, position])` to collide with and no reorder to do.
-        for (const block of sections) {
-          await tx.pageSection.create({
-            data: {
-              pageId: page.id,
-              type: block.type,
-              position: block.position,
-              label: block.label,
-              // Parsed by `templateSections` against the block's own schema, so this cannot store a payload
-              // the renderer would have to show as an error card. The cast is the same one the sections
-              // route makes: a value that came out of Zod is JSON by construction, and TypeScript cannot
-              // see that from `unknown`.
-              data: block.data as Prisma.InputJsonValue,
-              isVisible: true
-            }
-          });
-        }
+        // there is nothing for `@@unique([pageId, position])` to collide with and no reorder to do. One
+        // multi-row INSERT for every block rather than one per block.
+        await tx.pageSection.createMany({
+          data: sections.map((block) => ({
+            pageId: page.id,
+            type: block.type,
+            position: block.position,
+            label: block.label,
+            // Parsed by `templateSections` against the block's own schema, so this cannot store a payload
+            // the renderer would have to show as an error card. The cast is the same one the sections
+            // route makes: a value that came out of Zod is JSON by construction, and TypeScript cannot
+            // see that from `unknown`.
+            data: block.data as Prisma.InputJsonValue,
+            isVisible: true
+          }))
+        });
 
         // The page's searchable text is built from the words in its blocks, so it is indexed AFTER they
         // exist and inside the same transaction — an index that can disagree with the data eventually does.

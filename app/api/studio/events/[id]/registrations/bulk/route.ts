@@ -1,11 +1,10 @@
 import { z } from "@/lib/zod";
-// `Prisma` is imported as a VALUE: `Prisma.sql` is the tagged template `$queryRaw` needs. See `lockEvent`.
-import { Prisma, type RegistrationStatus } from "@prisma/client";
+import type { RegistrationStatus } from "@prisma/client";
 
 import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
-import { writeAudit, type AuditContext, type TxClient } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { applyRegistrationBatch, STATE_WORDS, type BatchResult } from "@/lib/events/registration-writes";
 import { canManageContent } from "@/lib/permissions";
 import { buildAuditContext, fieldProblem, found, parseStudioJson } from "@/lib/studio/crud";
 
@@ -18,12 +17,13 @@ import { buildAuditContext, fieldProblem, found, parseStudioJson } from "@/lib/s
  * `RegistrationsManager` sends every selected id at once rather than a request per row, and the reason is
  * in its own comment: forty separate calls are forty transactions for one intention, competing for the same
  * event, with no way to say afterwards that twelve worked and twenty-eight did not. So this is one
- * transaction, and the rows are walked in order.
+ * transaction, and the rows are walked in order (`applyRegistrationBatch`, lib/events/registration-writes.ts,
+ * which then writes the moves and their audit entries as one statement each).
  *
  * ⚠ `mutateWithHistory()` IS NOT USED, AND THIS IS THE SAME DELIBERATE EXCEPTION THE COLLECTION ROUTE
  * MAKES. That helper opens a transaction per entity, which is right for one row and wrong for forty. The
  * property it exists to guarantee — a change and its log cannot exist without each other — is preserved by
- * calling `writeAudit` on THIS transaction, at the granularity that matters: one entry per person, because
+ * writing the audit on THIS transaction, at the granularity that matters: one entry per person, because
  * "who cancelled MY registration" is the question the log is read to answer. No revision is written, for
  * the reason the collection route gives: a registration is not editorial content and nothing would ever
  * restore one.
@@ -59,22 +59,10 @@ import { buildAuditContext, fieldProblem, found, parseStudioJson } from "@/lib/s
 
 export const dynamic = "force-dynamic";
 
-/** The states that occupy a place. The screen and both sibling routes count places the same way. */
-const PLACE_HOLDING_STATES: readonly RegistrationStatus[] = ["CONFIRMED", "ATTENDED"];
-
 const ALL_STATES = ["PENDING", "CONFIRMED", "WAITLISTED", "CANCELLED", "ATTENDED"] as const;
 
 /** The most rows one batch may cover. A larger one is a script, not an organiser. Stated in the refusal. */
 const MAX_BATCH = 200;
-
-/** Plain words for a state. Never the enum name — every one of these reaches a reader. */
-const STATE_WORDS: Record<RegistrationStatus, string> = {
-  PENDING: "pending",
-  CONFIRMED: "confirmed",
-  WAITLISTED: "waitlisted",
-  CANCELLED: "cancelled",
-  ATTENDED: "attended"
-};
 
 /**
  * `action` as an alias for `state`, and where its vocabulary comes from.
@@ -117,66 +105,13 @@ const bulkSchema = z.object({
   expectedPlacesTaken: z.coerce.number().int().min(0).optional()
 });
 
-const REGISTRATION_SELECT = {
-  id: true,
-  name: true,
-  email: true,
-  state: true,
-  certificateCode: true
-} as const;
-
 interface RouteContext {
   params: Promise<{ id: string }>;
-}
-
-interface RowOutcome {
-  id: string;
-  /** The person, where the row was found. Null for an id that is no longer on this event's list. */
-  name: string | null;
-  from: RegistrationStatus | null;
-  /** A sentence, ready to render. */
-  message: string;
-}
-
-/**
- * Hold the event row until this transaction ends, so every writer that changes the number of places held
- * queues behind whoever got there first.
- *
- * ⚠ Duplicated in the sibling `[registrationId]/route.ts` rather than shared, because a `route.ts` may only
- * export its handlers and its route config — Next's generated type check refuses anything else — so there is
- * nowhere to put a shared helper without adding a module outside these two files. The two copies must stay
- * identical.
- *
- * `"events"` is `CoeEvent`'s table (`@@map`), and the model is named that way because `Event` is a DOM
- * global.
- */
-async function lockEvent(tx: TxClient, eventId: string): Promise<void> {
-  const locked = await tx.$queryRaw<{ id: string }[]>(
-    Prisma.sql`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`
-  );
-  if (locked.length === 0) {
-    throw conflict(
-      "This event was removed while the change was being made, so nothing has been changed. Reload the events list."
-    );
-  }
 }
 
 /** "1 person" / "14 people". Written out because an English plural is not a suffix rule worth guessing. */
 function people(count: number): string {
   return count === 1 ? "1 person" : `${count} people`;
-}
-
-interface BatchResult {
-  state: RegistrationStatus;
-  changed: number;
-  /** Rows that were already in the state asked for. Not a failure. */
-  unchanged: RowOutcome[];
-  /** Rows that could not be moved, each with the reason. */
-  failed: RowOutcome[];
-  capacity: number | null;
-  placesTaken: number;
-  overCapacity: boolean;
-  warnings: string[];
 }
 
 export const POST = route(async (request: Request, context: RouteContext) => {
@@ -205,7 +140,7 @@ export const POST = route(async (request: Request, context: RouteContext) => {
   );
 
   const auditContext = buildAuditContext(request, user);
-  const result = await applyBatch({ event, ids, state, body, context: auditContext });
+  const result = await applyRegistrationBatch({ event, ids, state, body, context: auditContext });
 
   /**
    * NOTHING CHANGED BUT SOMETHING FAILED IS A FAILURE, and it answers like one.
@@ -257,155 +192,6 @@ function resolveState(
     "state",
     "The request did not say what to change these registrations to. Send the state they should be moved to."
   );
-}
-
-/**
- * Walk the rows in order, inside one transaction, collecting an outcome for every one of them.
- *
- * Sequential rather than a single `updateMany`, because the capacity arithmetic is per row: the fifty-ninth
- * confirmation in a room of sixty is allowed and the sixty-first is the one to report, and a set-based
- * update cannot tell them apart or say which rows it left behind.
- */
-async function applyBatch(input: {
-  event: { id: string; title: string; capacity: number | null };
-  ids: readonly string[];
-  state: RegistrationStatus;
-  body: { allowOverCapacity: boolean; expectedPlacesTaken?: number | undefined };
-  context: AuditContext;
-}): Promise<BatchResult> {
-  const { event, ids, state, body } = input;
-  const takesPlace = PLACE_HOLDING_STATES.includes(state);
-
-  return prisma.$transaction(async (tx) => {
-    await lockEvent(tx, event.id);
-
-    const targets = await tx.eventRegistration.findMany({
-      where: { id: { in: [...ids] }, eventId: event.id },
-      select: REGISTRATION_SELECT
-    });
-    const byId = new Map(targets.map((row) => [row.id, row]));
-
-    /** How many places are held right now, across the whole event. Read under the lock. */
-    let placesTaken = await tx.eventRegistration.count({
-      where: { eventId: event.id, state: { in: [...PLACE_HOLDING_STATES] } }
-    });
-
-    if (body.expectedPlacesTaken !== undefined && body.expectedPlacesTaken !== placesTaken) {
-      throw conflict(
-        `The numbers changed while this was being decided: ${placesTaken} ${placesTaken === 1 ? "place is" : "places are"} now taken, not ${body.expectedPlacesTaken}. Nothing has been changed — look again and repeat it if you still want to.`
-      );
-    }
-
-    const unchanged: RowOutcome[] = [];
-    const failed: RowOutcome[] = [];
-    const withCertificates: string[] = [];
-    let changed = 0;
-
-    for (const rowId of ids) {
-      const row = byId.get(rowId);
-
-      if (!row) {
-        // A stale screen: the registration was deleted, or belongs to another event. Reported per row rather
-        // than abandoning the batch, so one bad id does not cost an organiser thirty-nine good ones.
-        failed.push({
-          id: rowId,
-          name: null,
-          from: null,
-          message:
-            "This registration is no longer on this event's list, so it has been left alone. Reload the page to see the list as it is now."
-        });
-        continue;
-      }
-
-      if (row.state === state) {
-        unchanged.push({
-          id: row.id,
-          name: row.name,
-          from: row.state,
-          message: `${row.name} was already marked ${STATE_WORDS[state]}.`
-        });
-        continue;
-      }
-
-      const wasHolding = PLACE_HOLDING_STATES.includes(row.state);
-
-      // Only an allocation is capacity-checked. Marking somebody ATTENDED records a fact — they were in the
-      // room — and refusing to record it would make the attendance list a worse record of what happened.
-      if (
-        state === "CONFIRMED" &&
-        !wasHolding &&
-        event.capacity !== null &&
-        placesTaken + 1 > event.capacity &&
-        !body.allowOverCapacity
-      ) {
-        failed.push({
-          id: row.id,
-          name: row.name,
-          from: row.state,
-          message: `${row.name} has been left as they are: ${placesTaken} of the ${event.capacity} ${event.capacity === 1 ? "place" : "places"} are taken, so confirming them would go over the limit.`
-        });
-        continue;
-      }
-
-      await tx.eventRegistration.update({ where: { id: row.id }, data: { state } });
-      changed += 1;
-
-      if (wasHolding && !takesPlace) placesTaken -= 1;
-      if (!wasHolding && takesPlace) placesTaken += 1;
-
-      if (row.certificateCode !== null && row.state === "ATTENDED" && state !== "ATTENDED") {
-        withCertificates.push(row.name);
-      }
-
-      // One entry per person, on THIS transaction. See the header for why this is not `mutateWithHistory`.
-      await writeAudit(tx, input.context, {
-        action: "UPDATE",
-        entityType: "EventRegistration",
-        entityId: row.id,
-        entityLabel: `${row.name} <${row.email}> — ${event.title}`,
-        before: { state: row.state },
-        after: {
-          state,
-          batchOf: ids.length,
-          capacity: event.capacity,
-          placesTakenAfter: placesTaken,
-          overCapacityAllowed:
-            body.allowOverCapacity && event.capacity !== null && placesTaken > event.capacity
-        }
-      });
-    }
-
-    const warnings: string[] = [];
-
-    if (withCertificates.length === 1 && withCertificates[0]) {
-      // Not a refusal: an organiser correcting a mistake must not be stranded. But a certificate that has
-      // been issued stays verifiable, and saying nothing leaves a document nobody remembers exists.
-      warnings.push(
-        `${withCertificates[0]} has already been issued a certificate for this event. It stays valid and can still be checked with its code, even though they are no longer marked as having attended.`
-      );
-    } else if (withCertificates.length > 1) {
-      warnings.push(
-        `${withCertificates.length} of these people have already been issued certificates. Those stay valid and can still be checked with their codes, even though they are no longer marked as having attended.`
-      );
-    }
-
-    if (event.capacity !== null && placesTaken > event.capacity) {
-      warnings.push(
-        `There are now ${placesTaken} places taken against a limit of ${event.capacity}. Nobody is stopped from attending by this number; it only decides who the site puts on the waiting list.`
-      );
-    }
-
-    return {
-      state,
-      changed,
-      unchanged,
-      failed,
-      capacity: event.capacity,
-      placesTaken,
-      overCapacity: event.capacity !== null && placesTaken > event.capacity,
-      warnings
-    };
-  });
 }
 
 /** One sentence covering what happened to the whole batch. Counts, never "some". */

@@ -8,6 +8,7 @@ import { accountsForAuditRows, auditTextSearch, lockHoldersForAuditRows } from "
 import { accountLabel, displayFieldNames, withLockHolderNames } from "@/lib/audit-subject";
 import { displayIpFingerprint } from "@/lib/audit-ip";
 import { prisma } from "@/lib/db";
+import { auditEntityTypeOptions } from "@/lib/studio/distinct-values";
 import { canViewAuditLog } from "@/lib/permissions";
 import { parseStudioQuery } from "@/lib/studio/crud";
 
@@ -315,12 +316,7 @@ export const GET = route(async (request: NextRequest) => {
       orderBy: [{ name: "asc" }, { email: "asc" }],
       take: FILTER_OPTION_LIMIT
     }),
-    prisma.auditLog.findMany({
-      select: { entityType: true },
-      distinct: ["entityType"],
-      orderBy: { entityType: "asc" },
-      take: FILTER_OPTION_LIMIT
-    })
+    auditEntityTypeOptions(FILTER_OPTION_LIMIT)
   ]);
 
   const accounts = await accountsForAuditRows(entries);

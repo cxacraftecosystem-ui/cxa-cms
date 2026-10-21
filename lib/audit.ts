@@ -143,6 +143,23 @@ export async function writeAudit(
 }
 
 /**
+ * Write several audit entries on an existing transaction, in ONE statement.
+ *
+ * For a batch that changes many rows at once: one entry per row is still written, because "who changed MY
+ * record" is the question the log is read for, but as one multi-row INSERT rather than a round trip per
+ * row inside a transaction that is holding locks. The entries keep the order given (their ids are minted
+ * in that order), which is the order the audit screen's `createdAt, id` tiebreak shows them in.
+ */
+export async function writeAuditMany(
+  tx: TxClient,
+  context: AuditContext,
+  inputs: readonly AuditInput[]
+): Promise<void> {
+  if (inputs.length === 0) return;
+  await tx.auditLog.createMany({ data: inputs.map((input) => auditRowData(context, input)) });
+}
+
+/**
  * Write an audit entry OUTSIDE a transaction.
  *
  * For events with no row to pair with — a sign-in, a failed sign-in, a sign-out. Deliberately does

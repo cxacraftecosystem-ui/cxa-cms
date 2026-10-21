@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { wrongTypeError, z } from "@/lib/zod";
-// `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` is the tagged template
-// `$queryRaw` needs for the event row lock. See `lockEvent`.
-import { Prisma, type RegistrationStatus } from "@prisma/client";
+import type { RegistrationStatus } from "@prisma/client";
 
 import { ApiError, assertSameOrigin, conflict, ok, route } from "@/lib/api";
-import { mutateWithHistory, writeAudit, type AuditContext, type TxClient } from "@/lib/audit";
+import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { applyRegistrationStates, lockEvent } from "@/lib/events/registration-writes";
 import { canManageContent } from "@/lib/permissions";
 import {
   buildAuditContext,
@@ -243,48 +242,6 @@ export const GET = route(async (request: Request, context: RouteContext) => {
 // The event row lock
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Hold the event row until this transaction ends, so every writer that changes the number of places held
- * queues behind whoever got there first.
- *
- * ══════════════════════════════════════════════════════════════════════════════════════════════
- * WHY A LOCK AND NOT SIMPLY A CHECK. Counting the places taken and then inserting a registration are two
- * statements, and at READ COMMITTED each of them sees its own snapshot: a second transaction running
- * alongside is invisible until it commits. So two administrators adding the last attendee both count 59 of
- * 60, both insert, and the event is over capacity with nobody told. Putting both statements in one
- * transaction does not fix that — it is the isolation level, not the grouping, that decides what they can
- * see.
- *
- * `SELECT … FOR UPDATE` on the event makes the pair sequential: the second transaction blocks here until
- * the first commits, and its count then includes the row the first one wrote. The alternative is
- * SERIALIZABLE plus a retry loop, which works but needs every caller to recognise a serialisation failure
- * and repeat the whole request; the lock needs no retry handling at all, and it also serialises against
- * READ COMMITTED writers, which Serializable does not.
- *
- * ⚠ A THIRD VERBATIM COPY of the helper in `bulk/route.ts` and `[registrationId]/route.ts`, rather than a
- * shared function, because a `route.ts` may only export its handlers and its route config — Next's
- * generated type check refuses anything else — so there is nowhere to put a shared helper without adding a
- * module outside these three files. The three copies must stay identical: one writer that does not take the
- * lock removes the guarantee for all of them.
- *
- * `"events"` is `CoeEvent`'s table (`@@map`), and the model is named that way because `Event` is a DOM
- * global.
- * ══════════════════════════════════════════════════════════════════════════════════════════════
- */
-async function lockEvent(tx: TxClient, eventId: string): Promise<void> {
-  const locked = await tx.$queryRaw<{ id: string }[]>(
-    Prisma.sql`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`
-  );
-  // `FOR UPDATE` on a row that is not there locks nothing and returns nothing. The only way that happens is
-  // a concurrent delete of the whole event, and writing a registration to it would leave a row nobody can
-  // reach.
-  if (locked.length === 0) {
-    throw conflict(
-      "This event was removed while the change was being made, so nothing has been changed. Reload the events list."
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Adding somebody by hand
 // ─────────────────────────────────────────────────────────────────────────────
@@ -424,7 +381,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
   const auditContext = buildAuditContext(request, user);
 
   try {
-    const result = await applyStates({
+    const result = await applyRegistrationStates({
       event,
       ids,
       state: body.state,
@@ -439,7 +396,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
     if (!isWriteConflict(error)) throw error;
     await new Promise((resolve) => setTimeout(resolve, 40 + Math.floor(Math.random() * 60)));
     try {
-      const result = await applyStates({
+      const result = await applyRegistrationStates({
         event,
         ids,
         state: body.state,
@@ -458,156 +415,6 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
     }
   }
 });
-
-interface StateChangeResult {
-  changed: number;
-  state: RegistrationStatus;
-  capacity: number | null;
-  placesTaken: number;
-  overCapacity: boolean;
-  /** Things the organiser should know that are not failures. Rendered as they are. */
-  warnings: string[];
-}
-
-/**
- * Re-count the room, then move the rows — atomically.
- *
- * ⚠ THE EVENT ROW LOCK IS LOAD-BEARING, and Serializable on its own was not enough. At READ COMMITTED two
- * concurrent confirmations each read a count that does not include the other's rows; Serializable turns
- * that pair into a serialisation failure, but ONLY when both sides are Serializable. The handlers next door
- * — one registration, and a batch — run at READ COMMITTED holding a lock on the event, so this transaction
- * takes the same lock. Both mechanisms are kept: the lock is what makes it safe against those two, and
- * Serializable with the retry above is what it was already relied upon for.
- */
-async function applyStates(input: {
-  /** No `capacity`: the limit is read inside the lock, so a caller cannot pass a stale one in. */
-  event: { id: string; title: string };
-  ids: readonly string[];
-  state: RegistrationStatus;
-  allowOverCapacity: boolean;
-  expectedPlacesTaken: number | undefined;
-  context: AuditContext;
-}): Promise<StateChangeResult> {
-  const { event, ids, state } = input;
-  const takesPlace = PLACE_HOLDING_STATES.includes(state);
-
-  return prisma.$transaction(
-    async (tx) => {
-      // First, and in the same order as every other writer, so two of them can never deadlock each other.
-      await lockEvent(tx, event.id);
-
-      // The limit as it is NOW, read while the row is held, for the same reason the manual add re-reads it:
-      // an organiser may have raised it since this request's first read, and every sentence below quotes the
-      // number. `input.event.capacity` is deliberately not used past this point.
-      const eventNow = found(
-        await tx.coeEvent.findUnique({ where: { id: event.id }, select: { capacity: true } }),
-        "That event"
-      );
-      const capacity = eventNow.capacity;
-
-      const targets = await tx.eventRegistration.findMany({
-        where: { id: { in: [...ids] }, eventId: event.id },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          state: true,
-          certificateCode: true
-        }
-      });
-
-      // An id that is not on this event's list is a stale screen, and moving on regardless would report a
-      // success for rows that were never touched.
-      if (targets.length !== ids.length) {
-        throw conflict(
-          `${ids.length - targets.length} of the ${ids.length} registrations chosen are no longer on this event's list. Reload the page and try again — nothing has been changed.`
-        );
-      }
-
-      const heldNow = await tx.eventRegistration.count({
-        where: { eventId: event.id, state: { in: [...PLACE_HOLDING_STATES] } }
-      });
-
-      if (input.expectedPlacesTaken !== undefined && input.expectedPlacesTaken !== heldNow) {
-        throw conflict(
-          `The numbers changed while this was being decided: ${heldNow} ${heldNow === 1 ? "place is" : "places are"} now taken, not ${input.expectedPlacesTaken}. Nothing has been changed — look again and repeat it if you still want to.`
-        );
-      }
-
-      // The rows being moved are taken out of the count first, so a registration that already holds a place
-      // is not counted twice when it is confirmed again.
-      const alreadyHolding = targets.filter((row) => PLACE_HOLDING_STATES.includes(row.state)).length;
-      const heldExcludingTargets = heldNow - alreadyHolding;
-      const placesAfter = heldExcludingTargets + (takesPlace ? targets.length : 0);
-
-      if (takesPlace && capacity !== null && placesAfter > capacity && !input.allowOverCapacity) {
-        const over = placesAfter - capacity;
-        throw conflict(
-          `${event.title} has ${capacity} ${capacity === 1 ? "place" : "places"} and ${heldExcludingTargets} ${heldExcludingTargets === 1 ? "is" : "are"} taken. This would make it ${placesAfter} — ${over} over the limit. Put some of them on the waiting list, raise the capacity, or confirm that going over is intended.`
-        );
-      }
-
-      const updated = await tx.eventRegistration.updateMany({
-        where: { id: { in: targets.map((row) => row.id) }, eventId: event.id },
-        data: { state }
-      });
-
-      // ONE audit entry per registration, inside this transaction.
-      //
-      // `mutateWithHistory()` opens a transaction per entity, which is right for a single row and wrong for
-      // a batch: forty transactions for one intention, with no way to report afterwards that twelve
-      // succeeded and twenty-eight did not. `writeAudit` on this transaction keeps the guarantee that
-      // matters — the change and its log cannot exist without each other — at the granularity that matters,
-      // which is per person, because "who cancelled MY registration" is the question the log is read for.
-      for (const row of targets) {
-        if (row.state === state) continue;
-        await writeAudit(tx, input.context, {
-          action: "UPDATE",
-          entityType: "EventRegistration",
-          entityId: row.id,
-          entityLabel: `${row.name} <${row.email}> — ${event.title}`,
-          before: { state: row.state },
-          after: {
-            state,
-            batchOf: targets.length,
-            capacity,
-            placesTakenAfter: placesAfter,
-            overCapacityAllowed: input.allowOverCapacity && placesAfter > (capacity ?? Infinity)
-          }
-        });
-      }
-
-      const warnings: string[] = [];
-      const withCertificates = targets.filter(
-        (row) => row.certificateCode !== null && row.state === "ATTENDED" && state !== "ATTENDED"
-      );
-      if (withCertificates.length > 0) {
-        // Not a refusal: an organiser correcting a mistake must not be stranded. But a certificate that has
-        // been issued stays verifiable, and saying nothing would leave a document nobody remembers exists.
-        warnings.push(
-          withCertificates.length === 1
-            ? `${withCertificates[0]?.name} has already been issued a certificate for this event. It remains valid and can still be checked with its code, even though they are no longer marked as having attended.`
-            : `${withCertificates.length} of these people have already been issued certificates. Those remain valid and can still be checked with their codes, even though they are no longer marked as having attended.`
-        );
-      }
-      if (takesPlace && capacity !== null && placesAfter > capacity) {
-        warnings.push(
-          `There are now ${placesAfter} places taken against a limit of ${capacity}. Nobody is stopped from attending by this number; it only decides who the site puts on the waiting list.`
-        );
-      }
-
-      return {
-        changed: updated.count,
-        state,
-        capacity,
-        placesTaken: placesAfter,
-        overCapacity: capacity !== null && placesAfter > capacity,
-        warnings
-      };
-    },
-    { isolationLevel: "Serializable" }
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The spreadsheet

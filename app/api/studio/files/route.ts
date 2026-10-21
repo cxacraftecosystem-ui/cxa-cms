@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "@/lib/zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { freeFileSlug } from "@/lib/studio/slugs";
 import {
   ApiError,
   assertSameOrigin,
@@ -21,7 +22,7 @@ import { confirmUploadedObject, requireStorage } from "@/lib/storage/client";
 import { isSafeObjectKey } from "@/lib/storage/keys";
 import { FILE_STORE_MAX_BYTES, sha256Hex } from "@/lib/storage/upload-limits";
 import { UploadTicketField, verifyUploadTicket } from "@/lib/storage/upload-ticket";
-import { formatBytes, slugify } from "@/lib/utils";
+import { formatBytes } from "@/lib/utils";
 
 /**
  * The file store: the list, and registering an upload as a new catalogue entry.
@@ -344,26 +345,6 @@ const CreateBody = z.object({
   notes: z.string().trim().max(500).nullable().optional()
 });
 
-/**
- * A slug nobody else is using.
- *
- * The slug is the PUBLIC download address and therefore the thing a citation records, so it is derived
- * from the title once and then left alone. A numeric suffix is appended rather than the title being
- * refused: an editor uploading "Annual report" for the third year running should not have to invent a
- * different name for the file to be accepted.
- */
-async function uniqueSlug(title: string): Promise<string> {
-  const base = slugify(title) || "file";
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const candidate = attempt === 0 ? base : `${base}-${attempt + 1}`;
-    const taken = await prisma.fileAsset.findUnique({ where: { slug: candidate }, select: { id: true } });
-    if (!taken) return candidate;
-  }
-  // Fifty entries whose titles all slugify identically. A timestamp is ugly and it is unique, which is
-  // the only property that matters at this point.
-  return `${base}-${Date.now().toString(36)}`;
-}
-
 export const POST = route(async (request: NextRequest) => {
   assertSameOrigin(request);
 
@@ -417,7 +398,7 @@ export const POST = route(async (request: NextRequest) => {
   // Storage's own SHA-256, verified at PUT time, as hex — the form the column has always held.
   const checksum = sha256Hex(intent.sha256);
 
-  const slug = await uniqueSlug(body.title);
+  const slug = await freeFileSlug(body.title);
 
   const created = await mutateWithHistory<
     Prisma.FileAssetGetPayload<{ select: typeof ROW_SELECT & { versions: typeof VERSION_SELECT } }>

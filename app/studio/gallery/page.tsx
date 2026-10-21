@@ -4,6 +4,7 @@ import { EyeOff, ImageOff, Images, Plus, SearchX } from "lucide-react";
 import type { ContentStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { albumCategoryOptions } from "@/lib/studio/distinct-values";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { framingAssets, withBaseAsset } from "@/lib/media/framing";
 import { pictureFromMap, type ScreenFraming } from "@/lib/media/screens";
@@ -191,14 +192,8 @@ export default async function StudioGalleryPage({
       }
     }),
     prisma.galleryAlbum.count({ where }),
-    prisma.galleryAlbum.findMany({
-      where: { deletedAt: null, NOT: { category: null } },
-      select: { category: true },
-      distinct: ["category"],
-      orderBy: { category: "asc" },
-      // One more than the cap, so "there are more than this" is a fact rather than a guess.
-      take: CATEGORY_LIMIT + 1
-    })
+    // One more than the cap, so "there are more than this" is a fact rather than a guess.
+    albumCategoryOptions(CATEGORY_LIMIT + 1)
   ]);
 
   /**

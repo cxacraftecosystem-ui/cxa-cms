@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { prisma } from "@/lib/db";
+import { fileCategoryOptions } from "@/lib/studio/distinct-values";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageMedia } from "@/lib/permissions";
 import { storageConfigured } from "@/lib/env";
@@ -60,14 +61,8 @@ export default async function StudioFilesPage() {
   const [categoryRows, total, withoutBytes] = await prisma.$transaction([
     // The recycle bin is filtered out everywhere: a soft-deleted file belongs to /studio/recycle-bin, and
     // listing its category here would offer a filter that matches nothing.
-    prisma.fileAsset.findMany({
-      where: { deletedAt: null, NOT: { category: null } },
-      select: { category: true },
-      distinct: ["category"],
-      orderBy: { category: "asc" },
-      // One more than the cap, so "there are more than this" is a fact rather than a guess.
-      take: CATEGORY_LIMIT + 1
-    }),
+    // One more than the cap, so "there are more than this" is a fact rather than a guess.
+    fileCategoryOptions(CATEGORY_LIMIT + 1),
     prisma.fileAsset.count({ where: { deletedAt: null } }),
     // A catalogue entry with no version is a real state — the row was created and the upload never
     // finished — and it is worth saying out loud, because the public download route answers a specific

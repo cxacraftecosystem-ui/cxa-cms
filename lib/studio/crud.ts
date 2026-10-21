@@ -848,28 +848,42 @@ export async function assertMediaAvailable(
  * empty slug, which the unique index would collapse onto whichever tag got there first.
  *
  * Shared by the newsroom and by events, which both hang off `Tag`. Each caller writes its own join table.
+ *
+ * TWO STATEMENTS WHATEVER THE NUMBER OF TAGS, inside the caller's transaction. A per-name `upsert` cost
+ * three round trips a tag (Prisma cannot run `update: {}` as one native upsert), so eight tags on an
+ * article were twenty-four statements. `createMany({ skipDuplicates })` is `INSERT … ON CONFLICT DO
+ * NOTHING`, which keeps an existing tag's name exactly as `update: {}` did, and the read that follows
+ * collects the ids of the new and the existing rows together. The returned order is the order given.
  */
 export async function resolveTagIds(tx: TxClient, names: readonly string[]): Promise<string[]> {
-  const seen = new Set<string>();
-  const ids: string[] = [];
+  const wanted = new Map<string, string>();
 
   for (const raw of names) {
     const name = raw.trim();
     if (name.length === 0) continue;
     const slug = slugify(name);
-    if (slug.length === 0 || seen.has(slug)) continue;
-    seen.add(slug);
-
-    const row = await tx.tag.upsert({
-      where: { slug },
-      create: { slug, name },
-      update: {},
-      select: { id: true }
-    });
-    ids.push(row.id);
+    if (slug.length === 0 || wanted.has(slug)) continue;
+    wanted.set(slug, name);
   }
 
-  return ids;
+  if (wanted.size === 0) return [];
+
+  await tx.tag.createMany({
+    data: [...wanted].map(([slug, name]) => ({ slug, name })),
+    skipDuplicates: true
+  });
+  const rows = await tx.tag.findMany({
+    where: { slug: { in: [...wanted.keys()] } },
+    select: { id: true, slug: true }
+  });
+  const idBySlug = new Map(rows.map((row) => [row.slug, row.id]));
+
+  return [...wanted.keys()].map((slug) => {
+    const id = idBySlug.get(slug);
+    // `slug` is the table's only unique key besides `id`, so a skipped insert means the row is there.
+    if (id === undefined) throw new Error(`The tag "${slug}" could not be written or read back.`);
+    return id;
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

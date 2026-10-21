@@ -3,10 +3,11 @@ import { isExternalHref, richTextLinksAreSafe, UNSAFE_RICH_TEXT_LINK_MESSAGE } f
 import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, noContent, ok, route } from "@/lib/api";
-import { mutateWithHistory, type TxClient } from "@/lib/audit";
+import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { MEDIA_IMAGE_SELECT_WITH_ID } from "@/lib/media/select";
+import { replaceEventMedia, replaceEventSpeakers } from "@/lib/studio/ordered-links";
 import { canAccessStudio, canManageContent } from "@/lib/permissions";
 import { parseRichText } from "@/lib/richtext";
 import {
@@ -75,8 +76,6 @@ const galleryFramingSchema = z.object({
   assetId: z.string().trim().max(40),
   screens: screenFramingField()
 });
-
-type GalleryFraming = z.output<typeof galleryFramingSchema>;
 
 const eventBodySchema = z.object({
   title: requiredText(200, "An event needs a title. It appears in every listing and in search results."),
@@ -396,8 +395,8 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
           }
         }
 
-        if (speakerIds !== null) await replaceSpeakers(tx, id, speakerIds);
-        if (assetIds !== null) await replaceMedia(tx, id, assetIds, body.galleryScreens);
+        if (speakerIds !== null) await replaceEventSpeakers(tx, id, speakerIds);
+        if (assetIds !== null) await replaceEventMedia(tx, id, assetIds, body.galleryScreens);
 
         if (body.tags !== undefined) {
           const tagIds = await resolveTagIds(tx, body.tags);
@@ -484,66 +483,6 @@ export const DELETE = route(async (request: Request, context: RouteContext) => {
 
   return noContent();
 });
-
-/** Speakers, in the order given, keeping the role already recorded against anybody who stays. */
-async function replaceSpeakers(tx: TxClient, eventId: string, personIds: readonly string[]): Promise<void> {
-  // The empty case is spelled out rather than left to `notIn: []`, whose meaning ("everything" or
-  // "nothing") is a detail of the query builder and not something a reader of this file should have to
-  // know to see that clearing the list clears the rows.
-  if (personIds.length === 0) {
-    await tx.eventSpeaker.deleteMany({ where: { eventId } });
-  } else {
-    await tx.eventSpeaker.deleteMany({ where: { eventId, personId: { notIn: [...personIds] } } });
-  }
-
-  for (const [index, personId] of personIds.entries()) {
-    await tx.eventSpeaker.upsert({
-      where: { eventId_personId: { eventId, personId } },
-      create: { eventId, personId, position: index },
-      // Only the position: `role` is edited elsewhere and must survive a re-order.
-      update: { position: index }
-    });
-  }
-}
-
-/**
- * Pictures, in the order given, keeping each caption.
- *
- * `framings` is the list from the body or `undefined`. Undefined means the caller said nothing about
- * framing, so a stored one is left exactly as it is — the same distinction `coverScreens` draws between
- * "absent" and "cleared", one level down.
- */
-async function replaceMedia(
-  tx: TxClient,
-  eventId: string,
-  assetIds: readonly string[],
-  framings: readonly GalleryFraming[] | undefined
-): Promise<void> {
-  if (assetIds.length === 0) {
-    await tx.eventMedia.deleteMany({ where: { eventId } });
-  } else {
-    await tx.eventMedia.deleteMany({ where: { eventId, assetId: { notIn: [...assetIds] } } });
-  }
-
-  // `as const` so each pair infers as a TUPLE rather than an array of the union of its two members,
-  // which is what `new Map` needs to see.
-  const byAsset = new Map(
-    (framings ?? []).map((entry) => [entry.assetId, entry.screens ?? null] as const)
-  );
-
-  for (const [index, assetId] of assetIds.entries()) {
-    // `Prisma.JsonNull` and not a bare null: on a Json column `null` means "ignore this field", so a
-    // cleared panel would never reach the database.
-    const screens = byAsset.get(assetId) ?? null;
-    const assetScreens = screens ? (screens as unknown as Prisma.InputJsonValue) : Prisma.JsonNull;
-
-    await tx.eventMedia.upsert({
-      where: { eventId_assetId: { eventId, assetId } },
-      create: { eventId, assetId, position: index, ...(framings ? { assetScreens } : {}) },
-      update: { position: index, ...(framings ? { assetScreens } : {}) }
-    });
-  }
-}
 
 async function livePersonIds(ids: readonly string[]): Promise<string[]> {
   const wanted = [...new Set(ids.filter((id) => id.length > 0))];

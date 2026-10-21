@@ -3,6 +3,7 @@ import { z } from "@/lib/zod";
 import { safeExternalHref } from "@/lib/safe-href";
 import type { PublicationKind } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { slugCandidates } from "@/lib/studio/slugs";
 import { assertSameOrigin, clientIp, ok, parseJson, route, userAgent } from "@/lib/api";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
@@ -792,15 +793,21 @@ async function uniqueSlug(candidate: Candidate, taken: Set<string>): Promise<str
     slugify(candidate.title) ||
     "publication";
 
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    const proposal = attempt === 0 ? base : `${base}-${attempt + 1}`;
-    if (taken.has(proposal)) continue;
-    const clash = await prisma.publication.findUnique({ where: { slug: proposal }, select: { id: true } });
-    if (!clash) {
-      taken.add(proposal);
-      return proposal;
-    }
+  // Every untried proposal is checked in ONE query and the first free one taken, rather than a query per
+  // proposal (lib/studio/slugs.ts). A proposal found in use is remembered, as the per-proposal loop did.
+  const proposals = slugCandidates(base, 60).filter((proposal) => !taken.has(proposal));
+  const inUse =
+    proposals.length === 0
+      ? new Set<string>()
+      : new Set(
+          (
+            await prisma.publication.findMany({ where: { slug: { in: proposals } }, select: { slug: true } })
+          ).map((row) => row.slug)
+        );
+
+  for (const proposal of proposals) {
     taken.add(proposal);
+    if (!inUse.has(proposal)) return proposal;
   }
 
   const fallback = `${base}-${Date.now().toString(36)}`;

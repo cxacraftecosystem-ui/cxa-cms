@@ -1,11 +1,11 @@
 import { z } from "@/lib/zod";
-// `Prisma` is imported as a VALUE: `Prisma.sql` is the tagged template `$queryRaw` needs. See `lockEvent`.
-import { Prisma, type RegistrationStatus } from "@prisma/client";
+import type { Prisma, RegistrationStatus } from "@prisma/client";
 
 import { assertSameOrigin, badRequest, conflict, ok, route } from "@/lib/api";
-import { mutateWithHistory, type TxClient } from "@/lib/audit";
+import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
+import { lockEvent } from "@/lib/events/registration-writes";
 import { canManageContent } from "@/lib/permissions";
 import { buildAuditContext, found, parseStudioJson } from "@/lib/studio/crud";
 
@@ -107,32 +107,6 @@ const REGISTRATION_SELECT = {
 
 interface RouteContext {
   params: Promise<{ id: string; registrationId: string }>;
-}
-
-/**
- * Hold the event row until this transaction ends, so every writer that changes the number of places held
- * queues behind whoever got there first. See the header for why this is on the event and not the row.
- *
- * ⚠ Duplicated in the sibling `bulk/route.ts` rather than shared, because a `route.ts` may only export its
- * handlers and its route config — Next's generated type check refuses anything else — so there is nowhere
- * to put a shared helper without adding a module outside these two files. The two copies must stay
- * identical; the collection route beside them takes the same lock.
- *
- * `"events"` is `CoeEvent`'s table (`@@map`), and the model is named that way because `Event` is a DOM
- * global.
- */
-async function lockEvent(tx: TxClient, eventId: string): Promise<void> {
-  const locked = await tx.$queryRaw<{ id: string }[]>(
-    Prisma.sql`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`
-  );
-  // `FOR UPDATE` on a row that is not there locks nothing and returns nothing. The only way that happens is
-  // a concurrent delete of the whole event, and writing a registration to it would leave a row nobody can
-  // reach.
-  if (locked.length === 0) {
-    throw conflict(
-      "This event was removed while the change was being made, so nothing has been changed. Reload the events list."
-    );
-  }
 }
 
 export const PATCH = route(async (request: Request, context: RouteContext) => {

@@ -7,6 +7,7 @@ import { FilterX, RotateCcw, ScrollText, Search, TriangleAlert } from "lucide-re
 import { Prisma, type AuditAction } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { auditEntityTypeOptions } from "@/lib/studio/distinct-values";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canRestoreDeleted, canViewAuditLog } from "@/lib/permissions";
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
@@ -616,12 +617,7 @@ export default async function StudioAuditPage({
       orderBy: [{ name: "asc" }, { email: "asc" }],
       take: FILTER_OPTION_LIMIT
     }),
-    prisma.auditLog.findMany({
-      select: { entityType: true },
-      distinct: ["entityType"],
-      orderBy: { entityType: "asc" },
-      take: FILTER_OPTION_LIMIT
-    })
+    auditEntityTypeOptions(FILTER_OPTION_LIMIT)
   ]);
 
   // The account each account row is about, joined by `entityId` — see `accountLabel`.

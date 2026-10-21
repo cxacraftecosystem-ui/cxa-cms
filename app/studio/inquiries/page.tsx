@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { prisma } from "@/lib/db";
+import { inquiryFormKeyOptions } from "@/lib/studio/distinct-values";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { ROLES_DESCENDING, canManageInquiries } from "@/lib/permissions";
 import { getSettingCached } from "@/lib/settings/service";
@@ -65,13 +66,7 @@ export default async function StudioInquiriesPage() {
       // A total ordering, so the list never reshuffles between requests and reads as data changing.
       orderBy: [{ name: "asc" }, { email: "asc" }]
     }),
-    prisma.contactSubmission.findMany({
-      where: { deletedAt: null },
-      select: { formKey: true },
-      distinct: ["formKey"],
-      orderBy: { formKey: "asc" },
-      take: FORM_KEY_LIMIT
-    }),
+    inquiryFormKeyOptions(FORM_KEY_LIMIT),
     prisma.contactSubmission.count({ where: { deletedAt: null, state: "NEW" } })
   ]);
 

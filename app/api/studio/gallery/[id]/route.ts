@@ -2,10 +2,11 @@ import { patchOf, z } from "@/lib/zod";
 import { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, noContent, ok, route } from "@/lib/api";
-import { mutateWithHistory, type TxClient } from "@/lib/audit";
+import { mutateWithHistory } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { MEDIA_FIGURE_SELECT } from "@/lib/media/select";
+import { replaceGalleryItems } from "@/lib/studio/ordered-links";
 import { canAccessStudio, canManageContent } from "@/lib/permissions";
 import {
   assertMediaAvailable,
@@ -281,7 +282,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
           select: ALBUM_SELECT
         });
 
-        if (items !== null) await replaceItems(tx, id, items);
+        if (items !== null) await replaceGalleryItems(tx, id, items);
 
         const indexable = await tx.galleryAlbum.findUnique({
           where: { id },
@@ -381,56 +382,6 @@ async function keepLiveItems(items: readonly ItemInput[]): Promise<ItemInput[]> 
   });
   const live = new Set(rows.map((row) => row.id));
   return wanted.filter((item) => live.has(item.assetId));
-}
-
-/** Delete what has gone, then upsert what is left with its new position. See the header. */
-async function replaceItems(tx: TxClient, albumId: string, items: readonly ItemInput[]): Promise<void> {
-  const keep = items.map((item) => item.assetId);
-
-  // The empty case is spelled out rather than left to `notIn: []`, whose meaning is a detail of the query
-  // builder and not something a reader should have to know to see that clearing the list clears the rows.
-  if (keep.length === 0) {
-    await tx.galleryItem.deleteMany({ where: { albumId } });
-    return;
-  }
-
-  await tx.galleryItem.deleteMany({ where: { albumId, assetId: { notIn: keep } } });
-
-  for (const [index, item] of items.entries()) {
-    /**
-     * ⚠ ABSENT AND NULL ARE DIFFERENT HERE, AND `jsonColumn` CANNOT TELL THEM APART. It maps both to
-     * `Prisma.JsonNull`, which CLEARS the column — correct for an explicit null ("the panel was cleared"),
-     * destructive for an absent key. `assetScreens` is `.nullable().optional()` on `itemSchema`, so any
-     * caller that sends `items` without it — a script, a future bulk re-order, an older client — would
-     * silently wipe the per-screen framing off every row in the album while appearing to save a re-order.
-     *
-     * Today's editor always sends the key, so this was latent rather than live. It is guarded because
-     * "the current client happens to send it" is a property of a client, not of a route, and
-     * `app/api/studio/events/[id]/route.ts` already guards the identical write the same way.
-     */
-    const framing =
-      item.assetScreens === undefined ? {} : { assetScreens: jsonColumn(item.assetScreens) };
-
-    await tx.galleryItem.upsert({
-      where: { albumId_assetId: { albumId, assetId: item.assetId } },
-      create: {
-        albumId,
-        assetId: item.assetId,
-        caption: item.caption,
-        presentation: item.presentation,
-        tourEntry: item.tourEntry,
-        position: index,
-        ...framing
-      },
-      update: {
-        caption: item.caption,
-        presentation: item.presentation,
-        tourEntry: item.tourEntry,
-        position: index,
-        ...framing
-      }
-    });
-  }
 }
 
 function cleanTags(tags: readonly string[]): string[] {

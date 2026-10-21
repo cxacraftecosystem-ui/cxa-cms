@@ -5,6 +5,7 @@ import { Plus, Upload } from "lucide-react";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { publicationDisplayVenue } from "@/lib/citation";
 import { prisma } from "@/lib/db";
+import { publicationYearOptions } from "@/lib/studio/distinct-values";
 import { canManageResearch, canPublish } from "@/lib/permissions";
 import { LinkButton } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
@@ -198,15 +199,9 @@ export default async function StudioPublicationsPage({
       orderBy: { name: "asc" },
       take: AUTHOR_OPTION_LIMIT + 1
     }),
-    // `distinct` asks the database for the years that exist, rather than scanning rows and counting in
-    // memory — so this list is exact rather than a sample.
-    prisma.publication.findMany({
-      where: { deletedAt: null },
-      distinct: ["year"],
-      select: { year: true },
-      orderBy: { year: "desc" },
-      take: YEAR_OPTION_LIMIT + 1
-    })
+    // The years that exist, grouped by the database rather than scanned and counted in memory — so
+    // this list is exact rather than a sample. See lib/studio/distinct-values.ts.
+    publicationYearOptions(YEAR_OPTION_LIMIT + 1)
   ]);
 
   const areasTruncated = areaRows.length > AREA_OPTION_LIMIT;

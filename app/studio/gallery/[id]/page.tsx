@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { albumCategoryOptions } from "@/lib/studio/distinct-values";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageContent, canPublish } from "@/lib/permissions";
 import { storageConfigured } from "@/lib/env";
@@ -167,13 +168,7 @@ export default async function StudioAlbumPage({ params }: { params: Promise<{ id
             }
           }
         }),
-    prisma.galleryAlbum.findMany({
-      where: { deletedAt: null, NOT: { category: null } },
-      select: { category: true },
-      distinct: ["category"],
-      orderBy: { category: "asc" },
-      take: CATEGORY_SUGGESTION_LIMIT
-    })
+    albumCategoryOptions(CATEGORY_SUGGESTION_LIMIT)
   ]);
 
   if (!creating && !album) notFound();
