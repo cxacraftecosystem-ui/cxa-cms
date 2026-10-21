@@ -97,10 +97,10 @@ A dependency that gains an install script is skipped until somebody reviews it w
 
 
 ```
-prisma generate && prisma migrate deploy && next build
+prisma generate && if [ "$VERCEL_ENV" = "production" ]; then prisma migrate deploy; fi && next build
 ```
 
-Three steps, in the only order that works.
+Three steps, in the only order that works. Preview builds (every branch push) skip the migrate step: a branch must never apply its migrations to the shared database before it is merged, and a preview that cannot reach the database should not block review of the code.
 
 - **`prisma generate`** — the build imports `@prisma/client`, and without the generated client it fails
   with a message about a missing module rather than a missing generate step. The CLI reads

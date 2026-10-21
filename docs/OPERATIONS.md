@@ -262,7 +262,7 @@ traffic that never wakes the application:
 | `/_next/*` chunks, fonts, images | Served as static assets or from `NEXT_PUBLIC_CDN_URL`. Never routed through the app. |
 | A request `proxy.ts` refused | The 401 JSON and the 307 to login are answered by the proxy, in front of `route()` — the only place an access row is written — and the proxy is kept off the database on purpose. |
 | A function that timed out, ran out of memory, or was killed | The process is gone before it can write anything. `vercel.json` raises `maxDuration` on exactly the media routes most likely to hit this. |
-| A failed build or migration | `buildCommand` runs `prisma migrate deploy`; a failure there is a build-log event. |
+| A failed build or migration | `buildCommand` runs `prisma migrate deploy` on production builds only (preview builds skip it, so a branch can never migrate the shared database); a failure there is a build-log event. |
 
 Vercel sees all of it. On Hobby it keeps it for **one hour**. A Log Drain is the only way to get it
 out, and it is the only thing that closes the gap between what we can honestly tell CIC we retain and
