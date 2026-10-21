@@ -336,17 +336,17 @@ describe("query counts", { skip }, () => {
 
   // ── Registrations ─────────────────────────────────────────────────────────────────────────────
 
-  async function registrations(count: number, prefix: string): Promise<string[]> {
+  async function registrations(count: number, prefix: string, forEvent: string = eventId): Promise<string[]> {
     await prisma.eventRegistration.createMany({
       data: Array.from({ length: count }, (_, index) => ({
-        eventId,
+        eventId: forEvent,
         name: `${prefix} ${index}`,
         email: `${RUN}-${prefix}-${index}@example.invalid`
       }))
     });
     return (
       await prisma.eventRegistration.findMany({
-        where: { eventId, email: { startsWith: `${RUN}-${prefix}-` } },
+        where: { eventId: forEvent, email: { startsWith: `${RUN}-${prefix}-` } },
         orderBy: { email: "asc" },
         select: { id: true }
       })
@@ -410,6 +410,95 @@ describe("query counts", { skip }, () => {
     assert.equal(await prisma.auditLog.count({ where: { entityType: "EventRegistration", entityId: { in: large } } }), 20);
   });
 
+  /** A separate event with a place limit, so the places already taken are known exactly; removed after. */
+  async function withCapacityEvent(capacity: number, work: (event: { id: string; title: string; capacity: number }) => Promise<void>) {
+    const created = await prisma.coeEvent.create({
+      data: { slug: `${RUN}-capped-${capacity}-${Date.now().toString(36)}`, title: "Capped event", startsAt: new Date(), capacity },
+      select: { id: true, title: true }
+    });
+    try {
+      await work({ ...created, capacity });
+    } finally {
+      const ids = (await prisma.eventRegistration.findMany({ where: { eventId: created.id }, select: { id: true } })).map(
+        (row) => row.id
+      );
+      await prisma.auditLog.deleteMany({ where: { entityType: "EventRegistration", entityId: { in: ids } } });
+      await prisma.coeEvent.deleteMany({ where: { id: created.id } });
+    }
+  }
+
+  it("confirms a batch up to the place limit, row by row, and reports the rest without writing them", async () => {
+    await withCapacityEvent(3, async (event) => {
+      const ids = await registrations(5, "cap-batch", event.id);
+
+      const refused = await countStatements(() =>
+        applyRegistrationBatch({ event, ids, state: "CONFIRMED", body: { allowOverCapacity: false }, context: CONTEXT })
+      );
+      // The same five statements as any batch: the limit is decided in the walk, not by extra reads.
+      assert.equal(dataStatements(refused.statements).length, 5, refused.statements.join("\n"));
+      assert.equal(refused.result.changed, 3);
+      assert.equal(refused.result.placesTaken, 3);
+      assert.equal(refused.result.overCapacity, false);
+      assert.deepEqual(refused.result.failed.map((row) => row.id), ids.slice(3), "the rows past the limit, in order");
+      assert.match(refused.result.failed[0]?.message ?? "", /3 of the 3 places are taken/);
+      assert.deepEqual(refused.result.warnings, []);
+      const confirmed = await prisma.eventRegistration.findMany({
+        where: { eventId: event.id, state: "CONFIRMED" },
+        select: { id: true }
+      });
+      assert.deepEqual(confirmed.map((row) => row.id).sort(), ids.slice(0, 3).sort());
+      assert.equal(await prisma.auditLog.count({ where: { entityType: "EventRegistration", entityId: { in: ids.slice(3) } } }), 0);
+
+      // Going over on purpose: both remaining rows move, and the result and the audit say so.
+      const allowed = await countStatements(() =>
+        applyRegistrationBatch({ event, ids: ids.slice(3), state: "CONFIRMED", body: { allowOverCapacity: true }, context: CONTEXT })
+      );
+      assert.equal(dataStatements(allowed.statements).length, 5);
+      assert.equal(allowed.result.changed, 2);
+      assert.equal(allowed.result.placesTaken, 5);
+      assert.equal(allowed.result.overCapacity, true);
+      assert.match(allowed.result.warnings.join(" "), /5 places taken against a limit of 3/);
+      const audit = await prisma.auditLog.findMany({
+        where: { entityType: "EventRegistration", entityId: { in: ids.slice(3) } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { after: true }
+      });
+      assert.deepEqual(
+        audit.map((row) => {
+          const after = row.after as { overCapacityAllowed: boolean; placesTakenAfter: number };
+          return [after.placesTakenAfter, after.overCapacityAllowed];
+        }),
+        [
+          [4, true],
+          [5, true]
+        ]
+      );
+    });
+  });
+
+  it("refuses a whole set that would go over the place limit, and moves it when going over is confirmed", async () => {
+    await withCapacityEvent(2, async (event) => {
+      const ids = await registrations(3, "cap-set", event.id);
+      const input = { state: "CONFIRMED" as const, expectedPlacesTaken: undefined, context: CONTEXT, event, ids };
+
+      await assert.rejects(
+        applyRegistrationStates({ ...input, allowOverCapacity: false }),
+        /has 2 places and 0 are taken\. This would make it 3 — 1 over the limit/
+      );
+      assert.equal(await prisma.eventRegistration.count({ where: { eventId: event.id, state: "CONFIRMED" } }), 0, "nothing moved");
+      assert.equal(await prisma.auditLog.count({ where: { entityType: "EventRegistration", entityId: { in: ids } } }), 0);
+
+      const over = await countStatements(() => applyRegistrationStates({ ...input, allowOverCapacity: true }));
+      // The same six statements as any set move: lock, the limit, the rows, the count, one UPDATE, one audit.
+      assert.equal(dataStatements(over.statements).length, 6, over.statements.join("\n"));
+      assert.equal(over.result.changed, 3);
+      assert.equal(over.result.placesTaken, 3);
+      assert.equal(over.result.overCapacity, true);
+      assert.match(over.result.warnings.join(" "), /3 places taken against a limit of 2/);
+      assert.equal(await prisma.eventRegistration.count({ where: { eventId: event.id, state: "CONFIRMED" } }), 3);
+    });
+  });
+
   // ── Slugs ─────────────────────────────────────────────────────────────────────────────────────
 
   it("finds a free file address in one statement however many are taken", async () => {
@@ -429,13 +518,62 @@ describe("query counts", { skip }, () => {
   // ── Filter options ────────────────────────────────────────────────────────────────────────────
 
   it("reads each filter's options as one grouped, limited query that matches the old in-memory distinct", async () => {
+    // Every table is given values of its own, so no case passes by comparing two empty lists. They start
+    // "0000-" to sort ahead of anything else in the database, so the cap cannot push them out of view.
+    const value = (name: string) => `0000-${RUN}-${name}`;
+    const gone = new Date();
     await prisma.auditLog.createMany({
       data: ["Zeta", "Alpha", "Alpha", "Mid", "Mid", "Mid"].map((type, index) => ({
         action: "UPDATE",
-        entityType: `${RUN}-${type}`,
+        entityType: value(type),
         entityId: `${RUN}-${index}`
       }))
     });
+    await prisma.contactSubmission.createMany({
+      data: [
+        { formKey: value("b") },
+        { formKey: value("b") },
+        { formKey: value("a") },
+        { formKey: value("0"), deletedAt: gone }
+      ].map((row, index) => ({ ...row, name: `${RUN} ${index}`, email: `${RUN}-${index}@example.invalid`, message: "Hello" }))
+    });
+    await prisma.fileAsset.createMany({
+      data: [value("b"), value("a"), value("a"), null].map((category, index) => ({
+        slug: `${RUN}-filter-file-${index}`,
+        title: `File ${index}`,
+        category
+      }))
+    });
+    await prisma.fileAsset.create({
+      data: { slug: `${RUN}-filter-file-gone`, title: "Gone", category: value("0"), deletedAt: gone }
+    });
+    await prisma.galleryAlbum.createMany({
+      data: [value("b"), value("a"), value("b"), null].map((category, index) => ({
+        slug: `${RUN}-filter-album-${index}`,
+        title: `Album ${index}`,
+        category
+      }))
+    });
+    await prisma.galleryAlbum.create({
+      data: { slug: `${RUN}-filter-album-gone`, title: "Gone", category: value("0"), deletedAt: gone }
+    });
+    await prisma.publication.createMany({
+      data: [
+        { year: 9998 },
+        { year: 9999 },
+        { year: 9999 },
+        { year: 10000, deletedAt: gone }
+      ].map((row, index) => ({ ...row, slug: `${RUN}-filter-pub-${index}`, kind: "BOOK" as const, title: `Book ${index}`, authorLine: "A. Author" }))
+    });
+
+    // What each filter must open with: duplicates collapsed, NULL and the recycle bin left out, in order.
+    const leading: Record<string, unknown[]> = {
+      "audit entity types": [value("Alpha"), value("Mid"), value("Zeta")],
+      "enquiry forms": [value("a"), value("b")],
+      "file categories": [value("a"), value("b")],
+      "album categories": [value("a"), value("b")],
+      "publication years": [9999, 9998]
+    };
 
     try {
       const cases = [
@@ -499,13 +637,20 @@ describe("query counts", { skip }, () => {
         const fresh = await countStatements(async () => entry.next());
         const legacy = await entry.old();
         assert.deepEqual(fresh.result, legacy, entry.name);
+        const expected = leading[entry.name] ?? [];
+        const values = (fresh.result as Record<string, unknown>[]).map((row) => Object.values(row)[0]);
+        assert.deepEqual(values.slice(0, expected.length), expected, `${entry.name}: the seeded options, first`);
         assert.equal(fresh.statements.length, 1, entry.name);
         const [sql] = fresh.statements;
         assert.match(sql ?? "", /GROUP BY/i, `${entry.name}: grouped by the database`);
         assert.match(sql ?? "", /LIMIT/i, `${entry.name}: limited by the database`);
       }
     } finally {
-      await prisma.auditLog.deleteMany({ where: { entityType: { startsWith: `${RUN}-` } } });
+      await prisma.auditLog.deleteMany({ where: { entityType: { startsWith: value("") } } });
+      await prisma.contactSubmission.deleteMany({ where: { formKey: { startsWith: value("") } } });
+      await prisma.fileAsset.deleteMany({ where: { slug: { startsWith: `${RUN}-filter-` } } });
+      await prisma.galleryAlbum.deleteMany({ where: { slug: { startsWith: `${RUN}-filter-` } } });
+      await prisma.publication.deleteMany({ where: { slug: { startsWith: `${RUN}-filter-` } } });
     }
   });
 });
