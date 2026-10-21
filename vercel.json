@@ -3,7 +3,7 @@
   "framework": "nextjs",
   "regions": ["bom1"],
   "installCommand": "npm install -g npm@12.2.0 && npm ci",
-  "buildCommand": "prisma generate && prisma migrate deploy && next build",
+  "buildCommand": "prisma generate && if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy; fi && next build",
   "crons": [
     {
       "path": "/api/cron/purge",
