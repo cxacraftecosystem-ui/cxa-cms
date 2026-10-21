@@ -4,6 +4,8 @@ import { countStatements, dataStatements } from "./query-counter";
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
+import { Prisma } from "@prisma/client";
+
 import { writeAuditMany, type AuditInput, type TxClient } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { applyRegistrationBatch, applyRegistrationStates } from "@/lib/events/registration-writes";
@@ -36,6 +38,20 @@ const skip = !hasDatabase ? "no DATABASE_URL" : !LOCAL ? "DATABASE_URL is not a 
 
 const RUN = `perf${Date.now().toString(36)}`;
 const CONTEXT = { actor: null, ipAddress: "198.51.100.7", userAgent: "query-count test" };
+
+/**
+ * How a `jsonb` column is stored, row by row: SQL NULL ("never framed") and JSON `null` ("cleared") both
+ * read back as `null` through Prisma, so only the database can tell them apart.
+ */
+async function jsonbKinds(table: "gallery_items" | "event_media", parentId: string) {
+  const kind = Prisma.sql`CASE WHEN "assetScreens" IS NULL THEN 'SQL NULL' ELSE jsonb_typeof("assetScreens") END`;
+  const rows = await prisma.$queryRaw<{ assetId: string; kind: string | null }[]>(
+    table === "gallery_items"
+      ? Prisma.sql`SELECT "assetId", ${kind} AS kind FROM "gallery_items" WHERE "albumId" = ${parentId}`
+      : Prisma.sql`SELECT "assetId", ${kind} AS kind FROM "event_media" WHERE "eventId" = ${parentId}`
+  );
+  return new Map(rows.map((row) => [row.assetId, row.kind]));
+}
 
 /** Thrown to roll a transaction back once the assertions inside it are done. */
 class RollBack extends Error {}
@@ -186,6 +202,9 @@ describe("query counts", { skip }, () => {
       after.map((row) => [row.assetId, row.position, row.tourEntry, row.assetScreens]),
       reordered.map((item, index) => [item.assetId, index, item.tourEntry, item.assetScreens])
     );
+    // The first row existed already, so its clear went through the UPDATE: JSON null, as createMany writes
+    // a cleared framing on a new row — never SQL NULL.
+    assert.equal((await jsonbKinds("gallery_items", albumId)).get(first), "null", "a cleared framing is JSON null");
 
     const cleared = await countStatements(() => prisma.$transaction((tx) => replaceGalleryItems(tx, albumId, [])));
     assert.equal(dataStatements(cleared.statements).length, 1);
@@ -246,6 +265,9 @@ describe("query counts", { skip }, () => {
       stored.map((row) => [row.assetId, row.position, row.assetScreens]),
       [[d, 0, { sm: { q: 2 } }], [a, 1, null], [b, 2, null]]
     );
+    // a and b were already listed, so the UPDATE cleared them: JSON null, the value createMany writes.
+    const kinds = await jsonbKinds("event_media", eventId);
+    assert.deepEqual([kinds.get(d), kinds.get(a), kinds.get(b)], ["object", "null", "null"]);
   });
 
   // ── Menus ─────────────────────────────────────────────────────────────────────────────────────

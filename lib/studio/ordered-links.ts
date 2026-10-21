@@ -33,9 +33,16 @@ function jsonColumn(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonN
   return value as Prisma.InputJsonValue;
 }
 
-/** A JSON value as a `jsonb` parameter: SQL NULL for nothing, the serialised value otherwise. */
+/**
+ * A JSON value as a `jsonb` parameter: JSON `null` for nothing, the serialised value otherwise.
+ *
+ * ⚠ JSON `'null'::jsonb`, NOT SQL NULL. A cleared framing is written by `createMany` as `Prisma.JsonNull`
+ * (see `jsonColumn`), which is JSON null; the UPDATE that follows must write the same value, or a row the
+ * panel cleared would end up SQL NULL — indistinguishable from "never framed" to `IS NULL` and to
+ * `Prisma.DbNull` filters, and different from the same clear made through the single-row routes.
+ */
 function jsonbParameter(value: unknown): Prisma.Sql {
-  if (value === null || value === undefined) return Prisma.sql`NULL::jsonb`;
+  if (value === null || value === undefined) return Prisma.sql`'null'::jsonb`;
   return Prisma.sql`${JSON.stringify(value)}::jsonb`;
 }
 
