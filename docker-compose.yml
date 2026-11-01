@@ -81,7 +81,7 @@ services:
     # a fresh volume and a re-test, not an image swap. If silo stops being maintained, that is the move.
     #
     # The SERVICE is still `minio`: the API signs uploads for `http://minio:9000` (S3_ENDPOINT below).
-    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+    image: docker.io/pgsty/silo:RELEASE.2026-10-26T00-00-00Z
     container_name: cxa-minio
     command: server /data --console-address ":9001"
     environment:
@@ -103,7 +103,7 @@ services:
   minio-init:
     # The same image as `minio`, run for its bundled `mcli` (the old `minio/mc` image was withdrawn with the
     # server). `set -e` so a failure in any line fails the job rather than leaving a bucket half set up.
-    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+    image: docker.io/pgsty/silo:RELEASE.2026-10-26T00-00-00Z
     container_name: cxa-minio-init
     depends_on:
       minio:

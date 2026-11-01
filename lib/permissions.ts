@@ -251,3 +251,18 @@ export function canManageUser(
   if (target.id === actor.id) return false;
   return roleRank(target) < roleRank(actor);
 }
+
+/**
+ * May `actor` delete `target`'s account for good (lib/users/erase-account.ts)?
+ *
+ * A master administrator only, and never their own account. Unlike `canManageUser` the target may be at
+ * the actor's own tier — a master admin removing another master admin is the case this exists for — so
+ * the protection against removing the LAST one is a count, taken by the service inside its transaction.
+ */
+export function canEraseAccount(
+  actor: PermissionSubject | null | undefined,
+  target: Pick<PermissionSubject, "id">
+): boolean {
+  if (!actor || !isMasterAdmin(actor)) return false;
+  return target.id !== actor.id;
+}

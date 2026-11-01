@@ -161,6 +161,7 @@ const safeSelect = {
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
+  erasedAt: true,
   /**
    * THE LINKED SIGN-IN METHODS. Nothing here is a secret — a provider's `sub` is an opaque identifier the
    * provider itself hands to anybody who signs in, and the email is already on the row above — and an
@@ -599,6 +600,10 @@ export const PATCH = route(
       }
       if (!target.deletedAt) {
         throw conflict("That account has not been deleted, so there is nothing to restore.");
+      }
+      if (target.erasedAt) {
+        // A tombstone has no name, address or credentials left to bring back (lib/auth/erase-account.ts).
+        throw conflict("That account was deleted permanently, so it cannot be restored. Invite the person again instead.");
       }
       const clash = await prisma.user.findFirst({
         where: { email: target.email, deletedAt: null, id: { not: target.id } },

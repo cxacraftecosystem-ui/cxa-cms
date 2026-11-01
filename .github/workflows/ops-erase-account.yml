@@ -1,0 +1,74 @@
+# Delete one studio account permanently, against PRODUCTION, through lib/auth/erase-account.ts.
+#
+# Manual only. `check` is read-only and prints counts; `erase` backs the affected rows up into
+# `_bak_<yyyymmdd>_erase_*` tables, then runs the same function, guards and audit row as the studio's
+# "Delete permanently" (scripts/ops/erase-account.ts has the whole contract). `erase` refuses unless
+# `confirm` repeats the address, and stops on its own for a master administrator or the only admin.
+
+name: Ops - erase account
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check (read-only, counts only) or erase"
+        type: choice
+        options: [check, erase]
+        default: check
+      email:
+        description: "The account to delete"
+        required: true
+      actor:
+        description: "The master administrator the audit row names as having done it"
+        required: true
+      confirm:
+        description: "For erase: type the account's address again"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-erase-account
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: npm 12
+        run: npm install -g npm@12.2.1 && npm -v
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      - name: Confirm
+        if: ${{ inputs.mode == 'erase' }}
+        env:
+          EMAIL: ${{ inputs.email }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$CONFIRM" | tr '[:upper:]' '[:lower:]')" ]; then
+            echo "::error::confirm does not repeat the address, so nothing has been run."
+            exit 1
+          fi
+
+      - name: Run
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MODE: ${{ inputs.mode }}
+          EMAIL: ${{ inputs.email }}
+          ACTOR: ${{ inputs.actor }}
+          VIA: "Ops - erase account, GitHub Actions run ${{ github.run_id }}"
+        run: npx tsx scripts/ops/erase-account.ts --mode "$MODE" --email "$EMAIL" --actor "$ACTOR" --via "$VIA"

@@ -64,6 +64,7 @@ import {
   SearchX,
   ShieldCheck,
   ShieldOff,
+  Trash2,
   TriangleAlert,
   Unlink,
   UserPlus,
@@ -78,6 +79,7 @@ import {
   ROLE_DESCRIPTIONS,
   ROLE_LABELS,
   canAssignRole,
+  canEraseAccount,
   canManageStudioAccess,
   canManageUser,
   canManageUsers,
@@ -108,7 +110,8 @@ const USER_ENDPOINTS = {
   passwordReset: (id: string) => `/api/studio/users/${encodeURIComponent(id)}/password-reset`,
   emailPasswordReset: (id: string) =>
     `/api/studio/users/${encodeURIComponent(id)}/password-reset/email`,
-  disableTwoFactor: (id: string) => `/api/studio/users/${encodeURIComponent(id)}/two-factor`
+  disableTwoFactor: (id: string) => `/api/studio/users/${encodeURIComponent(id)}/two-factor`,
+  erase: (id: string) => `/api/studio/users/${encodeURIComponent(id)}/erase`
 } as const;
 
 const PAGE_SIZE = 25;
@@ -165,6 +168,8 @@ export interface StudioUserRow {
   /** How many live sessions the account has — how many devices are signed in. */
   activeSessions: number;
   createdAt: string;
+  /** Set on a soft-deleted account. Both answers carry it; optional so a caller that omits it reads as live. */
+  deletedAt?: string | null;
 
   /**
    * Whether a password is set — never the password, and never its hash.
@@ -1047,6 +1052,19 @@ function UserPanel({
     canAssignRole(currentUser, { id: user.id, role: user.role }, candidate)
   );
   const mayManage = canManageUser(currentUser, { id: user.id, role: user.role });
+  /** "Delete permanently" is a master administrator's control, and never on their own account. */
+  const showErase = isMasterAdmin(currentUser);
+  const mayErase = canEraseAccount(currentUser, { id: user.id });
+  /**
+   * The last master administrator, or the last administrator, cannot be deleted. Only claimed when the
+   * server has given the count; otherwise the refusal is left to the server, which counts inside its
+   * transaction.
+   */
+  const isCounted = user.isActive && !user.deletedAt;
+  const eraseBlockedAsLastMaster =
+    isCounted && user.role === "MASTER_ADMIN" && activeMasterAdmins !== null && activeMasterAdmins <= 1;
+  const eraseBlockedAsLastAdministrator =
+    isCounted && user.role === "ADMINISTRATOR" && activeAdministrators <= 1;
 
   const run = useCallback(
     async (key: string, work: () => Promise<void>, success: string, failure: string) => {
@@ -1357,6 +1375,43 @@ function UserPanel({
     },
     [account.hasPassword, confirm, linkedAccounts.length, refreshDetail, run, toast, user.id, user.name]
   );
+
+  const erasePermanently = useCallback(async () => {
+    const agreed = await confirm({
+      title: `Delete ${user.name}'s account permanently?`,
+      body: (
+        <>
+          <p>
+            <span className="font-medium text-ink-900">{user.name}</span> ({user.email}) is signed out of every
+            device and can never sign in to this account again. Their address comes off the studio access list.
+          </p>
+          <p className="mt-2">
+            What they wrote stays on the site, credited to &ldquo;Deleted admin&rdquo;. The deletion is kept in
+            the audit log with your name on it. There is no undo.
+          </p>
+        </>
+      ),
+      confirmLabel: "Delete permanently",
+      cancelLabel: "Keep the account",
+      tone: "danger",
+      requireTyping: user.email
+    });
+    if (!agreed) return;
+
+    setBusy("erase");
+    try {
+      const answer = await post<{ message: string }>(USER_ENDPOINTS.erase(user.id), {
+        confirmEmail: user.email
+      });
+      toast({ tone: "success", title: `${user.name}'s account has been deleted`, description: answer.message });
+      onChanged();
+      onClose();
+    } catch (thrown) {
+      onFailed(thrown, "The account has not been deleted");
+    } finally {
+      setBusy(null);
+    }
+  }, [confirm, onChanged, onClose, onFailed, toast, user.email, user.id, user.name]);
 
   return (
     <div className="space-y-6">
@@ -1750,6 +1805,40 @@ function UserPanel({
           </Button>
         )}
       </FormSection>
+
+      {showErase ? (
+        <FormSection
+          title="Delete this account permanently"
+          tone="danger"
+          description="For someone who should no longer have an account here at all. Their content stays, credited to “Deleted admin”."
+        >
+          {!mayErase ? (
+            <HelpText tone="warn">
+              You cannot delete your own account. Ask another master administrator to do it.
+            </HelpText>
+          ) : eraseBlockedAsLastMaster ? (
+            <HelpText tone="warn">
+              This is the only master administrator, so the account cannot be deleted. Make somebody else a
+              master administrator first.
+            </HelpText>
+          ) : eraseBlockedAsLastAdministrator ? (
+            <HelpText tone="warn">
+              This is the only active administrator, so the account cannot be deleted. Make somebody else an
+              administrator first.
+            </HelpText>
+          ) : (
+            <Button
+              variant="danger"
+              icon={Trash2}
+              isLoading={busy === "erase"}
+              loadingLabel="deleting"
+              onClick={() => void erasePermanently()}
+            >
+              Delete permanently
+            </Button>
+          )}
+        </FormSection>
+      ) : null}
     </div>
   );
 }

@@ -20,7 +20,7 @@ import { existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-// Node 24 strips the types itself, so this plain-Node script uses the application's own adapter.
+// Node 26 strips the types itself, so this plain-Node script uses the application's own adapter.
 import { prismaAdapter } from "../../lib/prisma-adapter.ts";
 
 // Prisma 7's client no longer reads .env; a variable already set in the environment still wins.

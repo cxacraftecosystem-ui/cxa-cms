@@ -456,3 +456,24 @@ Two things are deliberately not done, and each would be a separate change:
 The third item that used to be here — `VERCEL_LOG_DRAIN_SECRET` being in neither `.env.example` nor
 `configurationWarnings()` — is done. See *Environment* above for what the panel does and does not
 report, and why the absent-secret case is deliberately not one of them.
+
+## 10. Deleting an account permanently
+
+Users → open the account → **Delete permanently**. Master administrators only, never their own
+account, never the last active master administrator or administrator, never the last master-admin
+entry on the access list; the dialog makes them type the address. `lib/auth/erase-account.ts` holds
+every rule.
+
+The account row becomes a **tombstone** rather than being removed: every table that points at
+`users` keeps its foreign key, so posts, revisions, media, files and announcements stay credited to
+"Deleted admin" instead of to nobody. Name, address (`erased+<id>@erased.invalid`), password, second
+factor, avatar and title are cleared and `erasedAt` is set; sessions, linked sign-ins, edit locks and
+the address's own access-list entry are deleted. One `DELETE` audit row records who, when and which
+account. A tombstone cannot be restored. A DOMAIN entry that still covers the address is reported in
+the answer, not changed.
+
+From an operator's seat, against production: **Actions → Ops - erase account**, `check` first (read
+only, counts only), then `erase` with the address repeated in `confirm`. `erase` copies the affected
+rows into `_bak_<yyyymmdd>_erase_*` tables in the same database, calls the same function, and also
+removes the address from the newsletter. It stops by itself for a master administrator or the only
+administrator. Drop the `_bak_` tables once nobody needs them.

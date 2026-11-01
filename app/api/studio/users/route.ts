@@ -249,6 +249,9 @@ export const GET = route(async (request: NextRequest) => {
   }
 
   const where: Prisma.UserWhereInput = {
+    // A permanently deleted account is a tombstone that only keeps content credited (lib/auth/erase-account.ts).
+    // It is nobody, so it is listed under no status.
+    erasedAt: null,
     ...(query.status === "deleted" ? { deletedAt: { not: null } } : { deletedAt: null }),
     ...(query.status === "active" ? { isActive: true } : {}),
     ...(query.status === "inactive" ? { isActive: false } : {}),
