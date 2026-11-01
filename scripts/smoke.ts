@@ -59,6 +59,8 @@ const MARKER = "ZZSMOKE4KJ";
 /** A lower-privilege account, created and removed by this script, to prove a refusal is a 403. */
 const LOW_EMAIL = `${MARKER.toLowerCase()}-author@cxa.local`;
 const LOW_PASSWORD = "correct-horse-battery-staple-smoke";
+/** A second master administrator, created here and then deleted permanently through the studio's own route. */
+const ERASE_EMAIL = `${MARKER.toLowerCase()}-erase@cxa.local`;
 
 interface Failure {
   what: string;
@@ -445,6 +447,7 @@ async function main(): Promise<void> {
   console.log(`\nSmoke test against ${base}\n`);
 
   let lowUserId: string | null = null;
+  let eraseUserId: string | null = null;
   const created: { model: "researchArea"; id: string }[] = [];
 
   try {
@@ -687,6 +690,69 @@ async function main(): Promise<void> {
         body: { key: "branding", value: {} }
       });
       check(denied.status === 403, "author PATCH settings", `expected 403, got ${denied.status}`);
+
+      /*
+       * ── 6c. REVOKING AN ACCESS ENTRY STILL WORKS, AND AN ACCOUNT CAN BE DELETED FOR GOOD ──────
+       *
+       * The fixture is a second MASTER administrator, so this is the case the feature exists for: one
+       * master admin removing another. Its entry is revoked first through the access console (the older
+       * flow, which must keep working), then the account is deleted permanently: refused for an author,
+       * refused when the typed address does not match, and done for the master admin — leaving a
+       * tombstone whose personal fields are gone and whose entry is off the list.
+       */
+      {
+        const probe = await prisma.user.create({
+          data: { email: ERASE_EMAIL, name: "Smoke Erase", role: "MASTER_ADMIN" },
+          select: { id: true }
+        });
+        eraseUserId = probe.id;
+        const grant = await prisma.studioAccess.create({
+          data: {
+            email: ERASE_EMAIL,
+            name: "Smoke Erase",
+            grantedRole: "MASTER_ADMIN",
+            note: "Created by scripts/smoke.ts. Removed again when the run finishes."
+          },
+          select: { id: true }
+        });
+
+        const revoked = await request(`/api/studio/access/${grant.id}`, {
+          method: "PATCH",
+          jar: admin,
+          body: { revoked: true }
+        });
+        check(revoked.status === 200, "master admin revokes an access entry", `expected 200, got ${revoked.status}`);
+        const revokedRow = await prisma.studioAccess.findUnique({ where: { id: grant.id }, select: { revokedAt: true } });
+        check(revokedRow?.revokedAt != null, "the revoked entry is marked revoked", "revokedAt is still empty");
+
+        const eraseUrl = `/api/studio/users/${probe.id}/erase`;
+        const byAuthor = await request(eraseUrl, { method: "POST", jar: author, body: { confirmEmail: ERASE_EMAIL } });
+        check(byAuthor.status === 403, "author POST erase", `expected 403, got ${byAuthor.status}`);
+
+        const mismatch = await request(eraseUrl, {
+          method: "POST",
+          jar: admin,
+          body: { confirmEmail: "somebody-else@cxa.local" }
+        });
+        check(mismatch.status === 409, "erase with the wrong address typed", `expected 409, got ${mismatch.status}`);
+
+        const erased = await request(eraseUrl, { method: "POST", jar: admin, body: { confirmEmail: ERASE_EMAIL } });
+        check(erased.status === 200, "master admin erases another master admin", `expected 200, got ${erased.status}`);
+
+        const tomb = await prisma.user.findUnique({
+          where: { id: probe.id },
+          select: { email: true, name: true, erasedAt: true, isActive: true }
+        });
+        check(
+          tomb !== null && tomb.erasedAt !== null && tomb.email !== ERASE_EMAIL && tomb.name === "Deleted admin" && !tomb.isActive,
+          "the erased account is a tombstone",
+          `got ${JSON.stringify(tomb)}`
+        );
+        const leftOnList = await prisma.studioAccess.count({ where: { email: ERASE_EMAIL } });
+        check(leftOnList === 0, "the erased address is off the access list", `${leftOnList} entries remain`);
+        const audited = await prisma.auditLog.count({ where: { entityType: "User", entityId: probe.id, action: "DELETE" } });
+        check(audited === 1, "the erasure is audited once", `${audited} DELETE rows`);
+      }
     }
 
     /*
@@ -911,7 +977,11 @@ async function main(): Promise<void> {
     // The grant is keyed on the email rather than the id, so it is removed whether or not the user row
     // was found — a fixture left behind would make the NEXT run's refusal assertion pass for the wrong
     // reason.
-    await prisma.studioAccess.deleteMany({ where: { email: LOW_EMAIL } });
+    await prisma.studioAccess.deleteMany({ where: { email: { in: [LOW_EMAIL, ERASE_EMAIL] } } });
+    if (eraseUserId) {
+      await prisma.auditLog.deleteMany({ where: { entityId: eraseUserId } });
+      await prisma.user.delete({ where: { id: eraseUserId } }).catch(() => undefined);
+    }
     if (lowUserId) {
       await prisma.session.deleteMany({ where: { userId: lowUserId } });
       await prisma.auditLog.deleteMany({ where: { actorId: lowUserId } });

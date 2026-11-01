@@ -113,6 +113,10 @@ model User {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+  /// Set when a master administrator deleted the account for good (lib/users/erase-account.ts). The
+  /// row stays as a tombstone so everything that points at it keeps its author; every personal field
+  /// is cleared, and unlike `deletedAt` alone it can never be restored.
+  erasedAt  DateTime?
 
   avatar              MediaAsset?         @relation("UserAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
   sessions            Session[]
