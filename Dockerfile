@@ -27,18 +27,17 @@
 # package.json. That field is what CI (setup-node reads it) and Vercel run, so an image on another
 # major tests a runtime production does not have. It used to be one `ARG NODE_VERSION` interpolated
 # into each `FROM`; Dependabot reads `FROM` lines literally and skips one containing `${…}`, so the
-# image was invisible to the update that exists to keep it current. Change all four together. Node 26
-# waits until Vercel offers it; .github/dependabot.yml holds the major back until then.
+# image was invisible to the update that exists to keep it current. Change all four together.
 #
 # `trixie` (Debian 13) is named rather than implied. Debian 12 bookworm's regular security support
-# ended on 2026-07-11, and the codename-less `node:24-slim` still resolves to bookworm.
+# ended on 2026-07-11, and the codename-less `node:26-slim` still resolves to bookworm.
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 # Stage 1 — deps
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-FROM node:24-trixie-slim AS deps
+FROM node:26-trixie-slim AS deps
 
 WORKDIR /app
 
@@ -71,7 +70,7 @@ COPY vendor ./vendor
 # npm 12 first (the image bundles npm 11): it runs a dependency's install scripts only where
 # package.json's `allowScripts` says so — @prisma/engines, which fetches the schema engine
 # `prisma migrate` needs — and skips the rest. CI and vercel.json's installCommand do the same.
-RUN npm install -g npm@12.2.0
+RUN npm install -g npm@12.2.1
 
 # `npm ci`, not `npm install`: it installs exactly the locked tree and fails loudly when package.json and
 # the lockfile have drifted, rather than quietly resolving something new inside an image nobody inspects.
@@ -82,7 +81,7 @@ RUN npm ci --no-audit --no-fund
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 # Stage 2 — builder
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-FROM node:24-trixie-slim AS builder
+FROM node:26-trixie-slim AS builder
 
 WORKDIR /app
 
@@ -171,7 +170,7 @@ RUN npm run build
 # Run once by compose, to completion, before the app starts. It needs the full dependency tree because
 # it runs the Prisma CLI and `tsx`; that is exactly why it cannot be the runtime image.
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-FROM node:24-trixie-slim AS migrator
+FROM node:26-trixie-slim AS migrator
 
 WORKDIR /app
 
@@ -211,7 +210,7 @@ CMD ["sh", "-c", "npx prisma migrate deploy && npm run seed"]
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 # Stage 4 — runtime
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-FROM node:24-trixie-slim AS runtime
+FROM node:26-trixie-slim AS runtime
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
@@ -224,7 +223,7 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# node:24-trixie-slim already ships an unprivileged `node` account (uid 1000). Reusing it is one fewer
+# node:26-trixie-slim already ships an unprivileged `node` account (uid 1000). Reusing it is one fewer
 # thing to get wrong than inventing another, and the server needs to write nothing on disk.
 USER node
 

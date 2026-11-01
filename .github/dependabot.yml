@@ -50,10 +50,9 @@ updates:
           - minor
           - patch
     ignore:
-      # The types must describe the runtime that executes the code: `engines.node` (24.x), which is
-      # also the highest Node Vercel offers. @types/node 26 would type-check calls Node 24 does not
-      # have. Remove this when Vercel lists 26.x, moving engines.node, the Dockerfile and this
-      # package together.
+      # The types must describe the runtime that executes the code: `engines.node` (26.x), the newest
+      # Node major Vercel offers. A later @types/node major would type-check calls Node 26 does not
+      # have. Move it only when Vercel lists the next major, together with engines.node and the Dockerfile.
       - dependency-name: "@types/node"
         update-types:
           - version-update:semver-major
@@ -72,7 +71,7 @@ updates:
           - patch
     ignore:
       # The container must run the Node major production runs (engines.node in package.json, which
-      # Vercel reads). Remove this when Vercel lists 26.x, with the same change as @types/node above.
+      # Vercel reads). Move it when Vercel lists the next major, with the same change as @types/node above.
       - dependency-name: node
         update-types:
           - version-update:semver-major

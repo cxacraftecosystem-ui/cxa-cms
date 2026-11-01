@@ -88,7 +88,7 @@ database, or accept that a branch with a migration is a production schema change
 
 ### 1.3 The install and build commands
 
-`vercel.json` installs with npm 12 (`npm install -g npm@12.2.0 && npm ci`), as CI and the Dockerfile do.
+`vercel.json` installs with npm 12 (`npm install -g npm@12.2.1 && npm ci`), as CI and the Dockerfile do.
 npm 12 runs a dependency's install scripts only where `package.json`'s `allowScripts` allows them:
 `@prisma/engines` (it fetches the schema engine `prisma migrate` runs) is allowed; `esbuild`, `prisma`
 and `unrs-resolver` are denied, because each works from its prebuilt optional package without its script.
