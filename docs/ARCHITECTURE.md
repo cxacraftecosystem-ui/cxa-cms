@@ -184,7 +184,7 @@ flowchart TB
     db --> read["getPublishedPage(slug)<br/>lib/pages.ts — React cache()"]
 
     read --> resolve["resolveSectionData(sections)<br/>lib/sections/resolve.ts"]
-    read --> render["&lt;SectionRenderer sections resolved /&gt;"]
+    read --> render["#lt;SectionRenderer sections resolved /#gt;"]
 
     subgraph resolvebox["ONE batched pass — the only module that turns a curation mode into SQL"]
         direction TB
@@ -224,15 +224,15 @@ parse is cheap and its result is the value the renderer is typed against.
 %%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
     enum["SectionType<br/>prisma/schema.prisma"]
-    schemas["SECTION_SCHEMAS<br/>lib/sections/schema.ts<br/>satisfies Record&lt;SectionType, ZodTypeAny&gt;"]
-    registry["SECTION_REGISTRY<br/>lib/sections/registry.ts<br/>satisfies Record&lt;SectionType, SectionMeta&gt;"]
-    renderers["RENDERERS<br/>SectionRenderer.tsx<br/>{ [K in SectionType]: Renderer&lt;K&gt; }"]
+    schemas["SECTION_SCHEMAS<br/>lib/sections/schema.ts<br/>satisfies Record#lt;SectionType, ZodTypeAny#gt;"]
+    registry["SECTION_REGISTRY<br/>lib/sections/registry.ts<br/>satisfies Record#lt;SectionType, SectionMeta#gt;"]
+    renderers["RENDERERS<br/>SectionRenderer.tsx<br/>{ [K in SectionType]: Renderer#lt;K#gt; }"]
     forms["Editor forms<br/>components/studio/sections/"]
 
     enum -->|"compile error until an entry exists"| schemas
     enum -->|"compile error until an entry exists"| registry
     enum -->|"compile error until an entry exists"| renderers
-    schemas -->|"SectionPayloads&lt;K&gt; types both"| renderers
+    schemas -->|"SectionPayloads#lt;K#gt; types both"| renderers
     schemas --> forms
 ```
 
@@ -589,7 +589,7 @@ flowchart TB
         c2["Dimensions and attribution known at BUILD time"]
         c3["Can never be absent — so there is no null case"]
         c4["Alt text defaults to the manifest title.<br/>alt='' is MEANINGFUL: decorative."]
-        c5["⚠ Renders ImageCredit AUTOMATICALLY.<br/>The credit is a LICENCE OBLIGATION, and a component<br/>that renders it is the only version of that rule which<br/>survives a hurried afternoon. A hand-composed<br/>&lt;Image src='/craft/warli.jpg'&gt; is one line and a breach."]
+        c5["⚠ Renders ImageCredit AUTOMATICALLY.<br/>The credit is a LICENCE OBLIGATION, and a component<br/>that renders it is the only version of that rule which<br/>survives a hurried afternoon. A hand-composed<br/>#lt;Image src='/craft/warli.jpg'#gt; is one line and a breach."]
         c6["creditOnCreditsPage: discharge the attribution through<br/>/credits instead — lawful under CC BY 4.0 §3(a)(2),<br/>and ONLY where /credits genuinely covers the image."]
         c1 --> c2 --> c3 --> c4 --> c5 --> c6
     end
@@ -598,7 +598,7 @@ flowchart TB
         m1["Source: a MediaAsset an EDITOR uploaded"]
         m2["Addressed through NEXT_PUBLIC_CDN_URL"]
         m3["⚠ MAY LEGITIMATELY BE MISSING: no CDN configured,<br/>no variants generated yet, asset deleted since"]
-        m4["mediaSrc() returns null → a LABELLED PLACEHOLDER.<br/>Passing null through to &lt;Image&gt; gives &lt;img src=''&gt;,<br/>which every browser resolves to the CURRENT PAGE and<br/>re-downloads the whole document as an image."]
+        m4["mediaSrc() returns null → a LABELLED PLACEHOLDER.<br/>Passing null through to #lt;Image#gt; gives #lt;img src=''#gt;,<br/>which every browser resolves to the CURRENT PAGE and<br/>re-downloads the whole document as an image."]
         m5["Alt text lives in the database.<br/>mediaAlt() returns '' rather than undefined — '' marks<br/>the image decorative; undefined makes a screen reader<br/>announce the filename, which is worse than silence."]
         m6["Space reserved before the bytes arrive, from the stored<br/>width/height, so nothing below it moves."]
         m1 --> m2 --> m3 --> m4 --> m5 --> m6
@@ -828,7 +828,7 @@ be restored, and one `DELETE` audit row records it (`OPERATIONS.md` §10).
 flowchart LR
     ed["PageBuilder"] -->|"PUT every 400 ms of quiet"| pd["/api/studio/pages/[id]/preview-draft<br/>validates EVERY block, refuses the draft WHOLE"]
     pd --> store["globalThis Map<br/>key = pageId + editorId<br/>TTL 10 min · ≤256 KB · ≤60 blocks · ≤32 entries"]
-    frame["PreviewFrame iframe"] -->|"GET /preview/&lt;slug&gt;?preview=&lt;token&gt;&amp;live=1"| route["app/(site)/preview — an OPTIONAL catch-all<br/>force-dynamic"]
+    frame["PreviewFrame iframe"] -->|"GET /preview/#lt;slug#gt;?preview=#lt;token#gt;#amp;live=1"| route["app/(site)/preview — an OPTIONAL catch-all<br/>force-dynamic"]
     store -.-> route
     route --> out["The REAL page: same route, same renderers,<br/>same media resolution, fully interactive"]
 ```

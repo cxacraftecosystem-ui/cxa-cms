@@ -46,6 +46,7 @@ paragraph would do, motion that explains or delights and never distracts.
 | `tools/icons.mjs` | icon geometry (Lucide, ISC licence, see `LICENSE-lucide.txt`) |
 | `tools/check.mjs` | the rules CI enforces: SVG safety, references, mermaid extraction, rendered-HTML checks |
 | `tools/preview.mjs` | renders every asset and diagram to PNG in CI, light, dark and reduced motion |
+| `tools/github.mjs` | opens every Markdown file with a mermaid block on github.com in CI and fails on any block GitHub cannot draw |
 
 Never hand-edit `assets/`. Change `kit.json` or `tools/build.mjs`, then regenerate:
 
@@ -231,6 +232,10 @@ Rules:
   find first, and `classDef gold fill:#FAEECD,stroke:#CD9200,color:#1E1B2E` for external systems.
 - Group with `subgraph`; at most three levels.
 - Flowcharts read left to right (`LR`) when they have stages, top down (`TD`) when they have layers.
+- No HTML entities such as `&lt;` or `&quot;`: GitHub decodes them before mermaid reads the block, so a
+  quote ends the label and `<` starts a tag. Write mermaid's own codes, `#lt;`, `#gt;`, `#quot;`, `#amp;`.
+- No `;` in a label outside a quoted string: it ends the statement and the rest becomes stray nodes.
+- No `<b>` or other tags in sequence diagram messages and notes; GitHub prints them as text.
 
 ### Architecture
 
@@ -400,12 +405,15 @@ and the generated `assets/` differ. Improve the kit in designer-portal first, th
 | SVG rules | over 60 KB; `<script>`, `<foreignObject>`, `<image>`, event attributes, external `href`/`url()`, `@import`, `@font-face`; no `<title>`, `aria-label` or `role="img"`; animated without a reduced-motion rule |
 | xmllint | an SVG is not well-formed XML |
 | Image references | a local image is missing, a GIF is over 3 MB, a raster is over 1 MB, a `<picture>` lacks the dark source or `alt` |
-| Mermaid | any block in `README.md`, `docs/**` or `.claude/skills/**` fails to render in mermaid-cli; a block without `%%{init}%%` is a warning (`--strict` makes it an error) |
+| Mermaid | any block in `README.md`, `docs/**` or `.claude/skills/**` fails to render in mermaid-cli, run on the mermaid release github.com ships and with GitHub's `securityLevel` and layout settings; a block without `%%{init}%%` is a warning (`--strict` makes it an error) |
 | GitHub render | `gh api markdown` escapes an HTML tag, leaks a code fence, or drops a `<picture>` or mermaid block; a file over the API's 400 KB limit is skipped with a warning |
+| github.com renders every mermaid block | the authoritative check. Playwright opens each tracked Markdown file with a mermaid block at the pushed commit on github.com and fails when a block's viewer shows an error, draws no SVG, draws NaN coordinates or prints raw markup, when a block is missing from the page, or when a block uses an HTML entity or a statement-ending `;` in a label |
 
 The `readme-preview` artifact holds PNGs of every asset and diagram in light, dark and reduced motion, and
 full-page screenshots of `README.md` and `docs/README.md` as GitHub renders them (`gh api markdown`), with
 every mermaid block drawn in place and the `<picture>` sources chosen by the light or dark colour scheme.
+The `github-mermaid` artifact holds a screenshot of every mermaid block as github.com draws it, a
+full-page screenshot of each file, and `report.tsv` with one line per block.
 
 ## 13. How this is kept true
 
