@@ -38,10 +38,11 @@ The customer-facing copy sweep (2026-10-10) took every sentence off the public s
 admitted a missing feature or a known defect. The facts did not go away; they are kept here, with the
 fix each one needs.
 
-- **Password and invitation links are still handed to the administrator to pass on.** Newsletter mail
-  is sent (see *Newsletter delivery* below, built 2026-10-10), but `app/studio/users/page.tsx` still sets
-  `canSendEmail = false` and no code composes a password or invitation email. Fix: compose those two
-  messages and send them through the same SES mailer (`activeNewsletterMailer()`), then flip that flag.
+- **Invitation links are still handed to the administrator to pass on.** Password links are emailed
+  since 2026-10-11 ("Forgot your password?" and **Users → Email them a password link**, through
+  `lib/auth/auth-mail.ts`), but a new account's invitation is not: `app/studio/users/page.tsx` still sets
+  `canSendEmail = false` for invitations and `app/api/studio/users/route.ts` returns the link instead of
+  sending it. Fix: send the invitation through the same transactional mailer, then flip that flag.
   Event registrations are in the same position (`app/(site)/events/[slug]/page.tsx`).
 - **The redirects screen's "Followed" count under-counts.** `findPageRedirect()` in `lib/pages.ts` runs
   inside a render (prerender included) and deliberately does not write, so a working redirect can read
@@ -67,22 +68,26 @@ the client into the source tree. Moving means an `output` in the schema's genera
 the ~150 `from "@prisma/client"` imports to that path (and the Dockerfile's two explicit client copies).
 It was left out of the Prisma 7 upgrade to keep that change reviewable on its own; nothing else blocks it.
 
-### Newsletter delivery — built 2026-10-10; three things finish it
+### Newsletter delivery — built 2026-10-10; one thing finishes it
 
-Newsletter mail now goes out through Amazon SES (`lib/newsletter/mailer-ses.ts`): the four
-transactional messages inline, and issues composed in Studio → Newsletter issues through the outbox
-drain (`DEPLOYMENT.md` §1.7, §1.9). What is not done in code, and closes this entry when done:
+Newsletter mail goes out through Amazon SES (`lib/newsletter/mailer-ses.ts`): the four transactional
+messages inline, and issues composed in Studio → Newsletter issues through the outbox drain
+(`DEPLOYMENT.md` §1.7, §1.9). Two of the three items this entry used to list are closed:
 
-1. **Subscribe the feedback webhook to the SNS topic** `arn:aws:sns:ap-south-1:626159998512:ses-feedback`
-   — the command is in `DEPLOYMENT.md` §1.9. Until then SES's own account suppression still stops repeat
-   sends to a bounced address, but the studio does not show bounces or complaints.
-2. **Send from a domain the Centre controls.** The configured From address is a `@gmail.com` mailbox,
-   which cannot pass DMARC alignment through SES; expect a large share of issues in spam or rejected by
-   Gmail and Yahoo until a domain identity with DKIM and DMARC is used (`DEPLOYMENT.md` §1.9).
-3. **The five-minute drain schedule is GitHub's, so it is best-effort** (see the scheduling entry above).
-   Sends are not left to it — confirmations go inline, Send starts the first batch, and the issue screen
-   keeps nudging while it is open — but a scheduled issue goes out at the first drain after its time,
-   which on GitHub's record can be hours. The scheduler decision above fixes this too.
+- ~~Subscribe the feedback webhook to the SNS topic~~ **Closed.** Checked 2026-11-04 (read-only
+  `aws sns list-subscriptions-by-topic`): `ses-feedback` has a confirmed HTTPS subscription to
+  `https://aicraft.iitkgp.ac.in/api/public/newsletter/ses-feedback`, so bounces and complaints reach the
+  studio.
+- ~~Send from a domain the Centre controls~~ **Closed 2026-10-16.** `aicraft.iitkgp.ac.in` is a verified
+  SES domain identity with Easy DKIM and a custom MAIL FROM, aligned with the institute's DMARC policy.
+  Production sends the newsletter as `newsletter@aicraft.iitkgp.ac.in` and password links as
+  `studio@aicraft.iitkgp.ac.in` (`DEPLOYMENT.md` §1.9).
+
+Still open: **the five-minute drain schedule is GitHub's, so it is best-effort** (see the scheduling
+entry above). Sends are not left to it — confirmations go inline, Send starts the first batch, and the
+issue screen keeps nudging while it is open — but a scheduled issue goes out at the first drain after
+its time, which on GitHub's record can be hours, or at the daily `vercel.json` fallback at 03:53 UTC.
+The scheduler decision above fixes this too.
 
 ### Prisma's `sslmode=require` does not verify the database's certificate — opened 2026-10-09
 
@@ -550,8 +555,10 @@ These are honest gaps, stated so nobody mistakes a green suite for a proof.
   package; the check defends it from drifting afterwards. It also does not read the WOFF2 `name` table,
   so it cannot confirm the binary on disk is the family the manifest names — the SHA-256 pins it to the
   bytes that *were* measured, which is a different and weaker guarantee than identity.
-- **Nothing checks prose.** No gate reads a `.md` or a header comment, so a document can describe a
-  codebase that does not exist and stay green indefinitely — which is exactly what defect class 13 was.
+- **Nothing checks prose.** `readme-check.yml` (2026-11-04) reads every `.md` for its images, its
+  mermaid diagrams and GitHub's rendering of it, but no gate reads what a sentence or a header comment
+  claims, so a document can describe a codebase that does not exist and stay green indefinitely — which
+  is exactly what defect class 13 was.
   Treat every comment as a claim with a date on it.
 - **`theme-check` only sees colours written in the SAME class string.** A wrapper carrying `bg-ink-900`
   whose child carries `text-white` is the identical bug and is invisible to it — pairing colours across

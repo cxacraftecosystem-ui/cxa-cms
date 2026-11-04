@@ -2,11 +2,12 @@
 
 **Read this before writing any file in this repository.** It is the contract, not a summary. Every
 rule below has a reason after it, and most of those reasons are a bug that shipped once in the
-sibling product (`D:\Portal_Development_Web`, whose design system this inherits verbatim).
+sibling product, the Field Repository (`cxacraftecosystem-ui/documentation-portal`, once checked out
+as `D:\Portal_Development_Web`), whose design system this inherits verbatim.
 
-The authoritative upstream reference is
-`D:\Portal_Development_Web\.claude\skills\field-repo-frontend\SKILL.md`. Where this file and that
-one differ, **this file wins for this repository** — the two divergences are listed in §1.
+The authoritative upstream reference is that repository's `.claude/skills/field-repo-frontend/SKILL.md`.
+Where this file and that one differ, **this file wins for this repository** — the two divergences are
+listed in §1.
 
 ---
 

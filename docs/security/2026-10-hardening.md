@@ -1,5 +1,9 @@
 # Security hardening, October 2026
 
+**Status: live.** Merged to `main` as `4675432` on 2026-10-10 and deployed with it; production has run
+every fix below since then. The verification in §6 is a dated record of that branch, run under the
+Node 24 and npm 11 of the day; the project has since moved to Node 26 and npm 12.
+
 Five bugs found in the old CMS, each fixed here instead of being carried over: links beginning with
 `//` or `/\` treated as internal, upload signing with no size or checksum, rate limits that a spoofed
 `X-Forwarded-For` dodged, the cron secret accepted in the URL, and raw emails and IPs in the audit log.

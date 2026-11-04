@@ -76,17 +76,20 @@ openssl rand -base64 48
 
 ## 3. Scheduled jobs
 
-**There are three cron routes and they are scheduled from two different places.** That is not an
+**There are four cron routes and they are scheduled from two different places.** That is not an
 oversight — the Hobby plan **refuses any cron that fires more than once a day**, and the deploy is
-rejected outright with `Hobby accounts are limited to daily cron jobs` — so the two daily jobs live in
-`vercel.json` and the ten-minute one had to move to GitHub Actions. Check the table against
-`vercel.json` and `.github/workflows/keep-warm.yml`, because it goes stale the moment either is
-edited. On another platform, call all three with `Authorization: Bearer $CRON_SECRET`.
+rejected outright with `Hobby accounts are limited to daily cron jobs` — so the daily jobs live in
+`vercel.json` and the five-minute ones run from GitHub Actions. The newsletter drain is in both: every
+five minutes from its own workflow, and once a day from `vercel.json` as a fallback. Check the table
+against `vercel.json`, `.github/workflows/keep-warm.yml` and `.github/workflows/newsletter-drain.yml`,
+because it goes stale the moment any of them is edited. On another platform, call each with
+`Authorization: Bearer $CRON_SECRET` (the drain also accepts `NEWSLETTER_DRAIN_SECRET`).
 
 | Job | Scheduled by | Schedule | What it does |
 |---|---|---|---|
 | `/api/cron/purge` | `vercel.json` | `17 3 * * *` | Deletes the bytes of assets soft-deleted longer than `MEDIA_PURGE_AFTER_DAYS`, then their rows. Prunes expired sessions. |
 | `/api/cron/logs-archive` | `vercel.json` | `41 3 * * *` | Copies closed days of `audit_logs` and `access_logs` into `files/logs/<source>/<YYYY>/<MM>/<DD>/`, one manifest per day. **Deletes nothing.** |
+| `/api/cron/newsletter-drain` | **`.github/workflows/newsletter-drain.yml`**, and `vercel.json` | `*/5 * * * *` requested (POST, `NEWSLETTER_DRAIN_SECRET`); `53 3 * * *` fallback (`CRON_SECRET`) | Sends queued newsletter mail through Amazon SES, spaced at SES's per-second rate, and stops starting new sends after 40 seconds. A 401 or 403 in the workflow means the two copies of `NEWSLETTER_DRAIN_SECRET` (repository secret and Vercel) disagree. |
 | `/api/cron/publish` | **`.github/workflows/keep-warm.yml`** | `*/5 * * * *` requested | Flips `SCHEDULED → PUBLISHED` and `PUBLISHED → ARCHIVED` at their dates, and re-syncs the search index's `isPublished` flag. The same workflow then checks that the database answers; that check no longer gates the publish. A missing `SITE_URL` or `CRON_SECRET` repository secret fails the publish step and turns the run red, and the database check still runs; it used to warn and stay green while nothing flipped. ⚠ GitHub's scheduler is best-effort, and in practice runs this **hours** apart — a median of 263 minutes between runs over 100 runs from 2026-09-20 to 2026-10-08 — so the studio's status column and search catch up hours after the date; and **GitHub silently disables scheduled workflows in a repository with no activity for 60 days**. `DEPLOYMENT.md` §1.7 has the two schedulers that would keep time; `ARCHITECTURE.md` §3.2. |
 
 ⚠ **`logs-archive` has two preconditions this repository cannot satisfy for you, and it is not
@@ -148,7 +151,9 @@ feature, and accumulates forever.
 
 ## 3a. The container images
 
-`Dockerfile` builds four stages; two of them are runnable and the reasons are worth knowing.
+`Dockerfile` builds four stages, every one `FROM node:26-trixie-slim` (Node 26 LTS on Debian 13, the
+version `package.json`'s `engines.node` and Vercel run); two of them are runnable and the reasons are
+worth knowing.
 
 | Stage | Why it exists |
 |---|---|
@@ -213,6 +218,11 @@ Two stores, and **both are needed**; either alone is not a restore.
 2. **The bucket** — the bytes. Enable versioning: the purge job is designed to be recoverable up to
    `MEDIA_PURGE_AFTER_DAYS`, but a bucket-level mistake is outside anything the application controls.
 
+**Production, checked 2026-11-04 (read-only `aws s3api`):** `cxa-media-prod` has versioning
+**Enabled**; its lifecycle expires noncurrent versions after 30 days, clears expired delete markers,
+aborts incomplete multipart uploads and expires `tmp/` after 7 days. A deleted or overwritten object can
+therefore be recovered for 30 days.
+
 A database restored to a point *before* an upload leaves the object orphaned (harmless, invisible). A
 bucket restored *behind* the database leaves rows pointing at absent objects — broken images with a
 perfectly healthy-looking database. **If you must restore one, restore the bucket to at or after the
@@ -235,13 +245,16 @@ the proxy.
 ## 8. Before every deploy
 
 ```bash
-npm run check                                   # typecheck + lint + route coverage
+npm run check                                   # typecheck + lint + route coverage + eight static checks
+npm test                                        # tests/**; the *.db.test.ts files need a migrated database
 npm run build && npx next start -p 3000 &
 npm run smoke      -- http://127.0.0.1:3000     # signed in: screens, endpoints, refusals, lifecycle
 npm run leak-check -- http://127.0.0.1:3000     # nothing unpublished is publicly reachable
 ```
 
-`.github/workflows/ci.yml` runs all four against a throwaway Postgres. See the README's *verification
+`.github/workflows/ci.yml` runs typecheck, lint, route coverage, `npm test`, the build, `smoke` and
+`leak-check` against a throwaway Postgres; the eight further static checks in `npm run check` run only
+where you run them (`ARCHITECTURE.md` §6.5). See the README's *verification
 suite* section for what each layer proves and what it is blind to — the honest limits matter as much as
 the coverage.
 

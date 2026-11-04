@@ -231,6 +231,7 @@ The file is strict JSON and cannot carry comments, so the reasons live here. Eve
 | `framework: "nextjs"` | Explicit rather than detected, so a future `package.json` change cannot alter the build. |
 | `regions: ["bom1"]` | Every function runs in Mumbai, beside the Supabase database and the media bucket, both in `ap-south-1`. Without it functions run in the project's default region, Washington (`iad1`), and every database round trip crosses the world: a one-query endpoint took 1.4–1.5 s warm and 4 s cold there, against 0.24–0.5 s for the museum app on the same Supabase region with its functions in `bom1`, and every studio save is an interactive transaction holding row locks across several such trips. The Hobby plan allows one region. Builds still run in `iad1`; only functions move. Set Project → Settings → Functions → Function Region to Mumbai too, so a deployment that ignores this file cannot quietly fall back to Washington. |
 | `buildCommand` | §1.3. |
+| `ignoreCommand` | `git diff --quiet HEAD^ HEAD -- . ':!*.md' ':!docs'`. Vercel runs it before every build and **skips the build when it exits 0**, which `git diff --quiet` does when the commit being deployed changes nothing outside Markdown files and `docs/`. So a docs-only push to `main` deploys nothing and does not run the production `prisma migrate deploy`, and a docs-only branch push makes no preview. Anything else (code, `vercel.json`, a workflow, `package.json`) still builds. It compares the commit with its first parent only: a push of several commits is judged by its last one, so land a code change as the last commit of its push. Added 2026-11-04. |
 | `crons` | §1.7. |
 | `functions["app/api/studio/media/complete/route.ts"]` | `memory: 2048`, `maxDuration: 300` — 2048 MB is the Hobby plan's ceiling, and the original 3009 was refused at deploy. This route pulls the uploaded object into memory and runs `sharp` over it to make every derivative. A 40-megapixel heritage scan decodes to a bitmap of several hundred megabytes, and the pipeline runs the sizes **sequentially** for exactly this reason. At the default memory the function is killed part-way: the object is already in the bucket, so the file exists with no row and no error anybody sees. |
 | `functions["app/api/studio/media/[id]/replace/route.ts"]` | The same two values, because it does the same work — replacing the bytes behind an asset re-runs the whole derivative pipeline. It previously had **no entry**, and the route's own header says so; without it a large replacement is killed and the asset keeps pointing at the old file with nothing on screen to explain why. |
@@ -251,9 +252,9 @@ Notes on that block:
   refused rather than killed — `DERIVE_MAX_BYTES` and `CHECKSUM_MAX_BYTES` in those routes already state
   their skips on screen.
 - **Nothing else has an entry, on purpose.** `app/api/studio/reindex/route.ts` sets `maxDuration = 300`
-  in the route file itself, which Vercel honours; each of the three cron routes caps its own work per
+  in the route file itself, which Vercel honours; the purge and `logs-archive` cap their own work per
   run (`MAX_ASSETS_PER_RUN` in the purge, `MAX_DAYS_PER_RUN`/`MAX_ROWS_PER_RUN` in `logs-archive`) so
-  the default clock is ample; every other route is a database query. ⚠ If `logs-archive` ever starts
+  the default clock is ample, and `publish` is a handful of updates; every other route is a database query. ⚠ If `logs-archive` ever starts
   failing a large day on the clock rather than on its own budget, the entry it needs is `maxDuration`,
   not memory — it streams a day a page at a time and never holds more than `ROWS_PER_PART` rows.
 

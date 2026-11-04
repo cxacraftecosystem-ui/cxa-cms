@@ -24,10 +24,13 @@ keystroke and a row.
 ## 1. System context
 
 One Next.js 16 application (App Router, React 19), one PostgreSQL database reached through Prisma,
-one S3-compatible object store. There is no second service, no queue, no cache tier and no search
-engine — and every one of those absences is a decision recorded below rather than a gap.
+one S3-compatible object store, and Amazon SES for the mail it sends (newsletter issues and password
+links). There is no second application service, no queue broker, no cache tier and no search engine —
+and every one of those absences is a decision recorded below rather than a gap. The newsletter's
+outbox is a table, drained by a cron route.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
     subgraph clients["Who talks to it"]
         reader["Reader<br/>public site"]
@@ -39,9 +42,11 @@ flowchart LR
     app["Next.js application<br/>app/(site) · app/studio · app/api"]
 
     subgraph stores["State"]
-        pg[("PostgreSQL<br/>Prisma, 56 models")]
+        pg[("PostgreSQL 17<br/>Prisma 7, node-postgres adapter")]
         s3[("S3-compatible object store<br/>originals + derivatives")]
     end
+
+    ses["Amazon SES<br/>newsletter + password links"]
 
     cdn["Public object base<br/>NEXT_PUBLIC_CDN_URL"]
 
@@ -55,6 +60,7 @@ flowchart LR
     reader -.->|"image bytes, never through the app"| cdn
     editor -.->|"presigned PUT, bytes never touch the app"| cdn
     cdn --- s3
+    app -->|"SendEmail, from the verified domain"| ses
 ```
 
 **Two arrows are dotted, and they are the load-bearing ones.** Image bytes and upload bytes never
@@ -70,17 +76,20 @@ Both are supported, both are documented in `DEPLOYMENT.md`, and the code is iden
 differs is how many copies of the process exist, and therefore what in-process state means.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart TB
     subgraph vercel["Vercel — serverless"]
         vfn["N short-lived function instances, bom1 (Mumbai)<br/>N changes with traffic"]
-        vcron["vercel.json crons<br/>/api/cron/purge, 03:17 UTC daily<br/>/api/cron/logs-archive, 03:41 UTC daily"]
+        vcron["vercel.json crons<br/>/api/cron/purge, 03:17 UTC daily<br/>/api/cron/logs-archive, 03:41 UTC daily<br/>/api/cron/newsletter-drain, 03:53 UTC daily"]
         gha["GitHub Actions 'Heartbeat'<br/>*/5 * * * * requested, hours apart in practice<br/>→ /api/cron/publish"]
-        vdb[("Supabase Postgres, ap-south-1<br/>DATABASE_URL: transaction pooler :6543<br/>DIRECT_DATABASE_URL: session pooler :5432, migrations")]
+        ghn["GitHub Actions 'Newsletter drain'<br/>*/5 * * * * requested<br/>→ /api/cron/newsletter-drain"]
+        vdb[("Supabase Postgres 17, ap-south-1<br/>DATABASE_URL: transaction pooler :6543<br/>DIRECT_DATABASE_URL: session pooler :5432, migrations")]
         vs3[("S3 / R2 / B2")]
         vfn --> vdb
         vfn --> vs3
         vcron --> vfn
         gha --> vfn
+        ghn --> vfn
         gha -.->|"psql select 1, a health check only"| vdb
     end
 
@@ -118,6 +127,7 @@ Three consequences of that split are worth carrying in your head, because each h
 ### 1.2 Route groups, and the one place a request is intercepted
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
     req(["Request"]) --> mw{"proxy.ts<br/>matcher: /studio, /studio/*, /api/studio/*"}
     mw -->|"no match — the whole public site"| site["app/(site)/**<br/>ISR, mostly 300s"]
@@ -168,6 +178,7 @@ today.
 ### 2.1 The pipeline, end to end
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart TB
     db[("page_sections<br/>type · position · data JSON · isVisible")]
     db --> read["getPublishedPage(slug)<br/>lib/pages.ts — React cache()"]
@@ -210,6 +221,7 @@ parse is cheap and its result is the value the renderer is typed against.
 ### 2.2 The four corners, and why none of them can drift
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
     enum["SectionType<br/>prisma/schema.prisma"]
     schemas["SECTION_SCHEMAS<br/>lib/sections/schema.ts<br/>satisfies Record&lt;SectionType, ZodTypeAny&gt;"]
@@ -269,6 +281,7 @@ Showcase blocks (`PROJECT_SHOWCASE`, `NEWS_SHOWCASE`, `PUBLICATION_LIST`, `CRAFT
 records from elsewhere in the CMS and keep themselves current.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart TB
     block["One showcase block's payload"] --> mode{"data.mode"}
 
@@ -315,6 +328,7 @@ Two more properties of the batched pass:
 ### 2.5 What a broken block does
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 stateDiagram-v2
     [*] --> Parsing
     Parsing --> Rendered: payload parses
@@ -360,6 +374,7 @@ compare `publishAt` / `unpublishAt` against `now` on every query. The cron is a 
 filters are the mechanism.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 stateDiagram-v2
     [*] --> DRAFT: created
 
@@ -387,6 +402,7 @@ stateDiagram-v2
 ### 3.1 What advances each transition
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart TB
     subgraph human["A person, through PATCH /api/studio/pages/[id]"]
         h1["publishTransition() — lib/studio/crud.ts"]
@@ -429,17 +445,23 @@ somebody re-saves it.
 **`/api/cron/publish` runs from GitHub Actions, not from `vercel.json`.**
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
     subgraph gh[".github/workflows/keep-warm.yml — 'Heartbeat', */5 * * * * requested"]
         w1["curl -H 'Authorization: Bearer CRON_SECRET'<br/>SITE_URL/api/cron/publish"]
         w2["psql 'select 1' — a health check<br/>runs whatever w1 did, gates nothing<br/>3 attempts, widening pause"]
         w1 --> w2
     end
+    subgraph nd[".github/workflows/newsletter-drain.yml — */5 * * * * requested"]
+        n1["POST SITE_URL/api/cron/newsletter-drain<br/>Bearer NEWSLETTER_DRAIN_SECRET"]
+    end
     subgraph vj["vercel.json — crons"]
         v1["/api/cron/purge — '17 3 * * *'"]
         v2["/api/cron/logs-archive — '41 3 * * *'"]
+        v3["/api/cron/newsletter-drain — '53 3 * * *', the daily fallback"]
     end
     gh --> app["The deployment"]
+    nd --> app
     vj --> app
 ```
 
@@ -447,7 +469,9 @@ The reason is blunt: **the Vercel Hobby plan refuses any cron that fires more th
 deploy is rejected outright with `Hobby accounts are limited to daily cron jobs` — so a page an
 editor scheduled for 10:00 would not appear until the following night. `/api/cron/purge` stays in
 `vercel.json`, because daily is all it ever wanted, and `/api/cron/logs-archive` joined it there for
-the same reason. The workflow's own header records two things it
+the same reason. The newsletter drain (October 2026) runs from both: every five minutes from its own
+workflow, with its own bearer, and once a day from `vercel.json` as the fallback that still sends if
+GitHub's schedule stalls. The workflow's own header records two things it
 cannot do, and they are worth reading before relying on it: GitHub's scheduler is best-effort, and
 over 100 runs from 2026-09-20 to 2026-10-08 it left a median of 263 minutes between runs (longest
 529), so the status column and the search index catch up hours after a scheduled date rather than
@@ -461,7 +485,8 @@ publishing. The database is Supabase now, which does not scale to zero; the publ
 check runs after it regardless, as a health signal and nothing more.
 
 > `DEPLOYMENT.md` §1.7 and `OPERATIONS.md` §3 now describe this arrangement rather than the one the
-> repository shipped with: three cron routes, two of them in `vercel.json` and the publish job here.
+> repository shipped with: four cron routes, three of them in `vercel.json`, the publish job in the
+> Heartbeat workflow and the newsletter drain in both.
 > They also name `logs-archive`'s two infrastructure preconditions, which are not in either file's
 > `crons` array and cannot be — a bucket policy and a lifecycle rule are not things code can set.
 
@@ -500,6 +525,7 @@ lock row.
 ### 4.1 Upload → presign → derivatives → delivery
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 sequenceDiagram
     autonumber
     participant B as Browser<br/>lib/client/upload.ts
@@ -507,16 +533,17 @@ sequenceDiagram
     participant S as Object store
     participant D as Postgres
 
-    B->>A: POST /api/studio/media/presign<br/>{ fileName, contentType, byteSize, kind }
-    Note over A: requireCapability(canManageMedia)<br/>ALLOW-LIST of content types, never a deny-list<br/>200 MB cap, server-side and authoritative<br/>buildObjectKey: media/YYYY/MM/&lt;16 hex&gt;-slug.ext<br/>NOTHING is written to the database here
-    A-->>B: { uploadUrl, headers, objectKey, expiresInSeconds: 900 }
+    B->>B: sha256Base64(file) — WebCrypto, lib/client/checksum.ts
+    B->>A: POST /api/studio/media/presign<br/>{ fileName, contentType, byteSize, kind, sha256 }
+    Note over A: requireCapability(canManageMedia)<br/>ALLOW-LIST of content types, never a deny-list<br/>per-kind caps from lib/storage/upload-limits.ts<br/>buildObjectKey: media/YYYY/MM/&lt;16 hex&gt;-slug.ext<br/>signs Content-Type, Content-Length and x-amz-checksum-sha256<br/>NOTHING is written to the database here
+    A-->>B: { uploadUrl, headers, objectKey, expiresInSeconds: 900, uploadTicket }
 
     B->>S: PUT uploadUrl — the raw File, headers replayed VERBATIM
-    Note over B,S: XMLHttpRequest, not fetch — fetch still cannot report upload progress.<br/>Stall watchdog resets on every progress event: 60 s idle, then 5 min<br/>grace after the last byte, because storage emits nothing while it finalises.<br/>3 uploads at a time.
+    Note over B,S: Storage itself refuses a body of another size, type or digest.<br/>XMLHttpRequest, not fetch — fetch still cannot report upload progress.<br/>Stall watchdog: 60 s idle, then 5 min grace after the last byte.<br/>3 uploads at a time.
     S-->>B: 200
 
-    B->>A: POST /api/studio/media/complete<br/>{ objectKey, fileName, contentType, byteSize, folderId? }
-    Note over A: 1. headObject FIRST — refuse when the object is absent<br/>2. cross-check the reported size; on mismatch DELETE the object<br/>3. the key must match ISSUED_MEDIA_KEY exactly<br/>4. SHA-256 duplicate check — never the filename<br/>5. generateDerivatives, sequentially<br/>6. row + variants + revision + audit in ONE transaction
+    B->>A: POST /api/studio/media/complete<br/>{ objectKey, fileName, contentType, byteSize, uploadTicket, folderId? }
+    Note over A: 1. verify the uploadTicket — HMAC, bound to key, user, size, type, digest; 24 h<br/>2. confirmUploadedObject: HEAD with checksum mode; any mismatch DELETES the object<br/>3. the key must match ISSUED_MEDIA_KEY exactly<br/>4. SHA-256 duplicate check — never the filename<br/>5. generateDerivatives, sequentially<br/>6. row + variants + revision + audit in ONE transaction
     A->>S: GET the object, then PUT thumb/sm/md/lg/xl/og × avif,webp
     A->>D: MediaAsset + MediaVariant[] + Revision + AuditLog
     A-->>B: the created MediaAsset, whole — it goes straight into the grid
@@ -525,8 +552,8 @@ sequenceDiagram
 ```
 
 ⚠ **Order matters in step 2 and in the purge.** Bytes first, row second, in both directions. On
-upload: a size mismatch deletes the object, because it is a key this endpoint issued and nothing
-references it. On purge (`/api/cron/purge`): a failure to delete the bytes **aborts** that asset's
+upload: a size, type or checksum mismatch against the ticket deletes the object, because it is a key
+this endpoint issued and nothing references it (`docs/security/2026-10-hardening.md` §2). On purge (`/api/cron/purge`): a failure to delete the bytes **aborts** that asset's
 row deletion — an orphan *row* pointing at nothing is visible, reported by the next run and fixable;
 an orphan *object* nothing references is invisible, unbilled to any feature, and accumulates forever.
 
@@ -555,6 +582,7 @@ picker and out of the pipeline.
 ### 4.2 ⚠ CraftPhoto and MediaImage are two components for two sources, and must not be merged
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart TB
     subgraph craft["CraftPhoto — components/site/CraftPhoto.tsx"]
         c1["Source: a file COMMITTED to public/,<br/>described by lib/media/craft-imagery.ts"]
@@ -602,6 +630,7 @@ password or a provider's signed token. **Authorisation** — *should they be her
 ### 5.1 Both sign-in paths converge on one gate
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart TB
     subgraph pw["Password — POST /api/auth/login"]
         p1["assertSameOrigin + rate limit"]
@@ -667,6 +696,7 @@ cannot.
 ### 5.2 Sessions: two cookies, one hint, and single-use refresh
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 stateDiagram-v2
     [*] --> Live: createSession — familyId = 16 random bytes
     Live --> Rotated: rotateSession — a NEW token, old row marked rotatedTo
@@ -746,6 +776,7 @@ it because Next redacts a server error's message in production.
 ### 6.1 Every write is audited, most are versioned
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
     call["A studio route handler"] --> mwh["mutateWithHistory(context, input, mutate)"]
     subgraph tx["ONE prisma.$transaction"]
@@ -780,13 +811,20 @@ kept apart for the same reason.
 `npm run leak-check` exists because a draft leaking to the public site is an omission across ninety-odd
 queries, which review misses structurally.
 
-The only writer of a real `DELETE` is `/api/cron/purge`, and only for media soft-deleted longer than
+Content is only ever hard-deleted by `/api/cron/purge`, and only for media soft-deleted longer than
 `MEDIA_PURGE_AFTER_DAYS` (30). A window shorter than a working fortnight turns "restore the
 photograph we deleted before the holidays" into a permanent loss.
+
+The one other real `DELETE` is a master administrator's **Delete permanently** on an account
+(`lib/auth/erase-account.ts`, since 2026-11-01). The `users` row is kept as a **tombstone** — every
+foreign key that points at it survives, so content stays credited to "Deleted admin" — while its
+sessions, linked sign-ins, edit locks and the address's own access-list entry are deleted. It cannot
+be restored, and one `DELETE` audit row records it (`OPERATIONS.md` §10).
 
 ### 6.3 Preview
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
     ed["PageBuilder"] -->|"PUT every 400 ms of quiet"| pd["/api/studio/pages/[id]/preview-draft<br/>validates EVERY block, refuses the draft WHOLE"]
     pd --> store["globalThis Map<br/>key = pageId + editorId<br/>TTL 10 min · ≤256 KB · ≤60 blocks · ≤32 entries"]
@@ -829,10 +867,11 @@ what appears on screen to what they just typed.
 
 `npm run check` = `typecheck` + `lint` + `route-check` + `media-select-check` +
 `screens-check` + `media-render-check` + `framing-select-check` + `video-check` + `font-check` +
-`theme-check`. CI
-(`.github/workflows/ci.yml`) runs the first three ahead of everything else, because they fail in
-about two minutes with no database and no build, and only then pays for a migrate, a seed, a build, a
-server and the two runtime checks:
+`theme-check` + `site-url-check`. CI (`.github/workflows/ci.yml`) runs the first three ahead of
+everything else, because they fail in about two minutes with no database and no build, and only then
+pays for a migrate, a seed, `npm test` (the Node test runner over `tests/**`: newsletter, security,
+storage and query counts, the `*.db.test.ts` files against the migrated database), a build, a server
+and the two runtime checks:
 
 - **`npm run smoke`** exists because typecheck, lint and route-check were **all green** while
   twenty-odd studio routes were unreachable. Nothing but a real request against a real server catches
@@ -852,8 +891,12 @@ NON-FUNCTIONAL with every gate green:
 | `framing-select-check` | A framed picture fetched without the framing column beside it, across twelve models where no shared fragment can carry it. |
 | `video-check` | The embed resolvers — facts about somebody else's product that no type can carry: Drive's `/view` refuses to be framed, its account segment moves between two products, YouTube's `loop` needs a playlist of itself, Vimeo's start time is a fragment. |
 
-⚠ **`font-check` and `theme-check` are in `npm run check` but not in `ci.yml`**, so they are yours to
-run locally. Both catch a class of defect every other gate is blind to *by construction*:
+⚠ **The eight checks after `route-check` are in `npm run check` but not in `ci.yml`**, so they are
+yours to run before every commit. `site-url-check` proves `siteUrl()` names the deployment it runs
+on: a configured `NEXT_PUBLIC_SITE_URL` always wins, a Vercel preview without one answers with its own
+address, and production without one still throws, because every password link, invitation and
+newsletter confirmation is `siteUrl()` plus a token. `font-check` and `theme-check` catch a class of
+defect every other gate is blind to *by construction*:
 `theme-check` finds a themed ink token used as a **scrim** under unconditionally-coloured text —
 `bg-ink-900/55` with `text-white` is near-black in the light theme and near-*white* in the dark one,
 so it shipped five times, including on the CC BY attribution chip whose entire job is to satisfy a

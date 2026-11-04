@@ -20,6 +20,7 @@ static render.
 ### 1.1 The cached hit, which is the ordinary case
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 sequenceDiagram
     autonumber
     participant B as Browser
@@ -37,6 +38,7 @@ sequenceDiagram
 ### 1.2 The miss, or the first request after the window lapses
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 sequenceDiagram
     autonumber
     participant B as Browser
@@ -72,6 +74,7 @@ sequenceDiagram
 ### 1.3 What happens at build, and what happens when the database is not there
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart TB
     build["next build"] --> gsp["generateStaticParams()"]
     gsp --> pp["prerenderParams('[...slug]', …)<br/>lib/prerender.ts"]
@@ -141,6 +144,7 @@ including the branch where the access token expired mid-edit — which is the br
 people out.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 sequenceDiagram
     autonumber
     participant U as Editor
@@ -200,6 +204,7 @@ sequenceDiagram
 ### 2.2 The lock, which never refuses anybody
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 sequenceDiagram
     participant E1 as Editor A
     participant E2 as Editor B
@@ -224,6 +229,7 @@ sequenceDiagram
 ### 2.3 Where a permission is actually enforced
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
     client["Client: lib/permissions.ts predicate<br/>hides the control entirely — never renders it disabled"]
     page["Server Component: requireStudioCapability()<br/>→ forbidden() → app/studio/forbidden.tsx, a real 403"]
@@ -247,6 +253,7 @@ out in the header of `lib/client/upload.ts` **and** in the two route headers, de
 because these are the two halves of one feature living in separate files.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 sequenceDiagram
     autonumber
     participant U as Editor
@@ -256,32 +263,34 @@ sequenceDiagram
     participant P as Postgres
 
     U->>C: drops 12 files
-    Note over C: Client-side refusals first — over MAX_UPLOAD_BYTES (200 MB), or a<br/>content type outside the ALLOW-LIST. Refusing here saves the editor<br/>a 200 MB upload that was always going to fail.<br/>UPLOAD_CONCURRENCY = 3: twenty parallel PUTs on a domestic uplink<br/>make every one of them slow and the first failure ambiguous.
+    Note over C: Client-side refusals first — over the per-kind cap in lib/storage/upload-limits.ts<br/>(images 150 MB, video and 3D 200 MB, audio and documents 100 MB), or a content<br/>type outside the ALLOW-LIST. The browser and the routes read the same numbers.<br/>UPLOAD_CONCURRENCY = 3: twenty parallel PUTs on a domestic uplink<br/>make every one of them slow and the first failure ambiguous.
 
     loop per file, 3 at a time
-        C->>A: POST /api/studio/media/presign
-        A->>A: requireCapability(canManageMedia) · assertSameOrigin<br/>server-side allow-list and 200 MB cap (authoritative)<br/>buildObjectKey → media/YYYY/MM/&lt;16 hex&gt;-slug.ext
+        C->>C: sha256Base64(file) — WebCrypto, lib/client/checksum.ts (https or localhost only)
+        C->>A: POST /api/studio/media/presign { fileName, contentType, byteSize, kind, sha256 }
+        A->>A: requireCapability(canManageMedia) · assertSameOrigin<br/>server-side allow-list and per-kind cap (authoritative)<br/>buildObjectKey → media/YYYY/MM/&lt;16 hex&gt;-slug.ext<br/>signs Content-Type, Content-Length and x-amz-checksum-sha256
         Note over A,P: NOTHING is written to the database. A signed URL is a promise, not a fact.
-        A-->>C: { uploadUrl, headers, objectKey, expiresInSeconds: 900 }
+        A-->>C: { uploadUrl, headers, objectKey, expiresInSeconds: 900, uploadTicket }
 
         C->>S: PUT uploadUrl — the raw File, `headers` replayed VERBATIM
-        Note over C,S: ⚠ Content-Type is part of the SigV4 signature. Sending a different one<br/>returns SignatureDoesNotMatch, which reads as a credentials problem.<br/>XMLHttpRequest, not fetch — fetch still cannot report upload progress.<br/>Stall watchdog: reset on every progress event, 60 s idle;<br/>re-armed for 5 min after the last byte, because storage emits no<br/>progress at all while it finalises a large object.
+        Note over C,S: Storage itself refuses a body of another type, size or digest.<br/>⚠ Content-Type is part of the SigV4 signature; a different one returns<br/>SignatureDoesNotMatch, which reads as a credentials problem.<br/>XMLHttpRequest, not fetch — fetch still cannot report upload progress.<br/>Stall watchdog: 60 s idle; re-armed for 5 min after the last byte.
         S-->>C: 200
 
-        C->>A: POST /api/studio/media/complete
-        A->>S: headObject(objectKey)
+        C->>A: POST /api/studio/media/complete { objectKey, …, uploadTicket }
+        A->>A: verifyUploadTicket — HMAC under JWT_SECRET, bound to the key and the user, 24 h
+        A->>S: confirmUploadedObject — HEAD with checksum mode
         alt the object is not there
             A-->>C: refused — trusting the browser's "done" is how a row ends up<br/>pointing at a key that was never written
-        else the size disagrees with what was reported
+        else size, checksum or type differ from the ticket
             A->>S: DELETE the object
-            A-->>C: 400 — the bytes are not the bytes that were described,<br/>and it is a key THIS endpoint issued, so nothing references it
+            A-->>C: 400 — the bytes are not the bytes that were signed,<br/>and it is a key THIS endpoint issued, so nothing references it
         else the key is not one this endpoint could have issued
             A-->>C: 400 — ISSUED_MEDIA_KEY is a full pattern, not a prefix check,<br/>so a VARIANT key is rejected too
         else
-            A->>S: GET the object bytes
-            A->>A: SHA-256 (skipped above CHECKSUM_MAX_BYTES = 128 MB, and SAID SO)
+            A->>A: the stored checksum is storage's own verified digest — no second download to hash
             A->>P: byte-identical assets? reported, never silently merged
-            A->>A: generateDerivatives — SEQUENTIALLY, skipped above DERIVE_MAX_BYTES = 80 MB
+            A->>S: GET the bytes, only when the picture is derivable
+            A->>A: generateDerivatives — SEQUENTIALLY, skipped above DERIVE_MAX_BYTES = 80 MB, and SAID SO
             A->>S: PUT thumb·sm·md·lg·xl·og × avif,webp
             A->>P: MediaAsset + MediaVariant[] + Revision + AuditLog — ONE transaction
             alt the transaction rolls back
@@ -301,21 +310,28 @@ editor sees a success toast, the library is short two photographs, and nobody fi
 is published with a gap in it. **Inspect `failed` and name the files.** `summariseFailures()` exists
 so that sentence is not reinvented at each call site.
 
-### 3.1 Where the allow-list lives, three times over
+### 3.1 Where the allow-list and the caps live
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 flowchart LR
-    c["lib/client/upload.ts<br/>CONTENT_TYPE_KINDS · MAX_UPLOAD_BYTES"]
-    p["media/presign/route.ts<br/>ALLOWED_CONTENT_TYPES · MAX_UPLOAD_BYTES"]
+    l["lib/storage/upload-limits.ts<br/>per-kind caps · sha256 format<br/>no imports"]
+    c["lib/client/upload.ts<br/>CONTENT_TYPE_KINDS"]
+    p["media/presign/route.ts<br/>ALLOWED_CONTENT_TYPES"]
     k["media/complete/route.ts<br/>CONTENT_TYPE_KINDS"]
+    l --> c
+    l --> p
+    l --> k
     c -.->|"restated, NOT imported"| p
     p -.->|"restated, NOT imported"| k
 ```
 
-They are restated because `lib/client/upload.ts` is `"use client"`: importing it from a route handler
-replaces the module with client references, and reading a plain constant from it fails at runtime.
-The browser's copy exists to refuse a 500 MB file before a byte leaves the machine; the server's is
-the one that actually matters. **All three must move together.**
+**The size caps live once**, in `lib/storage/upload-limits.ts`, which has no imports so the browser and
+every route can read it (October 2026 hardening, `security/2026-10-hardening.md` §2). **The
+content-type lists are still restated**, because `lib/client/upload.ts` is `"use client"`: importing it
+from a route handler replaces the module with client references, and reading a plain constant from it
+fails at runtime. The browser's copy exists to refuse a file before a byte leaves the machine; the
+server's is the one that actually matters. **All three type lists must move together.**
 
 ### 3.2 Two upload failures that produce no application error at all
 
@@ -337,6 +353,7 @@ Worth tracing once, because it is the only path where a render deliberately read
 not in the database.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif","fontSize":"15px","primaryColor":"#F2E9FE","primaryTextColor":"#1E1B2E","primaryBorderColor":"#9148D2","secondaryColor":"#FAEECD","secondaryTextColor":"#1E1B2E","secondaryBorderColor":"#CD9200","tertiaryColor":"#F3F1FA","tertiaryTextColor":"#1E1B2E","tertiaryBorderColor":"#A7A3BC","mainBkg":"#F2E9FE","nodeBorder":"#9148D2","nodeTextColor":"#1E1B2E","lineColor":"#AA69E9","textColor":"#857F9E","edgeLabelBackground":"#F9F5FF","clusterBkg":"#F9F5FF","clusterBorder":"#D6B6FB","titleColor":"#762CB1","noteBkgColor":"#FAEECD","noteTextColor":"#1E1B2E","noteBorderColor":"#CD9200","actorBkg":"#F2E9FE","actorBorder":"#9148D2","actorTextColor":"#1E1B2E","actorLineColor":"#AA69E9","signalColor":"#AA69E9","signalTextColor":"#857F9E","labelBoxBkgColor":"#F2E9FE","labelBoxBorderColor":"#9148D2","labelTextColor":"#1E1B2E","loopTextColor":"#857F9E","activationBkgColor":"#E7D5FE","activationBorderColor":"#9148D2","sequenceNumberColor":"#FFFFFF","transitionColor":"#AA69E9","transitionLabelColor":"#857F9E","stateLabelColor":"#1E1B2E","stateBkg":"#F2E9FE","compositeBackground":"#F9F5FF","compositeTitleBackground":"#F2E9FE","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F9F5FF","relationColor":"#AA69E9","relationLabelBackground":"#F9F5FF","relationLabelColor":"#1E1B2E"}}}%%
 sequenceDiagram
     autonumber
     participant PB as PageBuilder
