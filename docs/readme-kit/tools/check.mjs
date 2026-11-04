@@ -113,8 +113,9 @@ function svgFiles(extra) {
 
 function checkSvg(file) {
   const name = rel(file);
-  const size = statSync(file).size;
-  const s = readFileSync(file, "utf8");
+  const buf = readFileSync(file);
+  const size = buf.length;
+  const s = buf.toString("utf8");
   if (size > SVG_BUDGET) fail(`${name}: ${size} bytes, over the ${SVG_BUDGET}-byte budget`);
   if (/<script\b/i.test(s)) fail(`${name}: contains <script>`);
   if (/<foreignObject\b/i.test(s)) fail(`${name}: contains <foreignObject>`);
@@ -179,7 +180,11 @@ function checkRendered(htmlFile, mdFile) {
   const src = stripFences(readFileSync(mdFile, "utf8"));
   const name = rel(resolve(mdFile));
   if (html.trim().length < 20) fail(`${name}: GitHub rendered almost nothing`);
-  const prose = html.replace(/<pre[^]*?<\/pre>/g, "").replace(/<code[^]*?<\/code>/g, "").replace(/<[^>]*>/g, "");
+  let prose = html;
+  for (let prev = ""; prose !== prev; ) {
+    prev = prose;
+    prose = prose.replace(/<pre[^]*?<\/pre>/g, "").replace(/<code[^]*?<\/code>/g, "").replace(/<[^>]*>/g, "");
+  }
   for (const tag of ["picture", "source", "img", "p", "div", "table", "td", "tr", "br", "sub", "b", "a"]) {
     if (new RegExp(`&lt;/?${tag}\\b`).test(prose)) fail(`${name}: GitHub escaped a <${tag}> tag, so the HTML around it is malformed`);
   }
