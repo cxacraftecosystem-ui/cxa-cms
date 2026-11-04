@@ -39,7 +39,7 @@
 
 <circle cx="763.3" cy="112" r="8" fill="#1A1725" stroke="#C090F5" stroke-width="3"/>
 <text x="763.3" y="156" class="d" fill="#F2F0F9" font-size="16" font-weight="700" text-anchor="middle">Newsletter</text>
-<text x="763.3" y="179" class="s" fill="#9E98B2" font-size="13" text-anchor="middle">SES, hardening, Prisma</text><text x="763.3" y="198" class="s" fill="#9E98B2" font-size="13" text-anchor="middle">7</text>
+<text x="763.3" y="179" class="s" fill="#9E98B2" font-size="13" text-anchor="middle">SES mail and Prisma 7</text>
 </g>
 <g class="rise r5">
 <text x="926.7" y="82" class="m" fill="#D6B6FB" font-size="12" font-weight="600" letter-spacing="1.2" text-anchor="middle">22 OCT</text>

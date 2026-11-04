@@ -39,7 +39,7 @@
       { "icon": "layers", "kicker": "Surfaces", "value": "2", "label": "Public site and studio, one app" },
       { "icon": "workflow", "kicker": "States", "value": "5", "label": "Draft to archived" },
       { "icon": "lock", "kicker": "Sign-in", "value": "4", "label": "Password, Google, Microsoft, Yahoo" },
-      { "icon": "badge-check", "kicker": "Checks", "value": "4", "label": "Layers between a change and production" }
+      { "icon": "badge-check", "kicker": "Checks", "value": "4", "label": "Layers before production" }
     ]
   },
   "timeline": {
@@ -49,7 +49,7 @@
       { "date": "17 Aug", "title": "Framing", "sub": "Crops per screen size" },
       { "date": "16 Sep", "title": "Access logs", "sub": "Kept for the institute" },
       { "date": "9 Oct", "title": "Next 16.4", "sub": "TypeScript 7, served from Mumbai" },
-      { "date": "10 Oct", "title": "Newsletter", "sub": "SES, hardening, Prisma 7" },
+      { "date": "10 Oct", "title": "Newsletter", "sub": "SES mail and Prisma 7" },
       { "date": "22 Oct", "title": "Faster", "sub": "Batched writes, SQL filters" },
       { "date": "1 Nov", "title": "Node 26", "sub": "Permanent account delete", "now": true }
     ]

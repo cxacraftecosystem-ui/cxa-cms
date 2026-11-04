@@ -38,6 +38,6 @@
 <text x="980" y="50" class="s" fill="#9E98B2" font-size="13" font-weight="600" letter-spacing=".6">CHECKS</text>
 <text x="934" y="114" class="d" fill="#F2F0F9" font-size="44" font-weight="800" letter-spacing="-1">4</text>
 <path class="bar" style="animation-delay:0.8s" d="M935 128 h27" stroke="#C090F5" stroke-width="3" stroke-linecap="round"/>
-<text x="934" y="152" class="s" fill="#D0CBDF" font-size="14">Layers between a change and production</text>
+<text x="934" y="152" class="s" fill="#D0CBDF" font-size="14">Layers before production</text>
 </g>
 </svg>
