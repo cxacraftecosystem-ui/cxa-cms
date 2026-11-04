@@ -125,11 +125,18 @@ const VIEW = { width: 1280, height: 1000 };
 
 async function shoot(page, section, path) {
   const box = await section.boundingBox().catch(() => null);
-  const h = box ? Math.ceil(box.height) + 80 : VIEW.height;
+  const h = box ? Math.ceil(box.height) + 320 : VIEW.height;
   if (h > VIEW.height) await page.setViewportSize({ width: VIEW.width, height: Math.min(h, 16000) });
-  await section.evaluate((el) => el.scrollIntoView({ block: "start" })).catch(() => {});
-  await page.waitForTimeout(h > VIEW.height ? 1500 : 300);
-  await section.screenshot({ path }).catch(() => {});
+  await section
+    .evaluate((el) => {
+      el.scrollIntoView({ block: "start" });
+      window.scrollBy(0, -200);
+    })
+    .catch(() => {});
+  await page.waitForTimeout(h > VIEW.height ? 1500 : 500);
+  const clip = await section.boundingBox().catch(() => null);
+  if (clip) await page.screenshot({ path, clip: { x: clip.x, y: Math.max(0, clip.y), width: clip.width, height: clip.height } }).catch(() => {});
+  else await section.screenshot({ path }).catch(() => {});
   if (h > VIEW.height) await page.setViewportSize(VIEW);
 }
 
