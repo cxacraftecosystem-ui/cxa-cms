@@ -181,8 +181,9 @@ async function inspect(section) {
         }
         const cx = (t.left + t.right) / 2;
         const cy = (t.top + t.bottom) / 2;
+        const kind = kindOf(el);
         let best = null;
-        for (const sh of shapes) {
+        for (const sh of kind === "edge" || kind === "message" ? [] : shapes) {
           const r = sh.r;
           if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
           if (!best || r.width * r.height < best.r.width * best.r.height) best = sh;
@@ -197,7 +198,7 @@ async function inspect(section) {
         if (seen.has(key)) continue;
         seen.add(key);
         const o = over.sort((a, b) => Math.max(b.dx, b.dy) - Math.max(a.dx, a.dy))[0];
-        clips.push({ kind: kindOf(el), text: text.slice(0, 80), box: o.box, dx: Math.round(o.dx * 10) / 10, dy: Math.round(o.dy * 10) / 10, tw: Math.round(o.tw), bw: Math.round(o.bw) });
+        clips.push({ kind, text: text.slice(0, 80), box: o.box, dx: Math.round(o.dx * 10) / 10, dy: Math.round(o.dy * 10) / 10, tw: Math.round(o.tw), bw: Math.round(o.bw) });
       }
       return {
         body,

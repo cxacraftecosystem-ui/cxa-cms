@@ -48,7 +48,7 @@ sequenceDiagram
     B->>N: GET /about/history (cold, or stale)
 
     N->>P: getPublishedPage("about/history")
-    Note over N,P: generateMetadata and the page body are two passes over one request,<br/>and getPublishedPage is cache()-wrapped, so they cost ONE query.<br/>livePublishableWhere() compares publishAt / unpublishAt against now —<br/>publication is resolved HERE, not by a cron.
+    Note over N,P: generateMetadata and the page body are two<br/>passes over one request, and getPublishedPage<br/>is cache()-wrapped, so they cost ONE query.<br/>livePublishableWhere() compares publishAt /<br/>unpublishAt against now — publication is<br/>resolved HERE, not by a cron.
     P-->>N: Page + PageSection[] ordered by position
 
     alt no row
@@ -64,7 +64,7 @@ sequenceDiagram
         Note over N,B: NOT a 404 — the address is correct and a citation of it is not wrong.<br/>NOT a blank frame either: an empty main between a header and a footer<br/>reads as a site that has broken (contract §1.6).
     else
         N->>P: resolveSectionData(sections)
-        Note over N,P: ONE prisma.$transaction: every showcase, every named media asset,<br/>every census count. Blocks with identical criteria share a query.<br/>One `now` for the whole page, so two blocks can never disagree<br/>about what is published.
+        Note over N,P: ONE prisma.$transaction: every showcase, every<br/>named media asset, every census count. Blocks<br/>with identical criteria share a query. One<br/>`now` for the whole page, so two blocks can<br/>never disagree about what is published.
         P-->>N: rows, totals, droppedIds
         N->>N: SectionRenderer dispatches each block through RENDERERS[type]
         N-->>B: 200 + the render is written into the cache for the next 300 s
@@ -164,7 +164,7 @@ sequenceDiagram
         MW->>H: pass through
     else expired, and this is an /api/studio/* request
         MW-->>F: 401 JSON in ApiErrorBody shape
-        Note over MW,F: ⚠ NEVER a redirect. `fetch` follows one transparently and would<br/>arrive at the refresh route having lost the method and the body,<br/>then report a save as successful.
+        Note over MW,F: ⚠ NEVER a redirect. `fetch` follows one<br/>transparently and would arrive at the refresh<br/>route having lost the method and the body,<br/>then report a save as successful.
         F->>F: refreshOnce() — a MODULE-LEVEL shared promise
         Note over F: A studio screen commonly has 4–5 requests in flight. Ten<br/>concurrent rotations of ONE refresh token is exactly what<br/>lib/auth/session.ts treats as THEFT: the second presentation of a<br/>rotated token revokes the whole family. So ten 401s join one refresh.
         F->>RF: plain fetch, never apiFetch — a 401 here must not recurse

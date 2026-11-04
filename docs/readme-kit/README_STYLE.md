@@ -236,6 +236,8 @@ Rules:
   quote ends the label and `<` starts a tag. Write mermaid's own codes, `#lt;`, `#gt;`, `#quot;`, `#amp;`.
 - No `;` in a label outside a quoted string: it ends the statement and the rest becomes stray nodes.
 - No `<b>` or other tags in sequence diagram messages and notes; GitHub prints them as text.
+- A sequence note line is at most about 45 characters; break longer notes with `<br/>`. A note over two
+  participants is as wide as the gap between them, so a longer line runs out of its box.
 - The font stack is the top-level `"fontFamily"`, never `themeVariables.fontFamily`. Mermaid sizes every
   box for the top-level font; a themeVariables font never reaches the labels on github.com, which draws
   them in its own Helvetica stack, so on Windows and macOS, where Trebuchet MS (mermaid's default) is
@@ -411,7 +413,7 @@ and the generated `assets/` differ. Improve the kit in designer-portal first, th
 | Image references | a local image is missing, a GIF is over 3 MB, a raster is over 1 MB, a `<picture>` lacks the dark source or `alt` |
 | Mermaid | any block in `README.md`, `docs/**` or `.claude/skills/**` fails to render in mermaid-cli, run on the mermaid release github.com ships and with GitHub's `securityLevel` and layout settings; a block without `%%{init}%%` is a warning (`--strict` makes it an error) |
 | GitHub render | `gh api markdown` escapes an HTML tag, leaks a code fence, or drops a `<picture>` or mermaid block; a file over the API's 400 KB limit is skipped with a warning |
-| github.com renders every mermaid block | the authoritative check. Playwright opens each tracked Markdown file with a mermaid block at the pushed commit on github.com and fails when a block's viewer shows an error, draws no SVG, draws NaN coordinates or prints raw markup, when a block is missing from the page, when a block uses an HTML entity or a statement-ending `;` in a label or a `themeVariables.fontFamily` without the same top-level `fontFamily`, or when any label's text (node, entity, attribute, edge, actor, note, message or cluster title) is more than 2 px wider or taller than its label box or wider than the shape it sits in. On Linux it draws `"trebuchet ms"` and Verdana in a condensed face and Helvetica and Arial in Liberation Sans, so a box sized for one font and drawn in another overflows as it does on Windows and macOS |
+| github.com renders every mermaid block | the authoritative check. Playwright opens each tracked Markdown file with a mermaid block at the pushed commit on github.com and fails when a block's viewer shows an error, draws no SVG, draws NaN coordinates or prints raw markup, when a block is missing from the page, when a block uses an HTML entity or a statement-ending `;` in a label or a `themeVariables.fontFamily` without the same top-level `fontFamily`, or when any label's text (node, entity, attribute, edge, actor, note, message or cluster title) is more than 2 px wider or taller than its label box or, except for edge labels and messages, wider than the shape it sits in. On Linux it draws `"trebuchet ms"` and Verdana in a condensed face and Helvetica and Arial in Liberation Sans, so a box sized for one font and drawn in another overflows as it does on Windows and macOS |
 
 The `readme-preview` artifact holds PNGs of every asset and diagram in light, dark and reduced motion, and
 full-page screenshots of `README.md` and `docs/README.md` as GitHub renders them (`gh api markdown`), with
