@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="award">
+<title>award</title>
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#762CB1"/><stop offset="1" stop-color="#2F0D4B"/></linearGradient></defs>
+<rect x="1" y="1" width="46" height="46" rx="13" fill="url(#g)" stroke="#C090F5" stroke-opacity=".55" stroke-width="1.5"/>
+<g transform="translate(12 12) scale(1)" fill="none" stroke="#F9F5FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526"/><circle cx="12" cy="8" r="6"/></g>
+</svg>

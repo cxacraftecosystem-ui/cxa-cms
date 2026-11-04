@@ -4,6 +4,7 @@
   "regions": ["bom1"],
   "installCommand": "npm install -g npm@12.2.1 && npm ci",
   "buildCommand": "prisma generate && if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy; fi && next build",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':!*.md' ':!docs'",
   "crons": [
     {
       "path": "/api/cron/purge",

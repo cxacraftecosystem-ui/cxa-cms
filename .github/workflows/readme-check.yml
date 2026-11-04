@@ -1,0 +1,123 @@
+name: README check
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "docs/readme-kit/**"
+      - "docs/**/*.md"
+      - ".claude/skills/**"
+      - ".github/workflows/readme-check.yml"
+  push:
+    paths:
+      - "README.md"
+      - "docs/readme-kit/**"
+      - "docs/**/*.md"
+      - ".claude/skills/**"
+      - ".github/workflows/readme-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: readme-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readme:
+    name: README check
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      MERMAID_CLI_VERSION: "12.2.0"
+      PUPPETEER_VERSION: "25.16.0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+
+      - name: Kit assets match kit.json
+        run: |
+          node docs/readme-kit/tools/build.mjs
+          drift="$(git status --porcelain -- docs/readme-kit/assets)"
+          if [ -n "$drift" ]; then
+            echo "$drift"
+            echo "::error::docs/readme-kit/assets is out of date; run node docs/readme-kit/tools/build.mjs and commit the result"
+            exit 1
+          fi
+
+      - name: SVG rules
+        run: node docs/readme-kit/tools/check.mjs svg --list "$RUNNER_TEMP/svgs.txt"
+
+      - name: SVGs are well-formed XML
+        run: |
+          command -v xmllint >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq libxml2-utils; }
+          xargs -d '\n' -a "$RUNNER_TEMP/svgs.txt" xmllint --noout
+          echo "$(wc -l < "$RUNNER_TEMP/svgs.txt") SVG file(s) parsed by xmllint"
+
+      - name: Image references and budgets
+        run: node docs/readme-kit/tools/check.mjs refs
+
+      - name: Install mermaid-cli
+        run: npm install --global "@mermaid-js/mermaid-cli@${MERMAID_CLI_VERSION}"
+
+      - name: Every mermaid block renders
+        run: |
+          out="$RUNNER_TEMP/mermaid"
+          node docs/readme-kit/tools/check.mjs mermaid --out "$out"
+          printf '{"args":["--no-sandbox"]}' > "$RUNNER_TEMP/puppeteer.json"
+          status=0
+          while IFS=$'\t' read -r name origin; do
+            [ -n "$name" ] || continue
+            if mmdc -q -b transparent -p "$RUNNER_TEMP/puppeteer.json" -i "$out/$name" -o "$out/${name%.mmd}.svg"; then
+              echo "ok    $origin"
+            else
+              echo "::error::$origin: the mermaid block does not render"
+              status=1
+            fi
+          done < "$out/manifest.tsv"
+          exit "$status"
+
+      - name: GitHub renders the Markdown
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/rendered"
+          status=0
+          for md in $(node docs/readme-kit/tools/check.mjs files); do
+            html="$RUNNER_TEMP/rendered/${md//\//_}.html"
+            if [ "$(wc -c < "$md")" -gt 400000 ]; then
+              echo "::warning file=$md::larger than the 400 KB the Markdown API renders; its mermaid blocks are still checked above"
+              continue
+            fi
+            if ! jq -Rs --arg ctx "$GITHUB_REPOSITORY" '{text: ., mode: "gfm", context: $ctx}' "$md" | gh api markdown --input - > "$html"; then
+              echo "::error file=$md::gh api markdown refused this file"
+              status=1
+              continue
+            fi
+            node docs/readme-kit/tools/check.mjs rendered "$html" "$md" || status=1
+          done
+          exit "$status"
+
+      - name: Render a preview
+        if: ${{ !cancelled() }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pp" --no-save "puppeteer@${PUPPETEER_VERSION}"
+          PUPPETEER_DIR="$RUNNER_TEMP/pp/node_modules" node docs/readme-kit/tools/preview.mjs "$RUNNER_TEMP/preview" "$RUNNER_TEMP/mermaid" "$RUNNER_TEMP/rendered"
+
+      - name: Upload the preview
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: readme-preview
+          path: |
+            ${{ runner.temp }}/preview
+            ${{ runner.temp }}/mermaid
+            ${{ runner.temp }}/rendered
+          retention-days: 14
+          if-no-files-found: ignore

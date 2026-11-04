@@ -1,0 +1,64 @@
+{
+  "hero": {
+    "eyebrow": "Centre of Excellence · IIT Kharagpur",
+    "name": "CxA Portal",
+    "titleWrap": 17,
+    "tagline": "The Centre's public site and the invisible studio behind it: a living archive of Indian craft, written, previewed, published and audited in one Next.js app.",
+    "chips": ["Next.js 16", "React 19", "Prisma 7", "Postgres 17", "Vercel · Mumbai"],
+    "motifCaption": "archive · publish · preserve",
+    "label": "CxA Portal: the Centre of Excellence's public site and the invisible studio that publishes it"
+  },
+  "cards": {
+    "label": "What the portal does: public site, studio, typed sections, publishing, media, access, audit, newsletter and verification",
+    "columns": 3,
+    "items": [
+      { "icon": "globe", "tag": "Public site", "title": "A living archive", "body": "Research, people, projects, publications, news, events and crafts, prerendered, cinematic and fast." },
+      { "icon": "pen-tool", "tag": "Studio", "title": "The invisible CMS", "body": "No link points to it. Editors reach /studio by address, a shortcut or seven clicks on the footer mark." },
+      { "icon": "layers", "tag": "Sections", "title": "Typed blocks, no migrations", "body": "A page is ordered, typed sections. A new block is a schema, a renderer and an editor form." },
+      { "icon": "workflow", "tag": "Publishing", "title": "Resolved at read time", "body": "Draft, review, schedule, publish, archive. The read filters decide what is live, so a late cron leaks nothing." },
+      { "icon": "camera", "tag": "Media", "title": "Straight to storage", "body": "Signed uploads skip the server, derivatives are made once, and every picture is framed per screen size." },
+      { "icon": "shield-check", "tag": "Access", "title": "An access list first", "body": "Password, Google, Microsoft or Yahoo proves who you are; the master admin's list decides if you get in." },
+      { "icon": "scroll-text", "tag": "Audit", "title": "Every write, with its trail", "body": "The row, its revision and its audit entry commit together. Nothing an editor deletes is lost." },
+      { "icon": "mail", "tag": "Newsletter", "title": "Composed in the studio", "body": "Issues are written in the studio and sent through Amazon SES from an outbox drained on a schedule." },
+      { "icon": "badge-check", "tag": "Verification", "title": "Four layers in CI", "body": "Types and lint, route-check, a signed-in smoke run and a leak check that hunts drafts on the public site." }
+    ]
+  },
+  "pipeline": {
+    "label": "How a page goes live: draft, review, schedule, publish, archive",
+    "stages": [
+      { "icon": "pen-tool", "title": "Draft", "sub": "Typed sections, live preview" },
+      { "icon": "badge-check", "title": "Review", "sub": "An editor checks and approves" },
+      { "icon": "gauge", "title": "Schedule", "sub": "Embargo and expiry times" },
+      { "icon": "globe", "title": "Publish", "sub": "Revalidated, served from bom1" },
+      { "icon": "archive", "title": "Archive", "sub": "Soft delete, recycle bin" }
+    ]
+  },
+  "stats": {
+    "label": "At a glance: two surfaces, five publication states, four ways to sign in, four verification layers",
+    "tiles": [
+      { "icon": "layers", "kicker": "Surfaces", "value": "2", "label": "Public site and studio, one app" },
+      { "icon": "workflow", "kicker": "States", "value": "5", "label": "Draft to archived" },
+      { "icon": "lock", "kicker": "Sign-in", "value": "4", "label": "Password, Google, Microsoft, Yahoo" },
+      { "icon": "badge-check", "kicker": "Checks", "value": "4", "label": "Layers between a change and production" }
+    ]
+  },
+  "timeline": {
+    "label": "Release history: from the first commit to Node 26",
+    "items": [
+      { "date": "16 Aug", "title": "Launch", "sub": "Site, studio, sections, media" },
+      { "date": "17 Aug", "title": "Framing", "sub": "Crops per screen size" },
+      { "date": "16 Sep", "title": "Access logs", "sub": "Kept for the institute" },
+      { "date": "9 Oct", "title": "Next 16.4", "sub": "TypeScript 7, served from Mumbai" },
+      { "date": "10 Oct", "title": "Newsletter", "sub": "SES, hardening, Prisma 7" },
+      { "date": "22 Oct", "title": "Faster", "sub": "Batched writes, SQL filters" },
+      { "date": "1 Nov", "title": "Node 26", "sub": "Permanent account delete", "now": true }
+    ]
+  },
+  "divider": { "label": "Section divider" },
+  "footer": {
+    "title": "A living archive of Indian craft.",
+    "sub": "Unified AI-Enabled Craft Ecosystem · IIT Kharagpur · DC (Handicrafts)",
+    "label": "A living archive of Indian craft. Centre of Excellence for a Unified AI-Enabled Craft Ecosystem, IIT Kharagpur, with the Development Commissioner (Handicrafts)."
+  },
+  "icons": "all"
+}

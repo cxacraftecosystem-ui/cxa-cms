@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="262" viewBox="0 0 1200 262" role="img" aria-label="How a page goes live: draft, review, schedule, publish, archive">
+<title>How a page goes live: draft, review, schedule, publish, archive</title>
+<defs>
+<style>.d{font-family:'Plus Jakarta Sans','Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}.s{font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}.m{font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace}.rise{animation:rise .9s cubic-bezier(.2,.7,.2,1) both}@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.flow{stroke-dasharray:3 13;animation:flow 1.6s linear infinite}@keyframes flow{to{stroke-dashoffset:-32}}.prog{stroke-dasharray:980;stroke-dashoffset:0;animation:prog 8s linear infinite}@keyframes prog{0%{stroke-dashoffset:980}70%{stroke-dashoffset:0}95%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}.ring{opacity:0;animation:ring 8s ease-out infinite;transform-box:fill-box;transform-origin:center}@keyframes ring{0%{opacity:.85;transform:scale(1)}15%{opacity:0;transform:scale(1.55)}100%{opacity:0}}.r0{animation-delay:0.1s}.r1{animation-delay:0.2s}.r2{animation-delay:0.3s}.r3{animation-delay:0.5s}.r4{animation-delay:0.6s}@media (prefers-reduced-motion:reduce){*{animation:none!important}.smil{display:none}.sweep{fill:url(#still)}}</style>
+<linearGradient id="pg" gradientUnits="userSpaceOnUse" x1="110" y1="0" x2="1090" y2="0"><stop offset="0" stop-color="#762CB1"/><stop offset="1" stop-color="#CD9200"/></linearGradient>
+<filter id="glow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<path d="M110 92 H1090" stroke="#DCD7EE" stroke-width="4" stroke-linecap="round" fill="none"/>
+<path class="prog" d="M110 92 H1090" stroke="url(#pg)" stroke-width="4" stroke-linecap="round" fill="none"/>
+<path class="flow" d="M110 92 H1090" stroke="#FFFFFF" stroke-opacity=".9" stroke-width="2" stroke-linecap="round" fill="none"/>
+<g class="smil"><circle r="6" fill="#CD9200" filter="url(#glow)"><animateMotion dur="8s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;0.7;1" calcMode="linear" path="M110 92 H1090"/></circle></g>
+<g class="rise r0">
+<circle class="ring" style="animation-delay:0s" cx="110" cy="92" r="36" fill="none" stroke="#762CB1" stroke-width="2"/>
+<circle cx="110" cy="92" r="36" fill="#FFFFFF" stroke="#E7D5FE" stroke-width="2"/>
+<circle cx="110" cy="92" r="27" fill="#F9F5FF"/>
+<g transform="translate(97 79) scale(1.0833)" fill="none" stroke="#762CB1" stroke-width="1.8459999999999999" stroke-linecap="round" stroke-linejoin="round"><path d="M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z"/><path d="m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18"/><path d="m2.3 2.3 7.286 7.286"/><circle cx="11" cy="11" r="2"/></g>
+<circle cx="137" cy="65" r="11" fill="#762CB1" stroke="#FFFFFF" stroke-width="2"/>
+<text x="137" y="69" class="s" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle">1</text>
+<text x="110" y="158" class="d" fill="#1E1B2E" font-size="17" font-weight="700" text-anchor="middle">Draft</text>
+<text x="110" y="182" class="s" fill="#615D7A" font-size="13" text-anchor="middle">Typed sections, live preview</text>
+</g>
+<g class="rise r1">
+<circle class="ring" style="animation-delay:1.4s" cx="355" cy="92" r="36" fill="none" stroke="#762CB1" stroke-width="2"/>
+<circle cx="355" cy="92" r="36" fill="#FFFFFF" stroke="#E7D5FE" stroke-width="2"/>
+<circle cx="355" cy="92" r="27" fill="#F9F5FF"/>
+<g transform="translate(342 79) scale(1.0833)" fill="none" stroke="#762CB1" stroke-width="1.8459999999999999" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></g>
+<circle cx="382" cy="65" r="11" fill="#762CB1" stroke="#FFFFFF" stroke-width="2"/>
+<text x="382" y="69" class="s" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle">2</text>
+<text x="355" y="158" class="d" fill="#1E1B2E" font-size="17" font-weight="700" text-anchor="middle">Review</text>
+<text x="355" y="182" class="s" fill="#615D7A" font-size="13" text-anchor="middle">An editor checks and approves</text>
+</g>
+<g class="rise r2">
+<circle class="ring" style="animation-delay:2.8s" cx="600" cy="92" r="36" fill="none" stroke="#762CB1" stroke-width="2"/>
+<circle cx="600" cy="92" r="36" fill="#FFFFFF" stroke="#E7D5FE" stroke-width="2"/>
+<circle cx="600" cy="92" r="27" fill="#F9F5FF"/>
+<g transform="translate(587 79) scale(1.0833)" fill="none" stroke="#762CB1" stroke-width="1.8459999999999999" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></g>
+<circle cx="627" cy="65" r="11" fill="#762CB1" stroke="#FFFFFF" stroke-width="2"/>
+<text x="627" y="69" class="s" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle">3</text>
+<text x="600" y="158" class="d" fill="#1E1B2E" font-size="17" font-weight="700" text-anchor="middle">Schedule</text>
+<text x="600" y="182" class="s" fill="#615D7A" font-size="13" text-anchor="middle">Embargo and expiry times</text>
+</g>
+<g class="rise r3">
+<circle class="ring" style="animation-delay:4.2s" cx="845" cy="92" r="36" fill="none" stroke="#762CB1" stroke-width="2"/>
+<circle cx="845" cy="92" r="36" fill="#FFFFFF" stroke="#E7D5FE" stroke-width="2"/>
+<circle cx="845" cy="92" r="27" fill="#F9F5FF"/>
+<g transform="translate(832 79) scale(1.0833)" fill="none" stroke="#762CB1" stroke-width="1.8459999999999999" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></g>
+<circle cx="872" cy="65" r="11" fill="#762CB1" stroke="#FFFFFF" stroke-width="2"/>
+<text x="872" y="69" class="s" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle">4</text>
+<text x="845" y="158" class="d" fill="#1E1B2E" font-size="17" font-weight="700" text-anchor="middle">Publish</text>
+<text x="845" y="182" class="s" fill="#615D7A" font-size="13" text-anchor="middle">Revalidated, served from bom1</text>
+</g>
+<g class="rise r4">
+<circle class="ring" style="animation-delay:5.6s" cx="1090" cy="92" r="36" fill="none" stroke="#762CB1" stroke-width="2"/>
+<circle cx="1090" cy="92" r="36" fill="#FFFFFF" stroke="#E7D5FE" stroke-width="2"/>
+<circle cx="1090" cy="92" r="27" fill="#F9F5FF"/>
+<g transform="translate(1077 79) scale(1.0833)" fill="none" stroke="#762CB1" stroke-width="1.8459999999999999" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></g>
+<circle cx="1117" cy="65" r="11" fill="#762CB1" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1117" y="69" class="s" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle">5</text>
+<text x="1090" y="158" class="d" fill="#1E1B2E" font-size="17" font-weight="700" text-anchor="middle">Archive</text>
+<text x="1090" y="182" class="s" fill="#615D7A" font-size="13" text-anchor="middle">Soft delete, recycle bin</text>
+</g>
+</svg>

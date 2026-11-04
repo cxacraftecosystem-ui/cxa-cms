@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="170" viewBox="0 0 1200 170" role="img" aria-label="At a glance: two surfaces, five publication states, four ways to sign in, four verification layers">
+<title>At a glance: two surfaces, five publication states, four ways to sign in, four verification layers</title>
+<defs>
+<style>.d{font-family:'Plus Jakarta Sans','Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}.s{font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}.m{font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace}.rise{animation:rise .9s cubic-bezier(.2,.7,.2,1) both}@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.bar{stroke-dasharray:60;stroke-dashoffset:0;animation:bar 1.1s cubic-bezier(.2,.7,.2,1) both}@keyframes bar{from{stroke-dashoffset:60}to{stroke-dashoffset:0}}.r0{animation-delay:0.1s}.r1{animation-delay:0.2s}.r2{animation-delay:0.3s}.r3{animation-delay:0.5s}@media (prefers-reduced-motion:reduce){*{animation:none!important}.smil{display:none}.sweep{fill:url(#still)}}</style>
+
+</defs>
+<g class="rise r0">
+<rect x="6" y="6" width="282" height="158" rx="18" fill="#FFFFFF" stroke="#E4E2EF"/>
+<rect x="28" y="28" width="34" height="34" rx="10" fill="#F9F5FF" stroke="#E7D5FE"/>
+<g transform="translate(36 36) scale(0.75)" fill="none" stroke="#762CB1" stroke-width="2.667" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></g>
+<text x="74" y="50" class="s" fill="#615D7A" font-size="13" font-weight="600" letter-spacing=".6">SURFACES</text>
+<text x="28" y="114" class="d" fill="#1E1B2E" font-size="44" font-weight="800" letter-spacing="-1">2</text>
+<path class="bar" style="animation-delay:0.3s" d="M29 128 h27" stroke="#762CB1" stroke-width="3" stroke-linecap="round"/>
+<text x="28" y="152" class="s" fill="#3A3651" font-size="14">Public site and studio, one app</text>
+</g>
+<g class="rise r1">
+<rect x="308" y="6" width="282" height="158" rx="18" fill="#FFFFFF" stroke="#E4E2EF"/>
+<rect x="330" y="28" width="34" height="34" rx="10" fill="#F9F5FF" stroke="#E7D5FE"/>
+<g transform="translate(338 36) scale(0.75)" fill="none" stroke="#762CB1" stroke-width="2.667" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></g>
+<text x="376" y="50" class="s" fill="#615D7A" font-size="13" font-weight="600" letter-spacing=".6">STATES</text>
+<text x="330" y="114" class="d" fill="#1E1B2E" font-size="44" font-weight="800" letter-spacing="-1">5</text>
+<path class="bar" style="animation-delay:0.5s" d="M331 128 h27" stroke="#762CB1" stroke-width="3" stroke-linecap="round"/>
+<text x="330" y="152" class="s" fill="#3A3651" font-size="14">Draft to archived</text>
+</g>
+<g class="rise r2">
+<rect x="610" y="6" width="282" height="158" rx="18" fill="#FFFFFF" stroke="#E4E2EF"/>
+<rect x="632" y="28" width="34" height="34" rx="10" fill="#F9F5FF" stroke="#E7D5FE"/>
+<g transform="translate(640 36) scale(0.75)" fill="none" stroke="#762CB1" stroke-width="2.667" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></g>
+<text x="678" y="50" class="s" fill="#615D7A" font-size="13" font-weight="600" letter-spacing=".6">SIGN-IN</text>
+<text x="632" y="114" class="d" fill="#1E1B2E" font-size="44" font-weight="800" letter-spacing="-1">4</text>
+<path class="bar" style="animation-delay:0.6s" d="M633 128 h27" stroke="#762CB1" stroke-width="3" stroke-linecap="round"/>
+<text x="632" y="152" class="s" fill="#3A3651" font-size="14">Password, Google, Microsoft, Yahoo</text>
+</g>
+<g class="rise r3">
+<rect x="912" y="6" width="282" height="158" rx="18" fill="#FFFFFF" stroke="#E4E2EF"/>
+<rect x="934" y="28" width="34" height="34" rx="10" fill="#F9F5FF" stroke="#E7D5FE"/>
+<g transform="translate(942 36) scale(0.75)" fill="none" stroke="#762CB1" stroke-width="2.667" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></g>
+<text x="980" y="50" class="s" fill="#615D7A" font-size="13" font-weight="600" letter-spacing=".6">CHECKS</text>
+<text x="934" y="114" class="d" fill="#1E1B2E" font-size="44" font-weight="800" letter-spacing="-1">4</text>
+<path class="bar" style="animation-delay:0.8s" d="M935 128 h27" stroke="#762CB1" stroke-width="3" stroke-linecap="round"/>
+<text x="934" y="152" class="s" fill="#3A3651" font-size="14">Layers between a change and production</text>
+</g>
+</svg>

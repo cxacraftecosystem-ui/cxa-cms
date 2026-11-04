@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="git-branch">
+<title>git-branch</title>
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#762CB1"/><stop offset="1" stop-color="#2F0D4B"/></linearGradient></defs>
+<rect x="1" y="1" width="46" height="46" rx="13" fill="url(#g)" stroke="#C090F5" stroke-opacity=".55" stroke-width="1.5"/>
+<g transform="translate(12 12) scale(1)" fill="none" stroke="#F9F5FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></g>
+</svg>
