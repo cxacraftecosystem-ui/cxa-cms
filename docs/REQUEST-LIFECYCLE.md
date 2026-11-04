@@ -29,7 +29,7 @@ sequenceDiagram
 
     B->>E: GET /about/history
     E-->>B: 200, the prerendered HTML — the app is not woken at all
-    Note over B,E: This is the whole point of `export const revalidate = 300`.<br/>25 route files carry 300 s, pages and opengraph-image alike;<br/>the gallery detail carries 600 s; robots.ts, sitemap.ts and<br/>/api/public/stats carry 3600 s.
+    Note over B,E: This is the whole point of `export const revalidate = 300`.<br/>25 route files carry 300 s, pages and opengraph-image alike,<br/>the gallery detail carries 600 s, robots.ts, sitemap.ts and<br/>/api/public/stats carry 3600 s.
     B->>E: GET the RSC payload, the JS chunks, the fonts
     B->>O: GET the image bytes from NEXT_PUBLIC_CDN_URL
     O-->>B: the derivative, never routed through the application
@@ -268,12 +268,12 @@ sequenceDiagram
     loop per file, 3 at a time
         C->>C: sha256Base64(file) — WebCrypto, lib/client/checksum.ts (https or localhost only)
         C->>A: POST /api/studio/media/presign { fileName, contentType, byteSize, kind, sha256 }
-        A->>A: requireCapability(canManageMedia) · assertSameOrigin<br/>server-side allow-list and per-kind cap (authoritative)<br/>buildObjectKey → media/YYYY/MM/&lt;16 hex&gt;-slug.ext<br/>signs Content-Type, Content-Length and x-amz-checksum-sha256
+        A->>A: requireCapability(canManageMedia) · assertSameOrigin<br/>server-side allow-list and per-kind cap (authoritative)<br/>buildObjectKey → media/YYYY/MM/#lt;16 hex#gt;-slug.ext<br/>signs Content-Type, Content-Length and x-amz-checksum-sha256
         Note over A,P: NOTHING is written to the database. A signed URL is a promise, not a fact.
         A-->>C: { uploadUrl, headers, objectKey, expiresInSeconds: 900, uploadTicket }
 
         C->>S: PUT uploadUrl — the raw File, `headers` replayed VERBATIM
-        Note over C,S: Storage itself refuses a body of another type, size or digest.<br/>⚠ Content-Type is part of the SigV4 signature; a different one returns<br/>SignatureDoesNotMatch, which reads as a credentials problem.<br/>XMLHttpRequest, not fetch — fetch still cannot report upload progress.<br/>Stall watchdog: 60 s idle; re-armed for 5 min after the last byte.
+        Note over C,S: Storage itself refuses a body of another type, size or digest.<br/>⚠ Content-Type is part of the SigV4 signature, a different one returns<br/>SignatureDoesNotMatch, which reads as a credentials problem.<br/>XMLHttpRequest, not fetch — fetch still cannot report upload progress.<br/>Stall watchdog: 60 s idle, re-armed for 5 min after the last byte.
         S-->>C: 200
 
         C->>A: POST /api/studio/media/complete { objectKey, …, uploadTicket }
@@ -371,10 +371,10 @@ sequenceDiagram
         D->>M: store under pageId + editorId — TTL 10 min, ≤256 KB, ≤60 blocks, ≤32 entries
         D-->>PB: ok
         PB->>IF: bump the frame's src
-        IF->>R: GET /preview/&lt;slug&gt;?preview=&lt;token&gt;&amp;live=1
+        IF->>R: GET /preview/#lt;slug#gt;?preview=#lt;token#gt;#amp;live=1
         R->>R: previewTokenMatches — constant-time HMAC over the slug
         R->>R: currentUser() — the draft's editorId must be THIS user's id
-        Note over R: ⚠ BOTH are required. The token is stable and shareable by design, so a<br/>forwarded link must not carry somebody's unsaved work; and a session<br/>alone is not authority to read a preview.
+        Note over R: ⚠ BOTH are required. The token is stable and shareable by design, so a<br/>forwarded link must not carry somebody's unsaved work, and a session<br/>alone is not authority to read a preview.
         R->>M: readPreviewDraft(pageId, editorId)
         alt found
             R-->>IF: the REAL page, rendered from the draft blocks

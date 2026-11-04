@@ -535,7 +535,7 @@ sequenceDiagram
 
     B->>B: sha256Base64(file) — WebCrypto, lib/client/checksum.ts
     B->>A: POST /api/studio/media/presign<br/>{ fileName, contentType, byteSize, kind, sha256 }
-    Note over A: requireCapability(canManageMedia)<br/>ALLOW-LIST of content types, never a deny-list<br/>per-kind caps from lib/storage/upload-limits.ts<br/>buildObjectKey: media/YYYY/MM/&lt;16 hex&gt;-slug.ext<br/>signs Content-Type, Content-Length and x-amz-checksum-sha256<br/>NOTHING is written to the database here
+    Note over A: requireCapability(canManageMedia)<br/>ALLOW-LIST of content types, never a deny-list<br/>per-kind caps from lib/storage/upload-limits.ts<br/>buildObjectKey: media/YYYY/MM/#lt;16 hex#gt;-slug.ext<br/>signs Content-Type, Content-Length and x-amz-checksum-sha256<br/>NOTHING is written to the database here
     A-->>B: { uploadUrl, headers, objectKey, expiresInSeconds: 900, uploadTicket }
 
     B->>S: PUT uploadUrl — the raw File, headers replayed VERBATIM
@@ -543,12 +543,12 @@ sequenceDiagram
     S-->>B: 200
 
     B->>A: POST /api/studio/media/complete<br/>{ objectKey, fileName, contentType, byteSize, uploadTicket, folderId? }
-    Note over A: 1. verify the uploadTicket — HMAC, bound to key, user, size, type, digest; 24 h<br/>2. confirmUploadedObject: HEAD with checksum mode; any mismatch DELETES the object<br/>3. the key must match ISSUED_MEDIA_KEY exactly<br/>4. SHA-256 duplicate check — never the filename<br/>5. generateDerivatives, sequentially<br/>6. row + variants + revision + audit in ONE transaction
+    Note over A: 1. verify the uploadTicket — HMAC, bound to key, user, size, type, digest, 24 h<br/>2. confirmUploadedObject: HEAD with checksum mode, any mismatch DELETES the object<br/>3. the key must match ISSUED_MEDIA_KEY exactly<br/>4. SHA-256 duplicate check — never the filename<br/>5. generateDerivatives, sequentially<br/>6. row + variants + revision + audit in ONE transaction
     A->>S: GET the object, then PUT thumb/sm/md/lg/xl/og × avif,webp
     A->>D: MediaAsset + MediaVariant[] + Revision + AuditLog
     A-->>B: the created MediaAsset, whole — it goes straight into the grid
 
-    Note over B,S: LATER, on the public site:<br/>&lt;MediaImage&gt; → mediaSrc() → pickVariant() → publicObjectUrl()<br/>= NEXT_PUBLIC_CDN_URL/&lt;variant key&gt;. Bytes never touch the app.
+    Note over B,S: LATER, on the public site:<br/>#lt;MediaImage#gt; → mediaSrc() → pickVariant() → publicObjectUrl()<br/>= NEXT_PUBLIC_CDN_URL/#lt;variant key#gt;. Bytes never touch the app.
 ```
 
 ⚠ **Order matters in step 2 and in the purge.** Bytes first, row second, in both directions. On
