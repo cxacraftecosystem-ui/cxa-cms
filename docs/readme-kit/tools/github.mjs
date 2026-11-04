@@ -20,7 +20,7 @@ if (!repo || !sha) {
 mkdirSync(out, { recursive: true });
 
 const ERROR_TEXT = /Unable to render rich display|Syntax error in text|Parse error on line|Lexical error on line|No diagram type detected|Maximum text size in diagram exceeded|Error parsing|Unsupported markdown/i;
-const GARBLED_TEXT = /<br|<\/?[a-z]+>|&lt;|&gt;|&amp;|&quot;|#quot;|\*\*|`/i;
+const GARBLED_TEXT = /<br\b|<\/?(?:b|i|u|em|strong|span|div|sub|sup|small|code|p)\b[^>]*>|&(?:lt|gt|amp|quot|nbsp);|#(?:lt|gt|amp|quot);/i;
 const WAIT_MS = 90000;
 
 function mermaidBlocks(text) {
