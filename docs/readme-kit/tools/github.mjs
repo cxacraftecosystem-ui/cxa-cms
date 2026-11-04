@@ -151,24 +151,23 @@ for (const e of lintErrors) {
   console.log(`::error file=${e.file},line=${e.line}::${e.detail}`);
 }
 
-for (const { file, lines } of files) {
+const DETERMINISTIC = /Parse error|Lexical error|Syntax error|No diagram type|Maximum text size|raw markup|NaN|mermaid block\(s\) in the source/i;
+const ATTEMPTS = 3;
+
+async function checkFile(file, lines) {
   const url = blobUrl(file);
+  const found = [];
   try {
     await open(page, url);
     await page.waitForSelector("article.markdown-body, .markdown-body", { timeout: 60000 });
     await page.waitForFunction((n) => document.querySelectorAll('section[data-type="mermaid"]').length >= n, lines.length, { timeout: 30000 }).catch(() => {});
   } catch (e) {
-    for (const line of lines) results.push({ file, line, state: "error", detail: `page did not load: ${e.message}` });
-    failed += lines.length;
-    continue;
+    return lines.map((line) => ({ file, line, state: "error", detail: `page did not load: ${e.message}` }));
   }
   const sections = await page.$$('section[data-type="mermaid"]');
   if (sections.length !== lines.length) {
-    const msg = `${lines.length} mermaid block(s) in the source, ${sections.length} on ${url}`;
-    console.log(`::error file=${file}::${msg}`);
     writeFileSync(join(out, `${slug(file)}.html`), await page.content());
-    failed += 1;
-    results.push({ file, line: lines[0], state: "error", detail: msg });
+    found.push({ file, line: lines[0], state: "error", detail: `${lines.length} mermaid block(s) in the source, ${sections.length} on ${url}` });
   }
   for (const [i, section] of sections.entries()) {
     const line = lines[i] ?? lines[lines.length - 1];
@@ -186,12 +185,7 @@ for (const { file, lines } of files) {
     }
     if (r.state === "pending") r = { state: "error", detail: `no diagram after ${WAIT_MS / 1000}s${r.detail ? ` (${r.detail})` : ""}` };
     await shoot(page, section, join(out, `${slug(file)}-L${line}.png`));
-    results.push({ file, line, ...r });
-    if (r.state === "ok") console.log(`ok    ${file}:${line}  ${r.detail}`);
-    else {
-      failed += 1;
-      console.log(`::error file=${file},line=${line}::GitHub cannot render this mermaid block: ${r.detail.replace(/\s+/g, " ")}`);
-    }
+    found.push({ file, line, ...r });
   }
   const full = await page.evaluate(() => document.documentElement.scrollHeight);
   await page.setViewportSize({ width: VIEW.width, height: Math.min(Math.max(full, VIEW.height), 16000) });
@@ -199,7 +193,27 @@ for (const { file, lines } of files) {
   await page.waitForTimeout(1500);
   await page.screenshot({ path: join(out, `${slug(file)}.png`), fullPage: true }).catch(() => {});
   await page.setViewportSize(VIEW);
+  return found;
 }
+
+for (const { file, lines } of files) {
+  let found = [];
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+    found = await checkFile(file, lines);
+    const bad = found.filter((r) => r.state !== "ok");
+    if (!bad.length || bad.every((r) => DETERMINISTIC.test(r.detail || "")) || attempt === ATTEMPTS) break;
+    console.log(`::warning file=${file}::attempt ${attempt}: ${bad.length} block(s) did not draw (${bad[0].detail.replace(/\s+/g, " ").slice(0, 160)}); opening the page again`);
+  }
+  for (const r of found) {
+    results.push(r);
+    if (r.state === "ok") console.log(`ok    ${file}:${r.line}  ${r.detail}`);
+    else {
+      failed += 1;
+      console.log(`::error file=${file},line=${r.line}::GitHub cannot render this mermaid block: ${r.detail.replace(/\s+/g, " ")}`);
+    }
+  }
+}
+
 
 await browser.close();
 writeFileSync(join(out, "report.tsv"), results.map((r) => `${r.state}\t${r.file}:${r.line}\t${(r.detail || "").replace(/\s+/g, " ")}`).join("\n") + "\n");
