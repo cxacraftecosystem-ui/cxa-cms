@@ -124,13 +124,21 @@ const EXPAND_FLOOR = 24;
 const JITTER_BAND = 2;
 
 /**
- * Must track Tailwind's `lg`, which is stock (contract §2) and therefore 1024px.
+ * The width from which the strip replaces the hamburger. Must track the `min-[1320px]:` classes on
+ * the strip and the hamburger below (Tailwind cannot build a class from this constant).
  *
- * Used to close the sheet when a rotation or a resize takes the reader from the hamburger to the
- * strip: leaving it open would hold the scroll lock over a menu nobody can see, and would put a
+ * ⚠ NOT `lg` (1024px), WHICH IT USED TO BE. With the production wordmark — the Centre's full name —
+ * the expanded pill measures 1281px (wordmark 523, six entries 641, search and accessibility
+ * controls), plus the frame's 12px gutters and a desktop scrollbar. At 1024px the strip showed 359px
+ * of its 637 and News and events and Contact were clipped out of reach with no hamburger to fall
+ * back on: exactly the "navigation quietly stops listing sections" bug MAX_STRIP_ENTRIES exists to
+ * prevent, on every tablet and every narrow laptop. Below this width the sheet lists everything.
+ *
+ * Also used to close the sheet when a rotation or a resize takes the reader from the hamburger to
+ * the strip: leaving it open would hold the scroll lock over a menu nobody can see, and would put a
  * second `aria-current="page"` in the accessibility tree.
  */
-const DESKTOP_QUERY = "(min-width: 1024px)";
+const DESKTOP_QUERY = "(min-width: 1320px)";
 
 /**
  * How many top-level entries the strip will attempt.
@@ -546,7 +554,7 @@ export function SiteHeader({
   // silently dropping the ones that do not fit.
   //
   // ⚠ COUNTED ON `visibleItems` — the tree before anything is hung on it — and it must stay that way.
-  // The limit is about how many TOP-LEVEL entries fit across a 1024px pill; children live in a panel and
+  // The limit is about how many TOP-LEVEL entries fit across the pill (see DESKTOP_QUERY); children live in a panel and
   // cost no width at all. Counting the grown tree would stand the strip down at every width on a default
   // installation the moment the People entry gained a submenu.
   const stripFits = visibleItems.length > 0 && visibleItems.length <= MAX_STRIP_ENTRIES;
@@ -646,7 +654,7 @@ export function SiteHeader({
                     exit={{ width: 0, opacity: 0 }}
                     transition={{ duration: reduce ? 0 : DURATION.page, ease: EASE_OUT }}
                     className={cn(
-                      "hidden lg:block",
+                      "hidden min-[1320px]:block",
                       // Clipping is what makes a width animation read as the pill swallowing the
                       // links rather than as text spilling out of a shrinking box — but it also
                       // clips an open dropdown panel, so it is lifted while one is open. The two
@@ -694,7 +702,7 @@ export function SiteHeader({
               accounts belong under it (file header, and `withSocialsUnderContact` above) — two ways
               into one idea is one too many.
 
-              The strip's `hidden lg:block` and its collapse are not a reason to bring it back. Below
+              The strip's `hidden min-[1320px]:block` and its collapse are not a reason to bring it back. Below
               `lg` the sheet lists every child of every entry, which is the route every other nav
               destination already takes; and the collapse withdraws the WHOLE navigation while the
               reader is moving down the page, one upward flick from having it back (see the header).
@@ -711,7 +719,7 @@ export function SiteHeader({
               // Only while the sheet is mounted: `aria-controls` pointing at an id that is not in the
               // document is worse than no `aria-controls` at all (contract §11).
               aria-controls={sheetOpen ? sheetId : undefined}
-              className={cn(CONTROL_BASE, stripFits && "lg:hidden")}
+              className={cn(CONTROL_BASE, stripFits && "min-[1320px]:hidden")}
             >
               {sheetOpen ? (
                 <X aria-hidden="true" className="h-5 w-5" />

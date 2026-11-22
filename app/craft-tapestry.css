@@ -124,10 +124,32 @@
   }
 }
 
+/*
+ * The resting pose is a 2D `translate`, not `translate3d`: a 3D transform promotes the
+ * element to its own compositing layer even when nothing moves it, and this rect spans
+ * the whole hero. Only the running animation below needs the compositor.
+ */
 .cxa-jaali-light {
-  transform: translate3d(4px, 6px, 0);
+  transform: translate(4px, 6px);
 }
 
 .cxa-jaali-light--shimmer {
   animation: cxa-jaali-shimmer 46s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+}
+
+/*
+ * ⚠ TOUCH DEVICES GET THE STILL SCREEN AND STILL PIGMENT. A tablet is the worst case for
+ * this hero: it gets the desktop layout (≥1024 CSS px) at a device pixel ratio of 2 on a
+ * phone-class GPU memory budget. Each running loop here is its own hero-sized layer, and
+ * every layer painted above it is promoted too ("overlap"). On an Android tablet in Chrome
+ * the sum exceeded the tile budget and the hero painted with blank white rectangles and a
+ * missing headline (reproduced with Chrome capped at 96–160 MB of GPU memory; a phone
+ * fits in 96 MB). The shimmer is a 46-second drift a reader cannot see on a tablet anyway.
+ * `pointer: coarse` is the gate the rest of the site already uses for its heavy effects.
+ */
+@media (pointer: coarse) {
+  .cxa-jaali-light--shimmer,
+  .cxa-pigment-grain--drift {
+    animation: none;
+  }
 }

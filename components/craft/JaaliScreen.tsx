@@ -57,6 +57,18 @@ import { cn } from "@/lib/utils";
 /** A square drawing surface; `slice` covers whatever box the caller gives it. */
 const VIEW = 480;
 
+/**
+ * How far past the surface the travelling highlight's rect reaches on every side, in user units.
+ *
+ * It only has to cover the surface wherever the shimmer carries it, and the farthest the keyframes
+ * in app/craft-tapestry.css move it is 38 units (x) and 26 (y), so 48 always covers it. This used to
+ * be a rect twice the surface in each direction — four times the area — and since the rect is its
+ * own compositing layer while it moves, and `slice` scales the drawing up to cover the hero, that
+ * one rect reached ~4500 CSS px square on a tablet. The highlight's geometry does not depend on
+ * this number: the beam gradient is pinned in user space below, so it is the same light either way.
+ */
+const BEAM_REACH = 48;
+
 export interface JaaliScreenProps {
   /** Sizing. The SVG has no size of its own — give it `h-full w-full`. */
   className?: string;
@@ -140,7 +152,19 @@ export function JaaliScreen({
           <stop offset="100%" stopColor={NATURAL_DYES.indigo.color} stopOpacity="0.7" />
         </radialGradient>
 
-        <radialGradient id={beamId} cx="0.5" cy="0.5" r="0.5">
+        {/*
+          In USER SPACE, centred on the surface with a radius of one surface width — the exact circle
+          the old 2×-sized rect drew with `objectBoundingBox` (centre 0.5, radius 0.5 of 960 units).
+          Pinning it here is what lets the rect below shrink without moving or resizing the light;
+          the rect's transform still carries the gradient with it, because user space includes it.
+        */}
+        <radialGradient
+          id={beamId}
+          gradientUnits="userSpaceOnUse"
+          cx={VIEW / 2}
+          cy={VIEW / 2}
+          r={VIEW}
+        >
           <stop offset="0%" stopColor={NATURAL_DYES.myrobalan.color} stopOpacity="0.5" />
           <stop offset="55%" stopColor={NATURAL_DYES.myrobalan.color} stopOpacity="0.14" />
           <stop offset="100%" stopColor={NATURAL_DYES.myrobalan.color} stopOpacity="0" />
@@ -150,14 +174,14 @@ export function JaaliScreen({
       <g mask={`url(#${maskId})`}>
         <rect x="0" y="0" width={VIEW} height={VIEW} fill={`url(#${washId})`} />
         {/*
-          Deliberately larger than the surface and centred on it, so the highlight can travel its
-          full distance without its own soft edge ever entering the frame.
+          Larger than the surface by BEAM_REACH on every side, so wherever the shimmer carries it the
+          rect's edge never enters the frame — and no larger, because its size is the size of a layer.
         */}
         <rect
-          x={-VIEW / 2}
-          y={-VIEW / 2}
-          width={VIEW * 2}
-          height={VIEW * 2}
+          x={-BEAM_REACH}
+          y={-BEAM_REACH}
+          width={VIEW + BEAM_REACH * 2}
+          height={VIEW + BEAM_REACH * 2}
           fill={`url(#${beamId})`}
           // Only set while it is actually holding something still: an unconditional `running` would be
           // a declaration on every jaali on every page saying nothing.

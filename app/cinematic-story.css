@@ -59,6 +59,23 @@
 }
 
 /*
+ * ⚠ TOUCH DEVICES: NO BREATH. "A few layers" is true on a desktop GPU and false on a tablet.
+ * The orbs sit at the BOTTOM of the story's stacking order and are up to 64vmax across, so
+ * while they animate, every element painted above them that they overlap is promoted to a
+ * layer too — section-height layers, several of them, each needing a viewport's worth of
+ * tiles. On an Android tablet that blew the GPU tile budget and the story painted with its
+ * night background missing. A paused animation still holds its layer, so this is `none`,
+ * not `paused`. Same `pointer: coarse` gate as the hero's jaali (app/craft-tapestry.css).
+ */
+@media (pointer: coarse) {
+  .cxa-cine-orb,
+  .cxa-cine-orb--counter,
+  .cxa-cine-buti {
+    animation: none;
+  }
+}
+
+/*
  * The jaali's light. The lattice SVG is a mask of voids over this soft radial wash, so the
  * pattern reads as light coming THROUGH a pierced screen (its geometry file insists on exactly
  * this use). The fade keeps the texture from painting a hard rectangle onto the night.

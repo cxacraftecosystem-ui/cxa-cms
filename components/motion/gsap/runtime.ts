@@ -130,6 +130,22 @@ export function loadGsapRuntime(): Promise<GsapRuntime> {
        */
       ScrollTrigger.config({ ignoreMobileResize: true });
 
+      /**
+       * ⚠ 2D TRANSFORMS ON TOUCH DEVICES. GSAP's default `force3D: "auto"` writes `translate3d`
+       * while a tween is in progress — and a SCRUBBED tween is in progress for exactly as long as
+       * its element is on screen. So every scrubbed orb, photograph, rail and bloom in view is
+       * promoted to its own compositing layer, and everything painted above one that it overlaps is
+       * promoted with it. On a desktop GPU that is a few layers too many; on an Android tablet (the
+       * desktop layout at a pixel ratio of 2, on a phone-class memory budget) it exhausted the tile
+       * budget and the story painted with blank patches. With 2D transforms the moved element is
+       * re-rastered instead of re-composited: more raster work, which a tablet's GPU rasteriser
+       * absorbs, and far less memory, which it cannot spare. Read once at load — this is a property
+       * of the device, and a tablet that gains a mouse keeps a layout that works either way.
+       */
+      if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
+        gsap.config({ force3D: false });
+      }
+
       bridgeToLenis(ScrollTrigger);
       watchForLateLayout(ScrollTrigger);
 

@@ -612,7 +612,14 @@ export function CinematicScroll({ section }: CinematicScrollProps) {
           // painted over it (the review measured the alternative as the piece's dominant frame
           // cost). This is NOT the banned blanket `will-change` on photographs — the layer is a
           // hairline on transparency, and its backing store is correspondingly cheap.
-          className="pointer-events-none absolute inset-0 -z-10 h-full w-full transform-[translateZ(0)]"
+          //
+          // ⚠ `pointer-fine:` ONLY. On a touch tablet this layer is the full height of the story
+          // (~9000 CSS px) at a device pixel ratio of 2, and because it sits at -z-10, everything
+          // the story paints above it that overlaps it is promoted into more section-height layers.
+          // That blew an Android tablet's GPU tile budget and the story painted without its night
+          // background. Without the layer the dash repaint costs raster time instead, which a
+          // tablet's GPU rasteriser has to spare; memory it does not have.
+          className="pointer-events-none absolute inset-0 -z-10 h-full w-full pointer-fine:transform-[translateZ(0)]"
         >
           <defs>
             <linearGradient id="cine-thread-gold" x1="0" y1="0" x2="0" y2="1">
