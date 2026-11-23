@@ -155,6 +155,15 @@ interface Exemption {
 
 const EXEMPTIONS: Exemption[] = [
   {
+    // The album's `generateMetadata`: it reads each item's `asset.objectKey` only to COUNT films apart from
+    // photographs for the meta description ("3 photographs and 1 film from …"). Nothing is drawn from
+    // these rows; the share card's picture is the album cover, selected with its framing beside it.
+    file: "app/(site)/gallery/[slug]/page.tsx",
+    relations: ["asset"],
+    rule: "framing-not-selected",
+    why: "counts films for the meta description; no picture is drawn from these rows"
+  },
+  {
     // The read side of `EntityPicker`: thirteen searches that answer "which records?" with a title, a
     // subtitle, a status chip and a thumbnail the size of a favicon. Nothing here draws a picture at a
     // screen width — the framing is set in the field the picker FEEDS, not shown in the picker — and one of

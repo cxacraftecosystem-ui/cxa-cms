@@ -299,18 +299,33 @@ function profileLinks(person: PersonRecord): ProfileLink[] {
 
 /** The one-line summary used for the meta description and the JSON-LD. */
 function personSummary(person: PersonRecord): string {
-  const bio = person.bio?.trim();
-  if (bio) return bio;
-
-  const rich = richTextExcerpt(parseRichText(person.bioRich), 200);
-  if (rich) return rich;
-
-  // No biography at all: the designation and department are still a truthful sentence, and a card with
-  // no description is a card most platforms render as a bare grey rectangle. Nothing is shortened here
-  // — `pageMetadata` cuts the finished description at 160 characters (lib/seo.ts), which is one cut in
-  // one place rather than two that have to agree about where a sentence ends.
+  // Who they are, as a truthful sentence from what the record holds. A card with no description is a
+  // card most platforms render as a bare grey rectangle. Nothing is shortened here — `pageMetadata`
+  // cuts the finished description at 160 characters (lib/seo.ts), which is one cut in one place rather
+  // than two that have to agree about where a sentence ends.
   const role = [person.designation, person.department].filter(Boolean).join(", ");
-  return role ? `${person.name} — ${role}.` : person.name;
+  // One full stop, never two: "Asst. Prof." and "Ramesh K." already end in one.
+  const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`);
+  const lead = sentence(role ? `${person.name} — ${role}` : person.name);
+
+  const bio =
+    person.bio?.trim() || richTextExcerpt(parseRichText(person.bioRich), 200) || "";
+  if (!bio) return lead;
+
+  // ⚠ THE BIOGRAPHY ALONE USED TO BE THE WHOLE DESCRIPTION, and a short one ("Research Scholar") made
+  // a search snippet that never said whose page it was — five live profiles were under 50 characters.
+  // So the name and role lead, unless the biography already names the person (it then introduces them
+  // itself) or IS the role (repeating it would say it twice).
+  // Matched without case and without a leading honorific: "Dr. Priya Sharma" is named by a biography
+  // that begins "Priya Sharma is…", and repeating the name would only spend the 160 characters sooner.
+  const bareName = person.name
+    // "Prof. X", "Prof X" and the live data's "Prof.X" alike.
+    .replace(/^(prof|dr|mr|mrs|ms|shri|smt)(\.\s*|\s+)/i, "")
+    .trim()
+    .toLowerCase();
+  if (bareName && bio.toLowerCase().includes(bareName)) return bio;
+  if (lead.toLowerCase().includes(bio.toLowerCase().replace(/\.$/, ""))) return lead;
+  return `${lead} ${bio}`;
 }
 
 export async function generateMetadata({

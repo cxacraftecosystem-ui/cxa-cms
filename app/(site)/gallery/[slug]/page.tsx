@@ -187,7 +187,9 @@ export async function generateMetadata({
       // no screen to vary by, so no band of the framing can apply to it — but a select that fetches a
       // picture and leaves its framing behind is the shape of the bug, wherever the row ends up going.
       coverScreens: true,
-      _count: { select: { items: true } }
+      // The object keys, not just a count, so films are counted as films: an album of three videos
+      // was described as "3 photographs". An album is a few dozen rows at most.
+      items: { select: { asset: { select: { objectKey: true } } } }
     }
   });
 
@@ -196,13 +198,21 @@ export async function generateMetadata({
   }
 
   const when = albumDate(album.happenedOn);
-  const count = album._count.items;
+  const films = album.items.filter((item) => isVideoObjectKey(item.asset.objectKey)).length;
+  const stills = album.items.length - films;
+  const counted = [
+    stills > 0 ? `${stills} ${stills === 1 ? "photograph" : "photographs"}` : null,
+    films > 0 ? `${films} ${films === 1 ? "film" : "films"}` : null
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" and ");
   const description =
     album.description?.trim() ||
     // Assembled from what the record actually holds rather than left empty: a share card with no
     // description is a card most platforms render as a title and a grey rectangle.
     [
-      `${count} ${count === 1 ? "photograph" : "photographs"}`,
+      // Says what the pictures are OF, not only how many: "1 photograph" was a whole meta description.
+      counted ? `${counted} from ${album.title}` : album.title,
       album.location?.trim() || null,
       when
     ]
@@ -493,6 +503,18 @@ export default async function GalleryAlbumPage({
                             <MediaImage
                               media={item.asset}
                               picture={itemPictures[index] ?? null}
+                              // A photograph in an album is content, never decoration, so it is never
+                              // `alt=""`. The asset's alt text when the media library has one; otherwise
+                              // its place in the album — every photo in the two
+                              // published albums had an empty alt before this, which a reader using a
+                              // screen reader or image search met as nothing at all. Writing real alt
+                              // text in the media library is still the fix that matters.
+                              // NOT the caption: a caption is printed under the picture and is part of the
+                              // trigger's name, and as the alt too a screen reader heard it three times.
+                              alt={
+                                item.asset.altText?.trim() ||
+                                `Photograph ${(lightboxIndex[index] ?? 0) + 1} of ${items.length} from ${album.title}`
+                              }
                               aspect="4 / 3"
                               rounded="none"
                               sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"

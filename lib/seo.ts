@@ -41,6 +41,9 @@ export interface PageMetadataInput {
   canonicalOverride?: string;
 }
 
+/** About where a search result cuts a title off. Only the decision to append the site name uses it. */
+const TITLE_DISPLAY_LIMIT = 65;
+
 export function absoluteUrl(path: string): string {
   const base = siteUrl();
   if (!path || path === "/") return base;
@@ -82,7 +85,15 @@ export function pageMetadata(input: PageMetadataInput): Metadata {
   const image = input.imageUrl ?? ogImageUrl(input.image);
 
   return {
-    title: input.title,
+    // The root layout's template appends " · <site name>" to every title. Past roughly sixty characters
+    // a search result truncates the title, so on a long one the suffix only pushes the page's own words
+    // off the end ("…Srishti O Anusandhan) · Centre of Exc…"); eleven live titles ran 66–116
+    // characters. A title that cannot carry the suffix is used as it is — the site is still named by
+    // the WebSite structured data and the og:site_name every page sends.
+    title:
+      `${input.title} · ${siteName()}`.length > TITLE_DISPLAY_LIMIT
+        ? { absolute: input.title }
+        : input.title,
     description,
     keywords: input.keywords?.length ? input.keywords : undefined,
     alternates: { canonical },
@@ -236,6 +247,11 @@ export function breadcrumbJsonLd(trail: { name: string; path: string }[]): Recor
   };
 }
 
+/** Collapse every run of whitespace — including a line break typed into an author field — to one space. */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 export function scholarlyArticleJsonLd(input: {
   title: string;
   authorLine: string;
@@ -243,16 +259,37 @@ export function scholarlyArticleJsonLd(input: {
   venue?: string | null;
   doi?: string | null;
   path: string;
+  /**
+   * The Centre's own name, from the branding settings. An author entry that IS this name is the Centre
+   * publishing its own report, and is described as the Organization it is rather than as a Person —
+   * search engines read a "Person" named "Centre of Excellence for …" as a malformed author. Matched
+   * exactly (case and spacing aside), never by resemblance: a guess here would turn real people into
+   * organisations.
+   */
+  organisationName?: string | null;
 }): Record<string, unknown> {
+  const organisation = input.organisationName ? oneLine(input.organisationName).toLowerCase() : null;
+
   return {
     "@context": "https://schema.org",
     "@type": "ScholarlyArticle",
     headline: input.title,
+    // Split on ";" first and test each part against the Centre's name BEFORE splitting on "and": an
+    // organisation's name may contain "and" ("Centre for Craft and Design"), and cutting it first would
+    // turn the Centre into two people.
     author: input.authorLine
-      .split(/;|\band\b/)
-      .map((name) => name.trim())
+      .split(";")
+      .map(oneLine)
       .filter(Boolean)
-      .map((name) => ({ "@type": "Person", name })),
+      .flatMap((part) =>
+        organisation !== null && part.toLowerCase() === organisation
+          ? [{ "@type": "Organization", name: part, url: siteUrl() }]
+          : part
+              .split(/\band\b/)
+              .map(oneLine)
+              .filter(Boolean)
+              .map((name) => ({ "@type": "Person", name }))
+      ),
     datePublished: String(input.year),
     ...(input.venue ? { isPartOf: { "@type": "Periodical", name: input.venue } } : {}),
     ...(input.doi ? { identifier: `https://doi.org/${input.doi}` } : {}),
@@ -296,7 +333,11 @@ export function eventJsonLd(input: {
         : {
             "@type": "Place",
             name: input.venue ?? undefined,
-            address: input.address ?? undefined
+            // Google will not show an event in its results without `location.address`. Editors often
+            // type the whole address into the venue field and leave Address empty, so the venue text
+            // stands in for a missing address: it is the most precise description of the place we have,
+            // and schema.org accepts an address as text. A filled-in Address always wins.
+            address: input.address?.trim() || input.venue?.trim() || undefined
           },
     organizer: { "@type": "Organization", name: input.organiserName, url: siteUrl() },
     url: absoluteUrl(input.path)

@@ -67,6 +67,7 @@ import { CardGrid } from "@/components/site/CardGrid";
 import { DefinitionList, type DefinitionItem } from "@/components/site/DefinitionList";
 import { EntityCard } from "@/components/site/EntityCard";
 import { PageHero } from "@/components/site/PageHero";
+import { BreadcrumbJsonLd } from "@/components/site/Breadcrumbs";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { LinkButton } from "@/components/ui/Button";
 import { livePublishableWhere, liveStatusWhere } from "@/lib/content";
@@ -247,7 +248,12 @@ export default async function AboutPage() {
 
     return (
       <>
-        {hasHero ? null : (
+        {/* PageHero emits the breadcrumb trail AND its JSON-LD. A hero block replaces PageHero and draws
+            no trail, so the structured data is emitted on its own here — otherwise /about was the one
+            page on the site without a BreadcrumbList. Never both: PageHero's note forbids a second copy. */}
+        {hasHero ? (
+          <BreadcrumbJsonLd items={BREADCRUMBS} />
+        ) : (
           <PageHero title={page.title} eyebrow="About" breadcrumbs={BREADCRUMBS} />
         )}
 

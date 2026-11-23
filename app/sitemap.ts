@@ -178,6 +178,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
    * correct, so a sitemap that lists them and omits the records is a TRUE statement about part of the
    * site — and `revalidate` above replaces it with the complete one within the hour.
    */
+  // False when the read below fails. `datedListings` drops a listing only on a SUCCESSFUL read that
+  // found nothing in it — a database outage must not take /news and /people out of the sitemap.
+  let collectionsRead = true;
   const {
     pages,
     noIndexPages,
@@ -190,6 +193,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     crafts,
     albums
   } = await readCollections().catch((error: unknown) => {
+    collectionsRead = false;
     console.error(
       "[sitemap] the database could not be read, so only the code routes are listed. This corrects " +
         "itself at the next revalidation. " +
@@ -215,17 +219,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: number;
     changeFrequency: Entry["changeFrequency"];
     flag?: FeatureFlag;
+    /**
+     * A listing of records at `/<path>/<slug>`. Its lastmod is the newest of those records, and it is
+     * left out entirely while it lists nothing — see `datedListings` at the foot of this function.
+     */
+    lists?: true;
   }[] = [
     { path: "", priority: 1.0, changeFrequency: "weekly" },
     { path: "about", priority: 0.8, changeFrequency: "monthly" },
-    { path: "research", priority: 0.9, changeFrequency: "weekly" },
-    { path: "projects", priority: 0.9, changeFrequency: "weekly" },
-    { path: "publications", priority: 0.9, changeFrequency: "weekly", flag: "publications" },
-    { path: "people", priority: 0.8, changeFrequency: "weekly" },
-    { path: "craft-explorer", priority: 0.9, changeFrequency: "weekly", flag: "craftExplorer" },
-    { path: "gallery", priority: 0.7, changeFrequency: "weekly", flag: "gallery" },
-    { path: "news", priority: 0.8, changeFrequency: "daily" },
-    { path: "events", priority: 0.8, changeFrequency: "daily", flag: "events" },
+    { path: "research", priority: 0.9, changeFrequency: "weekly", lists: true },
+    { path: "projects", priority: 0.9, changeFrequency: "weekly", lists: true },
+    { path: "publications", priority: 0.9, changeFrequency: "weekly", flag: "publications", lists: true },
+    { path: "people", priority: 0.8, changeFrequency: "weekly", lists: true },
+    { path: "craft-explorer", priority: 0.9, changeFrequency: "weekly", flag: "craftExplorer", lists: true },
+    { path: "gallery", priority: 0.7, changeFrequency: "weekly", flag: "gallery", lists: true },
+    { path: "news", priority: 0.8, changeFrequency: "daily", lists: true },
+    { path: "events", priority: 0.8, changeFrequency: "daily", flag: "events", lists: true },
     { path: "contact", priority: 0.6, changeFrequency: "yearly" },
     /*
      * The newsletter sign-up page. A real destination: it is the address a printed leaflet or an email
@@ -298,10 +307,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     if (route.flag && !enabled(route.flag)) continue;
     if (noIndexed.has(route.path)) continue;
 
+    // The page row's own date when the studio owns this route. Otherwise NO lastmod rather than "now":
+    // a date that changes on every request tells a crawler the page changed when it did not, and
+    // Google stops trusting the file's dates altogether. Listings get theirs below, from what they list.
     const owned = pageBySlug.get(route.path);
     entries.push({
       url: route.path ? `${base}/${route.path}` : base,
-      lastModified: owned?.updatedAt ?? new Date(),
+      ...(owned ? { lastModified: owned.updatedAt } : {}),
       changeFrequency: route.changeFrequency,
       priority: route.priority
     });
@@ -329,7 +341,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   for (const group of await listablePeopleByGroup()) {
     entries.push({
       url: `${base}${personGroupPath(group.kind)}`,
-      lastModified: new Date(),
+      // No lastmod: the group page has no date of its own, and "now" would be invented (see above).
       changeFrequency: "weekly",
       priority: 0.7
     });
@@ -380,6 +392,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
+  if (collectionsRead) {
+    datedListings(entries, base, staticRoutes.filter((route) => route.lists).map((route) => route.path));
+  }
+
   if (entries.length > SITEMAP_URL_LIMIT) {
     // Loud, not silent. A truncated sitemap that says nothing looks exactly like a complete one.
     console.error(
@@ -390,4 +406,42 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   return entries;
+}
+
+/**
+ * Date each collection listing by the newest record it lists, and drop a listing that lists nothing.
+ *
+ * A listing such as /news changes exactly when one of its records does, so the newest `lastModified`
+ * among the `/news/<slug>` entries IS the listing's date — derived, not invented. A listing with no
+ * published records ("No projects have been published yet") is a page of nothing, and advertising it at
+ * high priority is the sitemap equivalent of listing a thin page; it returns to the file the moment its
+ * first record is published. The same rule the person-group pages above already follow.
+ *
+ * Runs after every entry is in, because the record entries are pushed after the listings.
+ */
+function datedListings(entries: Entry[], base: string, listingPaths: readonly string[]): void {
+  for (const path of listingPaths) {
+    const listingUrl = `${base}/${path}`;
+    const index = entries.findIndex((entry) => entry.url === listingUrl);
+    if (index === -1) continue;
+
+    let newest: Date | null = null;
+    for (const entry of entries) {
+      if (!entry.url.startsWith(`${listingUrl}/`)) continue;
+      const modified = entry.lastModified ? new Date(entry.lastModified) : null;
+      if (modified && !Number.isNaN(modified.getTime()) && (!newest || modified > newest)) newest = modified;
+    }
+
+    const hasRecords = entries.some((entry) => entry.url.startsWith(`${listingUrl}/`));
+    if (!hasRecords) {
+      entries.splice(index, 1);
+      continue;
+    }
+    // The LATER of the listing's own date (a studio page that owns the route, edited today) and its
+    // newest record — taking the record's date alone could move the listing's lastmod backwards.
+    const listing = entries[index];
+    const own = listing?.lastModified ? new Date(listing.lastModified) : null;
+    const latest = own && !Number.isNaN(own.getTime()) && (!newest || own > newest) ? own : newest;
+    if (latest && listing) entries[index] = { ...listing, lastModified: latest };
+  }
 }

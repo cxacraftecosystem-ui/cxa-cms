@@ -350,7 +350,10 @@ export default async function PublicationPage({
     }
   ];
 
+  // The branding name, so an author entry that is the Centre itself is described as an Organization.
+  const branding = await getSettingCached("branding");
   const jsonLd = scholarlyArticleJsonLd({
+    organisationName: branding.siteName,
     title: publication.title,
     authorLine: publication.authorLine,
     year: publication.year,

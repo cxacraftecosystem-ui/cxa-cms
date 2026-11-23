@@ -33,7 +33,7 @@ import {
   type BreadcrumbItem
 } from "@/components/site/Breadcrumbs";
 import type { Picture } from "@/lib/media/screens";
-import type { MediaLike } from "@/lib/media/url";
+import { mediaAlt, type MediaLike } from "@/lib/media/url";
 import { cn } from "@/lib/utils";
 
 export type PageHeroTone = "light" | "dark";
@@ -209,6 +209,13 @@ export function PageHero({
             <MediaImage
               media={media}
               picture={picture}
+              // The cover image of an article or an event is content, not ornament (contrast the
+              // dark backdrop above, which sits behind text and is `alt=""` on purpose). With no alt
+              // text in the media library it used to render `alt=""` and vanish for screen readers and
+              // image search alike. "Cover image", not "photograph": covers are often posters. The
+              // page's own title is the most honest description available until an editor writes one.
+              // A media-library alt text always wins.
+              alt={mediaAlt(media) || (typeof title === "string" ? `Cover image for ${title}` : undefined)}
               aspect="21 / 9"
               rounded="lg"
               priority
