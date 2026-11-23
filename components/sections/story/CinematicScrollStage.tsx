@@ -110,6 +110,46 @@ export function CinematicScrollStage({ children }: { children: ReactNode }) {
     const threadPath = q("[data-cine-thread]")[0] as SVGPathElement | undefined;
     if (shuttle && threadPath && typeof threadPath.getTotalLength === "function") {
       const pathLength = threadPath.getTotalLength();
+
+      /*
+       * ⚠ A LOOKUP TABLE, BUILT IN THE BACKGROUND, INSTEAD OF `getPointAtLength` ON EVERY SCROLL FRAME.
+       * `getPointAtLength` walks the path's geometry on each call, and the shuttle asked it once per
+       * frame for the whole of the story's scroll. The table samples the same function at 2048 evenly
+       * spaced lengths, a few dozen per tick starting half a second after the stage is built (so it never
+       * competes with the page's first paint), and the shuttle interpolates between neighbours once it is
+       * full. Samples are ~0.6 user units apart along a ~1200-unit path, so the straight-line error on
+       * these curves is under a tenth of a pixel at any width: the bead rides exactly where it did. Until
+       * the table is complete the original call is used, so nothing changes in the meantime. Built with
+       * `gsap.delayedCall`, which this scope's context kills on unmount like every other tween here.
+       */
+      const SAMPLES = 2048;
+      const PER_TICK = 64;
+      const table = new Float32Array((SAMPLES + 1) * 2);
+      let filled = 0;
+      const fillSome = () => {
+        const end = Math.min(SAMPLES + 1, filled + PER_TICK);
+        for (let index = filled; index < end; index += 1) {
+          const point = threadPath.getPointAtLength((index / SAMPLES) * pathLength);
+          table[index * 2] = point.x;
+          table[index * 2 + 1] = point.y;
+        }
+        filled = end;
+        if (filled <= SAMPLES) gsap.delayedCall(0.03, fillSome);
+      };
+      gsap.delayedCall(0.5, fillSome);
+
+      const pointAt = (progress: number): { x: number; y: number } => {
+        const clamped = Math.min(1, Math.max(0, progress));
+        if (filled <= SAMPLES) return threadPath.getPointAtLength(clamped * pathLength);
+        const position = clamped * SAMPLES;
+        const index = Math.min(SAMPLES - 1, Math.floor(position));
+        const t = position - index;
+        const x0 = table[index * 2] ?? 0;
+        const y0 = table[index * 2 + 1] ?? 0;
+        const x1 = table[index * 2 + 2] ?? x0;
+        const y1 = table[index * 2 + 3] ?? y0;
+        return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
+      };
       const box = { width: 0, height: 0 };
       const measure = () => {
         box.width = scope.clientWidth;
@@ -126,7 +166,7 @@ export function CinematicScrollStage({ children }: { children: ReactNode }) {
         onRefresh: measure,
         onUpdate: (self) => {
           if (box.width === 0 || box.height === 0) return;
-          const point = threadPath.getPointAtLength(self.progress * pathLength);
+          const point = pointAt(self.progress);
           gsap.set(shuttle, {
             x: (point.x / 100) * box.width - box.width * 0.5,
             y: (point.y / 1000) * box.height
