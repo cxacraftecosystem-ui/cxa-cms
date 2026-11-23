@@ -107,7 +107,8 @@ measure them again:
    in it (blur placeholders 0.5 KB, image keys 0.9 KB, JSON-LD 2.7 KB), so there is nothing to trim
    without changing the markup.
 4. **Cold starts on the remaining dynamic routes** (the listings, studio, APIs): Vercel's Fluid
-   compute is a project setting and a plan decision, the owner's.
+   compute, the platform's answer to them, is already on for the project (`resourceConfig.fluid`,
+   checked 2026-11-23). Nothing further on the application side.
 5. **The hero headline is invisible until its animation script loads.** On a slow phone that delays the
    page's largest paint; fixing it changes the first frame of the entrance animation, so it is a design
    decision, not an invisible optimisation.
@@ -119,18 +120,29 @@ measure them again:
    `useSearchParams()` inside Suspense, so the prerendered page carried its "Loading filters…" skeleton
    instead of the controls, and /search lost its search box without JavaScript. And the twin is a
    different route tree, so moving from the bare view to a filtered one remounted the page and threw
-   focus out of the search box mid-typing. Caching them without either problem takes one route serving
-   both views with Next 16's `cacheComponents` (Partial Prerendering), the query-reading parts inside
-   Suspense with the server passing the initial filter state. That is a framework-wide migration,
-   because `cacheComponents` replaces the `revalidate`/`dynamic` route config every route here uses, so
-   it should be planned as its own project. Its size as of 2026-11-23, by Next's own guide
-   (`node_modules/next/dist/docs/01-app/02-guides/migrating-to-cache-components.md`): the flag fails the
-   build on 189 files exporting `dynamic` (127 API routes, 52 studio pages, 10 public), 32 exporting
-   `revalidate` (each becomes `"use cache"` + `cacheLife` around its data) and one `dynamicParams`;
-   13 public pages read `searchParams` and need it moved inside Suspense; and about 60 server-side
-   files on the public render path call `new Date()`, `Date.now()` or `Math.random()`, which fail a
-   prerender outright and must move behind `connection()` or into the cache scope. `instant = false`
-   lets it land route by route, but the build-breaking parts have to be done in one go.
+   focus out of the search box mid-typing.
+
+   **The `cacheComponents` migration was then considered and DECLINED by the owner (2026-11-23)**, on
+   these measurements, so do not re-propose it without new ones. Warm, from India, seven requests each
+   (median time to first byte): the listings 288–327 ms, cached pages (/, /about, /people) 242–252 ms. The
+   whole gap is ~70 ms, most of it the function running at all rather than the database. Cache
+   Components (Partial Prerendering) can only remove it by sending the page's static frame first and
+   STREAMING the query-dependent results in after it, behind a Suspense fallback. Next's own streaming
+   guide says so (`node_modules/next/dist/docs/01-app/02-guides/streaming.md`, "Bots and crawlers": "visitors … receive the
+   prerendered shell immediately, and dynamic content streams in as it resolves"). That is a visible
+   placeholder where there is none today. The results arrive no sooner, and without JavaScript the
+   streamed part stays hidden. Keeping the listings looking exactly as they do means keeping them
+   rendered per request, and the migration then buys only what caching their data would. The
+   migration's size, for the record (Next's guide,
+   `node_modules/next/dist/docs/01-app/02-guides/migrating-to-cache-components.md`):
+   - the flag fails the build on 189 files exporting `dynamic` (127 API routes, 52 studio pages,
+     10 public pages);
+   - also on 32 files exporting `revalidate`, and on 1 exporting `dynamicParams`;
+   - 13 public pages read `searchParams`;
+   - about 60 server-side files on the public render path call `new Date()`, `Date.now()` or
+     `Math.random()`, which fail a prerender outright.
+
+   Revisit only if the listings grow slow in a way people notice.
 7. **Per-page targeting of the cache refresh** (refreshing only the pages a record appears on, as the
    KalaVigyan frontend does). Not worth it at this size: every page's header reads shared data and blocks
    can show any collection, so most publishes touch most pages anyway, and a hand-kept map of which page
