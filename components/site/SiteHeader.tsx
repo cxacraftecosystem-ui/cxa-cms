@@ -141,6 +141,17 @@ const JITTER_BAND = 2;
 const DESKTOP_QUERY = "(min-width: 1320px)";
 
 /**
+ * The same threshold with the site's "larger text" setting on (`data-larger-text` on `<html>`, root font
+ * 112.5%). Every label in the pill grows with it: the expanded pill measured 1441px, so the strip
+ * starts at 1480px for those readers. Must track the `[:root[data-larger-text=true]_&]:max-[1480px]:`
+ * classes on the strip and the hamburger — Tailwind 4's `max-[1480px]` is `width < 1480px`, the exact
+ * complement of this query (`max-[1479px]` left 1479px itself showing the clipped strip). Without this
+ * pair, a reader who asked for larger text got the
+ * clipped strip back between 1320 and 1480px, and the sheet closed itself the instant it opened there.
+ */
+const DESKTOP_QUERY_LARGER_TEXT = "(min-width: 1480px)";
+
+/**
  * How many top-level entries the strip will attempt.
  *
  * Six entries of ~90px plus the wordmark, the search control, the accessibility menu and the
@@ -603,23 +614,33 @@ export function SiteHeader({
   }
 
   /**
-   * Close the sheet if the viewport grows past `lg` while it is open.
+   * Close the sheet if the viewport grows past the strip's threshold while it is open.
    *
    * Only when the strip is the alternative — with more sections than the strip can take, the
    * hamburger IS the desktop menu and the sheet must stay open. Without this a rotation would leave
    * the scroll lock held over an invisible menu, and both menus would claim `aria-current`.
+   *
+   * ⚠ THE THRESHOLD DEPENDS ON THE LARGER-TEXT SETTING, read at the moment of the check. Testing only
+   * DESKTOP_QUERY closed the sheet the instant it opened for a larger-text reader between 1320 and
+   * 1480px, where the strip is hidden and the hamburger is the only menu there is.
    */
   useEffect(() => {
     if (!sheetOpen || !stripFits) return;
 
-    const query = window.matchMedia(DESKTOP_QUERY);
+    const standard = window.matchMedia(DESKTOP_QUERY);
+    const larger = window.matchMedia(DESKTOP_QUERY_LARGER_TEXT);
     const sync = () => {
-      if (query.matches) setSheetOpen(false);
+      const largerText = document.documentElement.getAttribute("data-larger-text") === "true";
+      if ((largerText ? larger : standard).matches) setSheetOpen(false);
     };
 
     sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
+    standard.addEventListener("change", sync);
+    larger.addEventListener("change", sync);
+    return () => {
+      standard.removeEventListener("change", sync);
+      larger.removeEventListener("change", sync);
+    };
   }, [sheetOpen, stripFits]);
 
   const dismissSheet = useCallback(() => setSheetOpen(false), []);
@@ -654,7 +675,7 @@ export function SiteHeader({
                     exit={{ width: 0, opacity: 0 }}
                     transition={{ duration: reduce ? 0 : DURATION.page, ease: EASE_OUT }}
                     className={cn(
-                      "hidden min-[1320px]:block",
+                      "hidden min-[1320px]:block [:root[data-larger-text=true]_&]:max-[1480px]:hidden",
                       // Clipping is what makes a width animation read as the pill swallowing the
                       // links rather than as text spilling out of a shrinking box — but it also
                       // clips an open dropdown panel, so it is lifted while one is open. The two
@@ -719,7 +740,10 @@ export function SiteHeader({
               // Only while the sheet is mounted: `aria-controls` pointing at an id that is not in the
               // document is worse than no `aria-controls` at all (contract §11).
               aria-controls={sheetOpen ? sheetId : undefined}
-              className={cn(CONTROL_BASE, stripFits && "min-[1320px]:hidden")}
+              className={cn(
+                CONTROL_BASE,
+                stripFits && "min-[1320px]:hidden [:root[data-larger-text=true]_&]:max-[1480px]:inline-flex"
+              )}
             >
               {sheetOpen ? (
                 <X aria-hidden="true" className="h-5 w-5" />
