@@ -515,12 +515,13 @@ export function VideoPlayer({
             // over `string | false | null | undefined` (contract §5), and every class here has to appear
             // verbatim in the source for the content scan to keep it.
             //
-            // z-40 is the bottom-dock rung of the ladder (contract §6) and this is a bottom dock. The
+            // z-48 is the bottom-dock rung of the ladder (contract §6) and this is a bottom dock: above
+            // the cards' 45, or the page's cards scroll over the playing film. The
             // right offset pays the SCROLLBAR GUTTER: when a dialog or the lightbox locks the document the
             // scrollbar goes, the viewport widens by its width, and anything anchored to the right edge
             // slides outwards by that much. Every other fixed overlay here reads the same variable.
             docked
-              ? "fixed bottom-4 right-[calc(1rem+var(--scroll-gutter,0px))] z-40 w-72 overflow-hidden rounded-lg border border-line-200 bg-card shadow-panel sm:w-96"
+              ? "fixed bottom-4 right-[calc(1rem+var(--scroll-gutter,0px))] z-48 w-72 overflow-hidden rounded-lg border border-line-200 bg-card shadow-panel sm:w-96"
               : "relative"
           )}
         >

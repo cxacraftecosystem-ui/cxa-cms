@@ -408,7 +408,7 @@ export function StudioShell({ user, children }: StudioShellProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduce ? 0 : DURATION.scrim, ease: EASE_OUT }}
-            className="fixed inset-0 z-40 bg-ink-900/50 backdrop-blur-xs lg:hidden"
+            className="fixed inset-0 z-48 bg-ink-900/50 backdrop-blur-xs lg:hidden"
           />
         ) : null}
 

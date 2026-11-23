@@ -171,13 +171,19 @@ and `@source` names the only folders scanned for class names (`app`, `components
 | z | What |
 |---|---|
 | 10 | sticky in-page chrome (table heads, studio toolbars) |
-| 40 | bottom docks, the nav scrim |
+| 40 | the fluid cursor (`SplashCursor`), the studio's desktop sidebar |
+| 45 | every `.bg-card` surface, the footer and `PointerGlow` panels — above the cursor (the foot of `globals.css`) |
+| 48 | bottom docks (the video's mini player, the studio save bar), the nav scrim, the studio's phone scrim |
 | 50 | the site header / studio top bar — page chrome must not exceed it |
 | 60 | skip link |
 | 70 | popovers portalled to `<body>` |
 | 100 | dialogs |
 | 105–108 | stacked dialogs (a confirm opened from inside a dialog) |
 | 110 | toast viewport |
+
+⚠ **Anything that must cover the page's content sits at 48, not 40.** Every card is 45 in the root
+stacking context, so a scrim or dock at 40 is covered by the very cards it should hide: the nav sheet
+opened on a phone or tablet with the page's cards painted over its scrim and its panel.
 
 Anything `position: fixed` and horizontally centred must also carry
 `padding-right: calc(<its own> + var(--scroll-gutter, 0px))` — the scroll lock takes the scrollbar

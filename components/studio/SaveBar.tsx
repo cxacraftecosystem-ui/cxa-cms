@@ -215,9 +215,10 @@ export function SaveBar({
   return (
     <div
       className={cn(
-        // Rung 40 of the ladder — "bottom docks" (contract §6). Never higher: the studio top bar is 50
-        // and page chrome must not exceed it.
-        "sticky bottom-0 z-40 mt-6",
+        // Rung 48 of the ladder — "bottom docks" (contract §6): above the cards' 45, which would
+        // otherwise scroll over the bar. Never higher: the studio top bar is 50 and page chrome must
+        // not exceed it.
+        "sticky bottom-0 z-48 mt-6",
         className
       )}
     >

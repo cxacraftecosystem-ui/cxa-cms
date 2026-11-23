@@ -11,7 +11,7 @@
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  * THREE LAYERS, AND THE SCRIM IS A SIBLING OF THE PANEL — NOT ITS PARENT
  *
- *     overlay   fixed inset-0 z-40, animates opacity only
+ *     overlay   fixed inset-0 z-48, animates opacity only
  *       ├── scrim   absolute inset-0, aria-hidden, click-to-close, `touch-action: none`
  *       └── panel   role="dialog", the scroller, `.nav-sheet`
  *
@@ -21,9 +21,14 @@
  * as well, and a menu longer than the screen becomes unreachable on exactly the devices this sheet
  * exists for.
  *
- * THE SCRIM IS z-40, BELOW THE HEADER'S z-50, ON PURPOSE (contract §6). The pill stays lit and
+ * THE SCRIM IS z-48, BELOW THE HEADER'S z-50, ON PURPOSE (contract §6). The pill stays lit and
  * clickable above it, which is what makes the hamburger — now showing a cross — the close control a
  * thumb reaches for. Both rungs come off the ladder; neither is invented.
+ *
+ * ⚠ AND ABOVE THE CARDS' z-45. This overlay is a sibling of <header>, so it is measured in the root
+ * stacking context against every `.bg-card` on the page (raised to 45 to clear the fluid cursor, see
+ * the foot of globals.css). At z-40 the dimmed page went under the scrim and its cards came back over
+ * it — and over the panel — on every phone and tablet with the menu open.
  * ══════════════════════════════════════════════════════════════════════════════════════════════
  *
  * FOCUS, IN FOUR RULES:
@@ -200,7 +205,7 @@ function NavSheetSurface({
       // `.overlay-frame` re-pays `var(--scroll-gutter)`: this element is `position: fixed`, so its
       // containing block is the viewport and the padding the scroll lock puts on <body> cannot reach
       // it (contract §6).
-      className="nav-sheet-overlay overlay-frame fixed inset-0 z-40"
+      className="nav-sheet-overlay overlay-frame fixed inset-0 z-48"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

@@ -55,6 +55,8 @@
  *   `z-40` with THE CARDS RAISED TO 45 — the arrangement that actually works, and the one in force.
  *      The trail washes over each section's ground, and every card rises above it, so it passes
  *      BEHIND the cards exactly as asked while staying visible in the space around them.
+ *      Raising the cards cost the old scrim rung: the nav scrim and the bottom docks moved from 40 to
+ *      48, or the cards would have come up over them as well (contract §6).
  *
  * ⚠ THE OTHER HALF OF THIS LIVES IN `app/globals.css`, ON `.bg-card`. It is one contract in two
  * files: this rung, and the rung the cards sit on. It also means NO ANCESTOR OF A CARD MAY CREATE A
