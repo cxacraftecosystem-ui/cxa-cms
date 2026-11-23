@@ -71,7 +71,6 @@ import { getSettingCached } from "@/lib/settings/service";
 import type { ContactSettings } from "@/lib/settings/schema";
 
 import { ActionStepsSection } from "@/components/sections/ActionStepsSection";
-import { ContactFormSection } from "@/components/sections/ContactFormSection";
 import { CraftExplorerSection } from "@/components/sections/CraftExplorerSection";
 import { CtaSection } from "@/components/sections/CtaSection";
 import { DocumentEmbedSection } from "@/components/sections/DocumentEmbedSection";
@@ -80,9 +79,17 @@ import { EmbedSection } from "@/components/sections/EmbedSection";
 import { EventShowcaseSection } from "@/components/sections/EventShowcaseSection";
 import { FaqSection } from "@/components/sections/FaqSection";
 import { FeatureGridSection } from "@/components/sections/FeatureGridSection";
-import { FormEmbedSection } from "@/components/sections/FormEmbedSection";
 import { GallerySection } from "@/components/sections/GallerySection";
 import { HeroSection } from "@/components/sections/HeroSection";
+// The three block types that are Client Components come through `client-sections.tsx`, where
+// `next/dynamic` code-splits them: a page without a contact form no longer downloads the contact form.
+// The blocks' own interactive pieces are split the same way, in `lazy-islands.tsx`. The hero is static on
+// purpose — it is the top of the page and should hydrate first.
+import {
+  ContactFormSection,
+  FormEmbedSection,
+  MapSection
+} from "@/components/sections/client-sections";
 import { HorizontalRailSection } from "@/components/sections/HorizontalRailSection";
 import { LinkGridSection } from "@/components/sections/LinkGridSection";
 import { ParallaxBannerSection } from "@/components/sections/ParallaxBannerSection";
@@ -90,7 +97,6 @@ import { PlatformPillarsSection } from "@/components/sections/PlatformPillarsSec
 import { IndiaMapSection } from "@/components/sections/IndiaMapSection";
 import { ProcessStepsSection } from "@/components/sections/ProcessStepsSection";
 import { StoryScrollSection } from "@/components/sections/StoryScrollSection";
-import { MapSection } from "@/components/sections/MapSection";
 import { MediaSplitSection } from "@/components/sections/MediaSplitSection";
 import { NewsShowcaseSection } from "@/components/sections/NewsShowcaseSection";
 import { PartnerLogosSection } from "@/components/sections/PartnerLogosSection";

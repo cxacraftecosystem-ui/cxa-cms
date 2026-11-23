@@ -28,6 +28,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 
 import type { VoicePoweredOrbProps } from "@/components/ui/voice-powered-orb";
 import { MandalaOrb } from "@/components/sections/story/MandalaOrb";
+import { prefersLessMotionNow } from "@/components/motion/gsap/runtime";
 import { useReducedMotionPreference } from "@/components/motion/useReducedMotionPreference";
 import { pageIsCovered, TAKEOVER_EVENT } from "@/lib/takeover";
 import { cn } from "@/lib/utils";
@@ -154,6 +155,51 @@ export function AiOrb({ className }: { className?: string }) {
     },
     []
   );
+
+  /*
+   * Warm the shader's chunk as soon as the page has finished loading, instead of on first approach.
+   *
+   * Waiting for the orb to come within 240px of the screen meant a reader who scrolled down at any pace
+   * reached it while its code was still downloading, and saw the resting disc a moment longer than the
+   * design intends. Fetching it after the `load` event — when everything at the top of the page has
+   * arrived — in idle time, means it is already in the module cache when the observer below asks for it.
+   * ONLY the download moves: nothing mounts here, and the orb still appears exactly when it did, on the
+   * same observer, so the rAF loop still never runs for an orb nobody can see. Reduced motion skips it,
+   * for the reason the observer does: the shader never runs for that reader, so the bytes would be waste.
+   */
+  useEffect(() => {
+    if (reduce || prefersLessMotionNow()) return;
+
+    let cancelled = false;
+    let idleHandle: number | null = null;
+    let timeoutHandle: number | null = null;
+
+    const warm = () => {
+      if (cancelled) return;
+      // The same specifier as the observer's import, so the module system hands it the same module.
+      void import("@/components/ui/voice-powered-orb").catch(() => {
+        // A failed prefetch costs nothing: the observer imports again on approach, as it always has.
+      });
+    };
+    const schedule = () => {
+      if (cancelled) return;
+      if (typeof window.requestIdleCallback === "function") {
+        idleHandle = window.requestIdleCallback(warm, { timeout: 2000 });
+      } else {
+        timeoutHandle = window.setTimeout(warm, 200);
+      }
+    };
+
+    if (document.readyState === "complete") schedule();
+    else window.addEventListener("load", schedule, { once: true });
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("load", schedule);
+      if (idleHandle !== null) window.cancelIdleCallback(idleHandle);
+      if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
+    };
+  }, [reduce]);
 
   // Near-viewport gate + lazy chunk. The import fires once, on first approach; the mount flag
   // keeps toggling with visibility so the rAF loop never runs for an orb nobody can see.

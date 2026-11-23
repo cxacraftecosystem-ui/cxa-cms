@@ -44,7 +44,7 @@ import { jaaliTile } from "@/components/craft/motifs";
 import { KolamMark } from "@/components/craft/KolamMark";
 import { STAGGER } from "@/components/motion/constants";
 import { Reveal } from "@/components/motion/Reveal";
-import { PillarsStage } from "@/components/sections/pillars/PillarsStage";
+import { PillarsStage } from "@/components/sections/lazy-islands";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { craftImage, type CraftImage } from "@/lib/media/craft-imagery";
 import { sectionLabel } from "@/lib/sections/registry";

@@ -39,7 +39,7 @@ import type { PageSection } from "@prisma/client";
 import { Reveal } from "@/components/motion/Reveal";
 import { CinematicScroll } from "@/components/sections/story/CinematicScroll";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
-import { StoryStage } from "@/components/sections/story/StoryStage";
+import { StoryStage } from "@/components/sections/lazy-islands";
 import { pictureFromMap } from "@/lib/media/screens";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";
 import type { StoryScrollSectionData } from "@/lib/sections/schema";

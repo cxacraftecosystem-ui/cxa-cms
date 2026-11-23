@@ -37,7 +37,7 @@
 import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
-import { FaqList } from "@/components/sections/faq/FaqList";
+import { FaqList } from "@/components/sections/lazy-islands";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { sectionLabel } from "@/lib/sections/registry";
 import type { FaqSectionData } from "@/lib/sections/schema";

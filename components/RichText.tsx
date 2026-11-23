@@ -73,8 +73,8 @@ import { cn } from "@/lib/utils";
 import { classifyHref, safeBlurDataUrl } from "@/lib/safe-href";
 import { mediaAlt, mediaSrc, publicObjectUrl } from "@/lib/media/url";
 import { isCaptionsObjectKey, readVideoSettings } from "@/lib/media/video";
-import { HostedVideoFrame } from "@/components/site/HostedVideoFrame";
-import { VideoPlayer } from "@/components/site/VideoPlayer";
+import { HostedVideoFrame } from "@/components/sections/lazy-islands";
+import { VideoPlayer } from "@/components/sections/lazy-islands";
 import {
   calloutToneOf,
   cellSpansOf,

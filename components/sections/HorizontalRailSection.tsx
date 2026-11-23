@@ -44,9 +44,10 @@ import Link from "next/link";
 import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
-import { RailStage } from "@/components/sections/story/RailStage";
+import { RailStage } from "@/components/sections/lazy-islands";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
-import { ArcCarousel, type ArcCarouselItem } from "@/components/site/ArcCarousel";
+import { ArcCarousel } from "@/components/sections/lazy-islands";
+import type { ArcCarouselItem } from "@/components/site/ArcCarousel";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { hashUnit } from "@/components/craft/motifs";
 import { craftImage, type CraftImage } from "@/lib/media/craft-imagery";

@@ -38,7 +38,7 @@
 import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
-import { ProcessStage } from "@/components/sections/story/ProcessStage";
+import { ProcessStage } from "@/components/sections/lazy-islands";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { pictureFromMap } from "@/lib/media/screens";

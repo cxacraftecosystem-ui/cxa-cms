@@ -43,9 +43,9 @@
 import type { PageSection } from "@prisma/client";
 import { TriangleAlert } from "lucide-react";
 
-import { Reveal } from "@/components/motion";
-import { HostedVideoFrame } from "@/components/site/HostedVideoFrame";
-import { VideoPlayer } from "@/components/site/VideoPlayer";
+import { Reveal } from "@/components/motion/Reveal";
+import { HostedVideoFrame } from "@/components/sections/lazy-islands";
+import { VideoPlayer } from "@/components/sections/lazy-islands";
 import { publicObjectUrl } from "@/lib/media/url";
 import { isCaptionsObjectKey } from "@/lib/media/video";
 import type { ResolvedSectionData } from "@/lib/sections/resolve";

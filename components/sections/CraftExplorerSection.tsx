@@ -33,8 +33,9 @@ import Link from "next/link";
 import type { PageSection } from "@prisma/client";
 import { Compass } from "lucide-react";
 
-import { Reveal } from "@/components/motion";
-import { MapAttribution, MapCanvas, type MapPoint } from "@/components/sections/MapSection";
+import { Reveal } from "@/components/motion/Reveal";
+import { MapAttribution, MapCanvas } from "@/components/sections/lazy-islands";
+import type { MapPoint } from "@/components/sections/MapSection";
 import { CraftPlate } from "@/components/craft/CraftPlate";
 import { EntityCard } from "@/components/site/EntityCard";
 import { SectionHeading } from "@/components/site/SectionHeading";

@@ -38,7 +38,7 @@
 import type { PageSection } from "@prisma/client";
 
 import { craftSheetFor } from "@/components/map/craftSheetFor";
-import { IndiaMapStage } from "@/components/map/IndiaMapStage";
+import { IndiaMapStage } from "@/components/sections/lazy-islands";
 import type { MapPoint } from "@/components/map/layout";
 import { Reveal } from "@/components/motion/Reveal";
 import { prisma } from "@/lib/db";

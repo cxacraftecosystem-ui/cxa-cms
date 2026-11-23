@@ -44,7 +44,7 @@ import { notFound } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { ArrowLeft, CalendarPlus, Images, MapPin, Video } from "lucide-react";
 
-import { Reveal } from "@/components/motion";
+import { Reveal } from "@/components/motion/Reveal";
 import { DefinitionList, type DefinitionItem } from "@/components/site/DefinitionList";
 import {
   EVENT_MODES,
@@ -73,7 +73,7 @@ import { TagList } from "@/components/site/TagList";
 import { Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { MediaImage } from "@/components/ui/MediaImage";
-import { VideoPlayer } from "@/components/site/VideoPlayer";
+import { VideoPlayer } from "@/components/sections/lazy-islands";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { eventCalendarHref } from "@/lib/ical";

@@ -42,7 +42,7 @@ import { ArrowRight } from "lucide-react";
 import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
-import { ParallaxStage } from "@/components/sections/story/ParallaxStage";
+import { ParallaxStage } from "@/components/sections/lazy-islands";
 import { StoryPicture } from "@/components/sections/story/StoryPicture";
 import { LinkButton } from "@/components/ui/Button";
 import { pictureFromMap } from "@/lib/media/screens";

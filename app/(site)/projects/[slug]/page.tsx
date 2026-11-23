@@ -76,7 +76,7 @@ import { ProjectProgress } from "@/components/site/ProjectProgress";
 import { RelatedContent, type RelatedItem } from "@/components/site/RelatedContent";
 import { ProseArticle } from "@/components/site/ProseArticle";
 import { SectionHeading } from "@/components/site/SectionHeading";
-import { VideoPlayer } from "@/components/site/VideoPlayer";
+import { VideoPlayer } from "@/components/sections/lazy-islands";
 import { Accordion, AccordionItem } from "@/components/ui/Accordion";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { MediaImage } from "@/components/ui/MediaImage";

@@ -17,7 +17,7 @@ import { ArrowRight } from "lucide-react";
 import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
-import { VideoPlayer } from "@/components/site/VideoPlayer";
+import { VideoPlayer } from "@/components/sections/lazy-islands";
 import { LinkButton } from "@/components/ui/Button";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { pictureFromMap } from "@/lib/media/screens";

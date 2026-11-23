@@ -75,7 +75,7 @@
 import type { PageSection } from "@prisma/client";
 
 import { STAGGER } from "@/components/motion/constants";
-import { CountUp } from "@/components/motion/CountUp";
+import { CountUp } from "@/components/sections/lazy-islands";
 import { Reveal } from "@/components/motion/Reveal";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { sectionLabel } from "@/lib/sections/registry";

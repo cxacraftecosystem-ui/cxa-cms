@@ -24,7 +24,7 @@ import type { PageSection } from "@prisma/client";
 
 import { STAGGER } from "@/components/motion/constants";
 import { Reveal } from "@/components/motion/Reveal";
-import { TimelineSpine } from "@/components/sections/timeline/TimelineSpine";
+import { TimelineSpine } from "@/components/sections/lazy-islands";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { pictureFromMap } from "@/lib/media/screens";

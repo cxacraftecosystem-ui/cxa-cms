@@ -31,7 +31,7 @@ import type { Prisma } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { Layers, MapPin } from "lucide-react";
 
-import { Reveal } from "@/components/motion";
+import { Reveal } from "@/components/motion/Reveal";
 import { Artifact3D } from "@/components/site/Artifact3D";
 import { BeforeAfterSlider } from "@/components/site/BeforeAfterSlider";
 import {
@@ -50,7 +50,7 @@ import { RelatedContent, type RelatedItem } from "@/components/site/RelatedConte
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { TagList } from "@/components/site/TagList";
 import { MediaImage } from "@/components/ui/MediaImage";
-import { VideoPlayer } from "@/components/site/VideoPlayer";
+import { VideoPlayer } from "@/components/sections/lazy-islands";
 import { liveStatusWhere } from "@/lib/content";
 import { prisma } from "@/lib/db";
 import { framingAssets, withBaseAsset } from "@/lib/media/framing";

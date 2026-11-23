@@ -21,7 +21,7 @@ import Link from "next/link";
 import type { PageSection } from "@prisma/client";
 import { ArrowRight, Newspaper } from "lucide-react";
 
-import { AnimatedList, AnimatedListItem } from "@/components/motion/AnimatedList";
+import { AnimatedList, AnimatedListItem } from "@/components/sections/lazy-islands";
 import { Reveal } from "@/components/motion/Reveal";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { CardGrid } from "@/components/site/CardGrid";

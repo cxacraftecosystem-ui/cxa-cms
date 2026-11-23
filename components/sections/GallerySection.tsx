@@ -33,14 +33,11 @@ import Link from "next/link";
 import type { PageSection } from "@prisma/client";
 import { Images } from "lucide-react";
 
-import { Reveal } from "@/components/motion";
+import { Reveal } from "@/components/motion/Reveal";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { EntityCard } from "@/components/site/EntityCard";
-import {
-  LightboxTrigger,
-  MediaLightboxProvider,
-  type LightboxItem
-} from "@/components/site/MediaLightbox";
+import { LightboxTrigger, MediaLightboxProvider } from "@/components/sections/lazy-islands";
+import type { LightboxItem } from "@/components/site/MediaLightbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaImage } from "@/components/ui/MediaImage";
 import { pictureFromMap, type Picture, type ScreenFraming } from "@/lib/media/screens";

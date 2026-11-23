@@ -23,7 +23,7 @@ import { ArrowRight } from "lucide-react";
 import type { PageSection } from "@prisma/client";
 
 import { Reveal } from "@/components/motion/Reveal";
-import { PointerGlow } from "@/components/site/PointerGlow";
+import { PointerGlow } from "@/components/sections/lazy-islands";
 import { LinkButton } from "@/components/ui/Button";
 import type { CtaSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
