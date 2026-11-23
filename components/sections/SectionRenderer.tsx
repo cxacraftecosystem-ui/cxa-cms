@@ -49,6 +49,7 @@ import { Fragment, type ReactNode } from "react";
 import type { PageSection, SectionType } from "@prisma/client";
 
 import { sectionAnchor } from "@/lib/sections/anchor";
+import { CINEMATIC_STORY_KEY, islandsFor, type IslandKey } from "@/lib/sections/block-islands";
 import { sectionLabel } from "@/lib/sections/registry";
 import {
   galleryRowsFor,
@@ -90,6 +91,7 @@ import {
   FormEmbedSection,
   MapSection
 } from "@/components/sections/client-sections";
+import { PreloadIslands } from "@/components/sections/lazy-islands";
 import { HorizontalRailSection } from "@/components/sections/HorizontalRailSection";
 import { LinkGridSection } from "@/components/sections/LinkGridSection";
 import { ParallaxBannerSection } from "@/components/sections/ParallaxBannerSection";
@@ -349,6 +351,18 @@ export interface SectionRendererProps {
   resolved: ResolvedSectionData;
 }
 
+/**
+ * The key a block's pieces are listed under. Read off the RAW `data`, like the anchor: it is only a hint
+ * for what to fetch early, and a payload that fails validation renders its error state, which needs none.
+ */
+function islandKeyOf(section: PageSection): IslandKey {
+  if (section.type === "STORY_SCROLL") {
+    const data = section.data as { presentation?: unknown } | null;
+    if (data && typeof data === "object" && data.presentation === "cinematic") return CINEMATIC_STORY_KEY;
+  }
+  return section.type;
+}
+
 export async function SectionRenderer({ sections, resolved }: SectionRendererProps) {
   // Copied before sorting: `sections` is a prop, and sorting it in place would mutate the caller's
   // array. The query that produced it is already ordered; this makes the guarantee local rather than
@@ -362,8 +376,14 @@ export async function SectionRenderer({ sections, resolved }: SectionRendererPro
   );
   const contact: ContactSettings | null = needsContact ? await getSettingCached("contact") : null;
 
+  // The code-split pieces the visible blocks render, started together on a client-side navigation
+  // (lib/sections/block-islands.ts). Rendered first so it runs before React reaches the first piece; it
+  // renders nothing, and on a full page load it does nothing.
+  const islands = islandsFor(ordered.filter((section) => section.isVisible).map(islandKeyOf));
+
   return (
     <>
+      {islands.length > 0 ? <PreloadIslands names={islands} /> : null}
       {ordered.map((section) => {
         const rendered = renderSection(section, resolved, contact);
         if (rendered === null) return null;
