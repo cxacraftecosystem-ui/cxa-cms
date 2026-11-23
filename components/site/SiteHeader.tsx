@@ -124,8 +124,15 @@ const EXPAND_FLOOR = 24;
 const JITTER_BAND = 2;
 
 /**
- * The width from which the strip replaces the hamburger. Must track the `min-[1320px]:` classes on
- * the strip and the hamburger below (Tailwind cannot build a class from this constant).
+ * The width from which the strip replaces the hamburger: 82.5rem, which is 1320px at the browser's
+ * default 16px. Must track the `min-[82.5rem]:` classes on the strip and the hamburger below (Tailwind
+ * cannot build a class from this constant).
+ *
+ * ⚠ IN REM, NOT PX, BECAUSE THE PILL GROWS WITH THE READER'S FONT. A `rem` in a media query is the
+ * browser's own default font size (the reader's setting), not this page's root size, so a reader who has
+ * set their browser to 20px text gets the strip from 1650px, where their wider pill fits; in px it clipped
+ * "News and events" and "Contact" at 1320–1600px for them. The site's own larger-text toggle changes the
+ * page's root size instead, which a media query cannot see, so it has its own threshold below.
  *
  * ⚠ NOT `lg` (1024px), WHICH IT USED TO BE. With the production wordmark — the Centre's full name —
  * the expanded pill measures 1281px (wordmark 523, six entries 641, search and accessibility
@@ -138,18 +145,18 @@ const JITTER_BAND = 2;
  * the strip: leaving it open would hold the scroll lock over a menu nobody can see, and would put a
  * second `aria-current="page"` in the accessibility tree.
  */
-const DESKTOP_QUERY = "(min-width: 1320px)";
+const DESKTOP_QUERY = "(min-width: 82.5rem)";
 
 /**
  * The same threshold with the site's "larger text" setting on (`data-larger-text` on `<html>`, root font
  * 112.5%). Every label in the pill grows with it: the expanded pill measured 1441px, so the strip
- * starts at 1480px for those readers. Must track the `[:root[data-larger-text=true]_&]:max-[1480px]:`
- * classes on the strip and the hamburger — Tailwind 4's `max-[1480px]` is `width < 1480px`, the exact
- * complement of this query (`max-[1479px]` left 1479px itself showing the clipped strip). Without this
+ * starts at 92.5rem (1480px at a 16px browser default) for those readers. Must track the
+ * `[:root[data-larger-text=true]_&]:max-[92.5rem]:` classes on the strip and the hamburger — Tailwind 4's
+ * `max-[92.5rem]` is `width < 92.5rem`, the exact complement of this query. Without this
  * pair, a reader who asked for larger text got the
  * clipped strip back between 1320 and 1480px, and the sheet closed itself the instant it opened there.
  */
-const DESKTOP_QUERY_LARGER_TEXT = "(min-width: 1480px)";
+const DESKTOP_QUERY_LARGER_TEXT = "(min-width: 92.5rem)";
 
 /**
  * How many top-level entries the strip will attempt.
@@ -675,7 +682,7 @@ export function SiteHeader({
                     exit={{ width: 0, opacity: 0 }}
                     transition={{ duration: reduce ? 0 : DURATION.page, ease: EASE_OUT }}
                     className={cn(
-                      "hidden min-[1320px]:block [:root[data-larger-text=true]_&]:max-[1480px]:hidden",
+                      "hidden min-[82.5rem]:block [:root[data-larger-text=true]_&]:max-[92.5rem]:hidden",
                       // Clipping is what makes a width animation read as the pill swallowing the
                       // links rather than as text spilling out of a shrinking box — but it also
                       // clips an open dropdown panel, so it is lifted while one is open. The two
@@ -723,7 +730,7 @@ export function SiteHeader({
               accounts belong under it (file header, and `withSocialsUnderContact` above) — two ways
               into one idea is one too many.
 
-              The strip's `hidden min-[1320px]:block` and its collapse are not a reason to bring it back. Below
+              The strip's `hidden min-[82.5rem]:block` and its collapse are not a reason to bring it back. Below
               `lg` the sheet lists every child of every entry, which is the route every other nav
               destination already takes; and the collapse withdraws the WHOLE navigation while the
               reader is moving down the page, one upward flick from having it back (see the header).
@@ -742,7 +749,7 @@ export function SiteHeader({
               aria-controls={sheetOpen ? sheetId : undefined}
               className={cn(
                 CONTROL_BASE,
-                stripFits && "min-[1320px]:hidden [:root[data-larger-text=true]_&]:max-[1480px]:inline-flex"
+                stripFits && "min-[82.5rem]:hidden [:root[data-larger-text=true]_&]:max-[92.5rem]:inline-flex"
               )}
             >
               {sheetOpen ? (
