@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * EmbroideryEdge — a worked selvedge down the left and right of the page's paper.
  *
@@ -97,12 +95,8 @@
  * `aria-hidden` and `pointer-events: none`: it carries no information and must never take a press.
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { usePathname } from "next/navigation";
-
 import { BUTI_BOX, BUTI_BY_ID, hashRange, type ButiId } from "@/components/craft/motifs";
-import { useReducedMotionPreference } from "@/components/motion/useReducedMotionPreference";
-import { cn } from "@/lib/utils";
+import { EmbroideryEdgeStrips } from "@/components/site/EmbroideryEdgeStrips";
 
 // ── The tile ──────────────────────────────────────────────────────────────────────────────────
 
@@ -298,103 +292,11 @@ const EDGE_MASK = `url("data:image/svg+xml,${encodeURIComponent(edgeTile())}")`;
  * `PigmentDrift` write theirs the same way, because `CSSProperties` has no index signature and React
  * itself documents this as how a `--var` is passed.
  */
-const EDGE_THREAD_STYLE = { "--cxa-edge-thread": EDGE_MASK } as CSSProperties;
-
 /**
- * Complete literal class strings, looked up rather than assembled (contract §5). Nothing here is
- * built by concatenation, so every class in this file is greppable and Tailwind-scannable as written.
+ * A SERVER component now, and only for one reason: the mask above is built from motifs.ts, and building it
+ * here keeps that module out of every page's JavaScript. The strips and their observer are the client
+ * half, components/site/EmbroideryEdgeStrips.tsx, and receive the finished data URI as a string.
  */
-const EDGE_CLASS = {
-  set: "cxa-edge-set",
-  left: "cxa-edge cxa-edge--left",
-  right: "cxa-edge cxa-edge--right",
-  lit: "cxa-edge--lit",
-  fade: "cxa-edge--fade"
-} as const;
-
-/** The attribute the three dark bands already wear. See the header for why this and not a new one. */
-const DARK_BAND_SELECTOR = "[data-splash-off]";
-
 export function EmbroideryEdge() {
-  const reduce = useReducedMotionPreference();
-  const pathname = usePathname();
-  const [showing, setShowing] = useState(false);
-  /** The left strip: always on the page and never a dark band. See the effect. */
-  const stripRef = useRef<HTMLDivElement | null>(null);
-
-  /**
-   * Is any dark band on screen right now?
-   *
-   * `threshold: 0` because the question is only ever "is any part of this in the viewport" — the
-   * bands are full-width and taller than the screen, so a ratio would never reach a larger threshold
-   * anyway. The strips are hidden while ANY band intersects, which means the edge stands down as the
-   * story's first pixel arrives rather than when it has taken the screen: the alternative is
-   * stitching that survives a few hundred pixels into a night-dark section, and an ornament that
-   * overstays is worse than one that leaves early.
-   *
-   * ⚠ RE-QUERIED ON EVERY NAVIGATION, AND THAT IS NOT DEFENSIVE — IT IS THE BUG THIS COMPONENT WOULD
-   * OTHERWISE HAVE. This mounts in the site frame, so it does NOT remount when the reader moves from
-   * one public page to another: without `pathname` in the dependencies the observer would still be
-   * holding the previous page's detached elements, which report nothing at all, and the edge would be
-   * frozen at whatever the last page decided. Disconnecting and re-observing is the whole fix.
-   *
-   * ⚠ AND IT DROPS TO HIDDEN FIRST — in the render that carries the new page, so no frame shows the
-   * previous page's answer over the new one, which on a light-to-homepage navigation is stitching
-   * over the top of the hero. Falling back to hidden and letting the observer earn its way back is the
-   * same rule the first paint follows.
-   */
-  const [observedPath, setObservedPath] = useState(pathname);
-  if (pathname !== observedPath) {
-    setObservedPath(pathname);
-    setShowing(false);
-  }
-
-  useEffect(() => {
-    const bands = new Set<Element>(document.querySelectorAll(DARK_BAND_SELECTOR));
-
-    // The set, rather than a count: an observer delivers one entry per target and re-delivers the
-    // same target whenever it crosses, so counting would drift the first time two bands are on
-    // screen together (the hero leaving while the story arrives, on a page that has both).
-    const covered = new Set<Element>();
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!bands.has(entry.target)) continue;
-          if (entry.isIntersecting) covered.add(entry.target);
-          else covered.delete(entry.target);
-        }
-        setShowing(covered.size === 0);
-      },
-      { threshold: 0 }
-    );
-
-    for (const band of bands) observer.observe(band);
-
-    /*
-     * ⚠ THE EDGE ALSO WATCHES ITS OWN STRIP, AND THAT IS WHAT LIGHTS IT WHERE THERE IS NO BAND AT ALL.
-     * `SiteFooter` wears the attribute on every page of the site, so in the public frame there is
-     * always a band to observe — but the component must not depend on that staying true: an observer
-     * with nothing to observe never calls back, so "wait until the observer says it is safe" would
-     * leave the edge hidden for ever on a surface with no dark band on it. Every observed target gets
-     * one initial notification, and the strip is never a band (the callback skips it), so the first
-     * answer is "nothing covers it" — the safe answer when there is provably nothing to hide from.
-     */
-    const strip = stripRef.current;
-    if (strip) observer.observe(strip);
-
-    return () => observer.disconnect();
-  }, [pathname]);
-
-  return (
-    <div aria-hidden="true" style={EDGE_THREAD_STYLE} className={EDGE_CLASS.set}>
-      <div
-        ref={stripRef}
-        className={cn(EDGE_CLASS.left, showing && EDGE_CLASS.lit, !reduce && EDGE_CLASS.fade)}
-      />
-      {/* The right-hand strip is the same tile MIRRORED, in globals.css — a border is worked
-          inwards from each selvedge, so the mango leans towards the text on both sides. */}
-      <div className={cn(EDGE_CLASS.right, showing && EDGE_CLASS.lit, !reduce && EDGE_CLASS.fade)} />
-    </div>
-  );
+  return <EmbroideryEdgeStrips mask={EDGE_MASK} />;
 }
