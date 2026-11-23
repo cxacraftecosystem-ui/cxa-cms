@@ -432,26 +432,10 @@ export type ContactSettings = z.infer<typeof contactSettingsSchema>;
 // social
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Suggestions for the platform picker, NOT a closed list.
- *
- * `platform` is validated as a free-form slug so a network nobody has heard of yet needs neither a
- * migration nor a release — it needs somebody to type its name. These entries exist so the common
- * ones arrive spelled consistently and with an icon. `icon` names a `lucide-react` export
- * (contract §13: lucide and only lucide); an unrecognised platform falls back to `Globe`.
- */
-export const SOCIAL_PLATFORMS: readonly { value: string; label: string; icon: string }[] = [
-  { value: "linkedin", label: "LinkedIn", icon: "Linkedin" },
-  { value: "twitter", label: "X (Twitter)", icon: "Twitter" },
-  { value: "youtube", label: "YouTube", icon: "Youtube" },
-  { value: "instagram", label: "Instagram", icon: "Instagram" },
-  { value: "facebook", label: "Facebook", icon: "Facebook" },
-  { value: "github", label: "GitHub", icon: "Github" },
-  { value: "rss", label: "RSS feed", icon: "Rss" },
-  { value: "other", label: "Something else", icon: "Globe" }
-];
-
-export const SOCIAL_FALLBACK_ICON = "Globe";
+// The picker's suggestions live in a zod-free module so public client code can read them without
+// shipping zod to every page — see the header of lib/settings/social-platforms.ts. Re-exported here
+// so server code and the studio keep importing them from the schema, as they always have.
+export { SOCIAL_FALLBACK_ICON, SOCIAL_PLATFORMS } from "@/lib/settings/social-platforms";
 
 export const socialLinkSchema = z.object({
   /** A lowercase slug: "linkedin", "mastodon", "bluesky". Matched against SOCIAL_PLATFORMS for an icon. */

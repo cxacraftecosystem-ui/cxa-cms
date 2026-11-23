@@ -57,7 +57,8 @@ import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from 
 import { Download, Minimize2, X } from "lucide-react";
 
 import { useReducedMotionPreference } from "@/components/motion";
-import { VIDEO_SPEEDS, type VideoSettings } from "@/lib/media/video";
+import { VIDEO_SPEEDS } from "@/lib/media/video-embed";
+import type { VideoSettings } from "@/lib/media/video";
 import { cn } from "@/lib/utils";
 
 export interface VideoPlayerProps {

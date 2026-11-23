@@ -49,12 +49,10 @@ import { Reveal } from "@/components/motion/Reveal";
 import { SectionHeading } from "@/components/site/SectionHeading";
 import { Button } from "@/components/ui/Button";
 import { sectionLabel } from "@/lib/sections/registry";
-import {
-  describeFormHosts,
-  formHostAllowed,
-  type FormEmbedProvider,
-  type FormEmbedSectionData
-} from "@/lib/sections/schema";
+// The allow-list from its zod-free module, not the section schema: this is a client component, and the
+// schema module would ship zod with it (lib/sections/form-hosts.ts says why).
+import { describeFormHosts, formHostAllowed, type FormEmbedProvider } from "@/lib/sections/form-hosts";
+import type { FormEmbedSectionData } from "@/lib/sections/schema";
 import { cn } from "@/lib/utils";
 
 /** Complete literal class strings — an `h-[${n}rem]` built from data is purged (contract §5). */

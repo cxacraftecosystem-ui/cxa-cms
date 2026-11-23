@@ -44,11 +44,10 @@ import { Globe, Rss, type LucideIcon } from "lucide-react";
 
 import { Facebook, Github, Instagram, Linkedin, Twitter, Youtube } from "@/components/icons/brands";
 
-import {
-  SOCIAL_FALLBACK_ICON,
-  SOCIAL_PLATFORMS,
-  type SocialLink
-} from "@/lib/settings/schema";
+// From the zod-free module, NOT lib/settings/schema: this file is in SiteHeader, on every public page,
+// and the schema module would bring zod with it (lib/settings/social-platforms.ts says why).
+import { SOCIAL_FALLBACK_ICON, SOCIAL_PLATFORMS } from "@/lib/settings/social-platforms";
+import type { SocialLink } from "@/lib/settings/schema";
 import type { NavNode } from "@/lib/navigation";
 
 /**

@@ -31,7 +31,8 @@
 import { useState } from "react";
 import { Play, TriangleAlert } from "lucide-react";
 
-import { resolveEmbedTarget, type EmbedAspectRatio, type VideoSettings } from "@/lib/media/video";
+import { resolveEmbedTarget, type EmbedAspectRatio } from "@/lib/media/video-embed";
+import type { VideoSettings } from "@/lib/media/video";
 import { cn } from "@/lib/utils";
 
 /** Complete literal class strings — an `aspect-[${r}]` built from data is purged (contract §5). */
