@@ -2,6 +2,7 @@ import { z } from "@/lib/zod";
 
 import { assertSameOrigin, conflict, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
+import { declarePublicReach } from "@/lib/public-reach";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { canManageStructure } from "@/lib/permissions";
@@ -72,10 +73,15 @@ const handler = route(async (request: Request, context: { params: Promise<{ id: 
   const page = found(
     await prisma.page.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, title: true }
+      select: { id: true, title: true, status: true }
     }),
     "That page"
   );
+
+  // A block is public exactly when its page is, and the page builder autosaves blocks of DRAFT pages
+  // every few seconds. Declared so a draft page's autosave does not mark the whole public site stale
+  // (lib/public-reach.ts); PUBLISHED or SCHEDULED counts as public, the safe reading of both.
+  declarePublicReach(page.status === "PUBLISHED" || page.status === "SCHEDULED");
 
   // A duplicate id would be written twice and leave another block without a position at all.
   const ids = unique(body.ids);

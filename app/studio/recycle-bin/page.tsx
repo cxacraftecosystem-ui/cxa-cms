@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canRestoreDeleted, isMasterAdmin } from "@/lib/permissions";
 import { mutateWithHistory, type AuditContext, type TxClient } from "@/lib/audit";
+import { refreshPublicSite } from "@/lib/public-refresh";
 import { mediaPurgeAfterDays } from "@/lib/env";
 import { storageAvailable } from "@/lib/storage/client";
 import { formatBytes } from "@/lib/utils";
@@ -276,6 +277,8 @@ async function restore(formData: FormData): Promise<void> {
     backWith({ problem: "restore_failed" });
   }
 
+  // A restored record is live again wherever it used to appear — mark the cached pages stale.
+  refreshPublicSite();
   backWith({ notice: "restored" });
 }
 

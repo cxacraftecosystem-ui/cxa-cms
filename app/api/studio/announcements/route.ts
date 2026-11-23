@@ -251,7 +251,7 @@ export const POST = route(async (request: NextRequest) => {
     {
       announcement: created,
       message: created.isActive
-        ? "The announcement is switched on. It appears at the top of every page once its start date has passed, and it can take a few minutes to show while pages refresh."
+        ? "The announcement is switched on. It appears at the top of every page once its start date has passed: at the next page load if that date has already come, and within a few minutes of it otherwise."
         : "The announcement has been saved and is switched off, so nobody outside the studio can see it yet."
     },
     { status: 201 }

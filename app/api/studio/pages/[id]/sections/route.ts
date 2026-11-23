@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 
 import { ApiError, assertSameOrigin, conflict, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
+import { declarePublicReach } from "@/lib/public-reach";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { canAccessStudio, canManageStructure } from "@/lib/permissions";
@@ -124,6 +125,10 @@ export const POST = route(async (request: Request, context: { params: Promise<{ 
   // PUBLISHED is public now; SCHEDULED becomes public when its date passes, which can happen between
   // this write and the editor's next look — the safe reading of both is "readers can see this page".
   const pageIsLive = page.status === "PUBLISHED" || page.status === "SCHEDULED";
+  // A block is public exactly when its page is, and the page builder autosaves blocks of DRAFT pages
+  // every few seconds. Declared so a draft page's autosave does not mark the whole public site stale
+  // (lib/public-reach.ts); PUBLISHED or SCHEDULED counts as public, the safe reading of both.
+  declarePublicReach(pageIsLive);
 
   // Validated before anything is written, so a payload that cannot render is refused rather than stored as
   // an editor-only error card. `data` omitted becomes the seeded default for the type.

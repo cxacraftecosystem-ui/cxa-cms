@@ -237,7 +237,7 @@ export const PATCH = route(
       announcement: updated,
       changed: true,
       message: switchedOn
-        ? "Switched on. It appears at the top of every page once its start date has passed, and it can take a few minutes to show while pages refresh."
+        ? "Switched on. It appears at the top of every page once its start date has passed: at the next page load if that date has already come, and within a few minutes of it otherwise."
         : switchedOff
           ? "Switched off. It has gone from the public site, though a page somebody already has open may show it for a few minutes."
           : rewritten

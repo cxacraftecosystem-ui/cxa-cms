@@ -8,6 +8,7 @@ import { hashAuditIp } from "@/lib/audit-ip";
 import { normaliseIp } from "@/lib/request-ip";
 import { prisma } from "@/lib/db";
 import type { SessionUser } from "@/lib/auth/current-user";
+import { notePublicReach, saveReach } from "@/lib/public-reach";
 
 /**
  * The audit trail and the revision history.
@@ -328,6 +329,11 @@ export async function mutateWithHistory<T>(
   try {
     return await prisma.$transaction(async (tx) => {
       const result = await mutate(tx);
+
+      // Whether this save touched anything a visitor can see — a draft's autosave did not, and must not
+      // mark the public site stale (lib/public-reach.ts). Recorded, not acted on: `route()` decides after
+      // the whole request has succeeded, so a save that rolls back below refreshes nothing.
+      notePublicReach(saveReach(input.action, input.before, result));
 
       if (input.revise !== false) {
         await writeRevision(tx, {

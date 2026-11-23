@@ -25,6 +25,7 @@ import { FilterDateRange } from "@/components/studio/FilterDateRange";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
+import { refreshPublicSite } from "@/lib/public-refresh";
 
 /**
  * The audit log — who changed what, when, and what it replaced.
@@ -506,6 +507,9 @@ async function rollback(formData: FormData): Promise<void> {
     backWith({ problem: "failed" });
   }
 
+  // A rollback rewrites a page, an article, a person… directly, outside the studio API, so it marks the
+  // public site stale itself — an undo is the one save that must not wait five minutes to show.
+  refreshPublicSite();
   backWith({ notice: "rolled_back" });
 }
 

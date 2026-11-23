@@ -40,6 +40,7 @@ import { Select } from "@/components/ui/Select";
 import { FormSection } from "@/components/studio/FormSection";
 import { HelpText } from "@/components/studio/HelpText";
 import { StudioPageHeader } from "@/components/studio/StudioPageHeader";
+import { refreshPublicSite } from "@/lib/public-refresh";
 
 /**
  * Your own account — name, picture, sign-in address, password, and two-step verification.
@@ -241,6 +242,9 @@ async function saveProfile(formData: FormData): Promise<void> {
       })
   );
 
+  // Your name, title and picture are the byline on every article you wrote, so the cached pages that
+  // show them are stale now (lib/public-refresh.ts).
+  refreshPublicSite();
   backWith({ notice: "profile_saved" });
 }
 

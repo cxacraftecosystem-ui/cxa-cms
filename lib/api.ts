@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { ZodError, type ZodType } from "zod";
 import { recordAccess } from "@/lib/requestLog";
 import { clientIpFromHeaders } from "@/lib/request-ip";
+import { refreshPublicSite, studioWriteReachesPublicSite } from "@/lib/public-refresh";
+import { runWithPublicReach, scopeReachesPublic } from "@/lib/public-reach";
 
 /**
  * Route-handler plumbing: one error shape, one success shape, one place that turns a thrown thing
@@ -247,9 +249,14 @@ export function route<Args extends unknown[]>(
     const startedAt = Date.now();
     let response: NextResponse;
     let thrown: unknown = null;
+    let reach: Parameters<typeof scopeReachesPublic>[0] | null = null;
 
     try {
-      response = await handler(...args);
+      // Inside a reach scope, so the saves this request makes can say whether they touched anything
+      // live (lib/public-reach.ts) — which decides the refresh below.
+      const run = runWithPublicReach(() => handler(...args));
+      reach = run.scope;
+      response = await run.result;
     } catch (error) {
       thrown = error;
       response = toErrorResponse(error);
@@ -300,6 +307,29 @@ export function route<Args extends unknown[]>(
       }
     } catch (loggingFailure) {
       console.warn("[access-log] request not recorded", loggingFailure);
+    }
+
+    // A studio write that a visitor could see marks the public site's cached pages stale, so the save
+    // is on the site at the next visit rather than when the five-minute timer next fires. Here, once,
+    // rather than in ninety-odd route files: a route written next year is covered without anybody
+    // remembering to. Only after success (< 400) — a refused save changed nothing. Guarded for the same
+    // reason as the log above: the save has already happened, and a fault in the refresh must not turn
+    // it into a 500. lib/public-refresh.ts explains the whole-site scope and the deny-list.
+    try {
+      const request = requestFrom(args);
+      if (
+        request &&
+        typeof response?.status === "number" &&
+        response.status < 400 &&
+        studioWriteReachesPublicSite(request.method, new URL(request.url).pathname) &&
+        // …and it touched something live, or something whose liveness nobody could prove. A draft's
+        // autosave proves itself private and refreshes nothing (lib/public-reach.ts).
+        (reach === null || scopeReachesPublic(reach))
+      ) {
+        refreshPublicSite();
+      }
+    } catch (refreshFailure) {
+      console.warn("[public-refresh] the public site was not marked stale", refreshFailure);
     }
 
     return response;

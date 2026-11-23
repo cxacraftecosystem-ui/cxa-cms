@@ -224,3 +224,11 @@ function CreditList({ heading, description, images }: CreditListProps) {
  * on every craft page.
  */
 export const dynamic = "force-static";
+
+/**
+ * The same five-minute window as every other public page. The credits themselves only change with a
+ * deploy, but the header, the footer and the announcement bar around them come from the studio: a
+ * studio save already marks this page stale (lib/public-refresh.ts), and this window is what lets an
+ * announcement with a future start date appear here on time, as the studio promises it will.
+ */
+export const revalidate = 300;

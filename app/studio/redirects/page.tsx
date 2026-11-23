@@ -8,6 +8,8 @@ import { prisma } from "@/lib/db";
 import { requireStudioCapability } from "@/lib/auth/current-user";
 import { canManageStructure } from "@/lib/permissions";
 import { mutateWithHistory, type AuditContext } from "@/lib/audit";
+// Redirects are resolved when a page renders, so a saved or deleted one must mark the cached pages stale.
+import { refreshPublicSite } from "@/lib/public-refresh";
 import { requestSiteUrl } from "@/lib/request-origin";
 import { isStorableHref, safeRedirectDestination } from "@/lib/safe-href";
 import { Button } from "@/components/ui/Button";
@@ -256,6 +258,7 @@ async function saveRedirect(formData: FormData): Promise<void> {
       },
       async (tx) => tx.redirect.create({ data: { source, destination, permanent } })
     );
+    refreshPublicSite();
     backWith({ notice: "created" });
   }
 
@@ -273,6 +276,7 @@ async function saveRedirect(formData: FormData): Promise<void> {
     },
     async (tx) => tx.redirect.update({ where: { id }, data: { source, destination, permanent } })
   );
+  refreshPublicSite();
   backWith({ notice: "saved" });
 }
 
@@ -311,6 +315,7 @@ async function deleteRedirect(formData: FormData): Promise<void> {
     },
     async (tx) => tx.redirect.delete({ where: { id } })
   );
+  refreshPublicSite();
   backWith({ notice: "deleted" });
 }
 

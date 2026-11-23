@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 
 import { ApiError, assertSameOrigin, conflict, noContent, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
+import { declarePublicReach } from "@/lib/public-reach";
 import { requireCapability } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/db";
 import { canAccessStudio, canManageStructure } from "@/lib/permissions";
@@ -106,7 +107,7 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
   const existing = found(
     await prisma.pageSection.findFirst({
       where: { id: sectionId, pageId: id },
-      select: { ...SECTION_SELECT, page: { select: { title: true, deletedAt: true } } }
+      select: { ...SECTION_SELECT, page: { select: { title: true, deletedAt: true, status: true } } }
     }),
     "That block"
   );
@@ -116,6 +117,11 @@ export const PATCH = route(async (request: Request, context: RouteContext) => {
       "This page is in the recycle bin. Restore the page before changing the blocks on it."
     );
   }
+
+  // A block is public exactly when its page is, and the page builder autosaves blocks of DRAFT pages
+  // every few seconds. Declared so a draft page's autosave does not mark the whole public site stale
+  // (lib/public-reach.ts); PUBLISHED or SCHEDULED counts as public, the safe reading of both.
+  declarePublicReach(existing.page.status === "PUBLISHED" || existing.page.status === "SCHEDULED");
 
   if (body.type && body.type !== existing.type) {
     throw conflict(
@@ -189,10 +195,15 @@ export const DELETE = route(async (request: Request, context: RouteContext) => {
   const existing = found(
     await prisma.pageSection.findFirst({
       where: { id: sectionId, pageId: id },
-      select: { ...SECTION_SELECT, page: { select: { title: true } } }
+      select: { ...SECTION_SELECT, page: { select: { title: true, status: true } } }
     }),
     "That block"
   );
+
+  // A block is public exactly when its page is, and the page builder autosaves blocks of DRAFT pages
+  // every few seconds. Declared so a draft page's autosave does not mark the whole public site stale
+  // (lib/public-reach.ts); PUBLISHED or SCHEDULED counts as public, the safe reading of both.
+  declarePublicReach(existing.page.status === "PUBLISHED" || existing.page.status === "SCHEDULED");
 
   await mutateWithHistory<{ id: string }>(
     buildAuditContext(request, user),

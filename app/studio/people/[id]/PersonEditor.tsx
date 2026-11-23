@@ -712,24 +712,21 @@ export function PersonEditor({
         />
 
         {/*
-          ⚠ THE PROFILE PAGE IS LIVE AT ONCE AND THE DIRECTORY IS NOT, AND THAT GAP HAS TO BE SAID OUT LOUD.
+          THE PROFILE AND THE DIRECTORY ARE BOTH LIVE AT ONCE NOW, AND THIS USED TO SAY OTHERWISE.
 
-          `app/(site)/people/page.tsx` carries `export const revalidate = 300`, so /people is served from a
-          snapshot that is rebuilt at most every five minutes. A brand-new address has no snapshot to serve,
-          so /people/<slug> renders on the first request and is correct immediately. The two together produce
-          the one complaint this screen keeps attracting: "I published the profile, the link you gave me
-          works, and the person is not on the people page" — reported as data loss, when the row is in the
-          database and the listing simply has not been rebuilt yet.
-
-          Nothing in this repository calls `revalidatePath`, so publishing cannot shorten that window; the
-          only honest thing an editor can be told is how long it is. Shown only where it applies — an
-          unpublished profile, or one kept out of the lists on purpose, is absent for a reason the two
-          controls above have already given.
+          /people is a cached snapshot (`export const revalidate = 300`), and until lib/public-refresh.ts
+          nothing told Next a save had happened — so a published profile's own page worked straight away
+          while the People page could lag five minutes, and this screen warned about it because that gap
+          was this screen's one recurring complaint ("the link works and the person is not on the people
+          page", reported as data loss). Every successful studio save now marks the public site's cached
+          pages stale and the next visit renders them fresh, so the sentence below states the new truth.
+          Shown only where it applies — an unpublished profile, or one kept out of the lists on purpose, is
+          absent for a reason the two controls above have already given.
         */}
         {isLiveOrGoingLive && value.isVisible ? (
           <HelpText>
-            The profile&rsquo;s own page appears on the site as soon as it is published, so the link works
-            straight away. They can take up to five minutes to appear on the People page.
+            Once published, the profile&rsquo;s own page and its place on the People page both appear the
+            next time anyone opens or reloads them.
           </HelpText>
         ) : null}
 

@@ -3,6 +3,7 @@ import { ok, route } from "@/lib/api";
 import { assertCronAuthorised, runCronJob } from "@/lib/cron";
 import { recordEvent } from "@/lib/audit";
 import { resyncPublishedFlags } from "@/lib/search/index";
+import { refreshPublicSite } from "@/lib/public-refresh";
 
 /**
  * Scheduled publishing and automatic retirement.
@@ -139,6 +140,17 @@ export const GET = route(async (request: Request) => {
       notes.push(
         `Corrected the search index's published flag on ${resync.corrected} of ${resync.checked} indexed page(s) and article(s).`
       );
+    }
+
+    // Something went live or came down, so mark the cached pages stale the way a studio save does
+    // (lib/public-refresh.ts). A small gain, stated as such: publication is resolved when a page
+    // RENDERS, so each cached page already shows a due article within its own five-minute window
+    // whether or not this job runs (and it runs from GitHub, often hours late). This only shortens that
+    // window on the occasions the job happens to run first. `resync.corrected` counts too: it means
+    // publication changed with the clock, whether or not this pass flipped it.
+    if (processed > 0 || resync.corrected > 0) {
+      refreshPublicSite();
+      notes.push("Marked the public site's cached pages stale so the change shows on the next visit.");
     }
 
     return { processed, skipped: 0, failed };

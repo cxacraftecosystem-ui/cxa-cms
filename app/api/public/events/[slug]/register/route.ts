@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { revalidatePath } from "next/cache";
 // `Prisma` is imported as a VALUE, not merely as a type: `Prisma.sql` is the tagged template `$queryRaw`
 // needs for the event row lock. See `lockEvent`.
 import { Prisma, type RegistrationStatus } from "@prisma/client";
@@ -425,6 +426,19 @@ export const POST = route(async (request: NextRequest, context: { params: Promis
       }
     }
   );
+
+  // The event page states how many places are left, computed when it was rendered — so a capped event's
+  // cached page is stale the moment a place is taken. Only that one page: a registration changes
+  // nothing else a visitor sees (lib/public-refresh.ts refreshes the whole site for studio edits, which
+  // is the wrong scope for a public form anybody can submit). Guarded: the registration is already
+  // saved, and a fault here must not turn it into an error.
+  if (outcome.capacity !== null) {
+    try {
+      revalidatePath(`/events/${slug}`);
+    } catch (refreshFailure) {
+      console.warn("[events] the event page was not marked stale after a registration", refreshFailure);
+    }
+  }
 
   // The capacity and the number of places held are in the payload as well as in the sentence, so the
   // page can state the cap rather than leaving a waiting list looking like a malfunction (contract
