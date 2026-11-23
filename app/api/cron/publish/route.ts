@@ -144,10 +144,11 @@ export const GET = route(async (request: Request) => {
 
     // Something went live or came down, so mark the cached pages stale the way a studio save does
     // (lib/public-refresh.ts). A small gain, stated as such: publication is resolved when a page
-    // RENDERS, so each cached page already shows a due article within its own five-minute window
-    // whether or not this job runs (and it runs from GitHub, often hours late). This only shortens that
-    // window on the occasions the job happens to run first. `resync.corrected` counts too: it means
-    // publication changed with the clock, whether or not this pass flipped it.
+    // RENDERS, and a cached page re-renders on the first visit after its five-minute window (that one
+    // visit is still served the previous render — stale-while-revalidate), so a due article reaches the
+    // site without this job, which runs from GitHub, often hours late. Marking the pages stale here only
+    // makes the next visit render fresh rather than the one after. `resync.corrected` counts too: it
+    // means publication changed with the clock, whether or not this pass flipped it.
     if (processed > 0 || resync.corrected > 0) {
       refreshPublicSite();
       notes.push("Marked the public site's cached pages stale so the change shows on the next visit.");

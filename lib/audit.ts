@@ -11,6 +11,16 @@ import type { SessionUser } from "@/lib/auth/current-user";
 import { notePublicReach, saveReach } from "@/lib/public-reach";
 
 /**
+ * The record types whose drafts are on no public page, and so whose draft saves may stand the public
+ * site's refresh down (lib/public-reach.ts). NOT every type with a status: a research area's TITLE is
+ * printed on live project, publication and people pages whatever the area's own status, so a draft
+ * area's edit can change a live page. Articles and pages are read only by their own filtered queries —
+ * no public page reaches them through a relation — which is what makes their drafts truly private. Every
+ * other type counts as "unknown" and refreshes; widening this set needs the same check.
+ */
+const CAN_BE_PRIVATE: ReadonlySet<string> = new Set(["Post", "Page"]);
+
+/**
  * The audit trail and the revision history.
  *
  * ONE RULE: **the log entry and the change it describes are written in the SAME transaction.** A log
@@ -333,7 +343,9 @@ export async function mutateWithHistory<T>(
       // Whether this save touched anything a visitor can see — a draft's autosave did not, and must not
       // mark the public site stale (lib/public-reach.ts). Recorded, not acted on: `route()` decides after
       // the whole request has succeeded, so a save that rolls back below refreshes nothing.
-      notePublicReach(saveReach(input.action, input.before, result));
+      notePublicReach(
+        CAN_BE_PRIVATE.has(input.entityType) ? saveReach(input.action, input.before, result) : "unknown"
+      );
 
       if (input.revise !== false) {
         await writeRevision(tx, {

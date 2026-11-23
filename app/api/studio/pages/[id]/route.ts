@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 
 import { assertSameOrigin, conflict, noContent, ok, route } from "@/lib/api";
 import { mutateWithHistory } from "@/lib/audit";
+import { declarePublicReach } from "@/lib/public-reach";
 import { requireCapability } from "@/lib/auth/current-user";
 import { LIVE_STATUSES } from "@/lib/content";
 import { prisma } from "@/lib/db";
@@ -347,6 +348,11 @@ export const PATCH = route(async (request: Request, context: { params: Promise<{
         });
 
         if (slug !== existing.slug) {
+          // A changed address rewrites redirects, and redirects are read by every public page that could
+          // be one — so this save reaches the public site even when the page itself is a draft. Declared,
+          // so the draft-save rule in lib/public-reach.ts cannot stand the refresh down.
+          declarePublicReach(true);
+
           // The page must win its own address. A leftover redirect from this path would send every reader
           // straight off it, and the page would look broken with nothing on screen to explain why.
           await tx.redirect.deleteMany({ where: { source: { in: [newPath, slug] } } });
