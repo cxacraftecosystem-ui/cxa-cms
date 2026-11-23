@@ -34,39 +34,45 @@ Supabase Vault) or **Vercel Pro** with the publish job back in `vercel.json` —
 them is the owner's decision, open as of 2026-10-09. Either way the publish step then comes out of
 `keep-warm.yml`. Both options are in `DEPLOYMENT.md` §1.7; the long version is `ARCHITECTURE.md` §3.2.
 
-### Search-engine fixes that only an editor or the owner can make — opened 2026-11-23
+### Content an editor should look at — opened 2026-11-23
 
 A crawl of the live site on 2026-11-23 (113 URLs, 1,785 internal links, 91 images) found the technical
-basics sound: `robots.txt` allows every public path and advertises the sitemap, all 69 sitemap URLs
-answer 200 with self-referencing canonicals, nothing public is `noindex` by mistake, there are no broken
-links and no redirect chains (http→https and a trailing slash are one 308 each). The code-side findings
-were fixed the same day: the sitemap's invented `lastmod` dates and its empty listings, `/about`'s
-missing `BreadcrumbList`, the Centre described as a `Person` author, event `address` falling back to the
-venue, alt text for album photographs and cover images, thin people and album descriptions, and titles
-too long to carry the site-name suffix. What remains is data:
+basics sound: `robots.txt` allows every public path and advertises the sitemap, all sitemap URLs answer
+200 with self-referencing canonicals, nothing public is `noindex` by mistake, there are no broken links
+and no redirect chains (http→https and a trailing slash are one 308 each). The code-side findings were
+fixed the same day (the sitemap's invented `lastmod` dates, `/about`'s missing `BreadcrumbList`, the
+Centre described as a `Person` author, fallback alt text, thin descriptions, over-long titles).
 
-1. **Alt text in the media library.** `Media.altText` is empty for every photograph in the two published
-   albums (21) and for the three news and event cover images. The pages now fall back to the caption or
-   the album's or article's title, which is better than `alt=""` and worse than a description of the
-   picture. Writing one per image in the media library replaces the fallback everywhere at once.
-   Portraits on people cards stay `alt=""` on purpose: the name is printed beside them.
-2. **One event has no address.** `/events/bamboo-cane-craft-and-hand-block-printing-sristi-o-anusandhan`
-   names the Centre as its venue and has no Address, so its `Event` structured data carries the Centre's
-   name where Google wants a postal address. Fill in Address in the event editor.
-3. **Typing in titles and names.** Double spaces ("The  Second…"), underscores left from file names
-   ("PUBLICITY BOOKLET_DABU HAND BLOCK PRINTING", "First workshop_Shrishti_o_Anusandhan"), and six names
-   with no space after the title ("Prof.Bhaskar Bhowmick"). Search results show these as written.
-4. **Duplicate titles and descriptions.** A publication and an album are both titled "The First Craft
-   Toolkit Workshop (Srishti O Anusandhan)"; two publications share the description "Centre of
-   Excellence … (2026). Report."; an event and an album share theirs.
-5. **No FAQ block exists.** `FaqSection` already emits `FAQPage` structured data for every answered
-   question, so adding an FAQ block with real questions in the page builder is the whole job. Google has
-   shown FAQ rich results only for well-known government and health sites since August 2023, so expect
-   little from it in search.
-6. **Submitting the sitemap is the owner's.** In Google Search Console, add the property
-   `https://aicraft.iitkgp.ac.in` (DNS verification on `iitkgp.ac.in`, or the HTML-tag method), then
-   Sitemaps → submit `https://aicraft.iitkgp.ac.in/sitemap.xml`. Google already finds it through
-   `robots.txt`; submitting adds the coverage report.
+**The data fixes were applied the same day by `scripts/fix-content-2026-11-23.ts`**, which records each
+old and new value in the script and in the audit log: alt text on all 21 album pictures and covers
+(written by looking at each one), the second workshop's address (the venue on its flyer), "Prof." spacing
+on seven names, the file-name and double-space titles, the two workshop reports' shared description (each
+now has a one-line abstract), the report and album that shared a title, and the album that shared its
+event's description. The programme's name is now spelled **"Shristi O Anusandhan"** in every title, as on
+all three of the Centre's posters; record bodies and URLs still carry the older spellings.
+
+**Google Search Console is set up** (2026-11-23). The URL-prefix property `https://aicraft.iitkgp.ac.in/`
+is verified by the file `public/google402295109736833a.html` — **delete it and the property loses its
+verification**. Its owners are the owner's Google account and the service account
+`search-console@cxa-craftecosystem-1.iam.gserviceaccount.com` in the `cxa-craftecosystem-1` Google Cloud
+project, which the owner's account can act as (`roles/iam.serviceAccountTokenCreator`) to use the Search
+Console API from `gcloud` without a browser sign-in. The sitemap is submitted there.
+
+What is left needs an editor's judgement, so none of it was changed:
+
+1. **Show or delete the FAQ block on About.** Added HIDDEN, with six questions answered only from what
+   the site already says (`FAQ` in the script above). Read it in the page builder and switch it on, or
+   delete it. Expect little from it in search: Google has shown FAQ rich results only for well-known
+   government and health sites since August 2023.
+2. **Two pictures are in the wrong album.** The third workshop's poster (September 2026, mud-based
+   crafts) is photo 13 of the first workshop's album, and `Picture11.jpg` (carved wooden utensils from the
+   first workshop) is photo 7 of the second workshop's album (cane, bamboo, block printing).
+3. **Pictures worth replacing.** In the first workshop's album: `Picture14.png` has a white rectangle
+   pasted across it, `Picture13.jpg` and `Picture12.jpg` are blurred and dark, `Picture6.jpg` repeats the
+   right half of `Picture5.png`, and most of the `PictureN` images are 280–320 px wide, cut from a
+   document. Higher-resolution originals would serve the album's lightbox far better.
+4. **"The 4th Toolkit Workshop" still says "Upcoming event"** as its subtitle, and its date
+   (16 November 2026) has passed. Either the subtitle or the date needs changing.
 
 ### A draft page's address change rewrites live redirects — opened 2026-11-23
 
@@ -117,7 +123,14 @@ measure them again:
    both views with Next 16's `cacheComponents` (Partial Prerendering), the query-reading parts inside
    Suspense with the server passing the initial filter state. That is a framework-wide migration,
    because `cacheComponents` replaces the `revalidate`/`dynamic` route config every route here uses, so
-   it should be planned as its own project.
+   it should be planned as its own project. Its size as of 2026-11-23, by Next's own guide
+   (`node_modules/next/dist/docs/01-app/02-guides/migrating-to-cache-components.md`): the flag fails the
+   build on 189 files exporting `dynamic` (127 API routes, 52 studio pages, 10 public), 32 exporting
+   `revalidate` (each becomes `"use cache"` + `cacheLife` around its data) and one `dynamicParams`;
+   13 public pages read `searchParams` and need it moved inside Suspense; and about 60 server-side
+   files on the public render path call `new Date()`, `Date.now()` or `Math.random()`, which fail a
+   prerender outright and must move behind `connection()` or into the cache scope. `instant = false`
+   lets it land route by route, but the build-breaking parts have to be done in one go.
 7. **Per-page targeting of the cache refresh** (refreshing only the pages a record appears on, as the
    KalaVigyan frontend does). Not worth it at this size: every page's header reads shared data and blocks
    can show any collection, so most publishes touch most pages anyway, and a hand-kept map of which page

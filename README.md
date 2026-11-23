@@ -536,7 +536,7 @@ statement is at `/accessibility`.
 | 16 Oct 2026 | SES domain `aicraft.iitkgp.ac.in` verified |
 | 22 Oct 2026 | Batched per-row writes and studio filters pushed into SQL, pinned by query-count tests |
 | 1 Nov 2026 | Node 26 LTS and the latest stable dependencies; a master administrator can delete an account permanently |
-| 23 Nov 2026 | Tablets paint the whole homepage; publishing is immediate and drafts no longer touch the cache; zod off every page and each page loads only its own blocks' code (homepage 415 → 271 KB of JavaScript); sitemap, breadcrumb, structured-data and alt-text fixes |
+| 23 Nov 2026 | Tablets paint the whole homepage; publishing is immediate and drafts no longer touch the cache; zod off every page and each page loads only its own blocks' code (homepage 415 → 271 KB of JavaScript); sitemap, breadcrumb, structured-data and alt-text fixes; the open menu covers the page's cards; Next 16.4.6 and effect 3.22 (all eight security alerts closed); Google Search Console verified and the sitemap submitted; content fixes on 36 records |
 
 Production runs `main` at the head of this history. Open items and known limits are in
 [docs/OUTSTANDING.md](docs/OUTSTANDING.md).
