@@ -503,17 +503,18 @@ export default async function GalleryAlbumPage({
                             <MediaImage
                               media={item.asset}
                               picture={itemPictures[index] ?? null}
-                              // A photograph in an album is content, never decoration, so it is never
+                              // A picture in an album is content, never decoration, so it is never
                               // `alt=""`. The asset's alt text when the media library has one; otherwise
-                              // its place in the album — every photo in the two
-                              // published albums had an empty alt before this, which a reader using a
-                              // screen reader or image search met as nothing at all. Writing real alt
-                              // text in the media library is still the fix that matters.
-                              // NOT the caption: a caption is printed under the picture and is part of the
-                              // trigger's name, and as the alt too a screen reader heard it three times.
+                              // what it is and which album it is from — every photo in the two published
+                              // albums had an empty alt before this, which image search and a screen
+                              // reader met as nothing at all. Writing real alt text in the media library is
+                              // still the fix that matters.
+                              // NOT the caption (printed under the picture and already in the trigger's
+                              // name) and NOT its position (the trigger below says "image 3 of 12"):
+                              // either way a screen reader would hear the same words twice.
                               alt={
                                 item.asset.altText?.trim() ||
-                                `Photograph ${(lightboxIndex[index] ?? 0) + 1} of ${items.length} from ${album.title}`
+                                `${spec.stillOnly ? `Still frame of a ${spec.label.toLowerCase()}` : "Photograph"} from ${album.title}`
                               }
                               aspect="4 / 3"
                               rounded="none"

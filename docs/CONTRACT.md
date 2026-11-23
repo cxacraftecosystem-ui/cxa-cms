@@ -275,6 +275,33 @@ recalculating against elements that have left the document.
 reduced motion, and it must never be mounted inside the studio (a CMS that scrolls with inertia feels
 broken when you are trying to hit a row).
 
+⚠ **TABLETS HAVE A DESKTOP LAYOUT AND A PHONE'S GPU MEMORY.** Every running CSS loop on `transform`,
+every 3D transform (`translate3d`, `translateZ(0)`) and every GSAP scrub in progress is its own
+compositing layer, and every element painted above one that it overlaps is promoted with it. On an
+Android tablet in Chrome (≥1024 CSS px, so the desktop layout, at a pixel ratio of 2) the homepage asked
+for more layer memory than the GPU budget holds. Chrome dropped tiles: the hero painted with blank white
+rectangles and no headline, and the story section lost its night background (November 2026, reproduced
+with `--force-gpu-mem-available-mb=96`; a phone fits in 96 MB, the tablet needed more than 160).
+The rules that fixed it, and that new work must keep:
+
+1. **On a tablet-sized touch screen ambient loops do not run** (`animation: none`, not `paused`, because
+   a paused animation keeps its layer), and **GSAP writes 2D transforms** (`gsap.config({ force3D: false })`).
+   The gate is `(pointer: coarse) and (min-width: 768px) and (min-height: 600px)`, written as
+   `TABLET_TOUCH_QUERY` in `components/motion/gsap/runtime.ts` and in `app/craft-tapestry.css` and
+   `app/cinematic-story.css`. Phones are deliberately outside it: they fit the page in their budget and
+   keep every animation as designed.
+2. **A resting pose is a 2D transform.** `translate3d(…)` on something that is not moving promotes it for
+   nothing.
+3. **No section-sized promoted layer at negative z-index** (`-z-10`/`-z-20` under a whole section): it
+   forces everything above it into further section-sized layers. Where one is worth it on phones and
+   desktops, drop it under the tablet query (the story's thread: `.cxa-cine-thread` in
+   `app/cinematic-story.css`).
+4. **An oversized moving element is a layer of that size.** Size it to its travel, not "generously"
+   (the jaali highlight in `components/craft/JaaliScreen.tsx` was four times the surface's area).
+
+Check a change to the homepage at 1132×1600 at pixel ratio 2 with Chrome's GPU memory capped at 96 MB
+before shipping it; blank regions in the capture are dropped tiles.
+
 ---
 
 ## 9. Data and API conventions
@@ -296,6 +323,40 @@ broken when you are trying to hit a row).
   column matches reality; the filters are the mechanism.
 - **Server Components read the database directly** through `lib/db.ts`. Only interactive studio
   screens fetch over HTTP, through `lib/client/fetcher.ts`.
+- **A studio write that a visitor can see refreshes the public site by itself.** `route()` calls
+  `refreshPublicSite()` after any successful write under `/api/studio/` unless the resource is on the
+  deny-list in `lib/public-refresh.ts`, so a new route needs nothing to make its saves appear at once.
+  A **private** new resource (it never reaches a public page) belongs on that list. A draft save stands
+  the refresh down only for a type in `CAN_BE_PRIVATE` (`lib/audit.ts`: articles and pages). Add a type
+  there only after checking that no public page reads it through a relation regardless of its status
+  (a draft research area's title is on live pages, so research areas are not in it). A write that does
+  NOT go through `/api/studio/` — a server action, a cron — must call `refreshPublicSite()` itself after
+  it succeeds (docs/REQUEST-LIFECYCLE.md §1.6).
+- ⚠ **No public client component may import a module that builds zod schemas.** A module that calls
+  `z.object(…)` when it loads cannot be tree-shaken, so one constant imported from
+  `lib/settings/schema.ts`, `lib/sections/schema.ts` or `lib/media/video.ts` ships all of zod, with its
+  ~50 locale tables, to that page (~88 KB compressed, ~380 KB to parse). `SiteHeader` did this through
+  `lib/socials.ts` until November 2026 and put zod on every page. Constants and pure helpers a client
+  needs live in zod-free modules the schema re-exports: `lib/settings/social-platforms.ts`,
+  `lib/sections/form-hosts.ts`, `lib/media/video-embed.ts`. `import type` from a schema module is fine;
+  types are erased.
+- **A page-builder block imports its interactive pieces from `components/sections/lazy-islands.tsx`**,
+  and a block that is itself a Client Component is registered through
+  `components/sections/client-sections.tsx`. Both use `next/dynamic` in a Client Component with server
+  rendering on, so the HTML is unchanged and only a page that renders the piece downloads it. Imported
+  directly, a block's Client Components ship on every page built from blocks, because SectionRenderer
+  imports every block type. A Server Component's `dynamic()` import does NOT split in this build (tried,
+  measured: every page still listed every chunk). The hero and `Reveal` stay static imports on purpose:
+  the hero is the top of the page, and `Reveal` is used by 26 of the 32 block types.
+  ⚠ **Every `dynamic()` call there passes its loader through `island("Name", () => import(...))`**, written
+  inside the call, and **a block that gains a piece lists it in `lib/sections/block-islands.ts`**. On a
+  client-side navigation there is no server preload hint, so `PreloadIslands` (rendered first by
+  SectionRenderer) starts the new page's pieces together from that table. It must call the exact loader
+  `dynamic()` holds: Turbopack compiles the `import()` inside a `dynamic()` call to its own chunks, and a
+  plain `import()` of the same module elsewhere fetched a duplicate copy while the page still waited
+  (`components/sections/island-registry.ts`). A missing entry still loads, one round trip after the
+  pieces before it. `tests/site/block-islands.test.ts` follows every renderer's imports and checks every
+  `dynamic()` registers under its own name.
 - **List pages guard their fetch races.** A generation counter for lists (ignore the late answer), a
   `cancelled` flag for one-shot effects, an `AbortSignal` where the fetch accepts one.
 - **`items === null` vs `items === []` is a deliberate distinction**: null renders "Loading…", `[]`

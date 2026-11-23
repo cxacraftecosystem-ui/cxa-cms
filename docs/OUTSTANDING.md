@@ -25,12 +25,104 @@ cron that fires more than once a day. GitHub's scheduler is best-effort: over th
 an editor schedules for 10:00 stays SCHEDULED in the studio's status column, and keeps its old
 published flag in the search index, for hours. Public pages compare `publishAt` and `unpublishAt`
 with the clock on every read (`livePublishableWhere()` and `isLive()` in `lib/content.ts`), so nothing
-goes live early or stays up late; what lags is the studio and search.
+goes live early or stays up late; what lags is the studio and search. (A cached page compares with the
+clock when it is rendered, so it shows a due page within its five-minute window; since 2026-11-23 a
+cron run that flips anything also marks every cached page stale.)
 
 The fix is a scheduler that keeps time — **Supabase Cron** (`pg_cron` with `pg_net`, `CRON_SECRET` in
 Supabase Vault) or **Vercel Pro** with the publish job back in `vercel.json` — and choosing between
 them is the owner's decision, open as of 2026-10-09. Either way the publish step then comes out of
 `keep-warm.yml`. Both options are in `DEPLOYMENT.md` §1.7; the long version is `ARCHITECTURE.md` §3.2.
+
+### Search-engine fixes that only an editor or the owner can make — opened 2026-11-23
+
+A crawl of the live site on 2026-11-23 (113 URLs, 1,785 internal links, 91 images) found the technical
+basics sound: `robots.txt` allows every public path and advertises the sitemap, all 69 sitemap URLs
+answer 200 with self-referencing canonicals, nothing public is `noindex` by mistake, there are no broken
+links and no redirect chains (http→https and a trailing slash are one 308 each). The code-side findings
+were fixed the same day: the sitemap's invented `lastmod` dates and its empty listings, `/about`'s
+missing `BreadcrumbList`, the Centre described as a `Person` author, event `address` falling back to the
+venue, alt text for album photographs and cover images, thin people and album descriptions, and titles
+too long to carry the site-name suffix. What remains is data:
+
+1. **Alt text in the media library.** `Media.altText` is empty for every photograph in the two published
+   albums (21) and for the three news and event cover images. The pages now fall back to the caption or
+   the album's or article's title, which is better than `alt=""` and worse than a description of the
+   picture. Writing one per image in the media library replaces the fallback everywhere at once.
+   Portraits on people cards stay `alt=""` on purpose: the name is printed beside them.
+2. **One event has no address.** `/events/bamboo-cane-craft-and-hand-block-printing-sristi-o-anusandhan`
+   names the Centre as its venue and has no Address, so its `Event` structured data carries the Centre's
+   name where Google wants a postal address. Fill in Address in the event editor.
+3. **Typing in titles and names.** Double spaces ("The  Second…"), underscores left from file names
+   ("PUBLICITY BOOKLET_DABU HAND BLOCK PRINTING", "First workshop_Shrishti_o_Anusandhan"), and six names
+   with no space after the title ("Prof.Bhaskar Bhowmick"). Search results show these as written.
+4. **Duplicate titles and descriptions.** A publication and an album are both titled "The First Craft
+   Toolkit Workshop (Srishti O Anusandhan)"; two publications share the description "Centre of
+   Excellence … (2026). Report."; an event and an album share theirs.
+5. **No FAQ block exists.** `FaqSection` already emits `FAQPage` structured data for every answered
+   question, so adding an FAQ block with real questions in the page builder is the whole job. Google has
+   shown FAQ rich results only for well-known government and health sites since August 2023, so expect
+   little from it in search.
+6. **Submitting the sitemap is the owner's.** In Google Search Console, add the property
+   `https://aicraft.iitkgp.ac.in` (DNS verification on `iitkgp.ac.in`, or the HTML-tag method), then
+   Sitemaps → submit `https://aicraft.iitkgp.ac.in/sitemap.xml`. Google already finds it through
+   `robots.txt`; submitting adds the coverage report.
+
+### A draft page's address change rewrites live redirects — opened 2026-11-23
+
+Renaming the slug of a page that is still a DRAFT runs the same redirect bookkeeping as renaming a live
+one (`app/api/studio/pages/[id]/route.ts`): it deletes any redirect whose source is the new address, and
+with "keep the old address working" ticked it writes a redirect from the old address and re-points
+chains. For a page that was never public, the old address was never shared, so the redirect is
+pointless. Worse, the delete can remove a redirect a reader relies on, if the draft takes over an
+address that used to redirect elsewhere. Since 23 Nov 2026 the save at least refreshes the public site,
+so what it does to redirects shows at once. The fix is to skip both halves while the page has never been
+published (no `publishedAt`), and to do the bookkeeping when it first goes live. That needs a decision
+on what "keep the old address working" means for a draft.
+
+### Performance: what was measured and deliberately left — opened 2026-11-23
+
+The November 2026 performance pass shipped: zod off every public page (~30% less JavaScript), draft
+articles and pages no longer refreshing the cache, each page downloading only its own blocks' code (with
+a client-side navigation fetching them together), the stitched edges' mask as one cached file, and the
+story bead's lookup table. These were measured and NOT done, each for a stated reason, so nobody has to
+measure them again:
+
+1. **Fonts (175 KB on every page).** Four latin-subset variable files: Source Serif 4 (50 KB) and its
+   italic (51 KB), Inter (47 KB), Plus Jakarta Sans (27 KB), all preloaded. Two invisible savings remain:
+   narrowing each variable font's weight axis to the weights the CSS uses (~35–70 KB, glyphs unchanged),
+   and not preloading the italic. The second needs a check of where italic text appears above the fold
+   first, or that text could draw a frame in the fallback face.
+2. **framer-motion's `LazyMotion`.** Same library, same behaviour, but the header's layout animation
+   needs the `domMax` feature bundle, so loading features up front saves only ~5–10 KB; loading them
+   later would delay entrance animations, which is a visible change. Left as it is.
+3. **The RSC payload.** 177 KB uncompressed on the homepage, 37% of the HTML, and it is the React tree
+   itself — 723 `className` strings and the element structure hydration needs. No oversized data rides
+   in it (blur placeholders 0.5 KB, image keys 0.9 KB, JSON-LD 2.7 KB), so there is nothing to trim
+   without changing the markup.
+4. **Cold starts on the remaining dynamic routes** (the listings, studio, APIs): Vercel's Fluid
+   compute is a project setting and a plan decision, the owner's.
+5. **The hero headline is invisible until its animation script loads.** On a slow phone that delays the
+   page's largest paint; fixing it changes the first frame of the entrance animation, so it is a design
+   decision, not an invisible optimisation.
+6. **The seven listings still render per request** (news, events, publications, projects, gallery,
+   craft explorer, search: 0.28–0.35 s to first byte, cold starts up to 2.4 s, against ~0.15–0.2 s for
+   a cached page). They read their filters from the query string, which makes a page dynamic. A split
+   was built and REVERTED before shipping: the bare URL as a static page, with filtered URLs rewritten to
+   a per-request twin route. An adversarial review found two visible regressions. `FilterBar` reads
+   `useSearchParams()` inside Suspense, so the prerendered page carried its "Loading filters…" skeleton
+   instead of the controls, and /search lost its search box without JavaScript. And the twin is a
+   different route tree, so moving from the bare view to a filtered one remounted the page and threw
+   focus out of the search box mid-typing. Caching them without either problem takes one route serving
+   both views with Next 16's `cacheComponents` (Partial Prerendering), the query-reading parts inside
+   Suspense with the server passing the initial filter state. That is a framework-wide migration,
+   because `cacheComponents` replaces the `revalidate`/`dynamic` route config every route here uses, so
+   it should be planned as its own project.
+7. **Per-page targeting of the cache refresh** (refreshing only the pages a record appears on, as the
+   KalaVigyan frontend does). Not worth it at this size: every page's header reads shared data and blocks
+   can show any collection, so most publishes touch most pages anyway, and a hand-kept map of which page
+   shows what is exactly what would one day miss an edit. Revisit if the site grows to thousands of pages
+   or renders become expensive; the decision lives in one function (`refreshPublicSite`).
 
 ### Gaps that the screens used to narrate, now recorded here instead — opened 2026-10-10
 

@@ -45,7 +45,7 @@ is decided when a page is read, not when a cron last ran.
 
 | Surface | Route | What it is |
 |---|---|---|
-| **Public site** | `/` and `app/(site)/**` | Research areas, people, projects, publications, news, events, the craft explorer and India map, the gallery, the A–Z index, site search, feeds and the newsletter sign-up. Prerendered and revalidated. |
+| **Public site** | `/` and `app/(site)/**` | Research areas, people, projects, publications, news, events, the craft explorer and India map, the gallery, the A–Z index, site search, feeds and the newsletter sign-up. Prerendered and revalidated; a studio save refreshes it at once. |
 | **Studio** | `/studio` and `app/studio/**` | Pages and their sections, every content type, the media library and files, navigation, redirects, page templates, announcements, inquiries, subscribers and newsletter issues, users and the studio access list, the audit trail, the recycle bin, analytics and health. |
 | **Preview** | `/preview/[[...slug]]` | A page as it will look before publication, inside the real site layout, gated by an HMAC of its slug so the link can be forwarded. |
 | **Syndication** | `/news/feed.xml`, `/news/atom.xml`, `/events/calendar.ics` | RSS 2.0, Atom 1.0 and iCalendar, from published records only. |
@@ -176,8 +176,11 @@ Authors draft and cannot publish; editors publish anything; a researcher publish
 projects and publications. Going public is refused while a visible block still holds one of the
 studio's own prompts, and the refusal quotes the words. A draft autosaves about four seconds after the
 last keystroke; a published page does not, because Save goes straight to the live site, so a block
-added to a live page is created hidden until the editor turns it on. The full lifecycle, the editing
-loop and where the publish cron really runs are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3.
+added to a live page is created hidden until the editor turns it on. Publishing is immediate: public
+pages are cached snapshots, and every successful studio save that a visitor could see marks them stale,
+so the next visit to each page renders it fresh ([docs/REQUEST-LIFECYCLE.md](docs/REQUEST-LIFECYCLE.md)
+§1.6). The full lifecycle, the editing loop and where the publish cron really runs are in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3.
 
 ### Media
 
@@ -451,7 +454,7 @@ anywhere. Neither may ever be made `continue-on-error`.
 | `/api/cron/purge` | 03:17 UTC daily | Vercel cron | deletes recycle-bin media past `MEDIA_PURGE_AFTER_DAYS` (30 by default), bytes first and the row second, and prunes expired sessions |
 | `/api/cron/logs-archive` | 03:41 UTC daily | Vercel cron | copies each day's logs to the bucket, kept at least 90 days as the CIC hosting undertaking requires |
 | `/api/cron/newsletter-drain` | 03:53 UTC daily, and every 5 minutes requested | Vercel cron and `newsletter-drain.yml` | sends queued newsletter mail through SES |
-| `/api/cron/publish` | every 5 minutes requested | `keep-warm.yml` (Heartbeat) | moves due pages to `PUBLISHED` and expired ones to `ARCHIVED`, and re-syncs search |
+| `/api/cron/publish` | every 5 minutes requested | `keep-warm.yml` (Heartbeat) | moves due pages to `PUBLISHED` and expired ones to `ARCHIVED`, re-syncs search, and marks the cached public pages stale when anything changed |
 | Erase an account | by hand | `ops-erase-account.yml` | a master administrator's permanent delete: `check` counts only, `erase` needs the address typed twice |
 
 GitHub runs a five-minute schedule hours apart in practice, which is why publication is resolved at
@@ -533,6 +536,7 @@ statement is at `/accessibility`.
 | 16 Oct 2026 | SES domain `aicraft.iitkgp.ac.in` verified |
 | 22 Oct 2026 | Batched per-row writes and studio filters pushed into SQL, pinned by query-count tests |
 | 1 Nov 2026 | Node 26 LTS and the latest stable dependencies; a master administrator can delete an account permanently |
+| 23 Nov 2026 | Tablets paint the whole homepage; publishing is immediate and drafts no longer touch the cache; zod off every page and each page loads only its own blocks' code (homepage 415 → 267 KB of JavaScript); sitemap, breadcrumb, structured-data and alt-text fixes |
 
 Production runs `main` at the head of this history. Open items and known limits are in
 [docs/OUTSTANDING.md](docs/OUTSTANDING.md).

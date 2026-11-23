@@ -169,6 +169,14 @@ export function AiOrb({ className }: { className?: string }) {
    */
   useEffect(() => {
     if (reduce || prefersLessMotionNow()) return;
+    // Not on a connection the reader has asked us to go easy on: the prefetch is a speed-up for a part
+    // of the page they may never reach, so it is skipped and the observer loads the chunk on approach,
+    // as it always did. (`navigator.connection` is Chromium-only; elsewhere the prefetch simply runs.)
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
+      .connection;
+    if (connection?.saveData || connection?.effectiveType === "2g" || connection?.effectiveType === "slow-2g") {
+      return;
+    }
 
     let cancelled = false;
     let idleHandle: number | null = null;

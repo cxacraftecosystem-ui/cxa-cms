@@ -153,6 +153,14 @@ from the database through `requireUser()` / `requireRole()` / `requireCapability
 `lib/auth/current-user.ts`. Gating a capability on `claims.role` in the proxy would build a
 permission that is up to half an hour out of date.
 
+**Publishing is immediate.** Public pages are cached snapshots with a five-minute `revalidate` window,
+and every successful studio write that a visitor could see marks them all stale, so the next request
+renders each one fresh (docs/REQUEST-LIFECYCLE.md §1.6). The window remains only for what changes with
+the clock.
+
+**A page downloads only the client code of the blocks it renders:** each block's interactive pieces
+are code-split through `components/sections/lazy-islands.tsx` (contract §9).
+
 **The public site is never touched by the proxy**, and that is what makes ISR work at all — and also
 why `next.config.ts` ships a deliberately partial Content-Security-Policy with no `script-src`: a
 meaningful one needs per-request nonces, and getting a nonce to the pre-paint theme boot
@@ -439,6 +447,13 @@ time while publication is resolved at *read* time, so it goes stale with nothing
 advancing: a page past its `unpublishAt` 404s at its own URL while its title keeps coming back from
 `/search`, and a scheduled article goes live but stays missing from the site's own search until
 somebody re-saves it.
+
+**When the job changes anything it also marks the public site's cached pages stale**
+(`refreshPublicSite()`, lib/public-refresh.ts), the same call a studio save makes. The gain is small:
+publication is resolved when a page renders, and a cached page re-renders on the first visit after its
+five-minute window (that one visit is served the previous render, then the page is current), so a due
+article reaches the site whether or not the job runs, and the job runs hours late in practice. The call
+only makes the next visit fresh rather than the one after. docs/REQUEST-LIFECYCLE.md §1.6 has the rule.
 
 ### 3.2 ⚠ Where the publish cron actually runs
 
@@ -917,6 +932,9 @@ characters, so the CI value is genuine entropy.
 | You want to | Touch | Do **not** touch |
 |---|---|---|
 | Add a block type | `SectionType` enum · `lib/sections/schema.ts` · `lib/sections/registry.ts` · `components/sections/` · `components/studio/sections/` | Any migration beyond the enum value — the payload is JSON by design |
+| Give a block an interactive piece | The piece's own file, imported by the block from `components/sections/lazy-islands.tsx` (a Client Component block: `client-sections.tsx`), wrapped in `island()`, and named for its block in `lib/sections/block-islands.ts` | A direct import from the block — it would ship on every page built from blocks (contract §9) |
+| Change the craft motifs or the stitched page edge | `components/craft/motifs.ts` / `components/site/embroidery-edge-tile.ts`, then `npx tsx scripts/build-edge-thread.ts` and commit `public/edge-thread.svg` | Inlining the tile again — the file is cached once instead of riding in every page (`tests/site/edge-thread.test.ts` fails on a stale file) |
+| Make a write outside the studio API visible at once | Call `refreshPublicSite()` (`lib/public-refresh.ts`) after it succeeds | The route segments' `revalidate` windows — they are the clock's safety net, not the publish path |
 | Change what a showcase fetches | `lib/sections/resolve.ts` **only** | The renderer — renderers are pure and never query |
 | Change how a block looks | `components/sections/<X>Section.tsx` | The schema, unless the data genuinely changed |
 | Add a content type | `prisma/schema.prisma` · `lib/studio/crud.ts` helpers · a studio route pair · `lib/search/index.ts` | `lib/sections/*` — a content type is not a block |

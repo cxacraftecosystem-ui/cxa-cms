@@ -319,11 +319,12 @@ function personSummary(person: PersonRecord): string {
   // Matched without case and without a leading honorific: "Dr. Priya Sharma" is named by a biography
   // that begins "Priya Sharma is…", and repeating the name would only spend the 160 characters sooner.
   const bareName = person.name
-    // "Prof. X", "Prof X" and the live data's "Prof.X" alike.
-    .replace(/^(prof|dr|mr|mrs|ms|shri|smt)(\.\s*|\s+)/i, "")
-    .trim()
-    .toLowerCase();
-  if (bareName && bio.toLowerCase().includes(bareName)) return bio;
+    // "Prof. X", "Prof X", the live data's "Prof.X", and stacked titles ("Prof. Dr. X") alike.
+    .replace(/^((prof|dr|mr|mrs|ms|shri|sri|smt|kumari)(\.\s*|\s+))+/i, "")
+    .trim();
+  // As a WHOLE name: a plain substring test let "Ram" match "programme" and "Uma" match "human", which
+  // dropped the lead and left a snippet that never said whose page it was.
+  if (bareName && containsWholeName(bio, bareName)) return bio;
   if (lead.toLowerCase().includes(bio.toLowerCase().replace(/\.$/, ""))) return lead;
   return `${lead} ${bio}`;
 }
@@ -907,4 +908,10 @@ export default async function PersonPage({ params }: { params: Promise<{ slug: s
       </div>
     </>
   );
+}
+
+/** Whether `text` contains `name` as a whole name, not inside a longer word, ignoring case. */
+function containsWholeName(text: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "iu").test(text);
 }

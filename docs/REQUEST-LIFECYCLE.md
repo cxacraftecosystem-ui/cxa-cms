@@ -116,11 +116,10 @@ build, which is the contract.
 - **No `searchParams`, no cookies, no headers.** Reading any of them inside
   `app/(site)/[...slug]/page.tsx` would opt every CMS page into per-request rendering and throw away
   both the prerender and the revalidation. Preview therefore lives on its own route (§4).
-- **No `revalidatePath` / `revalidateTag` anywhere in the codebase.** Publication reaches the public
-  site through the time window and nothing else. That is a deliberate simplification with a stated
-  cost: an editor who publishes sees the change within five minutes, not instantly. If on-demand
-  revalidation is ever added, the studio's own wording about "within a few minutes" has to change
-  with it.
+- **No per-record cache tags.** Pages read Prisma directly, so there is no tagged `fetch` to
+  invalidate one record at a time. On-demand revalidation (§1.6) marks the whole public site stale
+  instead, which is exact by construction in a site where every page's header and footer read shared
+  settings and showcase blocks put any collection on any page.
 
 ### 1.5 A code route always beats the catch-all
 
@@ -136,6 +135,60 @@ unreachable.
 ⚠ **Add to `RESERVED_PREFIXES` when you add a route under `app/(site)/`.**
 
 ---
+
+### 1.6 Publishing is immediate: on-demand revalidation
+
+Until November 2026 publication reached the public site through the time window alone, so an editor
+who saved saw the change within five minutes, not at once, while the studio said "publishes your
+changes to the site immediately". Now **every successful write that a visitor could see marks the
+public site's cached pages stale, and the next request for each page renders it fresh** (a `MISS`,
+then cached again). The `revalidate` window stays as the safety net for what changes with the clock
+alone: an event passing from upcoming to past, registration closing, an announcement's start date. That
+net is stale-while-revalidate: the first visit after the window is still served the previous render and
+triggers the fresh one, so after a quiet spell one visitor sees the page as it was.
+
+| Trigger | Where | What it refreshes |
+|---|---|---|
+| A successful `POST`/`PUT`/`PATCH`/`DELETE` under `/api/studio/` that touched something live | `route()` in `lib/api.ts` | the whole public site, `revalidatePath("/", "layout")` |
+| Saving or deleting a redirect; restoring from the recycle bin; rolling back from the audit log; saving your own profile (it is your byline) | the server actions in `app/studio/redirects`, `recycle-bin`, `audit` and `account` | the whole public site |
+| `/api/cron/publish` flipping a scheduled page or article, or correcting search flags | `app/api/cron/publish/route.ts` | the whole public site (a small gain: the window already shows a due article) |
+| A public registration for an event with a capacity | `app/api/public/events/[slug]/register` | that event's page only, so "places left" is current |
+
+- **Editing a draft article or page refreshes nothing.** The studio autosaves a draft about every four
+  seconds while somebody types, through the same routes that save live records. `mutateWithHistory`
+  records whether each save touched a live record, by `isLive()` on the row before and after
+  (`lib/public-reach.ts`), and `route()` skips the refresh when every save in the request was provably
+  private: a draft or a scheduled item that stays one. Only articles and pages can be private this way
+  (`CAN_BE_PRIVATE` in `lib/audit.ts`), because no public page reaches them except through their own
+  filtered queries. Every other type refreshes on every save, draft or not: a research area's title, for
+  one, is printed on live project, publication and people pages whatever the area's own status. A row
+  without a status (settings, menus, media), or one selected without a field the verdict needs, counts as
+  unknown, and unknown refreshes. A draft page whose address changes refreshes too, because the save
+  rewrites redirects, which every public URL reads. The page builder's block routes declare their
+  page's status instead, because a block has none of its own. *Creating* a record still refreshes once:
+  most create routes label a new draft by its status transition (`UPDATE`) with no row before it, which
+  the verdict reads as unknown. That is the safe direction and a one-off per record; the four-second
+  autosave of an existing draft is the case that mattered, and it is skipped (verified end to end).
+- **Studio resources that never reach a public page are on a deny-list** (`lib/public-refresh.ts`):
+  `inquiries`, `access`, `locks`, `analytics`, `audit`, `export`, `newsletter`, `reindex`, `search`,
+  `templates`, upload tickets, draft previews, event certificates, the publication import's dry run, and
+  users' sign-in security. Not `account`: an editor's name, title and picture are the byline on their
+  articles. A resource added later is covered without anybody remembering this file, and forgetting to
+  list a private one costs only a wasted re-render.
+- **Why the whole site, not the record's page.** The header on every page reads the navigation and the
+  people-group counts, the footer reads settings, and showcase blocks place records on any page. A
+  per-record list of affected paths would be a second copy of every query on the site, and the day it
+  missed one an edit would silently not appear. `revalidatePath` only *marks*: nothing is rebuilt in
+  bulk, and each page is rendered once, on its next visit. Pages nobody opens are never rebuilt.
+- **What "immediately" means.** The next page load anywhere shows the change. A visitor who already
+  has the site open and moves around by link may see Next's in-browser copy of a page they visited in
+  the last five minutes until they reload, which is why the studio's sentences say "the next time
+  anyone opens or reloads" rather than "instantly".
+- **Verified** against a production build (`next build` + `next start`, November 2026): `/people` was a
+  cache `HIT`; one settings save later the very next request was a `MISS` showing the change, and the
+  one after that a `HIT` again. A private write (account security) left it a `HIT`.
+- `tests/caching/public-refresh.test.ts` pins which paths refresh and which do not, and
+  `tests/caching/public-reach.test.ts` pins the draft-versus-live verdict.
 
 ## 2. A studio save
 
@@ -191,6 +244,12 @@ sequenceDiagram
         F-->>PB: saved — the row shows a static "just saved" outline
     end
 ```
+
+After the handler answers, `route()` in `lib/api.ts` does one more thing for a successful write: if
+the resource can reach a public page it calls `refreshPublicSite()`, so the change is on the site at
+the next visit rather than at the end of the five-minute window (§1.6). It runs after the save has
+committed and is guarded like the access log beside it, so a fault there can never turn a completed
+save into an error.
 
 ### 2.1 The other three kinds of write from the same screen
 
