@@ -138,16 +138,18 @@
 }
 
 /*
- * ⚠ TOUCH DEVICES GET THE STILL SCREEN AND STILL PIGMENT. A tablet is the worst case for
+ * ⚠ TABLETS GET THE STILL SCREEN AND STILL PIGMENT. A tablet is the worst case for
  * this hero: it gets the desktop layout (≥1024 CSS px) at a device pixel ratio of 2 on a
  * phone-class GPU memory budget. Each running loop here is its own hero-sized layer, and
  * every layer painted above it is promoted too ("overlap"). On an Android tablet in Chrome
  * the sum exceeded the tile budget and the hero painted with blank white rectangles and a
  * missing headline (reproduced with Chrome capped at 96–160 MB of GPU memory; a phone
  * fits in 96 MB). The shimmer is a 46-second drift a reader cannot see on a tablet anyway.
- * `pointer: coarse` is the gate the rest of the site already uses for its heavy effects.
+ * The gate is a TABLET-SIZED touch screen — coarse pointer, at least 768 × 600 CSS px — so phones, which
+ * fit the hero in a phone's budget and were never affected, keep every loop exactly as before. The same
+ * query is written in app/cinematic-story.css and as TABLET_TOUCH_QUERY in components/motion/gsap/runtime.ts.
  */
-@media (pointer: coarse) {
+@media (pointer: coarse) and (min-width: 768px) and (min-height: 600px) {
   .cxa-jaali-light--shimmer,
   .cxa-pigment-grain--drift {
     animation: none;

@@ -62,6 +62,15 @@ export interface GsapRuntime {
  */
 let runtime: Promise<GsapRuntime> | null = null;
 
+/**
+ * A tablet-sized touch screen: a coarse primary pointer on a viewport at least 768 × 600 CSS px. This is
+ * where the desktop layout meets a phone-class GPU memory budget, and where the homepage dropped tiles
+ * (docs/CONTRACT.md §8). Phones (smaller in one dimension whichever way they are held) and desktops with
+ * a fine pointer are outside it. The same query is written in app/craft-tapestry.css and
+ * app/cinematic-story.css.
+ */
+export const TABLET_TOUCH_QUERY = "(pointer: coarse) and (min-width: 768px) and (min-height: 600px)";
+
 /** The attribute `lib/preferences.ts` stamps on `<html>`. Present only when the toggle is ON. */
 const REDUCED_MOTION_ATTRIBUTE = "data-reduced-motion";
 
@@ -131,7 +140,7 @@ export function loadGsapRuntime(): Promise<GsapRuntime> {
       ScrollTrigger.config({ ignoreMobileResize: true });
 
       /**
-       * ⚠ 2D TRANSFORMS ON TOUCH DEVICES. GSAP's default `force3D: "auto"` writes `translate3d`
+       * ⚠ 2D TRANSFORMS ON TABLET-SIZED TOUCH SCREENS (TABLET_TOUCH_QUERY below; phones are untouched). GSAP's default `force3D: "auto"` writes `translate3d`
        * while a tween is in progress — and a SCRUBBED tween is in progress for exactly as long as
        * its element is on screen. So every scrubbed orb, photograph, rail and bloom in view is
        * promoted to its own compositing layer, and everything painted above one that it overlaps is
@@ -142,7 +151,7 @@ export function loadGsapRuntime(): Promise<GsapRuntime> {
        * absorbs, and far less memory, which it cannot spare. Read once at load — this is a property
        * of the device, and a tablet that gains a mouse keeps a layout that works either way.
        */
-      if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
+      if (typeof window.matchMedia === "function" && window.matchMedia(TABLET_TOUCH_QUERY).matches) {
         gsap.config({ force3D: false });
       }
 
